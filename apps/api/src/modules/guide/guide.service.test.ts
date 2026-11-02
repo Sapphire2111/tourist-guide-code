@@ -86,3 +86,32 @@ describe("GuideService.addFavorite — лимит", () => {
     expect(await add(FAVORITES_MAX, true)).toMatchObject({ placeId: PLACE });
   });
 });
+
+describe("GuideService.localities", () => {
+  it("синонимы по коду (Буковель → Поляниця), число мест; без мест — 0", async () => {
+    const L = "0190f5c2-7d3e-7000-8000-0000000000c1";
+    const res = await service({
+      activeLocalities: () =>
+        Promise.resolve([
+          {
+            id: L,
+            code: "polianytsia",
+            name_i18n: { uk: "Поляниця" },
+            sort_order: 1,
+            location: { lon: 24.41, lat: 48.36 },
+          },
+          {
+            id: PLACE,
+            code: "new-one",
+            name_i18n: { uk: "Нове" },
+            sort_order: 2,
+            location: { lon: 24, lat: 48 },
+          },
+        ]),
+      publishedCountByLocality: () => Promise.resolve(new Map([[L, 7]])),
+    }).localities(REGION);
+    expect(res.items[0]).toMatchObject({ id: L, placeCount: 7, location: { lon: 24.41, lat: 48.36 } });
+    expect(res.items[0]!.aliases).toContain("Буковель");
+    expect(res.items[1]).toMatchObject({ aliases: [], placeCount: 0 });
+  });
+});

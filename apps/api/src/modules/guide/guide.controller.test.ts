@@ -36,6 +36,7 @@ afterEach(async () => {
 function fakeService() {
   return {
     categories: vi.fn(() => Promise.resolve({ items: [] })),
+    localities: vi.fn(() => Promise.resolve({ items: [] })),
     search: vi.fn(() => Promise.resolve({ items: [], nextOffset: null, radiusMeters: null })),
     place: vi.fn((_r: string, id: string) => Promise.resolve(id === PLACE ? { id } : undefined)),
     favorites: vi.fn(() => Promise.resolve({ items: [] })),
@@ -156,6 +157,26 @@ describe("GET /places/search", () => {
     });
   });
 
+  it("localityIds — повтор параметра и через запятую; пусто — без фильтра; больше 10 или не uuid — 400", async () => {
+    const { http, service } = await start();
+    const A = "0190f5c2-7d3e-7000-8000-0000000000c1";
+    const B = "0190f5c2-7d3e-7000-8000-0000000000c2";
+    await http().get(`/places/search?regionId=${REGION}&localityIds=${A}&localityIds=${B}`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ localityIds: [A, B] }));
+    await http().get(`/places/search?regionId=${REGION}&localityIds=${A},${B}`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ localityIds: [A, B] }));
+    await http().get(`/places/search?regionId=${REGION}&localityIds=`).expect(200);
+    expect((service.search.mock.lastCall as unknown[] | undefined)?.[1]).toMatchObject({
+      localityIds: undefined,
+    });
+    service.search.mockClear();
+    await http().get(`/places/search?regionId=${REGION}&localityIds=nope`).expect(400);
+    await http()
+      .get(`/places/search?regionId=${REGION}&localityIds=${Array.from({ length: 11 }, () => A).join(",")}`)
+      .expect(400);
+    expect(service.search).not.toHaveBeenCalled();
+  });
+
   it("lat без lng (и наоборот) — 400 по недостающему полю; вне диапазонов — 400", async () => {
     const { http, service } = await start();
     expect(fields((await http().get(`/places/search?regionId=${REGION}&lat=48`).expect(400)).body)).toEqual([
@@ -181,6 +202,15 @@ describe("GET /places/search", () => {
     ])
       await http().get(`/places/search?regionId=${REGION}&${bad}`).expect(400);
     expect(service.search).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /localities", () => {
+  it("регион обязателен; список — из сервиса", async () => {
+    const { http, service } = await start();
+    await http().get(`/localities`).expect(400);
+    await http().get(`/localities?regionId=${REGION}`).expect(200);
+    expect(service.localities).toHaveBeenCalledWith(REGION);
   });
 });
 

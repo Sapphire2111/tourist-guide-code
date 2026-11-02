@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   IsBoolean,
   IsIn,
   IsInt,
@@ -43,6 +44,21 @@ export const SEARCH_LIMIT_MAX = 50;
 /** Глубина листания поиска (offset): дальше — уточнить запрос. */
 export const SEARCH_OFFSET_MAX = 1000;
 export const SEARCH_QUERY_MAX = 100;
+/** Локаций в фильтре поиска — не больше (в регионе их единицы). */
+export const SEARCH_LOCALITIES_MAX = 10;
+
+/** Повтор параметра (?localityIds=a&localityIds=b) и/или список через запятую — массив без пустых. */
+const toList = ({ value }: { value: unknown }) =>
+  value === undefined
+    ? undefined
+    : (Array.isArray(value) ? value : [value]).flatMap((v) =>
+        typeof v === "string"
+          ? v
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : [v],
+      );
 
 const toBool = ({ value }: { value: unknown }) =>
   value === "true" || value === "1" ? true : value === "false" || value === "0" ? false : value;
@@ -118,6 +134,20 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   @MinLength(2)
   @MaxLength(SEARCH_QUERY_MAX)
   q?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: "uuid",
+    maxItems: SEARCH_LOCALITIES_MAX,
+    description:
+      "Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. " +
+      "Повтор параметра или через запятую",
+  })
+  @IsOptional()
+  @Transform(toList)
+  @ArrayMaxSize(SEARCH_LOCALITIES_MAX)
+  @IsUUID("all", { each: true })
+  localityIds?: string[];
 
   @ApiPropertyOptional({
     type: Boolean,
@@ -221,6 +251,27 @@ export class GuideCategoryListDto {
       "Активные категории региона, плоско (parentId), по sortOrder; подкатегории выключенного раздела не входят",
   })
   items!: GuideCategoryDto[];
+}
+
+/** Населённый пункт региона для фильтра «Локація» и голосового ассистента. */
+export class GuideLocalityDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: String, example: "polianytsia" }) code!: string;
+  @ApiProperty({ type: LocalizedTextDto }) name!: LocalizedText;
+  @ApiProperty({
+    type: [String],
+    example: ["Буковель", "Bukovel"],
+    description: "Другие названия (курорт, латиница, формы) — для распознавания в тексте запроса",
+  })
+  aliases!: string[];
+  @ApiProperty({ type: LonLatDto }) location!: LonLatDto;
+  @ApiProperty({ type: "integer" }) sortOrder!: number;
+  @ApiProperty({ type: "integer", description: "Опубликованных мест в пункте" }) placeCount!: number;
+}
+
+export class GuideLocalityListDto {
+  @ApiProperty({ type: [GuideLocalityDto], description: "Активные населённые пункты региона по sortOrder" })
+  items!: GuideLocalityDto[];
 }
 
 /** Фото места: готовые варианты (w320, w800, w1600) и alt text. */

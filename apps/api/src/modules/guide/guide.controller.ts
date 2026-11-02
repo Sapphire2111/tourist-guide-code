@@ -34,6 +34,7 @@ import {
   FavoriteDto,
   FavoriteListDto,
   GuideCategoryListDto,
+  GuideLocalityListDto,
   PlaceCardDto,
   PlaceSearchResultDto,
   SEARCH_LIMIT_DEFAULT,
@@ -139,6 +140,29 @@ export class GuideCategoriesController {
 }
 
 @ApiTags("guide")
+@Controller("localities")
+@WithoutTenantContext()
+export class GuideLocalitiesController {
+  constructor(@Inject(GuideService) private readonly guide: GuideService) {}
+
+  @Get()
+  @PublicCache(300)
+  @ApiOperation({
+    operationId: "listGuideLocalities",
+    summary:
+      "Населённые пункты региона («Локація» главной, голосовой ассистент): названия, синонимы, число мест",
+    description:
+      "Без аутентификации. Активные пункты (kind settlement) по sortOrder; id — для localityIds в GET /places/search. " +
+      "aliases — другие названия (Буковель → Поляниця) для распознавания в тексте. 404 — региона нет или он не активен.",
+  })
+  @ApiOkResponse({ type: GuideLocalityListDto })
+  @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
+  list(@Query() q: RegionQueryDto): Promise<GuideLocalityListDto> {
+    return this.guide.localities(q.regionId);
+  }
+}
+
+@ApiTags("guide")
 @Controller("places")
 @WithoutTenantContext()
 export class GuidePlacesController {
@@ -166,6 +190,7 @@ export class GuidePlacesController {
       origin,
       radius: origin ? (q.radius ?? SEARCH_RADIUS_DEFAULT) : undefined,
       categoryId: q.category,
+      localityIds: q.localityIds?.length ? q.localityIds : undefined,
       text: q.q?.trim() || undefined,
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,

@@ -297,6 +297,39 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     expect((await service.search(base.regions.a, { text: "%%", limit: 5, offset: 0 })).items).toEqual([]);
   });
 
+  it("локации: localityIds — только места пунктов (и с текстом); GET /localities — свой регион, число мест", async () => {
+    const loc = seedUuid("guide-test:locality:a");
+    const foreign = seedUuid("guide-test:locality:b");
+    await sql(
+      `INSERT INTO localities (id, region_id, code, kind, name_i18n, location)
+       VALUES ($1, $2, 'guide-test-loc', 'settlement', '{"uk":"Тест-Село"}', ST_SetSRID(ST_MakePoint($4, $5), 4326)),
+              ($3, $6, 'guide-test-loc-b', 'settlement', '{"uk":"Чуже Село"}', ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
+      [loc, base.regions.a, foreign, ORIGIN.lon, ORIGIN.lat, base.regions.b],
+    );
+    await sql(`UPDATE places SET locality_id = $1 WHERE id = ANY($2)`, [
+      loc,
+      [placeId("north"), placeId("far"), placeId("draft")],
+    ]);
+    const res = await service.search(base.regions.a, { localityIds: [loc], limit: 50, offset: 0 });
+    expect(keysOf(res.items).sort()).toEqual(["far", "north"]);
+    const near = await service.search(base.regions.a, {
+      origin: ORIGIN,
+      radius: 500,
+      localityIds: [loc],
+      limit: 50,
+      offset: 0,
+    });
+    expect(keysOf(near.items)).toEqual(["north"]);
+    // Пункт чужого региона — ничего (RLS), а не чужие места.
+    expect(
+      (await service.search(base.regions.a, { localityIds: [foreign], limit: 5, offset: 0 })).items,
+    ).toEqual([]);
+    const list = await service.localities(base.regions.a);
+    const mine = list.items.find((l) => l.id === loc);
+    expect(mine).toMatchObject({ code: "guide-test-loc", placeCount: 2, aliases: [] });
+    expect(list.items.some((l) => l.id === foreign)).toBe(false);
+  });
+
   it("по id: опубликованное — карточка; черновик, приостановленное, архив, чужой регион — нет", async () => {
     const card = await service.place(base.regions.a, placeId("north"), { origin: ORIGIN, userId: user });
     expect(card).toMatchObject({
