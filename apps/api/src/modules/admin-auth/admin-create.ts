@@ -78,6 +78,8 @@ export async function createAdmin(
   input: AdminCreateArgs & { password: string },
 ): Promise<AdminCreated> {
   assertPassword(input.password);
+  // Как при входе: вызов не из CLI мог не нормализовать логин — иначе дубликат «Admin-A» прошёл бы мимо проверки.
+  const login = normalizeLogin(input.login);
   const passwordHash = await hashPassword(input.password);
   const service = new RoleAssignmentService(
     new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS),
@@ -96,8 +98,8 @@ export async function createAdmin(
       scope = regionScope(region.id);
     }
     const credentials = new AdminCredentialsRepository(trx);
-    if (await credentials.findByLogin(input.login))
-      throw new AdminCreateError(`admin:create: логин ${input.login} уже занят`);
+    if (await credentials.findByLogin(login))
+      throw new AdminCreateError(`admin:create: логин ${login} уже занят`);
     const user = await trx
       .insertInto("users")
       .values({ status: "active", language: "uk" })
@@ -105,7 +107,7 @@ export async function createAdmin(
       .executeTakeFirstOrThrow();
     const credential = await credentials.create({
       user_id: user.id,
-      login: input.login,
+      login,
       password_hash: passwordHash,
     });
     // Логин в аудит не пишем (может быть e-mail — ПДн): ссылка на учётку.
