@@ -10,6 +10,7 @@ import {
   isSubmittable,
   missingFields,
   normalizeInviteToken,
+  changedIdentityFields,
   touchedIdentityFields,
   validOfferPeriod,
   type PlaceFill,
@@ -98,6 +99,41 @@ describe("правила кабинета партнёра (блок 6)", () => 
     expect(
       touchedIdentityFields({ name: { uk: "x" }, phone: "+1", location: null, localityId: null }),
     ).toEqual(["localityId", "name", "location"]);
+  });
+
+  it("поля личности: изменение сравнивается с текущими значениями, а не с фактом передачи", () => {
+    const current = {
+      categoryId: "0190F5C2-7D3E-7000-8000-000000000001",
+      localityId: null,
+      name: { uk: "Хата", en: "Hut" },
+      address: null,
+      location: { lon: 24.5, lat: 48.4 },
+    };
+    expect(
+      changedIdentityFields(
+        {
+          categoryId: "0190f5c2-7d3e-7000-8000-000000000001",
+          localityId: null,
+          name: { en: "Hut", uk: " Хата " },
+          address: null,
+          location: { lon: 24.50000005, lat: 48.4 },
+        },
+        current,
+      ),
+    ).toEqual([]);
+    expect(
+      changedIdentityFields(
+        {
+          localityId: "0190f5c2-7d3e-7000-8000-000000000002",
+          name: { uk: "Хата" },
+          address: { uk: "вул. 1" },
+          location: { lon: 24.5001, lat: 48.4 },
+        },
+        current,
+      ),
+    ).toEqual(["localityId", "name", "address", "location"]);
+    expect(changedIdentityFields({ location: null }, current)).toEqual(["location"]);
+    expect(changedIdentityFields({ location: null }, { ...current, location: null })).toEqual([]);
   });
 
   it("назначение ролей: владелец — только менеджера и кассира; менеджер и кассир — никого", () => {

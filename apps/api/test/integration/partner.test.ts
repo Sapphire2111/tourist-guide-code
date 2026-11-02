@@ -468,13 +468,40 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
     expect(
       await failure(partner.updatePlace(OWNER, placeId, { name: { uk: "Нова назва" } }, meta(OWNER))),
     ).toMatchObject({ status: 409, reason: "identity_change_requires_moderation" });
+    // Форма целиком с теми же полями личности (localityId null == null) — не изменение: правка проходит, и у
+    // менеджера тоже (403 только при реальном изменении).
+    const current = await partner.getPlace(OWNER, placeId);
+    const sameForm = {
+      categoryId: current.categoryId,
+      localityId: null,
+      name: { ...current.name, uk: `  ${current.name.uk} ` },
+      address: current.address!,
+      location: { lon: current.location!.lon + 5e-8, lat: current.location!.lat },
+    };
+    const live = await partner.updatePlace(
+      OWNER,
+      placeId,
+      { ...sameForm, phone: "+380501112200" },
+      meta(OWNER),
+    );
+    expect(live).toMatchObject({ status: "published", phone: "+380501112200", name: current.name });
+    const byManager = await partner.updatePlace(
+      MANAGER,
+      placeId,
+      { ...sameForm, description: { uk: "Садиба, 6 номерів" } },
+      meta(MANAGER),
+    );
+    expect(byManager.description).toEqual({ uk: "Садиба, 6 номерів" });
     expect(
       await failure(
-        partner.updatePlace(OWNER, placeId, { localityId: null, phone: "+380501112200" }, meta(OWNER)),
+        partner.updatePlace(
+          OWNER,
+          placeId,
+          { ...sameForm, location: { lon: current.location!.lon + 0.001, lat: current.location!.lat } },
+          meta(OWNER),
+        ),
       ),
-    ).toMatchObject({ status: 409 });
-    const live = await partner.updatePlace(OWNER, placeId, { phone: "+380501112200" }, meta(OWNER));
-    expect(live).toMatchObject({ status: "published", phone: "+380501112200" });
+    ).toMatchObject({ status: 409, reason: "identity_change_requires_moderation" });
 
     const me = await partner.me(OWNER);
     expect(me.organizations[0]!.places[0]).toMatchObject({

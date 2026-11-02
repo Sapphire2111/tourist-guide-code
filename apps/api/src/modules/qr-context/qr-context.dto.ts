@@ -5,11 +5,13 @@ import {
   QR_SCAN_RESULTS,
   type EntryType,
   type QrPointType,
-  type QrScanResult,
 } from "../../db/index.js";
-import type { QrContextResult } from "./qr-context.service.js";
+import type { QrContextResult, QrContextStatus } from "./qr-context.service.js";
 
-// Ответ GET /context/{start_param} (ADR-0016). Мультиязычные поля — объект «язык → текст» (uk обязателен);
+/** Статусы ответа: результаты скана (как в журнале) + default — открытие без QR (в журнал сканов не пишется). */
+export const QR_CONTEXT_STATUSES = [...QR_SCAN_RESULTS, "default"] as const;
+
+// Ответ GET /context и GET /context/{start_param} (ADR-0016). Мультиязычные поля — объект «язык → текст» (uk обязателен);
 // язык выбирает клиент (pickLocalized из @tg/i18n).
 
 export class QrLocalizedTextDto {
@@ -79,13 +81,13 @@ export class ContextVenueDto {
 
 export class QrContextDto {
   @ApiProperty({
-    enum: QR_SCAN_RESULTS,
+    enum: QR_CONTEXT_STATUSES,
     enumName: "QrContextStatus",
     description:
-      "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату. " +
-      "Кроме ok — нейтральный контекст региона (экран выбора места C18).",
+      "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату; " +
+      "default — открытие без QR (GET /context). Кроме ok — нейтральный контекст региона (экран выбора места C18).",
   })
-  status!: QrScanResult;
+  status!: QrContextStatus;
 
   @ApiProperty({ enum: ENTRY_TYPES, enumName: "EntryType", description: "Тип точки при ok, иначе default" })
   entryType!: EntryType;

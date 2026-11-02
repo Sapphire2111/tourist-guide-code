@@ -179,6 +179,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/context": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Контекст входа без QR — регион по умолчанию
+     * @description Обычное открытие Mini App без start_param. Без аутентификации; с Bearer-сессией контекст привязывается к пользователю. Всегда 200, status default; region null — в платформе нет активного региона. Это не скан: QRScanEvent, AttributionTouch и qr_scanned не пишутся; при регионе — EntryContext (default, source direct). Rate limit 60/мин. Ответ — Cache-Control: no-store; клиент вызывает эндпоинт один раз за открытие.
+     */
+    get: operations["getDefaultEntryContext"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/context/{start_param}": {
     parameters: {
       query?: never;
@@ -2005,10 +2025,10 @@ export interface components {
       accepted: number;
     };
     /**
-     * @description ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату. Кроме ok — нейтральный контекст региона (экран выбора места C18).
+     * @description ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату; default — открытие без QR (GET /context). Кроме ok — нейтральный контекст региона (экран выбора места C18).
      * @enum {string}
      */
-    QrContextStatus: "ok" | "inactive" | "not_found" | "invalid";
+    QrContextStatus: "ok" | "inactive" | "not_found" | "invalid" | "default";
     /**
      * @description Тип точки при ok, иначе default
      * @enum {string}
@@ -2068,7 +2088,7 @@ export interface components {
       telegram: string | null;
     };
     QrContextDto: {
-      /** @description ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату. Кроме ok — нейтральный контекст региона (экран выбора места C18). */
+      /** @description ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату; default — открытие без QR (GET /context). Кроме ok — нейтральный контекст региона (экран выбора места C18). */
       status: components["schemas"]["QrContextStatus"];
       /** @description Тип точки при ok, иначе default */
       entryType: components["schemas"]["EntryType"];
@@ -4936,6 +4956,64 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getDefaultEntryContext: {
+    parameters: {
+      query?: {
+        /** @description Анонимный id устройства (uuid) из прошлого ответа; не uuid — игнорируется, выдаётся новый */
+        anonymousId?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QrContextDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;
