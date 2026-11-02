@@ -87,8 +87,10 @@ export function PlaceStaff({ placeId, hostCapable }: { placeId: string; hostCapa
 
   // 403 — нет права назначать персонал: секции нет. Форма назначения — только если список загрузился.
   if (result && !result.ok && result.error.status === 403) return null;
-  // Не готель: секция нужна только пока остались назначенные (категорию сменили) — чтобы их можно было снять.
-  if (!hostCapable && !(result?.ok && result.data.items.length > 0)) return null;
+  // Не готель: секция нужна, пока остались назначенные (категорию сменили) — чтобы их можно было снять; при ошибке
+  // загрузки (иначе назначенных не увидеть) и до ухода со страницы после снятия последнего (сообщение «Видалено»).
+  const keep = (result && !result.ok) || (result?.ok && result.data.items.length > 0) || notice !== null;
+  if (!hostCapable && !keep) return null;
   return (
     <section aria-labelledby="place-staff">
       <Stack gap={2}>

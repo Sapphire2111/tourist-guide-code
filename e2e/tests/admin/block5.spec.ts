@@ -151,7 +151,10 @@ test("не готель, но персонал остался: список со
   await expect(staff.getByRole("form", { name: "Призначити співробітника" })).toHaveCount(0);
   page.once("dialog", (d) => d.accept());
   await staff.getByRole("button", { name: /^Зняти: .*old_staff/ }).click();
-  await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);
+  // Секция остаётся до ухода со страницы — с подтверждением «Видалено.» и пустым списком, без формы назначения.
+  await expect(staff.getByText("Видалено.")).toBeVisible();
+  await expect(staff.getByText("Персоналу ще не призначено.")).toBeVisible();
+  await expect(staff.getByRole("form", { name: "Призначити співробітника" })).toHaveCount(0);
 });
 
 test("сценарии: создание с пунктами по дням и альтернативой, правка, публикация", async ({ page }) => {
