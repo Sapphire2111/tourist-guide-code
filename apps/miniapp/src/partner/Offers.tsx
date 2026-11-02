@@ -29,9 +29,15 @@ export function safeTimeZone(tz: string, fallback = "Europe/Kiev"): string | und
   return undefined;
 }
 
+/** Пояс дат акций для этого движка (один раз на модуль); undefined — даже запасного нет, даты по устройству. */
+export const OFFER_ZONE = safeTimeZone(OFFER_TZ);
+if (OFFER_ZONE === undefined) console.warn(`Intl не знает ${OFFER_TZ}: даты акций — по поясу устройства`);
+
+const zoneOf = (tz: string) => (tz === OFFER_TZ ? OFFER_ZONE : safeTimeZone(tz));
+
 /** Смещение пояса tz относительно UTC в момент instant, мс. */
 function tzOffset(instant: number, tz: string): number {
-  const zone = safeTimeZone(tz);
+  const zone = zoneOf(tz);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone: zone,
@@ -70,7 +76,7 @@ export function dayOf(iso: string | null, tz = OFFER_TZ): string {
   if (!iso) return "";
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      timeZone: safeTimeZone(tz),
+      timeZone: zoneOf(tz),
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -214,11 +220,13 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
     setConfirm(null);
     reload();
   };
-  const date = (iso: string) =>
-    new Date(iso).toLocaleDateString(locale, { timeZone: safeTimeZone(OFFER_TZ) });
+  const date = (iso: string) => new Date(iso).toLocaleDateString(locale, { timeZone: OFFER_ZONE });
   return (
     <Stack>
       <h1>{t("miniapp.partner.offers.title")}</h1>
+      {OFFER_ZONE === undefined && (
+        <p data-testid="offers-device-tz">{t("miniapp.partner.offers.deviceTz")}</p>
+      )}
       <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
       {forbidden ? (
         <p role="alert">{t("miniapp.partner.offers.forbidden")}</p>

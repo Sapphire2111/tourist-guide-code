@@ -236,7 +236,7 @@ describe("«Що поруч» C05", () => {
       "Геолокацію вимкнено. Показуємо місця біля Тестовий готель.",
     );
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із Тестовий готель");
-    expect(env.api.search).toHaveBeenCalledWith({ point: env.base!.point, radius: 500 });
+    expect(env.api.search).toHaveBeenCalledWith({ point: env.base!.point, radius: 500, limit: 50 });
   });
 
   it("геолокация получена — «Поруч із вами», поиск от устройства", async () => {
@@ -253,7 +253,58 @@ describe("«Що поруч» C05", () => {
     );
     await flush();
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із вами");
-    expect(env.api.search).toHaveBeenCalledWith({ point: { lat: 48.1, lng: 24.1 }, radius: 500 });
+    expect(env.api.search).toHaveBeenCalledWith({ point: { lat: 48.1, lng: 24.1 }, radius: 500, limit: 50 });
+  });
+});
+
+describe("«Що поруч»: ползунок радиуса и категория места", () => {
+  it("ползунок 500 м – 10 км, подпись значения; запрос — после паузы, один на перетаскивание", async () => {
+    const { env } = setup();
+    render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    const slider = screen.getByRole("slider", { name: "Радіус" });
+    expect(slider.getAttribute("min")).toBe("500");
+    expect(slider.getAttribute("max")).toBe("10000");
+    expect(screen.getByTestId("radius-value").textContent).toBe("500 м");
+    // Категория места из справочника под названием.
+    expect(screen.getAllByTestId("place-category")[0]!.textContent).toBe("Кав'ярні");
+    const calls = vi.mocked(env.api.search).mock.calls.length;
+    fireEvent.change(slider, { target: { value: "1500" } });
+    fireEvent.change(slider, { target: { value: "10000" } });
+    expect(screen.getByTestId("radius-value").textContent).toBe("10 км");
+    expect(slider.getAttribute("aria-valuetext")).toBe("10 км");
+    expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
+    await act(async () => new Promise((r) => setTimeout(r, 400)));
+    expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
+    expect(env.api.search).toHaveBeenLastCalledWith({ point: env.base!.point, radius: 10000, limit: 50 });
+  });
+});
+
+describe("«Що поруч»: строка статуса", () => {
+  it("50 мест — «Показано 50 найближчих.»; меньше — строка пустая, но на месте", async () => {
+    const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
+    const search = vi.fn(async () => many);
+    const { env } = setup({ api: fakeApi({ search }) });
+    render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Показано 50 найближчих.");
+    cleanup();
+    const { env: env2 } = setup();
+    render(
+      <GuideProvider value={env2}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.getByTestId("nearby-status").textContent).toBe("");
   });
 });
 

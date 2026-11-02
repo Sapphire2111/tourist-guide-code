@@ -138,7 +138,10 @@ export function useKeptAsync<T>(
     const id = ++counter.n;
     // Повтор из ошибки (данных нет) — снова загрузка; при данных — обновление на месте.
     const inPlace = keep && stateRef.current.status === "ready";
-    if (!inPlace) setState({ status: "loading" });
+    if (!inPlace) {
+      stateRef.current = { status: "loading" };
+      setState({ status: "loading" });
+    }
     setRefreshError(null);
     loadRef.current().then(
       (data) => id === counter.n && setState({ status: "ready", data }),

@@ -20,10 +20,9 @@ import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash } from "./design/Chrome.js";
-import { ResortPlaces, SeasonHero, SeasonTags } from "./design/HomeParts.js";
+import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
 import { ICONS } from "./design/Ornament.js";
 import { ResortProvider } from "./design/ResortProvider.js";
-import { hasResorts } from "./design/resorts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
@@ -183,7 +182,6 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
   const partnerOrgs = usePartnerOrgs();
   return (
     <>
-      <SeasonHero />
       <Welcome user={user} session={session} retryContext={retryContext} />
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
@@ -195,9 +193,10 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {t("miniapp.staff.open")}
         </Link>
       )}
+      {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
+      <HomeSections hasVenue={venueOf(session) !== null} />
       <ResortPlaces />
       <SeasonTags />
-      <HomeSections hasVenue={venueOf(session) !== null} />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
         {(role === "partner" || partnerOrgs.length > 0) && (
@@ -510,7 +509,7 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
  * Шапка, содержимое экрана и нижняя навигация. Появление экрана — анимацией того же узла (Web Animations), без
  * пересоздания дерева: фокус на h1, BackButton и состояние экранов при смене пути сохраняются.
  */
-function Shell({ routes, profile, resorts }: { routes: ReactNode; profile: boolean; resorts: boolean }) {
+function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
   const [path] = useRoute();
   const content = useRef<HTMLDivElement>(null);
   const first = useRef(true);
@@ -527,7 +526,7 @@ function Shell({ routes, profile, resorts }: { routes: ReactNode; profile: boole
   }, [path]);
   return (
     <>
-      <AppTop path={path} profile={profile} resorts={resorts} />
+      <AppTop path={path} profile={profile} />
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>
@@ -627,7 +626,8 @@ export function App({
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          <ResortProvider enabled={hasResorts(context?.region?.code)} venueEntry={venue !== null}>
+          {/* Свайпера курортов нет — выдача от QR-контекста / всего региона (сохранённый курорт не фильтрует незаметно). */}
+          <ResortProvider enabled={false} venueEntry={venue !== null}>
             <main className="kosiv-shell" lang={effectiveLocale}>
               {state.status === "loading" || state.status === "error" ? (
                 <StartupStatus state={state} />
@@ -637,7 +637,6 @@ export function App({
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
                         profile={Boolean(session && hasRequiredConsents(session.me))}
-                        resorts={hasResorts(context?.region?.code)}
                         routes={
                           <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
                         }

@@ -267,61 +267,6 @@ html[data-season] :focus-visible {
   height: 14px;
   background: var(--app-bg);
 }
-.kosiv-resorts {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 6px var(--gutter) 10px;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-  background: var(--app-bg);
-  border-bottom: 1px solid var(--app-border);
-}
-.kosiv-resorts::-webkit-scrollbar {
-  display: none;
-}
-.kosiv-resort {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  min-height: 48px;
-  padding: 7px 16px 8px;
-  border-radius: 9999px;
-  border: 1.5px solid var(--app-border);
-  background: var(--app-surface);
-  color: var(--app-text);
-  font: inherit;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-  scroll-snap-align: center;
-  transition:
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-.kosiv-resort-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-  line-height: 1.2;
-}
-.kosiv-resort-meta {
-  font-size: 0.75rem;
-  line-height: 1.2;
-  color: var(--app-muted);
-}
-.kosiv-resort[aria-pressed="true"] {
-  background: var(--app-accent);
-  border-color: var(--app-accent);
-  color: #ffffff;
-  box-shadow: 0 6px 14px -6px rgba(60, 42, 20, 0.25);
-}
-.kosiv-resort[aria-pressed="true"] .kosiv-resort-meta {
-  color: #ffffff;
-}
 
 .kosiv-content {
   padding: 16px var(--gutter)
@@ -344,61 +289,6 @@ html[data-season] :focus-visible {
 /* Заставка внутри React — те же классы, что в index.html; плавное появление содержимого. */
 .kosiv-splash-wave {
   display: block;
-}
-
-/* Главная: герой. */
-.kosiv-hero {
-  position: relative;
-  overflow: hidden;
-  padding: 18px 18px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--app-surface);
-}
-.kosiv-hero > * {
-  position: relative;
-}
-.kosiv-hero-rosette {
-  position: absolute !important;
-  width: 132px;
-  height: 132px;
-  top: -52px;
-  right: -52px;
-  opacity: 0.26;
-  pointer-events: none;
-}
-.kosiv-badge {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9999px;
-  background: var(--app-pill-bg);
-  color: var(--app-accent-ink);
-  font-weight: 600;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-}
-.kosiv-hero-title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 2rem;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-  max-width: 15ch;
-}
-.kosiv-quote {
-  margin: 0;
-  padding-left: 12px;
-  border-left: 3px solid var(--app-accent-2);
-  font-family: var(--font-heading);
-  font-style: italic;
-  font-weight: 600;
-  font-size: 1.12rem;
-  line-height: 1.35;
-  color: var(--app-muted);
 }
 .kosiv-seasons {
   display: grid;
@@ -702,8 +592,9 @@ html[data-season] :focus-visible {
 .kosiv-tile {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 10px;
   min-height: 96px;
   height: 100%;
@@ -832,21 +723,6 @@ html[data-season] :focus-visible {
 /* Полупрозрачные оттенки — только где есть color-mix (старые WebView берут обычные значения выше).
    Запасное значение рядом с color-mix(var()) не сработало бы: такое объявление валидно при разборе. */
 @supports (color: color-mix(in srgb, red 50%, transparent)) {
-  .kosiv-resorts {
-    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
-  }
-  .kosiv-resort[aria-pressed="true"] {
-    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--app-accent) 70%, transparent);
-  }
-  .kosiv-hero {
-    background:
-      radial-gradient(
-        120% 90% at 100% 0%,
-        color-mix(in srgb, var(--app-pill-bg) 90%, transparent) 0%,
-        transparent 60%
-      ),
-      var(--app-surface);
-  }
   .kosiv-place-media {
     background:
       radial-gradient(
@@ -871,7 +747,6 @@ html[data-season] :focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   html[data-season] body,
-  .kosiv-resort,
   .kosiv-pill,
   .kosiv-nav-icon {
     transition: none;
@@ -879,9 +754,77 @@ html[data-season] :focus-visible {
   .kosiv-content {
     animation: none;
   }
-  .kosiv-resorts,
   .kosiv-rail,
   .kosiv-photos {
     scroll-behavior: auto;
   }
+}
+
+/* Легенда карты мест: цвет маркера — раздел. */
+.kosiv-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--app-text);
+}
+.kosiv-map-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kosiv-map-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.kosiv-map-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+.kosiv-map-popup span {
+  color: #44403c;
+}
+.kosiv-map-popup a {
+  margin-top: 4px;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.kosiv-place-cat {
+  display: block;
+  min-height: 1.35em;
+  line-height: 1.35;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-accent-ink);
+}
+.kosiv-range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kosiv-range-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.kosiv-range input[type="range"] {
+  width: 100%;
+  min-height: 32px;
+  accent-color: var(--app-accent-ink);
+}
+.kosiv-settings {
+  padding: 8px 16px 10px;
+  background: var(--app-bg);
+}
+.kosiv-status-line {
+  min-height: 1.4em;
+  margin: 0;
 }
