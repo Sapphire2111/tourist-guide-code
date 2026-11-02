@@ -50,6 +50,8 @@ import {
   isSubmittable,
   missingFields,
   normalizeInviteToken,
+  changedIdentityFields,
+  IDENTITY_FIELDS,
   touchedIdentityFields,
   validOfferPeriod,
 } from "./partner-rules.js";
@@ -312,14 +314,25 @@ export class PartnerService {
     meta: AuditMeta,
   ): Promise<PartnerPlaceDto> {
     const access = await this.placeAccess(userId, placeId, "place.edit");
-    const identity = touchedIdentityFields(input as Record<string, unknown>);
-    if (identity.length > 0)
-      await this.placeAccess(userId, placeId, "place.submit").catch(() => {
+    // Право на поля личности (place.submit) — только если они переданы; запрещено лишь их реальное изменение.
+    const canIdentity =
+      touchedIdentityFields(input as Record<string, unknown>).length > 0 &&
+      (await this.placeAccess(userId, placeId, "place.submit").then(
+        () => true,
+        () => false,
+      ));
+    return this.inPlace(access, async (place, template) => {
+      const identity = changedIdentityFields(input, {
+        categoryId: place.category_id,
+        localityId: place.locality_id,
+        name: place.name_i18n,
+        address: place.address_i18n,
+        location: place.location,
+      });
+      if (identity.length > 0 && !canIdentity)
         throw new ApiError("FORBIDDEN", {
           details: { reason: "identity_fields_forbidden", identityFields: identity },
         });
-      });
-    return this.inPlace(access, async (place, template) => {
       if (!isPartnerEditable(place.status)) throw notEditable(place.status);
       // Опубликованное место: поля личности — только через админа региона (без PlaceRevision, §1.6), иначе
       // модерацию можно было бы обойти правкой после одобрения.
@@ -328,9 +341,12 @@ export class PartnerService {
           messageKey: "errors.partner.identityChangeRequiresModeration",
           details: { reason: "identity_change_requires_moderation", identityFields: identity },
         });
-      if (input.categoryId !== undefined) await this.checkTemplateCategory(template, input.categoryId);
+      // Переданные без изменения поля личности не пишутся (форма целиком; пробелы по краям не меняют название).
+      const patch = { ...input, verifiedAt: undefined };
+      for (const f of IDENTITY_FIELDS) if (!identity.includes(f)) delete patch[f];
+      if (patch.categoryId !== undefined) await this.checkTemplateCategory(template, patch.categoryId);
       await this.catalog
-        .updatePlace(this.meta(meta, access), placeId, placeInput({ ...input, verifiedAt: undefined }))
+        .updatePlace(this.meta(meta, access), placeId, placeInput(patch))
         .catch(rethrowCatalogError);
       return this.placeDto(access);
     });
