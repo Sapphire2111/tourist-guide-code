@@ -206,8 +206,9 @@ DECLARE
   cutoff timestamptz;
   ids uuid[];
 BEGIN
-  IF p_retention_days IS NULL OR p_retention_days < 1 OR p_batch IS NULL OR p_batch < 1 THEN
-    RAISE EXCEPTION 'service_requests_anonymize_expired: срок (дней) и пачка — >= 1' USING ERRCODE = '22023';
+  -- Нижняя граница срока — 30 дней: функция SECURITY DEFINER, ошибочный вызов не должен стереть свежие заявки.
+  IF p_retention_days IS NULL OR p_retention_days < 30 OR p_batch IS NULL OR p_batch < 1 THEN
+    RAISE EXCEPTION 'service_requests_anonymize_expired: срок (дней) — >= 30, пачка — >= 1' USING ERRCODE = '22023';
   END IF;
   cutoff := now() - make_interval(days => p_retention_days);
   PERFORM set_config('app.actor', 'system', true);
@@ -253,8 +254,17 @@ BEGIN
     WHERE sr.id = ANY (ids) AND e.region_id = sr.region_id AND e.service_request_id = sr.id;
     UPDATE public.service_requests
     SET room_label = NULL, room_source = NULL, comment = NULL, user_id = NULL, entry_context_id = NULL,
-      -- rejected требует причину (CHECK): свободный текст заменяется прочерком.
-      status_reason = CASE WHEN status = 'rejected' THEN '—' ELSE NULL END,
+      -- rejected требует причину (CHECK): свободный текст заменяется прочерком; закрытые по сроку (системное
+      -- событие истории, не текст причины) сохраняют 'expired' — их отличает от отказа персонала SLA-статистика.
+      status_reason = CASE
+        WHEN status <> 'rejected' THEN NULL
+        WHEN EXISTS (
+          SELECT 1 FROM public.service_request_events e
+          WHERE e.region_id = service_requests.region_id AND e.service_request_id = service_requests.id
+            AND e.actor_type = 'system' AND e.to_status = 'rejected'
+        ) THEN 'expired'
+        ELSE '—'
+      END,
       anonymized_at = now()
     WHERE id = ANY (ids);
   END IF;

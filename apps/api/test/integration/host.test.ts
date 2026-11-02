@@ -306,7 +306,16 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
     expect(byId.get(requestId)).toMatchObject({ status: "done", status_reason: null });
     expect(byId.get(rejected.id)).toMatchObject({ status: "rejected", status_reason: "—" });
     // Незакрытая — закрыта системой (rejected, expired) с событием истории.
-    expect(byId.get(open.id)).toMatchObject({ status: "rejected", status_reason: "—" });
+    // Пометка expired сохраняется (по системному событию истории) — для SLA-статистики.
+    expect(byId.get(open.id)).toMatchObject({ status: "rejected", status_reason: "expired" });
+    // AuditLog не обезличивается: в нём нет свободного текста причины и действий гостя.
+    const { rows: audits } = await sql(
+      `SELECT reason, new_values FROM audit_logs WHERE entity_type = 'service_request' AND entity_id = ANY($1)`,
+      [ids],
+    );
+    expect(audits.every((a) => a.reason === null && !JSON.stringify(a.new_values).includes("Кухня"))).toBe(
+      true,
+    );
     const { rows: events } = await sql(
       `SELECT service_request_id, actor_type, actor_user_id, reason, to_status
        FROM service_request_events WHERE service_request_id = ANY($1)`,
@@ -336,6 +345,8 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
       .query<{ n: number }>("SELECT service_requests_anonymize_expired(90) AS n")
       .finally(() => again.end());
     expect(second[0]!.n).toBe(0);
+    // Срок меньше 30 дней — ошибка (защита от случайного стирания свежих заявок).
+    await expect(sql("SELECT service_requests_anonymize_expired(29)")).rejects.toThrow(/>= 30/);
   });
 
   it("«Мій план»: копия сценария, замена пункта альтернативой, удаление пункта", async () => {
