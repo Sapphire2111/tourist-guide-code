@@ -408,9 +408,9 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
   const session = state.status === "ready" ? state : undefined;
   const onMe = useCallback((me: Me) => setState((s) => (s.status === "ready" ? { ...s, me } : s)), []);
   const retryContext = async () => {
-    const startParam = session?.contextFailed;
-    if (!startParam) return true;
-    const context = await fetchContext(props.api, startParam);
+    const failed = session?.contextFailed;
+    if (!failed) return true;
+    const context = await fetchContext(props.api, failed.startParam);
     if (!context) return false;
     setState((s) => (s.status === "ready" ? { ...s, context, contextFailed: undefined } : s));
     return true;

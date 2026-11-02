@@ -69,6 +69,19 @@ test.describe("деактивированный QR demoHotelOff1", () => {
   });
 });
 
+test.describe("открытие без QR", () => {
+  test.use({ telegram: {} });
+
+  test("регион по умолчанию через GET /context", async ({ page }) => {
+    const paths: string[] = [];
+    page.on("request", (r) => paths.push(new URL(r.url()).pathname));
+    await page.goto("/");
+    await expect(page.getByTestId("neutral-context")).toContainText("Ви в регіоні: Тестовий регіон");
+    expect(apiMockState.get(page)!.contextCalls).toBe(1);
+    expect(paths.filter((p) => p.startsWith("/context"))).toEqual(["/context"]);
+  });
+});
+
 test.describe("вне Telegram", () => {
   test.use({ telegram: null });
 

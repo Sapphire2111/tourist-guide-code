@@ -182,6 +182,59 @@ describe("поток старта", () => {
     );
   });
 
+  it("без start_param — GET /context (регион по умолчанию), скан QR не запрашивается", async () => {
+    const defaultContext: QrContext = {
+      ...hotelContext,
+      status: "default",
+      entryType: "default",
+      qrPoint: null,
+      venue: null,
+    };
+    const { api, calls } = fakeApi({
+      "POST /auth/telegram": login(null),
+      "GET /context": () => Response.json(defaultContext),
+      "GET /me": () => Response.json(meWith(true)),
+    });
+    const app = webApp({ initData: "query_id=x&hash=y", initDataUnsafe: {} });
+    const startup = createStartup(api, app);
+    render(<App api={api} role="guest" webApp={app} startup={startup} />);
+    const state = await startup();
+    expect(state).toMatchObject({ status: "ready", context: { region: { id: REGION.id } } });
+    expect(state).not.toHaveProperty("contextFailed");
+    const paths = calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"));
+    expect(paths).toEqual(["/context"]);
+    expect((await screen.findByTestId("neutral-context")).textContent).toContain("Тестовий регіон");
+  });
+
+  it("без start_param сбой /context — «Повторити» снова вызывает GET /context", async () => {
+    let attempts = 0;
+    const { api, calls } = fakeApi({
+      "POST /auth/telegram": login(null),
+      "GET /context": () => {
+        attempts += 1;
+        return attempts === 1
+          ? Response.json({ error: { code: "RATE_LIMITED" } }, { status: 429 })
+          : Response.json({
+              ...hotelContext,
+              status: "default",
+              entryType: "default",
+              qrPoint: null,
+              venue: null,
+            });
+      },
+      "GET /me": () => Response.json(meWith(true)),
+    });
+    const app = webApp({ initData: "query_id=x&hash=y", initDataUnsafe: {} });
+    render(<App api={api} role="guest" webApp={app} startup={createStartup(api, app)} />);
+    expect(await screen.findByTestId("context-unavailable")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Повторити" }));
+    expect((await screen.findByTestId("neutral-context")).textContent).toContain("Тестовий регіон");
+    expect(calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"))).toEqual([
+      "/context",
+      "/context",
+    ]);
+  });
+
   it("401 на входе — экран ошибки, контекст не запрашивается", async () => {
     const { api, calls } = fakeApi({
       "POST /auth/telegram": () => Response.json({ error: { code: "UNAUTHENTICATED" } }, { status: 401 }),
