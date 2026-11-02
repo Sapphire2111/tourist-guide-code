@@ -85,8 +85,13 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  // Тексты подписи маркера читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   // Карта и слой тайлов — один раз на экран.
   useEffect(() => {
@@ -141,7 +146,6 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
     }
     for (const p of places) {
       if (!p.location) continue;
-      const name = pickLocalized(p.name, locale);
       const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
       // Подпись — только по нажатию (popup): tooltip на тач-экране дублировал бы её.
       const marker = L.circleMarker([p.location.lat, p.location.lng], {
@@ -155,8 +159,12 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
           const idx = indexRef.current;
           const cat = idx.byId.get(p.categoryId);
           const g = markerGroup(idx.sectionOf(p.categoryId));
-          const catName = cat ? pickLocalized(cat.name, locale) : t(groupLabel(g));
-          return popupNode(name, catName, p.id, t("miniapp.map.open"), navigate);
+          const lc = localeRef.current;
+          const tr = tRef.current;
+          const catName = cat ? pickLocalized(cat.name, lc) : tr(groupLabel(g));
+          return popupNode(pickLocalized(p.name, lc), catName, p.id, tr("miniapp.map.open"), (to) =>
+            navigateRef.current(to),
+          );
         })
         .addTo(layer);
       marker.getElement()?.setAttribute("data-group", group);
@@ -166,7 +174,7 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
     if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom });
     else if (bounds[0]) map.setView(bounds[0], Math.min(16, maxZoom));
     else map.setView([48.45, 24.55], 12);
-    // t/navigate/locale стабильны в пределах экрана; index — через ref (ниже — перекраска).
+    // Тексты подписей мест, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places, center, centerLabel, radius, maxZoom]);
 

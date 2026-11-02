@@ -111,7 +111,7 @@ export function PlaceSummaryCard({
     <Tag className={`kosiv-card kosiv-place${layout === "row" ? " kosiv-row" : ""}`} data-testid={testId}>
       <PlaceMedia place={place} />
       <div className="kosiv-place-body">
-        <Link to={`/place/${place.id}`} className="kosiv-place-title">
+        <Link to={`/place/${encodeURIComponent(place.id)}`} className="kosiv-place-title">
           {pickLocalized(place.name, locale)}
         </Link>
         {guide && (

@@ -284,6 +284,30 @@ describe("«Що поруч»: ползунок радиуса и категор
   });
 });
 
+describe("«Що поруч»: строка статуса", () => {
+  it("50 мест — «Показано 50 найближчих.»; меньше — строка пустая, но на месте", async () => {
+    const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
+    const search = vi.fn(async () => many);
+    const { env } = setup({ api: fakeApi({ search }) });
+    render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Показано 50 найближчих.");
+    cleanup();
+    const { env: env2 } = setup();
+    render(
+      <GuideProvider value={env2}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.getByTestId("nearby-status").textContent).toBe("");
+  });
+});
+
 describe("адаптер api и аналитика", () => {
   it("regionId в query, DTO → модель (lon/lat, вариант фото w800, метка рекламы)", async () => {
     const dto: ApiSchemas["PlaceSummaryDto"] = {

@@ -34,6 +34,13 @@ test.describe("QR отеля demoHotel01", () => {
     ]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });
     await expect(nav.getByRole("link", { name: "Головна" })).toHaveAttribute("aria-current", "page");
+    // Стили на месте (защита от случайного удаления правил kosiv.css): нижняя навигация, плитки, карточки.
+    await expect(nav).toHaveCSS("position", "fixed");
+    await expect(nav).toHaveCSS("display", "flex");
+    const tile = sections.first();
+    await expect(tile).toHaveCSS("text-align", "center");
+    await expect(tile).toHaveCSS("align-items", "center");
+    await expect(tile).toHaveCSS("border-top-style", "solid");
     await expect(nav.getByRole("link", { name: "Халепа?" })).toBeVisible();
     await expectNoSeriousA11yViolations(page);
   });
@@ -175,6 +182,9 @@ test.describe("QR отеля demoHotel01", () => {
     const state = apiMockState.get(page)!;
     expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "500" });
     await expect(page.getByTestId("place-item").first().getByTestId("place-category")).toBeVisible();
+    const card = page.getByTestId("place-item").first();
+    await expect(card).toHaveCSS("border-top-style", "solid");
+    expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
     const slider = page.getByRole("slider", { name: "Радіус" });
     await slider.fill("10000");
     await expect(page.getByTestId("radius-value")).toHaveText("10 км");

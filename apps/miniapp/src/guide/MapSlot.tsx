@@ -23,11 +23,16 @@ export function preloadMap(): Promise<MapModule> {
       link.dataset.mapPreconnect = "";
       document.head.appendChild(link);
     }
-    mapModule = import("./PlacesMap.js").catch((e: unknown) => {
-      mapModule = null;
-      lazyFailed = true;
-      throw e;
-    });
+    mapModule = import("./PlacesMap.js")
+      .then((m) => {
+        lazyFailed = false; // модуль загрузился (например, предзагрузкой) — старый lazy не нужен
+        return m;
+      })
+      .catch((e: unknown) => {
+        mapModule = null;
+        lazyFailed = true;
+        throw e;
+      });
   }
   return mapModule;
 }
