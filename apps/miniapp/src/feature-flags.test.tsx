@@ -27,15 +27,16 @@ describe("useFeatureFlags", () => {
   it("ошибка загрузки — повтор с задержкой, затем флаги", async () => {
     const { api, fetch } = apiFailing(2);
     render(<Probe api={api} delays={[5, 5]} />);
-    await tick(50);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    // Под нагрузкой (turbo параллельно) фиксированного ожидания мало — ждём условие.
+    await act(() => vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3)));
     expect(screen.getByTestId("flags").textContent).toBe('{"module.bookings":true}');
   });
 
   it("повторы исчерпаны — флаги не загружены; возврат на вкладку — загрузка заново", async () => {
     const { api, fetch } = apiFailing(2);
     render(<Probe api={api} delays={[5]} />);
-    await tick(50);
+    await act(() => vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2)));
+    await tick(20);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("flags").textContent).toBe("none");
     await act(async () => {
