@@ -98,6 +98,18 @@ export class CreateQrPointDto {
   @ValidateNested()
   @Type(() => QrVenueInputDto)
   venue?: QrVenueInputDto;
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: 20,
+    example: "204",
+    description: "Номер комнаты QR номера (D-49, только type=hotel): подставляется в заявку гостя",
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  roomLabel?: string;
 }
 
 /** Правка: тип и код не меняются (перевыпуск — новая точка); null — очистить поле. */
@@ -133,6 +145,18 @@ export class UpdateQrPointDto {
   @ValidateNested()
   @Type(() => QrVenueInputDto)
   venue?: QrVenueInputDto | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 20,
+    description: "Номер комнаты; null — убрать",
+  })
+  @ValidateIf((o: UpdateQrPointDto) => o.roomLabel !== undefined && o.roomLabel !== null)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  roomLabel?: string | null;
 }
 
 export class QrPointsQueryDto extends CursorQueryDto {
@@ -176,6 +200,8 @@ export class AdminQrPointDto {
   @ApiProperty({ type: String, format: "uuid", nullable: true }) placeId!: string | null;
   @ApiProperty({ type: Boolean }) active!: boolean;
   @ApiProperty({ type: QrVenueDto, nullable: true }) venue!: QrVenueDto | null;
+  @ApiProperty({ type: String, nullable: true, description: "Номер комнаты QR номера (D-49)" })
+  roomLabel!: string | null;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) updatedAt!: string;
 }
@@ -208,6 +234,7 @@ export function toAdminQrPointDto(row: QrPoint): AdminQrPointDto {
     label: row.label,
     campaign: row.campaign,
     source: row.source,
+    roomLabel: row.room_label,
     placeId: row.place_id,
     active: row.active,
     venue: row.venue_name_i18n

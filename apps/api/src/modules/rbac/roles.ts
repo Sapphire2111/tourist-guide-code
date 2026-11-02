@@ -140,6 +140,16 @@ export const ROLES = {
   REGION_ADMIN: role(REGION_ADMIN_PERMISSIONS, ["REGION"]),
   /** Модератор региона (C-16); PLATFORM-модератор — POST. */
   MODERATOR: role(MODERATOR_PERMISSIONS, ["REGION"]),
+  /**
+   * Сотрудник заведения (блок 5, ADR-0020): заявки гостей своего места — видеть и обрабатывать. Организаций пока
+   * нет: назначается на место (PLACE); ORGANIZATION — с блоком 6.
+   */
+  ORG_STAFF: role(["service_request.read", "service_request.process"], ["ORGANIZATION", "PLACE"]),
+  /** Владелец заведения (минимум блока 5): как сотрудник + настройки «Про заклад»; кабинет — блок 6. */
+  ORG_OWNER: role(
+    ["service_request.read", "service_request.process", "host_module.settings.edit"],
+    ["ORGANIZATION", "PLACE"],
+  ),
   /** Все права на всей платформе (аналог SUPERADMIN для тестов). */
   TECH_SUPERUSER: role(PERMISSIONS, ["PLATFORM"]),
   /** Администрирование региона: контент (в т. ч. фото, T1-20), аудит и назначение ролей в регионе. */

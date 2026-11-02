@@ -89,6 +89,7 @@ export class QrPointsController {
           source: body.source ?? null,
           placeId: body.placeId ?? null,
           venue: body.venue ? venueInput(body.venue) : null,
+          roomLabel: body.roomLabel ?? null,
         },
         auditFromRequest(req),
       )
@@ -127,6 +128,7 @@ export class QrPointsController {
           source: body.source,
           placeId: body.placeId,
           venue: body.venue === undefined ? undefined : body.venue && venueInput(body.venue),
+          roomLabel: body.roomLabel,
         },
         auditFromRequest(req),
       )
@@ -206,6 +208,7 @@ function venueInput(v: QrVenueInputDto): QrVenueInput {
 
 const ERRORS = {
   venue_hotel_only: { code: "UNPROCESSABLE" },
+  room_hotel_only: { code: "UNPROCESSABLE" },
   campaign_required: { code: "UNPROCESSABLE" },
   code_generation_failed: { code: "INTERNAL" },
   bot_username_not_configured: { code: "CONFLICT", messageKey: "errors.qr.botUsernameMissing" },

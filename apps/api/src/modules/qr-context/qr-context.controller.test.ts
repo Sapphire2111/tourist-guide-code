@@ -47,6 +47,7 @@ const point = (over: Partial<ResolvedQrPoint>): ResolvedQrPoint => ({
   type: "hotel",
   place_id: null,
   campaign: null,
+  room_label: null,
   source: "sticker",
   active: true,
   label: "Ресепшн",
