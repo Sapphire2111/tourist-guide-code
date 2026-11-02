@@ -22,5 +22,6 @@ export {
   SEARCH_RADIUS_MAX,
 } from "./guide.dto.js";
 export { GuideModule } from "./guide.module.js";
+export { FAVORITES_MAX, GuideRepository, likeContains } from "./guide.repository.js";
 export { GuideService, type SearchParams } from "./guide.service.js";
 export { localMoment, openState, type LocalMoment, type OpenState, type ScheduleRows } from "./open-now.js";

@@ -62,6 +62,8 @@ export const TABLE_TENANCY = {
   place_schedule_exceptions: "tenant",
   place_media: "tenant",
   place_badge_events: "tenant",
+  // Избранное туриста (0014, ADR-0019): регион места; пользователь — фильтр api.
+  favorites: "tenant",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

@@ -708,6 +708,19 @@ export interface PlaceBadgeEventsTable {
 }
 export type PlaceBadgeEvent = Selectable<PlaceBadgeEventsTable>;
 
+// --- favorites (tenant; миграция 0014, блок 4, ADR-0019) ---
+
+/** Место в избранном пользователя; у app — SELECT, INSERT, DELETE. */
+export interface FavoritesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  user_id: ColumnType<string, string, never>;
+  place_id: ColumnType<string, string, never>;
+  created_at: InsertedAt;
+}
+export type Favorite = Selectable<FavoritesTable>;
+export type NewFavorite = Insertable<FavoritesTable>;
+
 export interface Database {
   app_meta: AppMetaTable;
   feature_flags: FeatureFlagsTable;
@@ -744,4 +757,6 @@ export interface Database {
   place_schedule_exceptions: PlaceScheduleExceptionsTable;
   place_media: PlaceMediaTable;
   place_badge_events: PlaceBadgeEventsTable;
+  // Публичный каталог (0014, ADR-0019).
+  favorites: FavoritesTable;
 }
