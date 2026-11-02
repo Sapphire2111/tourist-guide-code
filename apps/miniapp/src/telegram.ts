@@ -36,6 +36,15 @@ export type TelegramWebApp = {
   openTelegramLink?(url: string): void;
   /** Открыть внешнюю ссылку во встроенном/внешнем браузере (Bot API 6.1+). */
   openLink?(url: string): void;
+  /** Bot API 8.0+: геолокация устройства с разрешением в Telegram. */
+  LocationManager?: TelegramLocationManager;
+};
+
+export type TelegramLocationManager = {
+  isInited?: boolean;
+  isLocationAvailable?: boolean;
+  init?(cb?: () => void): void;
+  getLocation?(cb: (location: { latitude: number; longitude: number } | null) => void): void;
 };
 
 type TelegramWindow = { Telegram?: { WebApp?: TelegramWebApp } };

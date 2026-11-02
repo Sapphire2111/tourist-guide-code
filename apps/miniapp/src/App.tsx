@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
-import { DEFAULT_LOCALE, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
+import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
   Button,
   Feature,
@@ -17,7 +17,19 @@ import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
-import { fetchContext, type Me, type StartupState } from "./session.js";
+import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
+import { createAnalytics, type Analytics } from "./guide/analytics.js";
+import { BottomNav, BOTTOM_NAV_HEIGHT } from "./guide/BottomNav.js";
+import { Catalog } from "./guide/Catalog.js";
+import { GuideProvider, RequireRegion, type GuideEnv } from "./guide/context.js";
+import { Favorites } from "./guide/Favorites.js";
+import { createGuideApi } from "./guide/guide-api.js";
+import { Help } from "./guide/Help.js";
+import { HomeSections } from "./guide/HomeSections.js";
+import type { LatLng } from "./guide/geo.js";
+import { Nearby } from "./guide/Nearby.js";
+import { PlaceCard } from "./guide/PlaceCard.js";
+import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
 import type { Role } from "./role.js";
 import type { TelegramUser, TelegramWebApp } from "./telegram.js";
@@ -29,7 +41,8 @@ const inset = (side: "top" | "bottom" | "left" | "right") =>
 const shellStyle: CSSProperties = {
   minHeight: "var(--tg-viewport-stable-height, 100vh)",
   paddingTop: inset("top"),
-  paddingBottom: inset("bottom"),
+  // Снизу — место под фиксированную нижнюю навигацию (у неё свой отступ safe area).
+  paddingBottom: `calc(${inset("bottom")} + ${BOTTOM_NAV_HEIGHT}px)`,
   paddingLeft: inset("left"),
   paddingRight: inset("right"),
 };
@@ -42,10 +55,14 @@ export type AppProps = {
   locale?: Locale;
   /** Поток старта (createStartup): вход по initData, контекст QR, профиль. Нет — режим без сессии (браузер). */
   startup?: () => Promise<StartupState>;
+  /** Данные гида (тесты подменяют); по умолчанию — поверх api. */
+  guideApi?: GuideApi;
+  /** Аналитика (тесты подменяют); по умолчанию — POST /analytics/events. */
+  analytics?: Analytics;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
-type RoutesProps = Omit<AppProps, "startup" | "locale"> & {
+type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics"> & {
   session?: Session;
   onMe: (me: Me) => void;
   /** Явный повтор GET /context после сбоя (один запрос на нажатие); true — загружен. */
@@ -74,6 +91,44 @@ function Back({ webApp }: { webApp?: TelegramWebApp }) {
   return <Button onClick={() => navigate("/", { replace: true })}>{t("common.back")}</Button>;
 }
 
+/**
+ * Базовая точка «Що поруч»: координаты места QR-точки (qrPoint.placeId → GET /places/{id}); в контексте входа
+ * координат нет. Не загрузилась — null (режим без базовой точки).
+ */
+function useBasePoint(api: GuideApi, placeId: string | null): LatLng | null {
+  const [point, setPoint] = useState<LatLng | null>(null);
+  useEffect(() => {
+    if (!placeId) return;
+    let alive = true;
+    api.place(placeId).then(
+      (p) => alive && setPoint(p.location),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, placeId]);
+  return placeId ? point : null;
+}
+
+function venueOf(session?: Session) {
+  const c = session?.context;
+  return c?.status === "ok" && c.entryType === "hotel" ? c.venue : null;
+}
+
+/** Шапка главной: «Ви відкрили гід: <заклад>» или регион; полная карточка заведения — «Про заклад» (/about). */
+function ContextSummary({ context }: { context: Session["context"] }) {
+  const { t, locale } = useT();
+  const venue = context?.status === "ok" && context.entryType === "hotel" ? context.venue : null;
+  if (venue)
+    return (
+      <p data-testid="venue-summary">
+        {t("miniapp.venue.opened", { name: pickLocalized(venue.name, locale) })}
+      </p>
+    );
+  return <ContextView context={context} />;
+}
+
 function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
   const { t } = useT();
   return (
@@ -85,20 +140,14 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {session.contextFailed ? (
             <ContextUnavailable retry={retryContext} />
           ) : (
-            <ContextView context={session.context} webApp={webApp} />
+            <ContextSummary context={session.context} />
           )}
-          {hasRequiredConsents(session.me) ? (
-            <Link to="/profile" style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-              {t("miniapp.profile.open")}
-            </Link>
-          ) : (
-            <Onboarding api={api} webApp={webApp} onDone={onMe} />
-          )}
+          {!hasRequiredConsents(session.me) && <Onboarding api={api} webApp={webApp} onDone={onMe} />}
         </>
       ) : (
         <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
       )}
-      <p>{t("miniapp.intro")}</p>
+      <HomeSections hasVenue={venueOf(session) !== null} />
       <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
       {role === "partner" && (
         // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
@@ -116,13 +165,14 @@ function Screen({
   webApp,
   children,
 }: {
-  title: string;
+  /** Заголовок h1; экраны гида ставят его сами. */
+  title?: string;
   webApp?: TelegramWebApp;
   children?: ReactNode;
 }) {
   return (
     <Stack>
-      <h1>{title}</h1>
+      {title && <h1>{title}</h1>}
       {children}
       <Back webApp={webApp} />
     </Stack>
@@ -135,6 +185,52 @@ function Routes(props: RoutesProps) {
   const [path] = useRoute();
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   if (path === "/") return <Home {...props} />;
+  const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
+  if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Catalog key={section} section={section as CatalogSection} />
+        </RequireRegion>
+      </Screen>
+    );
+  const placeId = /^\/place\/([^/]+)$/.exec(path)?.[1];
+  if (placeId)
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <PlaceCard key={placeId} id={decodeURIComponent(placeId)} />
+        </RequireRegion>
+      </Screen>
+    );
+  if (path === "/nearby" || path === "/nearby/me")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Nearby key={path} useMyLocation={path === "/nearby/me"} />
+        </RequireRegion>
+      </Screen>
+    );
+  if (path === "/help")
+    return (
+      <Screen webApp={webApp}>
+        <Help />
+      </Screen>
+    );
+  if (path === "/favorites")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Favorites />
+        </RequireRegion>
+      </Screen>
+    );
+  if (path === "/about" && venueOf(session))
+    return (
+      <Screen title={t("miniapp.venue.title")} webApp={webApp}>
+        <ContextView context={session!.context} webApp={webApp} />
+      </Screen>
+    );
   if (path === "/profile" && session && hasRequiredConsents(session.me)) {
     return (
       <Screen title={t("miniapp.profile.title")} webApp={webApp}>
@@ -176,7 +272,7 @@ function StartupStatus({ state }: { state: StartupState }) {
   );
 }
 
-export function App({ locale = DEFAULT_LOCALE, startup, ...props }: AppProps) {
+export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...props }: AppProps) {
   const { webApp } = props;
   const [state, setState] = useState<StartupState>(startup ? { status: "loading" } : { status: "browser" });
   // ready() после первого рендера: Telegram снимает заглушку загрузки, когда интерфейс уже есть.
@@ -202,6 +298,40 @@ export function App({ locale = DEFAULT_LOCALE, startup, ...props }: AppProps) {
   };
   const effectiveLocale = session ? resolveLocale(session.me.language, SUPPORTED_LOCALES) : locale;
   const flags = useFeatureFlags(props.api, session?.context?.region?.id);
+  const context = session?.context ?? null;
+  const signedIn = Boolean(session);
+  const regionId = context?.region?.id ?? null;
+  const api = useMemo(() => guideApi ?? createGuideApi(props.api, regionId), [guideApi, props.api, regionId]);
+  // Конверт аналитики берёт контекст входа на момент события.
+  const contextRef = useRef(context);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
+  const tracker = useMemo(
+    () =>
+      analytics ??
+      createAnalytics(props.api, () => ({
+        anonymousId: contextRef.current?.anonymousId ?? getAnonymousId(),
+        regionId: contextRef.current?.region?.id ?? null,
+        entryContextId: contextRef.current?.entryContextId ?? null,
+        source: contextRef.current?.qrPoint ? "qr" : "direct",
+      })),
+    [analytics, props.api],
+  );
+  const venue = venueOf(session);
+  const venueName = venue ? pickLocalized(venue.name, effectiveLocale) : null;
+  const basePoint = useBasePoint(api, context?.qrPoint?.placeId ?? null);
+  const guide = useMemo<GuideEnv>(
+    () => ({
+      api,
+      analytics: tracker,
+      webApp: props.webApp,
+      base: venueName ? { name: venueName, point: basePoint } : null,
+      regionId,
+      signedIn,
+    }),
+    [api, tracker, props.webApp, venueName, basePoint, regionId, signedIn],
+  );
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
@@ -210,7 +340,10 @@ export function App({ locale = DEFAULT_LOCALE, startup, ...props }: AppProps) {
           {state.status === "loading" || state.status === "error" ? (
             <StartupStatus state={state} />
           ) : (
-            <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+            <GuideProvider value={guide}>
+              <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+              <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
+            </GuideProvider>
           )}
         </main>
       </FeatureFlagsProvider>

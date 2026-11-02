@@ -153,7 +153,12 @@ describe("поток старта", () => {
     expect(getToken()).toBe("tok-1");
     expect(window.sessionStorage.getItem(TOKEN_KEY)).toBe("tok-1");
     expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(ANON);
-    // «Про заклад» без ручного выбора
+    // Заведение из QR — без ручного выбора; карточка «Про заклад» — по кнопке раздела.
+    expect(screen.getByTestId("venue-summary").textContent).toBe("Ви відкрили гід: Тестовий готель");
+    await act(async () => {
+      window.location.hash = "#/about";
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(screen.getByTestId("venue-name").textContent).toBe("Тестовий готель");
     expect(screen.getByRole("link", { name: "+380501234567" }).getAttribute("href")).toBe(
       "tel:+380501234567",
@@ -346,7 +351,7 @@ describe("находки ревью", () => {
     expect(await screen.findByTestId("context-unavailable")).toBeDefined();
     expect(screen.queryByText("Регіони ще не підключені.")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Повторити" }));
-    expect((await screen.findByTestId("venue-name")).textContent).toBe("Тестовий готель");
+    expect((await screen.findByTestId("venue-summary")).textContent).toBe("Ви відкрили гід: Тестовий готель");
     expect(calls.filter((r) => r.url.includes("/context/"))).toHaveLength(2);
   });
 
