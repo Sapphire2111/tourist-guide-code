@@ -5,7 +5,7 @@
 // «Відкрито зараз» по графику в таймзоне региона, избранное (миграция 0014, RLS). Без Docker — пропуск (CI).
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createDatabase, type Db } from "../../src/db/index.js";
+import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
 import { GuideRepository, GuideService } from "../../src/modules/guide/index.js";
 import type { MediaService } from "../../src/modules/media/index.js";
@@ -422,6 +422,13 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     // Снятое с публикации — не в списке, но убрать можно.
     await sql(`UPDATE places SET status = 'suspended' WHERE id = $1`, [placeId("north")]);
     expect(keysOf((await service.favorites(base.regions.a, user)).items)).toEqual(["east"]);
+    // Лимит считает только видимые: скрытое место ещё в таблице, но в счёт не идёт.
+    expect(await count(base.regions.a)).toBe(2);
+    expect(
+      await withTenant(appDb, regionContext(base.regions.a), () =>
+        new GuideRepository(appDb).countFavorites(user),
+      ),
+    ).toBe(1);
     await service.removeFavorite(base.regions.a, user, placeId("north"));
     await service.removeFavorite(base.regions.a, user, placeId("north"));
     expect(await count(base.regions.a)).toBe(1);

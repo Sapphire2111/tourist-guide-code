@@ -76,3 +76,19 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.params).toContain("ready");
   });
 });
+
+describe("GuideRepository.countFavorites (SQL)", () => {
+  it("лимит считает те же записи, что список: только опубликованные места пользователя в регионе", async () => {
+    const [count] = await capture((r) => r.countFavorites(USER).catch(() => 0)); // recordingDb строк не отдаёт
+    const [list] = await capture((r) => r.favorites(USER));
+    for (const q of [count!, list!]) {
+      expect(q.sql).toMatch(/inner join "favorites"/);
+      expect(q.sql).toMatch(/"favorites"\."user_id" = \$/);
+      expect(q.sql).toMatch(/"places"\."status" = \$/);
+      expect(q.sql).toMatch(/"categories"\."active" = \$/);
+      expect(q.sql).toMatch(/"favorites"\."region_id" = \$/);
+      expect(q.params).toContain("published");
+    }
+    expect(count!.sql).toMatch(/count\(\*\)/);
+  });
+});

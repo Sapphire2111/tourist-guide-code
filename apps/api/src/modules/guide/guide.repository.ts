@@ -330,12 +330,17 @@ export class GuideRepository {
       .execute() as Promise<PlaceRow[]>;
   }
 
-  /** Избранных пользователя в регионе контекста (любого статуса места). */
+  /**
+   * Избранных пользователя в регионе контекста — те же записи, что в списке (favorites): только опубликованные места.
+   * Скрытые места лимит не занимают — пользователь их не видит и убрать не может.
+   */
   async countFavorites(userId: string): Promise<number> {
-    const row = await this.q
-      .selectFrom("favorites")
+    const row = await (
+      this.published()
+        .innerJoin("favorites", "favorites.place_id", "places.id")
+        .where("favorites.user_id", "=", userId) as unknown as Q
+    )
       .select((eb) => eb.fn.countAll<string>().as("n"))
-      .where("user_id", "=", userId)
       .executeTakeFirstOrThrow();
     return Number(row.n);
   }
