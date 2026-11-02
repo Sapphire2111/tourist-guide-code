@@ -15,7 +15,17 @@ export type Category = {
   homeSection: HomeSection | null;
 };
 
-export type Photo = { url: string; alt: LocalizedText | null };
+export type Photo = {
+  url: string;
+  alt: LocalizedText | null;
+  /** Обложка из Google/Wikimedia (хранится у нас): авторы и лицензия — подпись обязательна. */
+  credit?: {
+    authors: Author[];
+    license: string | null;
+    sourceUrl: string | null;
+    source: "google" | "wikimedia";
+  };
+};
 
 export type PlaceSummary = {
   id: string;
@@ -33,6 +43,29 @@ export type PlaceSummary = {
   recommended: boolean;
   /** Платное размещение: метка «Реклама» / «Партнер» показывается всегда (C-02, ТЗ §4.3). */
   adLabel: "advertising" | "partner" | null;
+};
+
+/** Автор фото или отзыва Google: подпись обязательна (правила Google Maps Platform). */
+export type Author = { name: string; uri: string | null; photoUri: string | null };
+
+/** Фото Google: превью 400 px и полноэкранное 1200 px — через прокси api; авторы — подпись. */
+export type GooglePhoto = { url: string; largeUrl: string; authors: Author[] };
+
+export type Review = {
+  author: Author;
+  rating: number | null;
+  text: string;
+  relativeTime: string | null;
+  uri: string | null;
+};
+
+export type WikipediaInfo = {
+  title: string;
+  url: string;
+  extract: string;
+  /** Опис скорочено (у статье больше текста). */
+  truncated: boolean;
+  image: { url: string; author: string | null; license: string | null; sourceUrl: string } | null;
 };
 
 /** Интервал графика: weekday 1 = понедельник … 7 = воскресенье, время местное «HH:MM». */
@@ -53,6 +86,24 @@ export type PlaceDetail = PlaceSummary & {
   openUntil: string | null;
   /** В избранном; null — без сессии. */
   favorite: boolean | null;
+  /** description — автоописание импорта Google (можно скрыть при содержательном тексте); ручное — false. */
+  descriptionAuto?: boolean;
+  // Богатая карточка: данные Google Maps, Вікіпедія, ИИ-текст. Нет данных — null/[] (блок не показывается).
+  /** Тип места по Google (uk): «Піцерія». */
+  typeLabel?: string | null;
+  /** Описание Google (editorialSummary). */
+  summary?: string | null;
+  /** Текст ИИ из фактов Google и Вікіпедії — показывается с пометкой «Згенеровано ШІ». */
+  aiSummary?: { text: string; model: string } | null;
+  /** 0 — бесплатно, 1–4 — от недорого до очень дорого. */
+  priceLevel?: number | null;
+  /** «Що пропонує» — коды удобств (подписи — miniapp.place.amenity.*). */
+  amenities?: string[];
+  rating?: { value: number; count: number } | null;
+  reviews?: Review[];
+  googlePhotos?: GooglePhoto[];
+  googleMapsUri?: string | null;
+  wikipedia?: WikipediaInfo | null;
 };
 
 export type EmergencyKind = "general" | "police" | "ambulance" | "rescue" | "mountain_rescue" | "other";

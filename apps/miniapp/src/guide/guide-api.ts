@@ -4,6 +4,7 @@ import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import {
   NotFoundError,
   UnauthorizedError,
+  type Author,
   type EmergencyContact,
   type GuideApi,
   type Photo,
@@ -24,6 +25,23 @@ export function photoOf(dto: PhotoDto | null): Photo | null {
   return { url: v.url, alt: dto.alt };
 }
 
+/** Обложка у нас (Google/Wikimedia) — с подписью автора; api без поля — null. */
+export function coverPhotoOf(dto: SummaryDto["coverPhoto"] | undefined): Photo | null {
+  if (!dto) return null;
+  const url = https(dto.url) ?? (dto.url.startsWith("/") ? dto.url : null);
+  if (!url) return null;
+  return {
+    url,
+    alt: null,
+    credit: {
+      authors: dto.authors.map(authorOf),
+      license: dto.license,
+      sourceUrl: https(dto.sourceUrl),
+      source: dto.source,
+    },
+  };
+}
+
 export function summaryOf(dto: SummaryDto): PlaceSummary {
   return {
     id: dto.id,
@@ -32,7 +50,7 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     address: dto.address ?? null,
     location: dto.location ? { lat: dto.location.lat, lng: dto.location.lon } : null,
     distanceMeters: dto.distanceMeters,
-    cover: photoOf(dto.cover),
+    cover: photoOf(dto.cover) ?? coverPhotoOf((dto as Partial<SummaryDto>).coverPhoto),
     openNow: dto.openNow,
     recommended: dto.recommended,
     adLabel: dto.adLabel,
@@ -58,6 +76,63 @@ export function cardOf(dto: CardDto): PlaceDetail {
     verifiedAt: dto.verifiedAt,
     openUntil: dto.openUntil,
     favorite: dto.favorite,
+    ...richOf(dto),
+  };
+}
+
+/** Внешняя ссылка — только https:// (javascript:/data: не попадут в href/src). */
+export const https = (u: string | null | undefined): string | null =>
+  typeof u === "string" && /^https:\/\//i.test(u) ? u : null;
+
+const authorOf = (a: { name: string; uri: string | null; photoUri: string | null }): Author => ({
+  name: a.name,
+  uri: https(a.uri),
+  photoUri: https(a.photoUri),
+});
+
+/** Поля богатой карточки; api старее этой схемы (без полей) — пусто. */
+function richOf(dto: Partial<CardDto>): Partial<PlaceDetail> {
+  const wiki = dto.wikipedia ?? null;
+  const wikiUrl = https(wiki?.url);
+  return {
+    descriptionAuto: dto.descriptionAuto ?? false,
+    typeLabel: dto.typeLabel ?? null,
+    summary: dto.summary ?? null,
+    aiSummary: dto.aiSummary ? { text: dto.aiSummary.text, model: dto.aiSummary.model } : null,
+    priceLevel: dto.priceLevel ?? null,
+    amenities: dto.amenities ?? [],
+    rating: dto.rating ? { value: dto.rating.value, count: dto.rating.count } : null,
+    reviews: (dto.reviews ?? []).map((r) => ({
+      author: authorOf(r.author),
+      rating: r.rating,
+      text: r.text,
+      relativeTime: r.relativeTime,
+      uri: https(r.uri),
+    })),
+    googlePhotos: (dto.googlePhotos ?? []).flatMap((p) => {
+      const url = https(p.url) ?? (p.url.startsWith("/") ? p.url : null);
+      const largeUrl = https(p.largeUrl) ?? (p.largeUrl.startsWith("/") ? p.largeUrl : null);
+      return url && largeUrl ? [{ url, largeUrl, authors: p.authors.map(authorOf) }] : [];
+    }),
+    googleMapsUri: https(dto.googleMapsUri),
+    wikipedia:
+      wiki && wikiUrl
+        ? {
+            title: wiki.title,
+            url: wikiUrl,
+            extract: wiki.extract,
+            truncated: wiki.truncated ?? false,
+            image:
+              wiki.image && https(wiki.image.url) && https(wiki.image.sourceUrl)
+                ? {
+                    url: wiki.image.url,
+                    author: wiki.image.author,
+                    license: wiki.image.license,
+                    sourceUrl: wiki.image.sourceUrl,
+                  }
+                : null,
+          }
+        : null,
   };
 }
 

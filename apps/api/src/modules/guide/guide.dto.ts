@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -15,15 +16,18 @@ import {
 import { LocalizedTextDto } from "../../common/http/index.js";
 import {
   HOME_SECTIONS,
+  PLACE_AMENITIES,
   PROMOTION_AD_LABELS,
   TAG_GROUPS,
   type HomeSection,
+  type PlaceAmenity,
   type LocalizedText,
   type PromotionAdLabel,
   type TagGroup,
 } from "../../db/index.js";
 import { LonLatDto, ScheduleDto } from "../catalog/index.js";
 import { MediaLinkDto } from "../media/index.js";
+import { GOOGLE_PHOTO_WIDTHS, type GooglePhotoWidth } from "./google-photos.js";
 
 // DTO публичного каталога туриста (блок 4, ADR-0019): категории, поиск и «Що поруч», картка місця, избранное.
 // Регион — query `regionId` (из QR-контекста или выбора туриста, как GET /feature-flags): данные публичные, сервис
@@ -152,6 +156,29 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   offset?: number;
 }
 
+/** Фото Google места: ширина файла (превью 400 или полноэкранный 1200). */
+export class GooglePhotoQueryDto extends RegionQueryDto {
+  @ApiPropertyOptional({ enum: GOOGLE_PHOTO_WIDTHS, default: 400, description: "Ширина, px" })
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([...GOOGLE_PHOTO_WIDTHS])
+  w?: GooglePhotoWidth;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: "Отпечаток фото из googlePhotos карточки (кэш браузера); сервером не проверяется",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  v?: string;
+}
+
+/** Обложка: v — версия из coverPhoto.url (кэш браузера), сервером не проверяется. */
+export class CoverQueryDto extends RegionQueryDto {
+  @ApiPropertyOptional({ type: String }) @IsOptional() @IsString() @MaxLength(32) v?: string;
+}
+
 export class AddFavoriteDto {
   @ApiProperty({ type: String, format: "uuid" })
   @IsUUID()
@@ -212,6 +239,26 @@ export class PlacePhotoDto {
   variants!: MediaLinkDto[];
 }
 
+/** Автор фото Google — показывать обязательно (правила Google Maps Platform). */
+export class CoverAuthorDto {
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, nullable: true }) uri!: string | null;
+  @ApiProperty({ type: String, nullable: true }) photoUri!: string | null;
+}
+
+/** Обложка у нас (0018): WebP ~400 px из Google или Wikimedia; подпись автора обязательна. */
+export class CoverPhotoDto {
+  @ApiProperty({ type: String, description: "GET /places/{id}/cover (ETag, длинный кэш)" }) url!: string;
+  @ApiProperty({ type: "integer" }) width!: number;
+  @ApiProperty({ type: "integer" }) height!: number;
+  @ApiProperty({ enum: ["google", "wikimedia"], enumName: "CoverSource" }) source!: "google" | "wikimedia";
+  @ApiProperty({ type: [CoverAuthorDto] }) authors!: CoverAuthorDto[];
+  @ApiProperty({ type: String, nullable: true, description: "Лицензия (Wikimedia)" }) license!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Страница файла (Wikimedia)" }) sourceUrl!:
+    | string
+    | null;
+}
+
 /** Место в выдаче (список, карта, избранное). */
 export class PlaceSummaryDto {
   @ApiProperty({ type: String, format: "uuid" }) id!: string;
@@ -246,6 +293,12 @@ export class PlaceSummaryDto {
   @ApiProperty({ type: String, nullable: true, example: "+380501234567" }) phone!: string | null;
   @ApiProperty({ type: PlacePhotoDto, nullable: true, description: "Обложка (или первое готовое фото)" })
   cover!: PlacePhotoDto | null;
+  @ApiProperty({
+    type: CoverPhotoDto,
+    nullable: true,
+    description: "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+  })
+  coverPhoto!: CoverPhotoDto | null;
 }
 
 export class PlaceSearchResultDto {
@@ -275,11 +328,86 @@ export class GuideTagDto {
   @ApiProperty({ enum: TAG_GROUPS, enumName: "TagGroup" }) group!: TagGroup;
 }
 
+// --- богатая картка (0018): данные Google Place Details, Вікіпедія, ИИ-текст ---
+
+/** Автор фото или отзыва Google — показывать обязательно (правила Google Maps Platform). */
+export class GoogleAuthorDto {
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, nullable: true, description: "Профиль автора в Google Maps" }) uri!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true, description: "Аватар (googleusercontent.com)" }) photoUri!:
+    | string
+    | null;
+}
+
+export class GooglePhotoDto {
+  @ApiProperty({ type: String, description: "Превью 400 px: редирект api на файл Google (без ключа)" })
+  url!: string;
+  @ApiProperty({ type: String, description: "То же фото 1200 px — полноэкранный просмотр" })
+  largeUrl!: string;
+  @ApiProperty({ type: "integer", nullable: true }) width!: number | null;
+  @ApiProperty({ type: "integer", nullable: true }) height!: number | null;
+  @ApiProperty({ type: [GoogleAuthorDto], description: "Авторы фото — подпись под фото" })
+  authors!: GoogleAuthorDto[];
+}
+
+export class GoogleReviewDto {
+  @ApiProperty({ type: GoogleAuthorDto }) author!: GoogleAuthorDto;
+  @ApiProperty({ type: "integer", nullable: true, minimum: 1, maximum: 5 }) rating!: number | null;
+  @ApiProperty({ type: String }) text!: string;
+  @ApiProperty({ type: String, nullable: true }) language!: string | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true }) publishTime!: string | null;
+  @ApiProperty({ type: String, nullable: true, example: "2 місяці тому" }) relativeTime!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Отзыв в Google Maps" }) uri!: string | null;
+}
+
+export class PlaceRatingDto {
+  @ApiProperty({ type: Number, minimum: 1, maximum: 5, example: 4.8 }) value!: number;
+  @ApiProperty({ type: "integer", description: "Число оценок" }) count!: number;
+  @ApiProperty({ enum: ["google"], enumName: "RatingSource" }) source!: "google";
+}
+
+export class AiSummaryDto {
+  @ApiProperty({
+    type: String,
+    description: "2–3 предложения «що це і чим цікаво» — показывать с пометкой ШІ",
+  })
+  text!: string;
+  @ApiProperty({ type: String, example: "claude-sonnet-5-5" }) model!: string;
+  @ApiProperty({ type: String, format: "date-time" }) generatedAt!: string;
+}
+
+export class WikipediaImageDto {
+  @ApiProperty({ type: String, description: "Файл Wikimedia Commons (upload.wikimedia.org)" }) url!: string;
+  @ApiProperty({ type: "integer", nullable: true }) width!: number | null;
+  @ApiProperty({ type: "integer", nullable: true }) height!: number | null;
+  @ApiProperty({ type: String, nullable: true }) author!: string | null;
+  @ApiProperty({ type: String, nullable: true, example: "CC BY-SA 4.0" }) license!: string | null;
+  @ApiProperty({ type: String, nullable: true }) licenseUrl!: string | null;
+  @ApiProperty({ type: String, description: "Страница файла на Commons" }) sourceUrl!: string;
+}
+
+export class WikipediaDto {
+  @ApiProperty({ type: String, example: "uk" }) lang!: string;
+  @ApiProperty({ type: String }) title!: string;
+  @ApiProperty({ type: String, description: "Статья" }) url!: string;
+  @ApiProperty({ type: String, description: "Начало статьи (до ~700 символов)" }) extract!: string;
+  @ApiProperty({ type: Boolean, description: "extract обрезан — пометка «скорочено»" }) truncated!: boolean;
+  @ApiProperty({ type: WikipediaImageDto, nullable: true }) image!: WikipediaImageDto | null;
+}
+
 /** Картка місця (C05). */
 export class PlaceCardDto extends PlaceSummaryDto {
   @ApiProperty({ type: String, format: "uuid" }) regionId!: string;
   @ApiProperty({ type: GuideCategoryRefDto }) category!: GuideCategoryRefDto;
   @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "description — автоописание импорта Google («… Джерело: Google Maps.»): при тексте ШІ/Google/Вікіпедії его можно скрыть; ручное описание — false",
+  })
+  descriptionAuto!: boolean;
   @ApiProperty({ type: String, nullable: true, example: "https://example.com" }) website!: string | null;
   @ApiProperty({ type: String, nullable: true, description: "Имя в Telegram без @" }) telegram!:
     | string
@@ -308,6 +436,40 @@ export class PlaceCardDto extends PlaceSummaryDto {
   openUntil!: string | null;
   @ApiProperty({ type: Boolean, nullable: true, description: "В избранном; null — без сессии" })
   favorite!: boolean | null;
+  @ApiProperty({ type: String, nullable: true, example: "Піцерія", description: "Тип места по Google (uk)" })
+  typeLabel!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Описание Google (editorialSummary)" })
+  summary!: string | null;
+  @ApiProperty({ type: AiSummaryDto, nullable: true, description: "Текст ИИ из фактов Google и Вікіпедії" })
+  aiSummary!: AiSummaryDto | null;
+  @ApiProperty({
+    type: "integer",
+    nullable: true,
+    minimum: 0,
+    maximum: 4,
+    description: "Ценовой уровень Google: 0 — бесплатно, 1–4 — от недорого до очень дорого",
+  })
+  priceLevel!: number | null;
+  @ApiProperty({
+    enum: PLACE_AMENITIES,
+    enumName: "PlaceAmenity",
+    isArray: true,
+    description: "«Що пропонує» — только подтверждённые Google",
+  })
+  amenities!: PlaceAmenity[];
+  @ApiProperty({ type: PlaceRatingDto, nullable: true, description: "Рейтинг Google" })
+  rating!: PlaceRatingDto | null;
+  @ApiProperty({ type: [GoogleReviewDto], description: "До 5 отзывов Google" }) reviews!: GoogleReviewDto[];
+  @ApiProperty({ type: [GooglePhotoDto], description: "До 5 фото Google (через прокси api)" })
+  googlePhotos!: GooglePhotoDto[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Место в Google Maps (атрибуция, «усі відгуки»)",
+  })
+  googleMapsUri!: string | null;
+  @ApiProperty({ type: WikipediaDto, nullable: true, description: "Вікіпедія для пам'яток" })
+  wikipedia!: WikipediaDto | null;
 }
 
 export class FavoriteDto {

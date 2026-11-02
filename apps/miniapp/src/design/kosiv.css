@@ -419,6 +419,22 @@ html[data-season] :focus-visible {
   height: 100%;
   object-fit: cover;
 }
+/* Подпись автора обложки из Google/Wikimedia (обязательна). */
+.kosiv-place-credit {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: rgba(20, 16, 12, 0.72);
+  color: #ffffff;
+  font-size: 0.625rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .kosiv-place-body {
   display: flex;
   flex-direction: column;
@@ -684,27 +700,6 @@ html[data-season] :focus-visible {
 .kosiv-panel {
   padding: 14px 16px;
 }
-.kosiv-photos {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  margin: 0 calc(var(--gutter) * -1);
-  padding: 0 var(--gutter) 4px;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-.kosiv-photos::-webkit-scrollbar {
-  display: none;
-}
-.kosiv-photos img {
-  flex: 0 0 auto;
-  height: 210px;
-  max-width: 86%;
-  border-radius: 20px;
-  object-fit: cover;
-  scroll-snap-align: start;
-  border: 1.5px solid var(--app-border);
-}
 .kosiv-actions {
   display: flex;
   flex-wrap: wrap;
@@ -754,8 +749,7 @@ html[data-season] :focus-visible {
   .kosiv-content {
     animation: none;
   }
-  .kosiv-rail,
-  .kosiv-photos {
+  .kosiv-rail {
     scroll-behavior: auto;
   }
 }

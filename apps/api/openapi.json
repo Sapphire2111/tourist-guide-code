@@ -5620,6 +5620,156 @@
         "tags": ["guide"]
       }
     },
+    "/places/{id}/cover": {
+      "get": {
+        "description": "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.",
+        "operationId": "getGuidePlaceCover",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          { "name": "v", "required": false, "in": "query", "schema": { "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "image/webp" },
+          "304": { "description": "Не изменилась" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Обложка места (WebP ~400 px, хранится у нас): списки и карточка",
+        "tags": ["guide"]
+      }
+    },
+    "/places/{id}/google-photos/{index}": {
+      "get": {
+        "description": "Без аутентификации. index — номер в googlePhotos карточки, w — 400 (превью) или 1200. Файл не копируется: api получает адрес у Google Place Photos (кэш в памяти и БД) и отвечает редиректом. 404 — места, фото нет или Google недоступен (суточный предел запросов). Rate limit 120/мин.",
+        "operationId": "getGuidePlaceGooglePhoto",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "index",
+            "required": true,
+            "in": "path",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 4 }
+          },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "w",
+            "required": false,
+            "in": "query",
+            "description": "Ширина, px",
+            "schema": { "default": 400, "type": "number", "enum": [400, 1200] }
+          },
+          {
+            "name": "v",
+            "required": false,
+            "in": "query",
+            "description": "Отпечаток фото из googlePhotos карточки (кэш браузера); сервером не проверяется",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "302": { "description": "Location — файл фото на googleusercontent.com" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Фото Google места (галерея картки): 302 на файл Google без ключа api",
+        "tags": ["guide"]
+      }
+    },
     "/places/{id}": {
       "get": {
         "description": "Без аутентификации; с Bearer-сессией — признак favorite. Неопубликованное (черновик, приостановленное, архив) или чужого региона — 404. lat/lng — для distanceMeters.",
@@ -12385,6 +12535,29 @@
         },
         "required": ["mediaAssetId", "alt", "width", "height", "isCover", "variants"]
       },
+      "CoverSource": { "type": "string", "enum": ["google", "wikimedia"] },
+      "CoverAuthorDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "uri": { "type": "string", "nullable": true },
+          "photoUri": { "type": "string", "nullable": true }
+        },
+        "required": ["name", "uri", "photoUri"]
+      },
+      "CoverPhotoDto": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "description": "GET /places/{id}/cover (ETag, длинный кэш)" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "source": { "allOf": [{ "$ref": "#/components/schemas/CoverSource" }] },
+          "authors": { "type": "array", "items": { "$ref": "#/components/schemas/CoverAuthorDto" } },
+          "license": { "type": "string", "nullable": true, "description": "Лицензия (Wikimedia)" },
+          "sourceUrl": { "type": "string", "nullable": true, "description": "Страница файла (Wikimedia)" }
+        },
+        "required": ["url", "width", "height", "source", "authors", "license", "sourceUrl"]
+      },
       "PlaceSummaryDto": {
         "type": "object",
         "properties": {
@@ -12425,6 +12598,12 @@
             "description": "Обложка (или первое готовое фото)",
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
+          },
+          "coverPhoto": {
+            "nullable": true,
+            "description": "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
           }
         },
         "required": [
@@ -12438,7 +12617,8 @@
           "adLabel",
           "openNow",
           "phone",
-          "cover"
+          "cover",
+          "coverPhoto"
         ]
       },
       "PlaceSearchResultDto": {
@@ -12482,6 +12662,135 @@
         },
         "required": ["id", "code", "name", "group"]
       },
+      "AiSummaryDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "2–3 предложения «що це і чим цікаво» — показывать с пометкой ШІ"
+          },
+          "model": { "type": "string", "example": "claude-sonnet-5-5" },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["text", "model", "generatedAt"]
+      },
+      "PlaceAmenity": {
+        "type": "string",
+        "enum": [
+          "breakfast",
+          "brunch",
+          "lunch",
+          "dinner",
+          "coffee",
+          "dessert",
+          "beer",
+          "wine",
+          "cocktails",
+          "vegetarian",
+          "dine_in",
+          "takeout",
+          "delivery",
+          "curbside_pickup",
+          "reservable",
+          "outdoor_seating",
+          "live_music",
+          "kids_menu",
+          "good_for_children",
+          "good_for_groups",
+          "watching_sports",
+          "dogs_allowed",
+          "restroom",
+          "parking_free",
+          "parking_paid",
+          "wheelchair_entrance",
+          "wheelchair_parking",
+          "wheelchair_restroom",
+          "wheelchair_seating",
+          "cards",
+          "nfc",
+          "cash_only"
+        ],
+        "description": "«Що пропонує» — только подтверждённые Google"
+      },
+      "RatingSource": { "type": "string", "enum": ["google"] },
+      "PlaceRatingDto": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "number", "minimum": 1, "maximum": 5, "example": 4.8 },
+          "count": { "type": "integer", "description": "Число оценок" },
+          "source": { "allOf": [{ "$ref": "#/components/schemas/RatingSource" }] }
+        },
+        "required": ["value", "count", "source"]
+      },
+      "GoogleAuthorDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "uri": { "type": "string", "nullable": true, "description": "Профиль автора в Google Maps" },
+          "photoUri": { "type": "string", "nullable": true, "description": "Аватар (googleusercontent.com)" }
+        },
+        "required": ["name", "uri", "photoUri"]
+      },
+      "GoogleReviewDto": {
+        "type": "object",
+        "properties": {
+          "author": { "$ref": "#/components/schemas/GoogleAuthorDto" },
+          "rating": { "type": "integer", "nullable": true, "minimum": 1, "maximum": 5 },
+          "text": { "type": "string" },
+          "language": { "type": "string", "nullable": true },
+          "publishTime": { "type": "string", "format": "date-time", "nullable": true },
+          "relativeTime": { "type": "string", "nullable": true, "example": "2 місяці тому" },
+          "uri": { "type": "string", "nullable": true, "description": "Отзыв в Google Maps" }
+        },
+        "required": ["author", "rating", "text", "language", "publishTime", "relativeTime", "uri"]
+      },
+      "GooglePhotoDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Превью 400 px: редирект api на файл Google (без ключа)"
+          },
+          "largeUrl": { "type": "string", "description": "То же фото 1200 px — полноэкранный просмотр" },
+          "width": { "type": "integer", "nullable": true },
+          "height": { "type": "integer", "nullable": true },
+          "authors": {
+            "description": "Авторы фото — подпись под фото",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GoogleAuthorDto" }
+          }
+        },
+        "required": ["url", "largeUrl", "width", "height", "authors"]
+      },
+      "WikipediaImageDto": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "description": "Файл Wikimedia Commons (upload.wikimedia.org)" },
+          "width": { "type": "integer", "nullable": true },
+          "height": { "type": "integer", "nullable": true },
+          "author": { "type": "string", "nullable": true },
+          "license": { "type": "string", "nullable": true, "example": "CC BY-SA 4.0" },
+          "licenseUrl": { "type": "string", "nullable": true },
+          "sourceUrl": { "type": "string", "description": "Страница файла на Commons" }
+        },
+        "required": ["url", "width", "height", "author", "license", "licenseUrl", "sourceUrl"]
+      },
+      "WikipediaDto": {
+        "type": "object",
+        "properties": {
+          "lang": { "type": "string", "example": "uk" },
+          "title": { "type": "string" },
+          "url": { "type": "string", "description": "Статья" },
+          "extract": { "type": "string", "description": "Начало статьи (до ~700 символов)" },
+          "truncated": { "type": "boolean", "description": "extract обрезан — пометка «скорочено»" },
+          "image": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/WikipediaImageDto" }]
+          }
+        },
+        "required": ["lang", "title", "url", "extract", "truncated", "image"]
+      },
       "PlaceCardDto": {
         "type": "object",
         "properties": {
@@ -12523,12 +12832,22 @@
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
           },
+          "coverPhoto": {
+            "nullable": true,
+            "description": "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
+          },
           "regionId": { "type": "string", "format": "uuid" },
           "category": { "$ref": "#/components/schemas/GuideCategoryRefDto" },
           "description": {
             "nullable": true,
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "descriptionAuto": {
+            "type": "boolean",
+            "description": "description — автоописание импорта Google («… Джерело: Google Maps.»): при тексте ШІ/Google/Вікіпедії его можно скрыть; ручное описание — false"
           },
           "website": { "type": "string", "nullable": true, "example": "https://example.com" },
           "telegram": { "type": "string", "nullable": true, "description": "Имя в Telegram без @" },
@@ -12558,7 +12877,67 @@
             "example": "22:00",
             "description": "До скольки открыто (HH:MM местного времени), если openNow = true"
           },
-          "favorite": { "type": "boolean", "nullable": true, "description": "В избранном; null — без сессии" }
+          "favorite": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "В избранном; null — без сессии"
+          },
+          "typeLabel": {
+            "type": "string",
+            "nullable": true,
+            "example": "Піцерія",
+            "description": "Тип места по Google (uk)"
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true,
+            "description": "Описание Google (editorialSummary)"
+          },
+          "aiSummary": {
+            "nullable": true,
+            "description": "Текст ИИ из фактов Google и Вікіпедії",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AiSummaryDto" }]
+          },
+          "priceLevel": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 4,
+            "description": "Ценовой уровень Google: 0 — бесплатно, 1–4 — от недорого до очень дорого"
+          },
+          "amenities": {
+            "type": "array",
+            "description": "«Що пропонує» — только подтверждённые Google",
+            "items": { "$ref": "#/components/schemas/PlaceAmenity" }
+          },
+          "rating": {
+            "nullable": true,
+            "description": "Рейтинг Google",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PlaceRatingDto" }]
+          },
+          "reviews": {
+            "description": "До 5 отзывов Google",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GoogleReviewDto" }
+          },
+          "googlePhotos": {
+            "description": "До 5 фото Google (через прокси api)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GooglePhotoDto" }
+          },
+          "googleMapsUri": {
+            "type": "string",
+            "nullable": true,
+            "description": "Место в Google Maps (атрибуция, «усі відгуки»)"
+          },
+          "wikipedia": {
+            "nullable": true,
+            "description": "Вікіпедія для пам'яток",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/WikipediaDto" }]
+          }
         },
         "required": [
           "id",
@@ -12572,9 +12951,11 @@
           "openNow",
           "phone",
           "cover",
+          "coverPhoto",
           "regionId",
           "category",
           "description",
+          "descriptionAuto",
           "website",
           "telegram",
           "verifiedAt",
@@ -12582,7 +12963,17 @@
           "tags",
           "schedule",
           "openUntil",
-          "favorite"
+          "favorite",
+          "typeLabel",
+          "summary",
+          "aiSummary",
+          "priceLevel",
+          "amenities",
+          "rating",
+          "reviews",
+          "googlePhotos",
+          "googleMapsUri",
+          "wikipedia"
         ]
       },
       "FavoriteListDto": {

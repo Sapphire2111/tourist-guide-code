@@ -1,0 +1,398 @@
+/* Картка місця (C06) в стиле «Сучасна Косівщина»: галерея на всю ширину, заголовок шрифтом заголовков, разделы —
+   карточки, удобства — чипы, отзывы, Вікіпедія, подписи источников. Цвета — токены сезона (--app-*). */
+
+.pc-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.pc-muted {
+  color: var(--app-muted);
+}
+.pc-small {
+  font-size: 0.875rem;
+  margin: 0;
+}
+.pc-m0 {
+  margin: 0;
+}
+
+/* --- галерея --- */
+.pc-gallery {
+  position: relative;
+  margin: calc(var(--gutter, 16px) * -1) calc(var(--gutter, 16px) * -1) 0;
+}
+.pc-track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding: 0 var(--gutter, 16px);
+  scroll-padding: 0 var(--gutter, 16px);
+}
+.pc-track::-webkit-scrollbar {
+  display: none;
+}
+.pc-slide {
+  position: relative;
+  flex: 0 0 88%;
+  margin: 0;
+  scroll-snap-align: start;
+}
+.pc-slide:only-child {
+  flex-basis: 100%;
+}
+.pc-slide-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 22px;
+  cursor: zoom-in;
+}
+.pc-slide-open:focus-visible {
+  outline: 3px solid var(--app-accent);
+  outline-offset: 2px;
+}
+.pc-slide img {
+  display: block;
+  width: 100%;
+  height: 248px;
+  object-fit: cover;
+  border-radius: 22px;
+  background: var(--app-surface-2);
+}
+.pc-credit {
+  position: absolute;
+  z-index: 1;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(20, 16, 12, 0.72);
+  color: #ffffff;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-credit a {
+  color: #ffffff;
+  text-decoration: underline;
+}
+.pc-counter {
+  position: absolute;
+  top: 10px;
+  right: calc(var(--gutter, 16px) + 10px);
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: rgba(20, 16, 12, 0.72);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Полноэкранный просмотр. */
+.pc-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(12, 10, 8, 0.96);
+  color: #ffffff;
+}
+.pc-lightbox img {
+  display: block;
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+}
+.pc-lb-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+.pc-lb-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.pc-lb-nav {
+  flex: 0 0 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+.pc-lb-credit {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+}
+.pc-lb-credit a {
+  color: #ffffff;
+}
+
+/* --- заголовок --- */
+.pc-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pc-kicker {
+  margin: 0;
+  color: var(--app-accent-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pc-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+/* Фокус ставится программно при открытии карточки (для экранного диктора) — рамка не нужна. */
+html[data-season] .pc-title:focus,
+html[data-season] .pc-title:focus-visible {
+  outline: none;
+}
+.pc-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 0.9375rem;
+}
+.pc-rating-value {
+  font-weight: 700;
+}
+.pc-stars {
+  color: var(--app-accent-2-ink);
+  letter-spacing: 1px;
+}
+.pc-stars-off {
+  color: var(--app-border);
+}
+
+/* --- разделы --- */
+.pc-section {
+  background: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card, none);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pc-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pc-h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.pc-lead {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+.pc-source {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.pc-source a {
+  color: inherit;
+}
+.pc-ai-badge {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  color: var(--app-accent-2-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.pc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pc-amenity {
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: var(--app-pill-bg);
+  color: var(--app-accent-ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.pc-schedule {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9375rem;
+}
+.pc-schedule th {
+  text-align: left;
+  font-weight: 500;
+  padding: 3px 12px 3px 0;
+  width: 3.5em;
+}
+.pc-schedule td {
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.pc-schedule tr[data-today] {
+  font-weight: 700;
+  color: var(--app-accent-ink);
+}
+.pc-contacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+.pc-contacts dt {
+  color: var(--app-muted);
+}
+.pc-contacts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pc-textlink,
+.pc-textbtn {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--app-accent-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 24px;
+}
+
+/* --- отзывы --- */
+.pc-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pc-review + .pc-review {
+  border-top: 1px solid var(--app-border);
+  padding-top: 14px;
+}
+.pc-review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pc-avatar {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+  color: var(--app-accent-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  object-fit: cover;
+}
+.pc-review-who {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+.pc-review-who a {
+  color: inherit;
+}
+.pc-review-text {
+  margin: 8px 0 0;
+  white-space: pre-line;
+  font-size: 0.9375rem;
+}
+.pc-review-text[data-clamped] {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pc-review-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+/* --- Вікіпедія --- */
+.pc-wiki-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pc-wiki-figure img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.pc-footer {
+  color: var(--app-muted);
+  font-size: 0.8125rem;
+}
+.pc-footer p {
+  margin: 0 0 4px;
+}

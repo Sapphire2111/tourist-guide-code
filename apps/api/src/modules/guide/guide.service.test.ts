@@ -28,6 +28,7 @@ function service(repo: Partial<GuideRepository>) {
   const { db } = recordingDb({});
   const base: Partial<GuideRepository> = {
     covers: () => Promise.resolve([]),
+    coverMeta: () => Promise.resolve([]),
     adLabels: () => Promise.resolve(new Map()),
     schedules: () => Promise.resolve(new Map()),
   };
