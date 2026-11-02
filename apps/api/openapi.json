@@ -5371,6 +5371,572 @@
         "tags": ["admin"]
       }
     },
+    "/categories": {
+      "get": {
+        "description": "Без аутентификации. 404 — региона нет или он не активен.",
+        "operationId": "listGuideCategories",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GuideCategoryListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Категории региона для туриста (главная C02, разделы C04): активные, с числом мест",
+        "tags": ["guide"]
+      }
+    },
+    "/places/search": {
+      "get": {
+        "description": "Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). 404 — региона нет или он не активен.",
+        "operationId": "searchPlaces",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "lat",
+            "required": false,
+            "in": "query",
+            "description": "Широта",
+            "schema": { "minimum": -90, "maximum": 90, "example": 48.4475, "type": "number" }
+          },
+          {
+            "name": "lng",
+            "required": false,
+            "in": "query",
+            "description": "Долгота (вместе с lat)",
+            "schema": { "minimum": -180, "maximum": 180, "example": 24.5626, "type": "number" }
+          },
+          {
+            "name": "radius",
+            "required": false,
+            "in": "query",
+            "description": "Радиус, м — только с lat/lng («Що поруч»)",
+            "schema": { "minimum": 10, "maximum": 20000, "default": 500, "type": "integer" }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "description": "Категория (из GET /categories); раздел включает свои подкатегории",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Текст: название (uk, en) или адрес; без координат — поиск по всему региону",
+            "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
+          },
+          {
+            "name": "available_now",
+            "required": false,
+            "in": "query",
+            "description": "«Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений)",
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": { "minimum": 1, "maximum": 50, "default": 20, "type": "integer" }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Сдвиг страницы: nextOffset из прошлого ответа",
+            "schema": { "minimum": 0, "maximum": 1000, "default": 0, "type": "integer" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceSearchResultDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Поиск мест: «Що поруч» (lat/lng + радиус), категория, текст q",
+        "tags": ["guide"]
+      }
+    },
+    "/places/{id}": {
+      "get": {
+        "description": "Без аутентификации; с Bearer-сессией — признак favorite. Неопубликованное (черновик, приостановленное, архив) или чужого региона — 404. lat/lng — для distanceMeters.",
+        "operationId": "getGuidePlace",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "lat",
+            "required": false,
+            "in": "query",
+            "description": "Широта",
+            "schema": { "minimum": -90, "maximum": 90, "example": 48.4475, "type": "number" }
+          },
+          {
+            "name": "lng",
+            "required": false,
+            "in": "query",
+            "description": "Долгота (вместе с lat)",
+            "schema": { "minimum": -180, "maximum": 180, "example": 24.5626, "type": "number" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlaceCardDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Картка місця (C05): фото, атрибуты, график, «Відкрито зараз», контакты, точка для маршрута",
+        "tags": ["guide"]
+      }
+    },
+    "/favorites": {
+      "get": {
+        "operationId": "listFavorites",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Избранные места туриста в регионе",
+        "tags": ["guide"]
+      },
+      "post": {
+        "description": "404 — места нет в регионе или оно не опубликовано.",
+        "operationId": "addFavorite",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddFavoriteDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Добавить место в избранное (повтор — без изменений, тот же ответ)",
+        "tags": ["guide"]
+      }
+    },
+    "/favorites/{placeId}": {
+      "delete": {
+        "operationId": "removeFavorite",
+        "parameters": [
+          {
+            "name": "placeId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Убрано" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Убрать место из избранного (уже нет — тоже 204)",
+        "tags": ["guide"]
+      }
+    },
+    "/emergency-contacts": {
+      "get": {
+        "description": "Без аутентификации. 404 — региона нет или он не активен.",
+        "operationId": "listGuideEmergencyContacts",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/EmergencyContactListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Экстренные контакты региона туриста («Халепа?»), только активные, по порядку",
+        "tags": ["guide"]
+      }
+    },
     "/feature-flags": {
       "get": {
         "operationId": "getFeatureFlags",
@@ -7364,6 +7930,317 @@
         },
         "required": ["items"]
       },
+      "GuideCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "parentId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Раздел; null — корневой"
+          },
+          "code": { "type": "string", "example": "where-to-eat" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "icon": {
+            "type": "string",
+            "nullable": true,
+            "example": "utensils",
+            "description": "Имя иконки packages/ui"
+          },
+          "homeSection": {
+            "nullable": true,
+            "description": "Кнопка главной C02 (только у корневых)",
+            "allOf": [{ "$ref": "#/components/schemas/HomeSection" }]
+          },
+          "sortOrder": { "type": "integer" },
+          "placeCount": {
+            "type": "integer",
+            "description": "Опубликованных мест (у раздела — вместе с подкатегориями)"
+          }
+        },
+        "required": ["id", "parentId", "code", "name", "icon", "homeSection", "sortOrder", "placeCount"]
+      },
+      "GuideCategoryListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Активные категории региона, плоско (parentId), по sortOrder; подкатегории выключенного раздела не входят",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GuideCategoryDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "AdLabel": {
+        "type": "string",
+        "enum": ["advertising", "partner"],
+        "description": "Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null"
+      },
+      "MediaLinkDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Вариант (w320, w800, w1600) или original — документ" },
+          "url": { "type": "string" },
+          "width": { "type": "number", "nullable": true },
+          "height": { "type": "number", "nullable": true },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Срок подписанной ссылки; null — постоянный публичный адрес"
+          }
+        },
+        "required": ["name", "url", "width", "height", "expiresAt"]
+      },
+      "PlacePhotoDto": {
+        "type": "object",
+        "properties": {
+          "mediaAssetId": { "type": "string", "format": "uuid" },
+          "alt": {
+            "nullable": true,
+            "description": "Alt text (у опубликованного места есть)",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "width": { "type": "integer", "nullable": true },
+          "height": { "type": "integer", "nullable": true },
+          "isCover": { "type": "boolean" },
+          "variants": {
+            "description": "Варианты по ширине; выбирать по размеру экрана",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MediaLinkDto" }
+          }
+        },
+        "required": ["mediaAssetId", "alt", "width", "height", "isCover", "variants"]
+      },
+      "PlaceSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "location": {
+            "description": "Точка на карте и для маршрута",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "distanceMeters": {
+            "type": "number",
+            "nullable": true,
+            "description": "Расстояние от lat/lng запроса, м (PostGIS, сфероид WGS 84); null — точка не передана"
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "«Ми рекомендуємо» — только редакционный бейдж (D-32), реклама его не даёт"
+          },
+          "adLabel": {
+            "nullable": true,
+            "description": "Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null",
+            "allOf": [{ "$ref": "#/components/schemas/AdLabel" }]
+          },
+          "openNow": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "«Відкрито зараз» по графику в таймзоне региона; null — график неизвестен"
+          },
+          "phone": { "type": "string", "nullable": true, "example": "+380501234567" },
+          "cover": {
+            "nullable": true,
+            "description": "Обложка (или первое готовое фото)",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
+          }
+        },
+        "required": [
+          "id",
+          "categoryId",
+          "name",
+          "address",
+          "location",
+          "distanceMeters",
+          "recommended",
+          "adLabel",
+          "openNow",
+          "phone",
+          "cover"
+        ]
+      },
+      "PlaceSearchResultDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceSummaryDto" }
+          },
+          "nextOffset": {
+            "type": "integer",
+            "nullable": true,
+            "description": "offset следующей страницы; null — конец"
+          },
+          "radiusMeters": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Применённый радиус, м; null — без точки"
+          }
+        },
+        "required": ["items", "nextOffset", "radiusMeters"]
+      },
+      "GuideCategoryRefDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "parentId": { "type": "string", "format": "uuid", "nullable": true },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "icon": { "type": "string", "nullable": true }
+        },
+        "required": ["id", "parentId", "name", "icon"]
+      },
+      "GuideTagDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "group": { "allOf": [{ "$ref": "#/components/schemas/TagGroup" }] }
+        },
+        "required": ["id", "code", "name", "group"]
+      },
+      "PlaceCardDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "location": {
+            "description": "Точка на карте и для маршрута",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "distanceMeters": {
+            "type": "number",
+            "nullable": true,
+            "description": "Расстояние от lat/lng запроса, м (PostGIS, сфероид WGS 84); null — точка не передана"
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "«Ми рекомендуємо» — только редакционный бейдж (D-32), реклама его не даёт"
+          },
+          "adLabel": {
+            "nullable": true,
+            "description": "Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null",
+            "allOf": [{ "$ref": "#/components/schemas/AdLabel" }]
+          },
+          "openNow": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "«Відкрито зараз» по графику в таймзоне региона; null — график неизвестен"
+          },
+          "phone": { "type": "string", "nullable": true, "example": "+380501234567" },
+          "cover": {
+            "nullable": true,
+            "description": "Обложка (или первое готовое фото)",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
+          },
+          "regionId": { "type": "string", "format": "uuid" },
+          "category": { "$ref": "#/components/schemas/GuideCategoryRefDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "website": { "type": "string", "nullable": true, "example": "https://example.com" },
+          "telegram": { "type": "string", "nullable": true, "description": "Имя в Telegram без @" },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "«Дата перевірки інформації» (ТЗ §4.4)"
+          },
+          "photos": {
+            "description": "Готовые фото по порядку (обложка первой)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlacePhotoDto" }
+          },
+          "tags": {
+            "description": "Активные теги места",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GuideTagDto" }
+          },
+          "schedule": {
+            "description": "Недельный график и исключения с вчерашней даты (местное время региона)",
+            "allOf": [{ "$ref": "#/components/schemas/ScheduleDto" }]
+          },
+          "openUntil": {
+            "type": "string",
+            "nullable": true,
+            "example": "22:00",
+            "description": "До скольки открыто (HH:MM местного времени), если openNow = true"
+          },
+          "favorite": { "type": "boolean", "nullable": true, "description": "В избранном; null — без сессии" }
+        },
+        "required": [
+          "id",
+          "categoryId",
+          "name",
+          "address",
+          "location",
+          "distanceMeters",
+          "recommended",
+          "adLabel",
+          "openNow",
+          "phone",
+          "cover",
+          "regionId",
+          "category",
+          "description",
+          "website",
+          "telegram",
+          "verifiedAt",
+          "photos",
+          "tags",
+          "schedule",
+          "openUntil",
+          "favorite"
+        ]
+      },
+      "FavoriteListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Избранные опубликованные места региона, новые сверху (до 200); снятые с публикации не входят",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceSummaryDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "AddFavoriteDto": {
+        "type": "object",
+        "properties": {
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" }
+        },
+        "required": ["regionId", "placeId"]
+      },
+      "FavoriteDto": {
+        "type": "object",
+        "properties": {
+          "placeId": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["placeId", "createdAt"]
+      },
       "FeatureFlagKey": {
         "type": "string",
         "enum": [
@@ -7531,22 +8408,6 @@
         "required": ["ownerType", "ownerId", "kind", "mime", "size"]
       },
       "MediaStatus": { "type": "string", "enum": ["pending", "uploaded", "processing", "ready", "rejected"] },
-      "MediaLinkDto": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string", "description": "Вариант (w320, w800, w1600) или original — документ" },
-          "url": { "type": "string" },
-          "width": { "type": "number", "nullable": true },
-          "height": { "type": "number", "nullable": true },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true,
-            "description": "Срок подписанной ссылки; null — постоянный публичный адрес"
-          }
-        },
-        "required": ["name", "url", "width", "height", "expiresAt"]
-      },
       "MediaAssetDto": {
         "type": "object",
         "properties": {

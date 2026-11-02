@@ -9,6 +9,7 @@ import { AuthModule } from "./modules/auth/index.js";
 import { EmergencyContactsModule } from "./modules/emergency-contacts/index.js";
 import { CatalogModule } from "./modules/catalog/index.js";
 import { FeatureFlagsModule } from "./modules/feature-flags/index.js";
+import { GuideModule } from "./modules/guide/index.js";
 import { ClientIpDiagnosticsModule, HealthModule } from "./modules/health/index.js";
 import { IdempotencyModule } from "./modules/idempotency/index.js";
 import { MediaModule } from "./modules/media/index.js";
@@ -99,6 +100,8 @@ export class AppModule {
         EmergencyContactsModule,
         // Каталог региона для админки (блок 3, ADR-0017).
         CatalogModule,
+        // Публичный каталог туриста (блок 4, ADR-0019): категории, поиск, картка місця, избранное, «Халепа?».
+        GuideModule,
         // Фича-флаги (T1-22): без APP_ENV (генерация OpenAPI) — значения prod.
         FeatureFlagsModule.forRoot({ appEnv: env.APP_ENV }),
         // Файлы и изображения (T1-20, ADR-0013): без STORAGE_* (генерация OpenAPI) — local, ресайз inline.
