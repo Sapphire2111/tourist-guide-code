@@ -6,6 +6,9 @@ import { SEED_SCENARIOS } from "./seed-host.js";
 import {
   buildRealScenarioItems,
   pickRealHotel,
+  QR_LABEL_MAX,
+  qrLabel,
+  realVenueColumns,
   SEED_REAL_HOTEL_GOOGLE_ID,
   type RealPlace,
 } from "./seed-real-places.js";
@@ -74,5 +77,37 @@ describe("seed --real-places", () => {
       "Водоспад Пробій",
       "Кава А",
     ]);
+  });
+
+  it("метка QR — не длиннее лимита qr_points_label_check (по символам), короткая без изменений", () => {
+    expect(qrLabel("Hotel Sofia (демо-QR)")).toBe("Hotel Sofia (демо-QR)");
+    const long = qrLabel(`${"Я".repeat(250)} (демо-QR)`);
+    expect([...long]).toHaveLength(QR_LABEL_MAX);
+    expect(long.endsWith("…")).toBe(true);
+    expect(qrLabel("😀".repeat(QR_LABEL_MAX))).toBe("😀".repeat(QR_LABEL_MAX));
+  });
+
+  it("«Про заклад» QR — только из google-места: без вымышленных описания и telegram", () => {
+    const address = { uk: "вул. Свободи, 1, Яремче" };
+    expect(
+      realVenueColumns({
+        name: "Hotel Sofia",
+        address,
+        phone: "+380671234567",
+        website: "https://sofia.example",
+      }),
+    ).toEqual({
+      venue_name_i18n: { uk: "Hotel Sofia" },
+      venue_description_i18n: null,
+      venue_address_i18n: address,
+      venue_phone: "+380671234567",
+      venue_website: "https://sofia.example",
+      venue_telegram: null,
+    });
+    expect(realVenueColumns({ name: "H", address: null, phone: null, website: null })).toMatchObject({
+      venue_address_i18n: null,
+      venue_phone: null,
+      venue_website: null,
+    });
   });
 });

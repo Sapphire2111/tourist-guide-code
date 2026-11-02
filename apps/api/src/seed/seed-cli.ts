@@ -32,9 +32,11 @@ try {
     if (realPlaces) {
       const r = await seedRealPlaces(db, base.regions);
       console.log(
-        r.skipped
+        r.skipped === "no_google_places"
           ? "Реальні місця: у регіоні немає опублікованих місць Google — пропущено."
-          : `Реальні місця: готель ${r.hotel ? `«${r.hotel.name}» (${r.hotel.id})` : "не знайдено"}, перепривязано QR ${r.qrRepointed}, ` +
+          : r.skipped === "no_hotel"
+            ? "Реальні місця: готель для демо-QR не знайдено (немає google-готелів Яремче) — крок пропущено, демо-місця й QR без змін."
+            : `Реальні місця: готель ${r.hotel ? `«${r.hotel.name}» (${r.hotel.id})` : "не знайдено"}, перепривязано QR ${r.qrRepointed}, ` +
               `новий модуль «Про заклад» ${r.hostModuleCreated ? 1 : 0}, співробітник ${r.staffAssigned ? "призначений" : "без змін"}, ` +
               `перебудовано сценаріїв ${r.scenariosRebuilt}, заархівовано демо-місць ${r.placesArchived}.`,
       );

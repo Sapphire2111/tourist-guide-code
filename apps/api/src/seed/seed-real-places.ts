@@ -3,6 +3,7 @@
 // «Про заклад», QR demoHotel01/demoRoom204a и демо-сотрудник переезжают на реальный отель, 6 сценариев «Мій план»
 // пересобираются из реальных мест, опубликованные демо-места seedCatalog уходят в архив. Без google-мест — ничего.
 // Идемпотентно: повторный запуск ничего не меняет. Фактов о реальном заведении не выдумываем — тексты «Демо: …».
+import { sql } from "kysely";
 import {
   SYSTEM_CONTEXT,
   withTenant,
@@ -12,6 +13,7 @@ import {
   type LocalizedText,
 } from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
+import { SCENARIO_AUDIT, SCENARIO_ENTITY } from "../modules/planner/index.js";
 import { seedUuid } from "./ids.js";
 import { SEED_PLACES } from "./seed-catalog.js";
 import {
@@ -133,8 +135,45 @@ const REAL_SERVICES: HostServiceRecord[] = [
   { code: "taxi", title: { uk: "Демо: таксі", en: "Demo: taxi" } },
 ].map((s, i) => ({ ...s, description: null, slaMinutes: 60, enabled: true, sortOrder: i * 10 }));
 
+/** Лимит qr_points_label_check (0011_qr_context.sql): char_length(label) <= 200. */
+export const QR_LABEL_MAX = 200;
+
+/** Метка QR в пределах лимита (по кодпоинтам, как char_length); длинная — с «…». */
+export function qrLabel(label: string): string {
+  const chars = [...label];
+  return chars.length <= QR_LABEL_MAX
+    ? label
+    : `${chars
+        .slice(0, QR_LABEL_MAX - 1)
+        .join("")
+        .trimEnd()}…`;
+}
+
+export type RealVenueSource = {
+  name: string;
+  address: LocalizedText | null;
+  phone: string | null;
+  website: string | null;
+};
+
+/**
+ * «Про заклад» QR реального отеля — только из данных google-места (CHECK формата те же, что у places):
+ * вымышленные описание и telegram демо-отеля сбрасываются.
+ */
+export function realVenueColumns(src: RealVenueSource) {
+  return {
+    venue_name_i18n: { uk: src.name } as LocalizedText,
+    venue_description_i18n: null,
+    venue_address_i18n: src.address ?? null,
+    venue_phone: src.phone ?? null,
+    venue_website: src.website ?? null,
+    venue_telegram: null,
+  };
+}
+
 export type SeedRealPlacesResult = {
-  skipped: boolean;
+  /** Причина пропуска шага: нет google-мест или не найден отель для демо-QR. */
+  skipped: null | "no_google_places" | "no_hotel";
   hotel: { id: string; name: string } | null;
   qrRepointed: number;
   hostModuleCreated: boolean;
@@ -156,7 +195,16 @@ export async function seedRealPlaces(
       .selectFrom("places as p")
       .innerJoin("categories as c", "c.id", "p.category_id")
       .leftJoin("localities as l", "l.id", "p.locality_id")
-      .select(["p.id", "p.name_i18n", "p.google_place_id", "c.code as category", "l.code as locality"])
+      .select([
+        "p.id",
+        "p.name_i18n",
+        "p.google_place_id",
+        "p.address_i18n",
+        "p.phone",
+        "p.website",
+        "c.code as category",
+        "l.code as locality",
+      ])
       .where("p.region_id", "=", a)
       .where("p.source", "=", "google")
       .where("p.status", "=", "published")
@@ -169,7 +217,7 @@ export async function seedRealPlaces(
       googlePlaceId: r.google_place_id!,
     }));
     const out: SeedRealPlacesResult = {
-      skipped: places.length === 0,
+      skipped: null,
       hotel: null,
       qrRepointed: 0,
       hostModuleCreated: false,
@@ -177,45 +225,53 @@ export async function seedRealPlaces(
       scenariosRebuilt: 0,
       placesArchived: 0,
     };
-    if (out.skipped) return out;
-
+    if (places.length === 0) return { ...out, skipped: "no_google_places" as const };
     const hotel = pickRealHotel(places);
-    if (hotel) {
-      out.hotel = { id: hotel.id, name: hotel.name };
-      // QR — те же коды: перепривязываем с демо-отеля (или пустые); перепривязку админкой на другое место не трогаем.
-      for (const qr of [
-        { code: SEED_HOTEL_QR_CODE, label: `${hotel.name} (демо-QR)` },
-        { code: SEED_ROOM_QR.code, label: `${hotel.name} — номер ${SEED_ROOM_QR.room} (демо-QR)` },
-      ]) {
-        const r = await trx
-          .updateTable("qr_points")
-          .set({ place_id: hotel.id, label: qr.label, venue_name_i18n: { uk: hotel.name } })
-          .where("code", "=", qr.code)
-          .where((eb) =>
-            eb.or([eb("place_id", "is", null), eb("place_id", "=", demoPlaceId(SEED_HOTEL_PLACE_KEY))]),
-          )
-          .executeTakeFirst();
-        out.qrRepointed += Number(r.numUpdatedRows);
-      }
-      const inserted = await trx
-        .insertInto("host_modules")
-        .values({
-          id: seedUuid("host-module:a:real-hotel"),
-          region_id: a,
-          place_id: hotel.id,
-          wifi_ssid: "DEMO-SSID",
-          wifi_password: "demo-placeholder",
-          reception_phone: null,
-          hours_from: null,
-          hours_to: null,
-          sections: JSON.stringify(REAL_SECTIONS),
-          services: JSON.stringify(REAL_SERVICES),
-        })
-        .onConflict((oc) => oc.column("place_id").doNothing())
-        .returning("id")
+    // Без отеля не трогаем ничего: демо-отель с QR остаётся, демо-места не архивируются.
+    if (!hotel) return { ...out, skipped: "no_hotel" as const };
+
+    out.hotel = { id: hotel.id, name: hotel.name };
+    const hotelRow = rows.find((r) => r.id === hotel.id)!;
+    const venue = realVenueColumns({
+      name: hotel.name,
+      address: (hotelRow.address_i18n as LocalizedText | null) ?? null,
+      phone: hotelRow.phone,
+      website: hotelRow.website,
+    });
+    // QR — те же коды: перепривязываем с демо-отеля (или пустые); перепривязку админкой на другое место не трогаем.
+    for (const qr of [
+      { code: SEED_HOTEL_QR_CODE, label: `${hotel.name} (демо-QR)` },
+      { code: SEED_ROOM_QR.code, label: `${hotel.name} — номер ${SEED_ROOM_QR.room} (демо-QR)` },
+    ]) {
+      const r = await trx
+        .updateTable("qr_points")
+        .set({ place_id: hotel.id, label: qrLabel(qr.label), ...venue })
+        .where("code", "=", qr.code)
+        .where((eb) =>
+          eb.or([eb("place_id", "is", null), eb("place_id", "=", demoPlaceId(SEED_HOTEL_PLACE_KEY))]),
+        )
         .executeTakeFirst();
-      out.hostModuleCreated = Boolean(inserted);
+      out.qrRepointed += Number(r.numUpdatedRows);
     }
+    // Wi-Fi реального отеля не выдумываем; разделы и услуги — с пометкой «Демо».
+    const inserted = await trx
+      .insertInto("host_modules")
+      .values({
+        id: seedUuid("host-module:a:real-hotel"),
+        region_id: a,
+        place_id: hotel.id,
+        wifi_ssid: null,
+        wifi_password: null,
+        reception_phone: null,
+        hours_from: null,
+        hours_to: null,
+        sections: JSON.stringify(REAL_SECTIONS),
+        services: JSON.stringify(REAL_SERVICES),
+      })
+      .onConflict((oc) => oc.doNothing())
+      .returning("id")
+      .executeTakeFirst();
+    out.hostModuleCreated = Boolean(inserted);
 
     // Сценарии: пересобираем, пока они пустые или ссылаются на демо-места (после — правки админки не трогаем).
     for (const [i, s] of SEED_SCENARIOS.entries()) {
@@ -225,7 +281,11 @@ export async function seedRealPlaces(
         .select(["place_id", "alternatives"])
         .where("scenario_id", "=", id)
         .execute();
-      const exists = await trx.selectFrom("scenarios").select("id").where("id", "=", id).executeTakeFirst();
+      const exists = await trx
+        .selectFrom("scenarios")
+        .select(["id", "version"])
+        .where("id", "=", id)
+        .executeTakeFirst();
       const stale =
         current.length === 0 ||
         current.some((c) => demoSet.has(c.place_id) || c.alternatives.some((x) => demoSet.has(x)));
@@ -234,11 +294,26 @@ export async function seedRealPlaces(
       if (items.length === 0) continue;
       if (exists) {
         await trx.deleteFrom("scenario_items").where("scenario_id", "=", id).execute();
-        await trx
+        // Статус сохраняем; версия растёт — сохранённые планы видят «сценарий обновлён» (как adminUpdate).
+        const updated = await trx
           .updateTable("scenarios")
-          .set({ description_i18n: REAL_DESCRIPTIONS[s.code] ?? s.description, status: "published" })
+          .set({
+            description_i18n: REAL_DESCRIPTIONS[s.code] ?? s.description,
+            version: sql<number>`version + 1`,
+          })
           .where("id", "=", id)
-          .execute();
+          .returning(["version"])
+          .executeTakeFirstOrThrow();
+        await audit.record(trx, {
+          actor: { type: "system" },
+          action: SCENARIO_AUDIT.update,
+          entityType: SCENARIO_ENTITY,
+          entityId: id,
+          regionId: a,
+          reason: "seed --real-places: пункти замінено реальними місцями",
+          oldValues: { version: exists.version, items: current.length },
+          newValues: { version: updated.version, items: items.length },
+        });
       } else
         await trx
           .insertInto("scenarios")
@@ -275,15 +350,29 @@ export async function seedRealPlaces(
 
     // Демо-места seed (только их id и source='manual') — в архив. Черновики (ни разу не опубликованы) остаются
     // черновиками: places_published_once не пускает их в archived, а туристу они и так не видны.
-    const archived = await trx
-      .updateTable("places")
-      .set({ status: "archived" })
+    const before = await trx
+      .selectFrom("places")
+      .select(["id", "status"])
       .where("region_id", "=", a)
       .where("id", "in", demoIds)
       .where("source", "=", "manual")
       .where("status", "in", ["published", "suspended"])
-      .returning(["id"])
+      .forUpdate()
       .execute();
+    const archived =
+      before.length === 0
+        ? []
+        : await trx
+            .updateTable("places")
+            .set({ status: "archived" })
+            .where(
+              "id",
+              "in",
+              before.map((p) => p.id),
+            )
+            .returning(["id"])
+            .execute();
+    const oldStatus = new Map(before.map((p) => [p.id, p.status]));
     for (const p of archived)
       await audit.record(trx, {
         actor: { type: "system" },
@@ -292,6 +381,7 @@ export async function seedRealPlaces(
         entityId: p.id,
         regionId: a,
         reason: "seed --real-places: демо-місце замінено реальними місцями",
+        oldValues: { status: oldStatus.get(p.id) ?? null },
         newValues: { status: "archived" },
       });
     out.placesArchived = archived.length;
