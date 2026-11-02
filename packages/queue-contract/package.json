@@ -27,7 +27,7 @@
     "@tg/config": "workspace:*",
     "@types/node": "22.15.32",
     "@vitest/coverage-v8": "4.1.9",
-    "typescript": "5.8.3",
+    "typescript": "6.0.3",
     "vitest": "4.1.9"
   }
 }
