@@ -11,6 +11,7 @@ import {
   type PlaceEnrichment,
   type PromotionAdLabel,
   type Region,
+  type HomeSection,
 } from "../../db/index.js";
 import { toScheduleDto } from "../catalog/index.js";
 import { EmergencyContactsRepository } from "../emergency-contacts/index.js";
@@ -50,6 +51,8 @@ export type SearchParams = {
   radius?: number;
   categoryId?: string;
   text?: string;
+  /** Разделы главной, места которых не нужны (по умолчанию — никакие). */
+  excludeSections?: readonly HomeSection[];
   limit: number;
   offset: number;
 };

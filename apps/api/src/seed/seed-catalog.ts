@@ -28,9 +28,9 @@ export const SEED_CATEGORIES: readonly {
 }[] = [
   {
     code: "stay",
-    name: { uk: "Де зупинитися", en: "Where to stay" },
+    name: { uk: "Де жити", en: "Where to stay" },
     icon: "bed",
-    home: "about",
+    home: "stay",
     children: [
       { code: "hotels", name: { uk: "Готелі", en: "Hotels" }, icon: "hotel" },
       { code: "sadyby", name: { uk: "Садиби", en: "Guest houses" }, icon: "house" },

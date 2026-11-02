@@ -90,13 +90,16 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("8 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
+  it("9 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
     const { rerender } = render(<HomeSections hasVenue />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.getAllByRole("listitem")).toHaveLength(9);
+    // «Де жити» — отдельная плитка с подписью (раньше раздел stay висел на «Про заклад» и плитки не было).
+    expect(screen.getByRole("link", { name: /Де жити/ }).getAttribute("href")).toBe("#/section/stay");
+    expect(screen.getByTestId("tile-hint-stay").textContent).toBe("Готелі, садиби");
     expect(screen.getByRole("link", { name: "Де поїсти" }).getAttribute("href")).toBe("#/section/eat");
     expect(screen.getByRole("link", { name: "Халепа?" }).getAttribute("href")).toBe("#/help");
     rerender(<HomeSections hasVenue={false} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(7);
+    expect(screen.getAllByRole("listitem")).toHaveLength(8);
     expect(screen.queryByRole("link", { name: "Про заклад" })).toBeNull();
   });
 });
@@ -236,7 +239,12 @@ describe("«Що поруч» C05", () => {
       "Геолокацію вимкнено. Показуємо місця біля Тестовий готель.",
     );
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із Тестовий готель");
-    expect(env.api.search).toHaveBeenCalledWith({ point: env.base!.point, radius: 500, limit: 50 });
+    expect(env.api.search).toHaveBeenCalledWith({
+      point: env.base!.point,
+      radius: 500,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 
   it("геолокация получена — «Поруч із вами», поиск от устройства", async () => {
@@ -253,7 +261,12 @@ describe("«Що поруч» C05", () => {
     );
     await flush();
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із вами");
-    expect(env.api.search).toHaveBeenCalledWith({ point: { lat: 48.1, lng: 24.1 }, radius: 500, limit: 50 });
+    expect(env.api.search).toHaveBeenCalledWith({
+      point: { lat: 48.1, lng: 24.1 },
+      radius: 500,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 });
 
@@ -280,7 +293,12 @@ describe("«Що поруч»: ползунок радиуса и категор
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
     await act(async () => new Promise((r) => setTimeout(r, 400)));
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
-    expect(env.api.search).toHaveBeenLastCalledWith({ point: env.base!.point, radius: 10000, limit: 50 });
+    expect(env.api.search).toHaveBeenLastCalledWith({
+      point: env.base!.point,
+      radius: 10000,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 });
 
@@ -346,6 +364,10 @@ describe("адаптер api и аналитика", () => {
     expect(url.searchParams.get("regionId")).toBe(REGION);
     expect(url.searchParams.get("lat")).toBe("48.45");
     expect(url.searchParams.get("radius")).toBe("500");
+    // По умолчанию ничего не исключается (поиск по названию находит и отели).
+    expect(url.searchParams.getAll("exclude_section")).toEqual([]);
+    await api.search({ point: { lat: 48.45, lng: 24.56 }, radius: 500, excludeSections: ["stay"] });
+    expect(new URL(urls[1]!).searchParams.getAll("exclude_section")).toEqual(["stay"]);
     expect(p).toMatchObject({
       location: { lat: 48.45, lng: 24.56 },
       cover: { url: "https://cdn/800", alt: { uk: "Фасад" } },

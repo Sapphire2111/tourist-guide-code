@@ -167,13 +167,14 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         homeSection: c.homeSection,
       }));
     },
-    search: async ({ point, radius, categoryId, q, limit }) => {
+    search: async ({ point, radius, categoryId, q, excludeSections, limit }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
         ...(point && radius ? { radius } : {}),
         ...(categoryId ? { category: categoryId } : {}),
         ...(q ? { q } : {}),
+        ...(excludeSections?.length ? { exclude_section: [...excludeSections] } : {}),
         limit: limit ?? 50,
       };
       const data = await ok(api.GET("/places/search", { params: { query } }));

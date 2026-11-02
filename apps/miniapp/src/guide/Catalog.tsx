@@ -61,7 +61,8 @@ function CategoryPlaces({
   const [categoryId, setCategoryId] = useState(rootId);
   const [draft, setDraft] = useState(initialQuery);
   const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
-  const [view, setView] = useState<"list" | "map">("list");
+  // «Де жити» — карта главная (все места ночёвки сразу на карте), список вторичен.
+  const [view, setView] = useState<"list" | "map">(root?.homeSection === "stay" ? "map" : "list");
   // Курорт свайпера — места в радиусе от его центра; «Усе Прикарпаття» — как раньше (от базовой точки QR).
   const area = resort.area;
   const point = area ? area.center : (base?.point ?? null);

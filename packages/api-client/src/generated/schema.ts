@@ -2424,7 +2424,7 @@ export interface components {
       active?: boolean;
     };
     /** @enum {string} */
-    HomeSection: "about" | "eat" | "shop" | "relax" | "fun" | "nearby" | "transfer" | "help";
+    HomeSection: "about" | "stay" | "eat" | "shop" | "relax" | "fun" | "nearby" | "transfer" | "help";
     CategoryDto: {
       /** Format: uuid */
       id: string;
@@ -10125,6 +10125,8 @@ export interface operations {
         category?: string;
         /** @description Текст: название (uk, en) или адрес; без координат — поиск по всему региону */
         q?: string;
+        /** @description Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели). */
+        exclude_section?: components["schemas"]["HomeSection"][];
         /** @description «Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений) */
         available_now?: boolean;
         limit?: number;

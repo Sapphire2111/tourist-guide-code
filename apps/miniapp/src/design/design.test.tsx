@@ -172,7 +172,7 @@ describe("курорты", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     expect(screen.getByTestId("home-place").textContent).toContain("Яремче, вул. Свободи, 1");
     const yaremche = RESORTS.find((r) => r.id === "yaremche")!;
@@ -186,6 +186,7 @@ describe("курорты", () => {
     expect(search).toHaveBeenLastCalledWith({
       point: yaremche.area!.center,
       radius: yaremche.area!.radius,
+      excludeSections: ["stay"],
       limit: HOME_PLACES,
     });
     expect(screen.getByTestId("home-place").textContent).toContain("центр: Яремче");

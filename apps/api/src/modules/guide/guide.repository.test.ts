@@ -44,6 +44,16 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.params).toContain(A);
   });
 
+  it("исключение разделов («Що поруч» без «Де жити»): только по запросу, корень — по parent_id или сама категория", async () => {
+    const [q] = await capture((r) => r.search({ excludeSections: ["stay"], limit: 10, offset: 0 }));
+    expect(q!.sql).toMatch(/not exists \(select "root"\."id" from "categories" as "root"/);
+    expect(q!.sql).toMatch(/coalesce\("categories"\."parent_id", "categories"\."id"\)/);
+    expect(q!.sql).toMatch(/"root"\."region_id" = \$/);
+    expect(q!.params).toContain("stay");
+    const [plain] = await capture((r) => r.search({ text: "готель", limit: 10, offset: 0 }));
+    expect(plain!.sql).not.toMatch(/not exists/);
+  });
+
   it("без точки: нет гео-фильтра, distance — NULL", async () => {
     const [q] = await capture((r) => r.search({ limit: 10, offset: 0 }));
     expect(q!.sql).not.toMatch(/ST_DWithin/);

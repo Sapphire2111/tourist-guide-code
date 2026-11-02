@@ -586,7 +586,17 @@ export type NewLocality = Insertable<LocalitiesTable>;
 export type LocalityUpdate = Updateable<LocalitiesTable>;
 
 /** Кнопки главной C02 (ТЗ §4.2), CHECK categories_home_section_check. */
-export const HOME_SECTIONS = ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"] as const;
+export const HOME_SECTIONS = [
+  "about",
+  "stay",
+  "eat",
+  "shop",
+  "relax",
+  "fun",
+  "nearby",
+  "transfer",
+  "help",
+] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 
 export interface CategoriesTable {

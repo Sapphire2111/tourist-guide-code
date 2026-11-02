@@ -148,6 +148,7 @@ export class GuidePlacesController {
       radius: origin ? (q.radius ?? SEARCH_RADIUS_DEFAULT) : undefined,
       categoryId: q.category,
       text: q.q?.trim() || undefined,
+      excludeSections: q.exclude_section,
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,
     });

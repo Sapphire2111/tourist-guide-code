@@ -120,6 +120,19 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   q?: string;
 
   @ApiPropertyOptional({
+    enum: HOME_SECTIONS,
+    enumName: "HomeSection",
+    isArray: true,
+    description:
+      "Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты " +
+      "без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели).",
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === "string" ? value.split(",") : value))
+  @IsIn(HOME_SECTIONS, { each: true })
+  exclude_section?: HomeSection[];
+
+  @ApiPropertyOptional({
     type: Boolean,
     description: "«Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений)",
   })

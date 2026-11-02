@@ -7,7 +7,7 @@ import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js"
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
-import type { PlaceSummary } from "./types.js";
+import { OWN_MAP_SECTIONS, type PlaceSummary } from "./types.js";
 
 /** Ползунок радиуса, м: от 500 м до 10 км шагом 500 м. */
 export const RADIUS_MIN = 500;
@@ -140,7 +140,10 @@ function NearbyPlaces({
   const { api } = useGuide();
   const label = useRadiusLabel();
   const [fresh, retry] = useAsync(
-    () => api.search({ point, radius, limit: NEARBY_LIMIT }).then((list) => ({ list, radius })),
+    () =>
+      api
+        .search({ point, radius, excludeSections: OWN_MAP_SECTIONS, limit: NEARBY_LIMIT })
+        .then((list) => ({ list, radius })),
     [api, point.lat, point.lng, radius],
   );
   // Смена радиуса: прежний список и карта остаются до ответа (карта не пересоздаётся, тайлы не грузятся заново).

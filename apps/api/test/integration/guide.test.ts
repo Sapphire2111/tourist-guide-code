@@ -284,6 +284,28 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     expect(keysOf(restaurants.items)).toEqual(["east"]);
   });
 
+  it("excludeSections: места раздела (и его подкатегорий) не попадают, остальные — да; по умолчанию — все", async () => {
+    const all = await service.search(base.regions.a, { origin: ORIGIN, radius: 5000, limit: 50, offset: 0 });
+    expect(keysOf(all.items)).toContain("east");
+    const noEat = await service.search(base.regions.a, {
+      origin: ORIGIN,
+      radius: 5000,
+      excludeSections: ["eat"],
+      limit: 50,
+      offset: 0,
+    });
+    for (const k of ["north", "west-rec", "west-ad", "east", "far"])
+      expect(keysOf(noEat.items)).not.toContain(k);
+    const noStay = await service.search(base.regions.a, {
+      origin: ORIGIN,
+      radius: 5000,
+      excludeSections: ["stay"],
+      limit: 50,
+      offset: 0,
+    });
+    expect(keysOf(noStay.items)).toContain("east");
+  });
+
   it("текст без координат: весь регион, без неопубликованных и чужого региона; рекомендованные выше", async () => {
     const res = await service.search(base.regions.a, { text: "тест-гід", limit: 50, offset: 0 });
     expect(keysOf(res.items)).toEqual(["west-rec", "east", "west-ad", "far", "north"]);

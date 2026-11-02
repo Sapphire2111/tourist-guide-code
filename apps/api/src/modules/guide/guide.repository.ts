@@ -10,6 +10,7 @@ import {
   type Database,
   type Db,
   type Geometry,
+  type HomeSection,
   type LocalizedText,
   type LonLat,
   type MediaAsset,
@@ -50,6 +51,8 @@ export type SearchQuery = {
   categoryId?: string;
   /** Текст без экранирования (экранирует репозиторий). */
   text?: string;
+  /** Не показывать места разделов главной (корень категории — с этим home_section): «Що поруч» и карты без «Де жити». */
+  excludeSections?: readonly HomeSection[];
   limit: number;
   offset: number;
 };
@@ -149,6 +152,19 @@ export class GuideRepository {
     if (categoryId)
       query = query.where((eb) =>
         eb.or([eb("places.category_id", "=", categoryId), eb("categories.parent_id", "=", categoryId)]),
+      );
+    const exclude = s.excludeSections ?? [];
+    if (exclude.length)
+      query = query.where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("categories as root")
+              .select("root.id")
+              .whereRef("root.id", "=", eb.fn.coalesce("categories.parent_id", "categories.id"))
+              .where("root.home_section", "in", [...exclude]),
+          ),
+        ),
       );
     const pattern = text === undefined ? undefined : likeContains(text);
     if (pattern !== undefined)

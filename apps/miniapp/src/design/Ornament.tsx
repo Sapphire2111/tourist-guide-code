@@ -132,6 +132,12 @@ export const ICONS = {
       <path d="M10 20v-5h4v5" />
     </Icon>
   ),
+  stay: (
+    <Icon>
+      <path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 00-3-3h-7v6" />
+      <circle cx="7" cy="11.5" r="2" />
+    </Icon>
+  ),
   eat: (
     <Icon>
       <path d="M7 3v8M5 3v5a2 2 0 004 0V3M7 11v10" />

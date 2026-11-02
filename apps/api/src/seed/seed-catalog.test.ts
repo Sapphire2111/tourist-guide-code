@@ -8,8 +8,10 @@ import { SEED_CATEGORIES, SEED_LOCALITIES, SEED_PLACES, SEED_TAGS } from "./seed
 const CODE = /^[a-z0-9]([a-z0-9_-]{0,62}[a-z0-9])?$/;
 
 describe("демо-каталог", () => {
-  it("корневые категории — ровно 8 разделов главной C02, у каждого раздела своя кнопка", () => {
-    expect(SEED_CATEGORIES.map((c) => c.home).sort()).toEqual([...HOME_SECTIONS].sort());
+  it("корневые категории — разделы главной C02, у каждого раздела своя кнопка (кроме «Про заклад» — карточка по QR)", () => {
+    expect(SEED_CATEGORIES.map((c) => c.home).sort()).toEqual(
+      HOME_SECTIONS.filter((s) => s !== "about").sort(),
+    );
   });
 
   it("коды уникальны и в формате is_catalog_code", () => {

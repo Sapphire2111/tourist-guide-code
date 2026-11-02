@@ -24,10 +24,13 @@ export type PlacesMapProps = {
 };
 
 /** Группа маркера: раздел главной категории места или «інше». */
-export type MarkerGroup = Extract<HomeSection, "eat" | "shop" | "relax" | "fun" | "transfer"> | "other";
+export type MarkerGroup =
+  | Extract<HomeSection, "stay" | "eat" | "shop" | "relax" | "fun" | "transfer">
+  | "other";
 
 /** Цвета групп (контраст ≥ 3:1 к светлой подложке карты — графический объект, WCAG 1.4.11). */
 export const MARKER_COLORS: Record<MarkerGroup, string> = {
+  stay: "#0e7490",
   eat: "#c2410c",
   shop: "#7c3aed",
   relax: "#1d4ed8",

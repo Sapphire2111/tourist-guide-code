@@ -33,6 +33,11 @@ export function HomeSections({ hasVenue }: { hasVenue: boolean }) {
             >
               <span className="kosiv-tile-icon">{ICONS[s]}</span>
               <span>{t(`miniapp.section.${s}` as MessageKey)}</span>
+              {s === "stay" && (
+                <small className="kosiv-tile-hint" data-testid="tile-hint-stay">
+                  {t("miniapp.section.stayHint")}
+                </small>
+              )}
             </Link>
           </li>
         ))}

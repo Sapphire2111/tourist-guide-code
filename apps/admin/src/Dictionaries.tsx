@@ -11,7 +11,7 @@ type Contact = ApiSchemas["AdminEmergencyContactDto"];
 
 const LOCALITY_KINDS = ["settlement", "zone", "landmark"] as const;
 const TAG_GROUPS = ["cuisine", "audience", "amenity", "season", "weather", "other"] as const;
-const HOME_SECTIONS = ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"] as const;
+const HOME_SECTIONS = ["about", "stay", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"] as const;
 export const CONTACT_KINDS = [
   "general",
   "police",

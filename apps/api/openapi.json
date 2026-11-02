@@ -5545,6 +5545,13 @@
             "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
           },
           {
+            "name": "exclude_section",
+            "required": false,
+            "in": "query",
+            "description": "Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели).",
+            "schema": { "type": "array", "items": { "$ref": "#/components/schemas/HomeSection" } }
+          },
+          {
             "name": "available_now",
             "required": false,
             "in": "query",
@@ -11917,7 +11924,7 @@
       },
       "HomeSection": {
         "type": "string",
-        "enum": ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"]
+        "enum": ["about", "stay", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"]
       },
       "CategoryDto": {
         "type": "object",

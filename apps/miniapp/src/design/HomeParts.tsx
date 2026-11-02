@@ -3,7 +3,7 @@
 import { Link, useT } from "@tg/ui";
 import { useEffect, useState } from "react";
 import { useGuide, type Async } from "../guide/context.js";
-import type { PlaceSummary } from "../guide/types.js";
+import { OWN_MAP_SECTIONS, type PlaceSummary } from "../guide/types.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { ICONS } from "./Ornament.js";
 import { useResort, useResortCaption } from "./ResortProvider.js";
@@ -57,10 +57,16 @@ export function ResortPlaces() {
     let alive = true;
     // Смена курорта: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
     setPlaces((p) => (p.status === "ready" ? p : { status: "loading" }));
-    api.search({ ...(area ? { point: area.center, radius: area.radius } : {}), limit: HOME_PLACES }).then(
-      (data) => alive && setPlaces({ status: "ready", data }),
-      (error: unknown) => alive && setPlaces({ status: "error", error }),
-    );
+    api
+      .search({
+        ...(area ? { point: area.center, radius: area.radius } : {}),
+        excludeSections: OWN_MAP_SECTIONS,
+        limit: HOME_PLACES,
+      })
+      .then(
+        (data) => alive && setPlaces({ status: "ready", data }),
+        (error: unknown) => alive && setPlaces({ status: "error", error }),
+      );
     return () => {
       alive = false;
     };
