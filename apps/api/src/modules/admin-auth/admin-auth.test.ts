@@ -262,6 +262,7 @@ describe("вход админа /auth/admin", () => {
     expect(mem.sessions.size).toBe(0);
   });
 
+  // 6 входов через scrypt — на нагруженной машине дольше 5 с по умолчанию.
   it("5 неудач с одного адреса — заперт только этот адрес на 15 мин; с другого адреса — вход", async () => {
     for (let i = 0; i < 5; i++) await login("admin@example.com", `wrong-${i}-password`).expect(401);
     const pair = [...creds.pairs.values()][0]!;
@@ -282,7 +283,7 @@ describe("вход админа /auth/admin", () => {
     pair.locked_until = new Date(Date.now() - 1000);
     await login("admin@example.com", PASSWORD).expect(201);
     expect(creds.pairs.size).toBe(0);
-  });
+  }, 20_000);
 
   it("глобальная блокировка учётки — после 50 неудач за час с разных адресов", async () => {
     for (let i = 0; i < LOGIN_MAX_FAILED_ATTEMPTS; i++)
