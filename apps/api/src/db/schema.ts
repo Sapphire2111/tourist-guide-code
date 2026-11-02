@@ -624,6 +624,9 @@ export type TagUpdate = Updateable<TagsTable>;
 
 export const PLACE_STATUSES = ["draft", "published", "suspended", "archived"] as const;
 export type PlaceStatus = (typeof PLACE_STATUSES)[number];
+/** Источник места (0016). */
+export const PLACE_SOURCES = ["manual", "google"] as const;
+export type PlaceSource = (typeof PLACE_SOURCES)[number];
 
 export interface PlacesTable {
   id: UuidPk;
@@ -642,6 +645,12 @@ export interface PlacesTable {
   verified_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   first_published_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   created_by: ColumnType<string | null, string | null | undefined, never>;
+  /** Источник (0016): manual — админка/seed, google — импорт places:import-google. */
+  source: ColumnType<PlaceSource, PlaceSource | undefined, PlaceSource>;
+  /** id места Google (0016); UNIQUE в регионе, только у source = google. */
+  google_place_id: Nullable<string>;
+  /** Последняя сверка с Google (0016). */
+  last_synced_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
