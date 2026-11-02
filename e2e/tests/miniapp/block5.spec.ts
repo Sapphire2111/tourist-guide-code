@@ -92,7 +92,7 @@ test.describe("QR отеля demoHotel01", () => {
     state.serviceRequests[0]!.status = "done"; // другой сотрудник уже закрыл
     await item.getByRole("button", { name: "Прийняти" }).click();
     await expect(page.getByTestId("staff-message")).toHaveText(
-      "Статус уже змінено іншим співробітником. Список оновлено.",
+      "Статус уже змінив інший співробітник. Список оновлено.",
     );
     await expect(item.getByTestId("request-status")).toHaveText("Виконана");
   });

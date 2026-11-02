@@ -188,7 +188,7 @@ test("партнерське місце, що ще не публікувалос
   await expect(page.getByRole("alert")).toHaveText("Заклад партнера публікується лише через модерацію.");
 });
 
-test("місце на модерації: немає «В архів» й «Опублікувати»", async ({ page }) => {
+test("місце на модерації: немає «До архіву» й «Опублікувати»", async ({ page }) => {
   const state = adminMockState.get(page)!;
   state.places.push({
     ...state.places[0]!,
@@ -198,6 +198,6 @@ test("місце на модерації: немає «В архів» й «Оп
   });
   await login(page, "/#/places/00000000-0000-4000-8000-000000000890");
   await expect(page.getByRole("button", { name: "Перевірити готовність" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "В архів" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "До архіву" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Опублікувати" })).toHaveCount(0);
 });

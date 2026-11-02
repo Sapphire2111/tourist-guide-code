@@ -98,7 +98,7 @@ describe("богатая картка місця", () => {
     await renderCard({ ...base, ...rich });
     expect(screen.getByTestId("place-type").textContent).toBe("Ресторан · Середні ціни");
     expect(screen.getByTestId("place-rating").textContent).toContain("4.8");
-    expect(screen.getByTestId("place-rating").textContent).toContain("792 оцінок у Google");
+    expect(screen.getByTestId("place-rating").textContent).toContain("Оцінок у Google: 792");
     const about = screen.getByTestId("place-about");
     expect(about.textContent).toContain("Ресторан у Яремчі з терасою");
     expect(screen.getByTestId("place-ai-label").textContent).toBe("Згенеровано ШІ");

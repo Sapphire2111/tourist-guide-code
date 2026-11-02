@@ -146,7 +146,7 @@ describe("Мій план: параметри поїздки", () => {
     expect(screen.getByText("Відстані — по прямій від: Hotel Sofia")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Змінити параметри" }));
     fireEvent.click(screen.getByRole("button", { name: "Менше: Днів" }));
-    expect(screen.getByText("Обрані місця на дні після 1-го буде прибрано з плану.")).toBeTruthy();
+    expect(screen.getByText("Місця, обрані для днів після 1-го, буде прибрано з плану.")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти параметри" })));
     expect(updatePlan).toHaveBeenCalledWith(PLAN, {
       trip: { adults: 2, children: 1, withCar: false, days: 1, startDate: "2026-11-10" },
@@ -168,7 +168,7 @@ describe("Мій план: варіанти на вибір", () => {
     expect(waterfall!.textContent).toContain("≈ 10 хв пішки");
     // Неизвестный вид — название категории из справочника.
     expect(within(kolyba!).getByTestId("option-kind").textContent).toBe("Ресторани");
-    expect(kolyba!.textContent).toContain("Потрібен транспорт: ≈ 15 хв автом");
+    expect(kolyba!.textContent).toContain("Потрібен транспорт: ≈ 15 хв на авто");
     expect(kolyba!.textContent).toContain("6,2 км");
     expect(within(screen.getByTestId("plan-slot-evening")).getByText(/немає відповідних місць/)).toBeTruthy();
     const rain = screen.getByTestId("plan-slot-rain");

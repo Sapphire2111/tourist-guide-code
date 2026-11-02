@@ -6,7 +6,7 @@ test("вход: неверный пароль — одно сообщение; �
   await page.getByLabel("Логін").fill("admin@example.com");
   await page.getByLabel("Пароль").fill("wrong-password");
   await page.getByRole("button", { name: "Увійти" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Невірний логін або пароль.");
+  await expect(page.getByRole("alert")).toHaveText("Неправильний логін або пароль.");
 
   await login(page);
   const nav = page.getByRole("navigation", { name: "Розділи" });
@@ -37,7 +37,7 @@ test("места: список → создание → публикация с 
   await expect(alert).toContainText("Місце не можна опублікувати");
   await expect(alert).toContainText("Немає опису українською.");
   await expect(alert).toContainText("Немає адреси українською.");
-  await expect(alert).toContainText("Не вказано точку на мапі");
+  await expect(alert).toContainText("Не вказано точку на карті");
 
   await form
     .getByRole("group", { name: "Опис" })
