@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   HttpCode,
   Inject,
   Param,
@@ -21,7 +20,7 @@ import {
   ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
-import { ApiError, ApiErrors, toLocalized } from "../../common/http/index.js";
+import { ApiError, ApiErrors, PublicCache, toLocalized } from "../../common/http/index.js";
 import { WithoutTenantContext } from "../../common/tenancy/index.js";
 import { currentTenant } from "../../db/index.js";
 import { auditFromRequest, type AuditableRequest } from "../audit/index.js";
@@ -152,7 +151,7 @@ export class PublicEmergencyContactsController {
 
   @Get()
   // Номера меняются редко; короткий кеш снимает нагрузку при частом открытии экрана.
-  @Header("Cache-Control", "public, max-age=300")
+  @PublicCache(300)
   @ApiOperation({
     operationId: "listEmergencyContacts",
     summary: "Экстренные контакты региона для туриста («Халепа?»), только активные, по порядку",

@@ -102,6 +102,8 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       res.end?.();
       return;
     }
+    // Ошибку не кешировать (в т. ч. на эндпоинтах с публичным кешем успешного ответа, PublicCache).
+    res.setHeader("Cache-Control", "no-store");
     const body: ErrorEnvelope = { error: { code, messageKey, correlationId } };
     if (details !== undefined) body.error.details = details;
     res.status(status).json(body);
