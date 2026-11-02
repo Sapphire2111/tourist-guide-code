@@ -59,8 +59,8 @@ export const HOST_SERVICES_MAX = 20;
 export const STAFF_TARGET_STATUSES = ["accepted", "in_progress", "done", "rejected"] as const;
 export type StaffTargetStatus = (typeof STAFF_TARGET_STATUSES)[number];
 
-/** Роли персонала заведения, которые назначает админ региона. */
-export const PLACE_STAFF_ROLES = ["ORG_STAFF", "ORG_OWNER"] as const;
+/** Роли персонала заведения, которые назначает админ региона (ORG_MANAGER — с блока 6, ADR-0021). */
+export const PLACE_STAFF_ROLES = ["ORG_STAFF", "ORG_MANAGER", "ORG_OWNER"] as const;
 export type PlaceStaffRole = (typeof PLACE_STAFF_ROLES)[number];
 
 /** Строка-число не больше 2^53 − 1 (Telegram user id помещается в JS number без потери точности). */

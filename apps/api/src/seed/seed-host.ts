@@ -12,7 +12,7 @@ import {
 } from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import {
-  placeParentLoader,
+  dbScopeParentLoaders,
   RoleAssignmentsRepository,
   ScopeHierarchy,
   scope,
@@ -381,7 +381,7 @@ export async function seedHost(db: Db, regions: Record<SeedRegionKey, string>): 
 export async function assignStaff(db: Db, hotel: string): Promise<boolean> {
   const service = new RoleAssignmentService(
     new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS),
-    new ScopeHierarchy({ PLACE: placeParentLoader(db) }),
+    new ScopeHierarchy(dbScopeParentLoaders(db)),
   );
   const userId = seedHotelStaffUserId();
   try {

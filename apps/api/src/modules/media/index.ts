@@ -1,5 +1,11 @@
 // Публичный интерфейс контекста media (T1-20): файлы и изображения, подписанные ссылки, ресайз.
-export { MediaAssetDto, MediaLinkDto } from "./media.dto.js";
+export {
+  MediaAltTextDto,
+  MediaAssetDto,
+  MediaLinkDto,
+  MediaUploadDto,
+  toMediaAssetDto,
+} from "./media.dto.js";
 export { MediaModule, type MediaModuleOptions } from "./media.module.js";
 export {
   InlineMediaJobs,

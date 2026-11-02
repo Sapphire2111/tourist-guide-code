@@ -11,6 +11,7 @@ import { CatalogModule } from "./modules/catalog/index.js";
 import { FeatureFlagsModule } from "./modules/feature-flags/index.js";
 import { GuideModule } from "./modules/guide/index.js";
 import { HostRequestsModule } from "./modules/host/index.js";
+import { PartnerModule } from "./modules/partner/index.js";
 import { PlannerModule } from "./modules/planner/index.js";
 import { ClientIpDiagnosticsModule, HealthModule } from "./modules/health/index.js";
 import { IdempotencyModule } from "./modules/idempotency/index.js";
@@ -107,6 +108,8 @@ export class AppModule {
         // Заявки гостиницы, «Про заклад», персонал и планировщик (блок 5, ADR-0020).
         HostRequestsModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN }),
         PlannerModule,
+        // Кабинет партнёра и модерация (блок 6, ADR-0021).
+        PartnerModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME }),
         // Фича-флаги (T1-22): без APP_ENV (генерация OpenAPI) — значения prod.
         FeatureFlagsModule.forRoot({ appEnv: env.APP_ENV }),
         // Файлы и изображения (T1-20, ADR-0013): без STORAGE_* (генерация OpenAPI) — local, ресайз inline.

@@ -99,6 +99,20 @@ export class HostRepository {
       .then((rows) => new Map(rows.map((r) => [r.id, r.name_i18n])));
   }
 
+  /** Места организаций (блок 6: сотрудник организации работает со всеми её местами), кроме архива. */
+  async placesOfOrganizations(
+    organizationIds: readonly string[],
+  ): Promise<{ id: string; organization_id: string }[]> {
+    if (organizationIds.length === 0) return [];
+    const rows = await this.q
+      .selectFrom("places")
+      .select(["id", "organization_id"])
+      .where("organization_id", "in", [...new Set(organizationIds)])
+      .where("status", "<>", "archived")
+      .execute();
+    return rows.flatMap((r) => (r.organization_id ? [{ id: r.id, organization_id: r.organization_id }] : []));
+  }
+
   // --- «Про заклад» ---
 
   findModule(placeId: string): Promise<HostModule | undefined> {
