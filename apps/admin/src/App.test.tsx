@@ -418,6 +418,6 @@ describe("QR и ошибки", () => {
     render(<App api={api} />);
     await flush();
     await flush();
-    expect(screen.getByRole("alert").textContent).toBe("Не налаштовано ім’я бота: друк QR недоступний.");
+    expect(screen.getByRole("alert").textContent).toBe("Не налаштовано ім'я бота: друк QR недоступний.");
   });
 });

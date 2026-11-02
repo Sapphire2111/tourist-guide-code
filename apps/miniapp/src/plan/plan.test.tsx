@@ -168,7 +168,7 @@ describe("Мій план: варіанти на вибір", () => {
     expect(waterfall!.textContent).toContain("≈ 10 хв пішки");
     // Неизвестный вид — название категории из справочника.
     expect(within(kolyba!).getByTestId("option-kind").textContent).toBe("Ресторани");
-    expect(kolyba!.textContent).toContain("Потрібен транспорт: ≈ 15 хв автом");
+    expect(kolyba!.textContent).toContain("Потрібен транспорт: ≈ 15 хв на авто");
     expect(kolyba!.textContent).toContain("6,2 км");
     expect(within(screen.getByTestId("plan-slot-evening")).getByText(/немає відповідних місць/)).toBeTruthy();
     const rain = screen.getByTestId("plan-slot-rain");
