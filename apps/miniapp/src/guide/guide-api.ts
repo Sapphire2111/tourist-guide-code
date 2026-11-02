@@ -25,9 +25,13 @@ export function photoOf(dto: PhotoDto | null): Photo | null {
   return { url: v.url, alt: dto.alt };
 }
 
-/** Путь на нашем api ("/places/…"); protocol-relative "//host/…" (и "/\host") — чужой хост, отсекается. */
+/**
+ * Путь на нашем api ("/places/…"); protocol-relative "//host/…", "/\host" и строки с управляющими символами
+ * (браузер вырезает \t и \n: "/\t/host" → "//host") — чужой хост, отсекаются.
+ */
 function sameOrigin(url: string): string | null {
-  return /^\/(?![/\\])/.test(url) ? url : null;
+  // eslint-disable-next-line no-control-regex
+  return /^\/(?![/\\])/.test(url) && !/[\x00-\x1f\x7f]/.test(url) ? url : null;
 }
 
 /** Обложка у нас (Google/Wikimedia) — с подписью автора; api без поля — null. */

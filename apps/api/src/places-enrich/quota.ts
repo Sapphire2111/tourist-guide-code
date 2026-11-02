@@ -13,14 +13,18 @@ export const GOOGLE_FREE_MONTHLY = 1000;
 
 /** Google сбрасывает бесплатный объём и суточные квоты по тихоокеанскому времени — сутки и месяц считаются в нём. */
 export const GOOGLE_QUOTA_TZ = "America/Los_Angeles";
-const pacificDate = new Intl.DateTimeFormat("en-CA", {
+const pacificDate = new Intl.DateTimeFormat("en-US", {
   timeZone: GOOGLE_QUOTA_TZ,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
 });
 /** Дата YYYY-MM-DD по America/Los_Angeles. */
-export const dayOf = (now: Date) => pacificDate.format(now);
+export const dayOf = (now: Date) => {
+  const parts = pacificDate.formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
 /** Строка месяца: первое число месяца (America/Los_Angeles), вид `<sku>_month`. */
 export const monthOf = (now: Date) => `${dayOf(now).slice(0, 7)}-01`;
 

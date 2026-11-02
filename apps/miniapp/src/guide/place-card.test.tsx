@@ -333,6 +333,8 @@ describe("обложка в списках", () => {
     expect(coverPhotoOf(cov("/places/p/cover?v=1") as never)?.url).toBe("/places/p/cover?v=1");
     expect(coverPhotoOf(cov("//evil.example/x.webp") as never)).toBeNull();
     expect(coverPhotoOf(cov("/\\evil.example/x.webp") as never)).toBeNull();
+    expect(coverPhotoOf(cov("/\t/evil.example/x") as never)).toBeNull();
+    expect(coverPhotoOf(cov("/places/p\n/cover") as never)).toBeNull();
   });
 
   it("подпись Google-обложки — «Дані: Google Maps»", () => {

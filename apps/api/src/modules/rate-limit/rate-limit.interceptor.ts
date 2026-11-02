@@ -10,7 +10,12 @@ import { Reflector } from "@nestjs/core";
 import { isIPv6 } from "node:net";
 import { from, switchMap, type Observable } from "rxjs";
 import { ApiError } from "../../common/http/index.js";
-import { RATE_LIMIT_RULE, RATE_LIMIT_SKIP, type RateLimitRule } from "./rate-limit.decorator.js";
+import {
+  RATE_LIMIT_RULE,
+  RATE_LIMIT_SKIP,
+  RATE_LIMIT_SKIP_IP,
+  type RateLimitRule,
+} from "./rate-limit.decorator.js";
 import {
   RATE_LIMIT_STORE,
   type RateLimitHit,
@@ -88,13 +93,19 @@ export class RateLimitInterceptor implements NestInterceptor {
     if (this.reflector.getAllAndOverride<boolean>(RATE_LIMIT_SKIP, targets)) return next.handle();
     const rule =
       this.reflector.getAllAndOverride<RateLimitRule>(RATE_LIMIT_RULE, targets) ?? this.options.perEndpoint;
+    const skipIp = Boolean(this.reflector.getAllAndOverride<boolean>(RATE_LIMIT_SKIP_IP, targets));
     const http = context.switchToHttp();
     return from(
-      this.check(http.getRequest<LimitedRequest>(), http.getResponse<LimitedResponse>(), rule),
+      this.check(http.getRequest<LimitedRequest>(), http.getResponse<LimitedResponse>(), rule, skipIp),
     ).pipe(switchMap(() => next.handle()));
   }
 
-  private async check(req: LimitedRequest, res: LimitedResponse, rule: RateLimitRule): Promise<void> {
+  private async check(
+    req: LimitedRequest,
+    res: LimitedResponse,
+    rule: RateLimitRule,
+    skipIp = false,
+  ): Promise<void> {
     const endpoint = `${req.method} ${req.route?.path ?? "?"}`;
     // С сессией — только пользователь × маршрут: туристы за одним Wi-Fi отеля/CGNAT делят IP, общий IP-лимит их бы
     // блокировал. Без сессии — общий лимит IP и IP × маршрут.
@@ -109,11 +120,12 @@ export class RateLimitInterceptor implements NestInterceptor {
       rules.push(this.options.perUser, rule);
     } else {
       const ip = clientIpKey(req.ip);
-      keys.push(
-        { key: `rl:ip:${ip}`, windowMs: this.options.perIp.windowSec * 1000 },
-        { key: `rl:ep:${endpoint}:ip:${ip}`, windowMs: rule.windowSec * 1000 },
-      );
-      rules.push(this.options.perIp, rule);
+      if (!skipIp) {
+        keys.push({ key: `rl:ip:${ip}`, windowMs: this.options.perIp.windowSec * 1000 });
+        rules.push(this.options.perIp);
+      }
+      keys.push({ key: `rl:ep:${endpoint}:ip:${ip}`, windowMs: rule.windowSec * 1000 });
+      rules.push(rule);
     }
     let hits: RateLimitHit[];
     try {

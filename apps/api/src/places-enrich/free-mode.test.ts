@@ -9,11 +9,11 @@ import { recordingDb } from "../../test/support/recording-db.js";
 import { usageDb } from "../../test/support/usage-db.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import type { GooglePlace, MappedPlace } from "../places-import/mapping.js";
-import { makeCover, runCovers, type Resize } from "./covers.js";
+import { makeCover, runCovers, WikimediaUnavailableError, type Resize } from "./covers.js";
 import { fromSearch } from "./details.js";
 import { DEFAULT_SKIP_DETAILS, enrich, prioritized } from "./enrich.js";
 import { dayOf, GoogleQuota, monthOf } from "./quota.js";
-import { writeEnrichment } from "./writer.js";
+import { withSavedGoogle, writeEnrichment } from "./writer.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "tg-free-"));
 const MONTH = "2026-11-01";
@@ -170,11 +170,10 @@ describe("бесплатный режим enrich", () => {
     expect(dec.stats).toMatchObject({ details: 3, detailsDeferred: 0 });
   });
 
-  it("без GOOGLE_MAPS_API_KEY фото не из кэша пропускаются с предупреждением — прогон не падает", async () => {
+  it("без GOOGLE_MAPS_API_KEY Details и фото не из кэша пропускаются с предупреждением — прогон не падает", async () => {
     const log = vi.fn();
-    const google = new GooglePlacesClient({ apiKey: undefined, cacheDir: await tmp(), maxRequests: 0 });
+    const google = new GooglePlacesClient({ apiKey: undefined, cacheDir: await tmp(), maxRequests: 10 });
     const r = await enrich([place("a"), place("b")], google, undefined, {
-      details: false,
       rawById: new Map([
         ["a", raw("a")],
         ["b", raw("b")],
@@ -183,8 +182,12 @@ describe("бесплатный режим enrich", () => {
     });
     expect(r.places.map((p) => p.google?.photos)).toEqual([[], []]);
     expect(r.places[0]!.googleFromImport).toBe(true);
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log.mock.calls[0]![0]).toContain("GOOGLE_MAPS_API_KEY");
+    expect(r.stats.detailsDeferred).toBe(2);
+    // По одному предупреждению: Details и фото.
+    expect(log.mock.calls.map((c) => String(c[0]))).toEqual([
+      expect.stringContaining("Place Details"),
+      expect.stringContaining("фото"),
+    ]);
   });
 
   it("--from-import-cache: запись не затирает богатые поля Google и не снимает текст ИИ", async () => {
@@ -226,6 +229,35 @@ describe("бесплатный режим enrich", () => {
     expect((written.reviews as unknown[]).length).toBe(1);
     // Текст ИИ не снимается.
     expect(queries.some((q) => q.sql.startsWith('update "place_enrichments"'))).toBe(false);
+  });
+
+  it("--from-import-cache --ai: факты по слитым данным; места с текстом ИИ — без пакета", async () => {
+    const rich = { ...fromSearch(raw("a"), null), amenities: ["beer" as const], priceLevel: 2 };
+    const { db } = recordingDb({}, (q) =>
+      q.sql.startsWith('select "places"."google_place_id"')
+        ? [
+            { google_place_id: "a", google: rich, ai_summary_uk: "Текст." },
+            { google_place_id: "b", google: rich, ai_summary_uk: null },
+          ]
+        : [],
+    );
+    const poor = fromSearch({ rating: 4.7, userRatingCount: 130 }, null);
+    const item = (id: string, over = {}) => ({
+      ...place(id),
+      address: null,
+      google: poor,
+      googleFromImport: true,
+      wiki: undefined,
+      ...over,
+    });
+    const r = await withSavedGoogle(db, "0190f5c2-7d3e-7000-8000-00000000000a", [
+      item("a"),
+      item("b"),
+      item("c", { googleFromImport: false }),
+    ]);
+    expect([...r.withAi]).toEqual(["a"]);
+    expect(r.places[1]!.google).toMatchObject({ rating: 4.7, amenities: ["beer"], priceLevel: 2 });
+    expect(r.places[2]!.google).toBe(poor);
   });
 
   it("приоритет: рестораны/отели/природа и т. п. первыми, внутри — по числу оценок Google", () => {
@@ -338,13 +370,14 @@ describe("обложки", () => {
     expect(JSON.stringify(coverRows)).toContain("Олена");
   });
 
-  it("Wikimedia не скачалась — Google-обложка; Google нет — ошибка", async () => {
+  it("Wikimedia: постоянная ошибка (404) — Google-обложка; 429/5xx/сеть — отложить, Google не тратить", async () => {
+    let wikiStatus = 404;
     const fetchImpl = vi.fn((url: string) =>
       Promise.resolve(
         url.includes("/media?")
           ? json({ photoUri: "https://lh3.googleusercontent.com/x" })
           : url.includes("wikimedia")
-            ? new Response("", { status: 503 })
+            ? new Response("", { status: wikiStatus })
             : new Response(Buffer.from("img"), { status: 200 }),
       ),
     ) as unknown as typeof fetch;
@@ -374,8 +407,27 @@ describe("обложки", () => {
     const c = await makeCover({ google: g, wiki }, { google, fetch: fetchImpl, resize });
     expect(c?.source).toBe("google");
     await expect(makeCover({ google: null, wiki }, { google, fetch: fetchImpl, resize })).rejects.toThrow(
-      /Wikimedia: HTTP 503/,
+      /Wikimedia: HTTP 404/,
     );
+    for (const status of [429, 503]) {
+      wikiStatus = status;
+      const calls = vi.mocked(fetchImpl).mock.calls.length;
+      await expect(
+        makeCover({ google: g, wiki }, { google, fetch: fetchImpl, resize }),
+      ).rejects.toBeInstanceOf(WikimediaUnavailableError);
+      // Только запрос к Wikimedia — к Google нет.
+      expect(vi.mocked(fetchImpl).mock.calls.length).toBe(calls + 1);
+    }
+    const stats = await runCovers([{ ...place("w"), address: null, google: g, wiki }], {
+      google,
+      db: recordingDb({}).db,
+      regionId: "0190f5c2-7d3e-7000-8000-00000000000a",
+      existing: new Set(),
+      write: true,
+      fetch: fetchImpl,
+      resize,
+    });
+    expect(stats).toMatchObject({ deferred: 1, failed: 0, written: 0 });
   });
 
   it("без записи (план/dry-run) — только подсчёт, без запросов", async () => {

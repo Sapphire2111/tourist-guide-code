@@ -28,7 +28,7 @@ import { WithoutTenantContext } from "../../common/tenancy/index.js";
 import type { LonLat } from "../../db/index.js";
 import { RequireAuth } from "../auth/index.js";
 import { EmergencyContactListDto, toEmergencyContactDto } from "../emergency-contacts/index.js";
-import { RateLimit } from "../rate-limit/index.js";
+import { RateLimit, SkipIpRateLimit } from "../rate-limit/index.js";
 import type { RbacRequest } from "../rbac/index.js";
 import {
   FavoriteDto,
@@ -173,6 +173,8 @@ export class GuidePlacesController {
 
   @Get(":id/cover")
   @RateLimit(COVER_RATE_LIMIT)
+  // <img> грузится без Bearer: лента обложек не должна съедать общий лимит IP (туристы за одним Wi-Fi).
+  @SkipIpRateLimit()
   @ApiOperation({
     operationId: "getGuidePlaceCover",
     summary: "Обложка места (WebP ~400 px, хранится у нас): списки и карточка",

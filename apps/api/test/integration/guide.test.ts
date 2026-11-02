@@ -500,8 +500,8 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
         client.query(
           `INSERT INTO place_cover_photos (region_id, place_id, bytes, mime, width, height, author_attributions,
              source, photo_name, fetched_at)
-           VALUES ($1, $2, '\x00', 'image/webp', 1, 1, '[]', 'google', 'x', now())`,
-          [base.regions.a, placeId("north")],
+           VALUES ($1, $2, $3, 'image/webp', 1, 1, '[]', 'google', 'x', now())`,
+          [base.regions.a, placeId("north"), Buffer.from([0])],
         ),
       ).rejects.toThrow(/row-level security/);
     } finally {

@@ -36,12 +36,26 @@ export const sharpResize: Resize = async (input) => {
   return { data, width: info.width, height: info.height };
 };
 
+/** Wikimedia временно недоступна (429/5xx/сеть): обложка откладывается до следующего прогона, Google не тратится. */
+export class WikimediaUnavailableError extends Error {
+  override readonly name = "WikimediaUnavailableError";
+}
+
 async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)) throw new Error("Не файл Wikimedia");
-  const res = await fetchImpl(url, {
-    headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT },
-    signal: AbortSignal.timeout(20_000),
-  });
+  let res: Response;
+  try {
+    res = await fetchImpl(url, {
+      headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    throw new WikimediaUnavailableError(`Wikimedia: ${err instanceof Error ? err.name : "сеть"}`);
+  }
+  if (res.status === 429 || res.status >= 500) {
+    await res.body?.cancel();
+    throw new WikimediaUnavailableError(`Wikimedia: HTTP ${res.status}`);
+  }
   if (!res.ok) throw new Error(`Wikimedia: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length > MAX_SOURCE_BYTES) throw new Error("Файл Wikimedia слишком большой");
@@ -53,8 +67,9 @@ export const hasCoverSource = (p: Pick<EnrichedPlace, "google" | "wiki">) =>
   Boolean(p.wiki?.image || p.google?.photos.length);
 
 /**
- * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); не скачалась/не обработалась — Google
- * (если есть фото), иначе ошибка Wikimedia. Предел Google — RequestLimitError (вызывающий прекращает Google-обложки
+ * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); постоянная ошибка (4xx, слишком большой
+ * файл, не обработался) — Google (если есть фото), иначе ошибка Wikimedia. Временная (429/5xx/сеть) —
+ * WikimediaUnavailableError: обложка откладывается, Google не тратится. Предел Google — RequestLimitError (вызывающий прекращает Google-обложки
  * до следующего месяца). googleStopped — Google-обложки уже остановлены пределом: только Wikimedia.
  */
 export async function makeCover(
@@ -79,7 +94,7 @@ export async function makeCover(
         photoName: img.url,
       };
     } catch (err) {
-      if (!photo || deps.googleStopped) throw err;
+      if (err instanceof WikimediaUnavailableError || !photo || deps.googleStopped) throw err;
     }
   }
   if (!photo || deps.googleStopped) return null;
@@ -152,7 +167,7 @@ export type CoverStats = {
   wikimedia: number;
   google: number;
   failed: number;
-  /** Google-обложки отложены пределом (следующий месяц). */
+  /** Отложены: Google — пределом (следующий месяц), Wikimedia — временно недоступна (следующий прогон). */
   deferred: number;
 };
 
@@ -204,6 +219,11 @@ export async function runCovers(
         else stats.google++;
       }
     } catch (err) {
+      if (err instanceof WikimediaUnavailableError) {
+        deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message} — отложена до следующего прогона`);
+        stats.deferred++;
+        continue;
+      }
       if (err instanceof RequestLimitError) {
         deps.log?.(err.message);
         googleStopped = true;

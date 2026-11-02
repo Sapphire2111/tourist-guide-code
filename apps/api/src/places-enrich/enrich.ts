@@ -119,6 +119,7 @@ export async function enrich(
 ): Promise<{ places: EnrichedPlace[]; stats: EnrichStats }> {
   const log = opts.log ?? (() => {});
   let warnedNoKey = false;
+  let warnedNoKeyDetails = false;
   const stats: EnrichStats = {
     places: 0,
     details: 0,
@@ -171,11 +172,18 @@ export async function enrich(
           stats.details++;
         }
       } catch (err) {
-        if (!(err instanceof RequestLimitError)) throw err;
-        if (!stats.googleLimitReached) log(err.message);
-        stats.googleLimitReached = true;
-        if (err instanceof MonthlyLimitError) stats.monthlyLimitReached = true;
-        stats.detailsDeferred++;
+        if (err instanceof NoApiKeyError) {
+          // Без ключа Details не из кэша не получить — пропуск (данные из кэша импорта, если есть), прогон идёт дальше.
+          if (!warnedNoKeyDetails) log("Нет GOOGLE_MAPS_API_KEY: Place Details не из кэша пропущены.");
+          warnedNoKeyDetails = true;
+          stats.detailsDeferred++;
+        } else if (!(err instanceof RequestLimitError)) throw err;
+        else {
+          if (!stats.googleLimitReached) log(err.message);
+          stats.googleLimitReached = true;
+          if (err instanceof MonthlyLimitError) stats.monthlyLimitReached = true;
+          stats.detailsDeferred++;
+        }
       }
     }
     const fromImport = !g ? opts.rawById?.get(p.googlePlaceId) : undefined;

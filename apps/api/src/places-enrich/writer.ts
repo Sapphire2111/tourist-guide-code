@@ -39,6 +39,37 @@ export function mergeGoogle(
   return out as PlaceEnrichmentGoogle;
 }
 
+/**
+ * Места из кэша импорта (googleFromImport) — со слитыми сохранёнными данными Google (факты и хэш ИИ по полным
+ * данным); withAi — google_place_id таких мест, у которых текст ИИ уже есть (в очередь ИИ не ставятся).
+ */
+export async function withSavedGoogle<T extends EnrichedPlace>(
+  db: Db,
+  regionId: string,
+  places: readonly T[],
+): Promise<{ places: T[]; withAi: Set<string> }> {
+  const ids = places.filter((p) => p.googleFromImport && p.google).map((p) => p.googlePlaceId);
+  const withAi = new Set<string>();
+  if (!ids.length) return { places: [...places], withAi };
+  const rows = await withTenant(db, regionContext(regionId), (trx) =>
+    trx
+      .selectFrom("place_enrichments")
+      .innerJoin("places", "places.id", "place_enrichments.place_id")
+      .select(["places.google_place_id", "place_enrichments.google", "place_enrichments.ai_summary_uk"])
+      .where("places.google_place_id", "in", ids)
+      .execute(),
+  );
+  const saved = new Map(rows.map((r) => [r.google_place_id!, r]));
+  for (const r of rows) if (r.ai_summary_uk) withAi.add(r.google_place_id!);
+  return {
+    places: places.map((p) => {
+      const s = p.googleFromImport && p.google ? saved.get(p.googlePlaceId) : undefined;
+      return s ? { ...p, google: mergeGoogle(s.google, p.google!) } : p;
+    }),
+    withAi,
+  };
+}
+
 export async function writeEnrichment(
   db: Db,
   regionId: string,
