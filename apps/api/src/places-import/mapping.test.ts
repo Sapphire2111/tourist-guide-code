@@ -222,13 +222,14 @@ describe("география", () => {
     );
   });
 
-  it("пять пунктов пилота с радиусом", () => {
+  it("пункты пилота с радиусом (Ворохта — с 03.11.2026)", () => {
     expect(IMPORT_LOCALITIES.map((l) => l.code)).toEqual([
       "yaremche",
       "tatariv",
       "mykulychyn",
       "polianytsia",
       "yablunytsia",
+      "vorokhta",
     ]);
   });
 });

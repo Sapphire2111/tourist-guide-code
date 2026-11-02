@@ -51,6 +51,15 @@ export const IMPORT_LOCALITIES: readonly ImportLocality[] = [
     at: { lon: 24.47, lat: 48.302 },
     radiusM: 3500,
   },
+  {
+    // Ворохта (Надвірнянський р-н): до Татарова ~7,3 км, до Яблуниці ~7,2 км — круги почти не пересекаются,
+    // общие точки достаются ближайшему пункту (nearestLocality).
+    code: "vorokhta",
+    name: { uk: "Ворохта", en: "Vorokhta" },
+    inUk: "у Ворохті",
+    at: { lon: 24.566, lat: 48.285 },
+    radiusM: 3500,
+  },
 ];
 
 /**
