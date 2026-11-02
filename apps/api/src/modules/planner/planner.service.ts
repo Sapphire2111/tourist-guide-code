@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ApiError, toLocalized } from "../../common/http/index.js";
 import {
   currentDb,
+  currentTenant,
   InjectDb,
   regionContext,
   withTenant,
@@ -133,6 +134,8 @@ export class PlannerService {
     return this.inRegion(input.regionId, async () => {
       const s = await this.repo.findScenario(input.scenarioId);
       if (s?.status !== "published") throw new ApiError("NOT_FOUND");
+      // Гонка двух одновременных POST может дать USER_PLANS_MAX + 1 план — принято: лимит защищает от разрастания,
+      // а не инвариант данных (блокировку строки пользователя ради этого не берём).
       if ((await this.repo.countPlans(userId)) >= USER_PLANS_MAX)
         throw new ApiError("CONFLICT", {
           messageKey: "errors.plan.limitReached",
@@ -195,6 +198,7 @@ export class PlannerService {
     input: ScenarioInputDto,
     meta: AuditMeta,
   ): Promise<AdminScenarioDetailDto> {
+    if (requireRegion() !== regionId) throw new ApiError("FORBIDDEN");
     await this.checkPlaces(input);
     const s = await this.repo
       .createScenario(scenarioWrite(input), meta.actor.type === "user" ? meta.actor.userId : null)
@@ -207,6 +211,7 @@ export class PlannerService {
 
   /** Полная замена (с пунктами); версия растёт — сохранённые планы видят «сценарий обновлён». */
   async adminUpdate(id: string, input: ScenarioInputDto, meta: AuditMeta): Promise<AdminScenarioDetailDto> {
+    requireRegion();
     const before = await this.repo.findScenario(id);
     if (!before) throw new ApiError("NOT_FOUND");
     await this.checkPlaces(input);
@@ -224,6 +229,7 @@ export class PlannerService {
   }
 
   async adminSetStatus(id: string, status: ScenarioStatus, meta: AuditMeta): Promise<AdminScenarioDetailDto> {
+    requireRegion();
     const before = await this.repo.findScenario(id);
     if (!before) throw new ApiError("NOT_FOUND");
     if (before.status === status) return this.adminDetail(before);
@@ -390,6 +396,17 @@ export class PlannerService {
     if (region?.status !== "active") throw new ApiError("NOT_FOUND");
     return withTenant(this.db, regionContext(region.id), () => fn(region));
   }
+}
+
+/**
+ * Изменения сценариев — только в контексте региона (SUPERADMIN без выбранного региона — 403): места пунктов
+ * проверяются в регионе запроса, запись — в его регион.
+ */
+function requireRegion(): string {
+  const tenant = currentTenant();
+  if (tenant?.kind !== "region")
+    throw new ApiError("FORBIDDEN", { details: { reason: "region_context_required" } });
+  return tenant.regionId;
 }
 
 function fromScenarioItem(i: ScenarioItem): ViewItem & { replacedPlaceId: null } {

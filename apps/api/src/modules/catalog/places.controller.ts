@@ -83,7 +83,7 @@ export class PlacesController {
     );
     const last = items.at(-1);
     return {
-      items: items.map((p) => toPlaceDto(p)),
+      items: await this.dtos(items),
       nextCursor: hasMore && last ? encodeCursor(last.id) : null,
     };
   }
@@ -94,7 +94,7 @@ export class PlacesController {
   @ApiOkResponse({ type: PlaceDto })
   @ApiErrors(...ITEM_ERRORS)
   async get(@Param("id", uuid) id: string): Promise<PlaceDto> {
-    return toPlaceDto(await call(() => this.catalog.getPlace(id)));
+    return this.dto(await call(() => this.catalog.getPlace(id)));
   }
 
   @Post()
@@ -104,7 +104,7 @@ export class PlacesController {
   @ApiErrors(...WRITE_ERRORS)
   async create(@Body() body: CreatePlaceDto, @Req() req: AuditableRequest): Promise<PlaceDto> {
     const input = { ...placeInput(body), categoryId: body.categoryId, name: { ...body.name } };
-    return toPlaceDto(await call(() => this.catalog.createPlace(auditMeta(req), input)));
+    return this.dto(await call(() => this.catalog.createPlace(auditMeta(req), input)));
   }
 
   @Patch(":id")
@@ -117,7 +117,7 @@ export class PlacesController {
     @Body() body: UpdatePlaceDto,
     @Req() req: AuditableRequest,
   ): Promise<PlaceDto> {
-    return toPlaceDto(await call(() => this.catalog.updatePlace(auditMeta(req), id, placeInput(body))));
+    return this.dto(await call(() => this.catalog.updatePlace(auditMeta(req), id, placeInput(body))));
   }
 
   @Delete(":id")
@@ -185,9 +185,19 @@ export class PlacesController {
     body: TransitionDto,
     req: AuditableRequest,
   ): Promise<PlaceDto> {
-    return toPlaceDto(
+    return this.dto(
       await call(() => this.catalog.transition(auditMeta(req), id, action, body.reason?.trim() || null)),
     );
+  }
+
+  /** PlaceDto с признаком hostCapable (блок 5). */
+  private async dtos(places: readonly Parameters<typeof toPlaceDto>[0][]): Promise<PlaceDto[]> {
+    const hosts = await this.catalog.hostCapablePlaceIds(places);
+    return places.map((p) => toPlaceDto(p, hosts.has(p.id)));
+  }
+
+  private async dto(place: Parameters<typeof toPlaceDto>[0]): Promise<PlaceDto> {
+    return (await this.dtos([place]))[0]!;
   }
 
   // --- график ---
@@ -293,7 +303,7 @@ export class PlacesController {
     @Body() body: BadgeReasonDto,
     @Req() req: AuditableRequest,
   ): Promise<PlaceDto> {
-    return toPlaceDto(await call(() => this.catalog.setBadge(auditMeta(req), id, true, body.reason.trim())));
+    return this.dto(await call(() => this.catalog.setBadge(auditMeta(req), id, true, body.reason.trim())));
   }
 
   @Delete(":id/badge")
@@ -310,7 +320,7 @@ export class PlacesController {
     @Body() body: BadgeReasonDto,
     @Req() req: AuditableRequest,
   ): Promise<PlaceDto> {
-    return toPlaceDto(await call(() => this.catalog.setBadge(auditMeta(req), id, false, body.reason.trim())));
+    return this.dto(await call(() => this.catalog.setBadge(auditMeta(req), id, false, body.reason.trim())));
   }
 
   @Get(":id/badge/history")

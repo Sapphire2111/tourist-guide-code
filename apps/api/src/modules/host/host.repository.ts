@@ -20,6 +20,8 @@ import {
 // (автор заявки, места сотрудника) ставит сервис.
 
 export const MY_REQUESTS_MAX = 100;
+/** Контекст входа по QR старше — не даёт пароль Wi-Fi и номер комнаты (гость уже выехал). */
+export const ENTRY_CONTEXT_MAX_AGE_DAYS = 30;
 export const STAFF_REQUESTS_MAX = 200;
 
 export type PlaceRef = { id: string; region_id: string; name_i18n: LocalizedText; status: string };
@@ -123,20 +125,30 @@ export class HostRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Номер комнаты QR, по которому открыт контекст входа (только если контекст — этого места). */
-  async entryRoom(
+  /**
+   * Контекст входа по QR этого отеля: точка типа hotel этого места, активна, контекст не старше
+   * ENTRY_CONTEXT_MAX_AGE_DAYS. Иначе undefined (пароль Wi-Fi и номер комнаты не отдаются). user_id — для сверки с
+   * пользователем запроса (сервис).
+   */
+  entryRoom(
     entryContextId: string,
     placeId: string,
-  ): Promise<{ matches: boolean; room_label: string | null } | undefined> {
-    const row = await this.q
+  ): Promise<{ room_label: string | null; user_id: string | null } | undefined> {
+    return this.q
       .selectFrom("entry_contexts")
-      .leftJoin("qr_points", "qr_points.id", "entry_contexts.qr_point_id")
-      .select(["entry_contexts.place_id", "qr_points.room_label", "qr_points.active"])
+      .innerJoin("qr_points", "qr_points.id", "entry_contexts.qr_point_id")
+      .select(["qr_points.room_label", "entry_contexts.user_id"])
       .where("entry_contexts.id", "=", entryContextId)
+      .where("entry_contexts.place_id", "=", placeId)
+      .where("qr_points.place_id", "=", placeId)
+      .where("qr_points.type", "=", "hotel")
+      .where("qr_points.active", "=", true)
+      .where(
+        "entry_contexts.created_at",
+        ">",
+        sql<Date>`now() - make_interval(days => ${ENTRY_CONTEXT_MAX_AGE_DAYS}::int)`,
+      )
       .executeTakeFirst();
-    if (!row) return undefined;
-    const matches = row.place_id === placeId;
-    return { matches, room_label: matches && row.active !== false ? (row.room_label ?? null) : null };
   }
 
   // --- заявки ---
@@ -151,12 +163,14 @@ export class HostRepository {
     return q.executeTakeFirst();
   }
 
-  /** Открытая заявка той же услуги в том же месте от этого гостя или с этой комнаты (S-03: «Така заявка вже є»). */
+  /**
+   * Открытая заявка той же услуги в том же месте от этого гостя (S-03: «Така заявка вже є») — тот же ключ, что у
+   * уникального индекса service_requests_active_key: чужой (или ошибочно введённый) номер комнаты не блокирует.
+   */
   findActiveDuplicate(
     placeId: string,
     serviceCode: string,
     userId: string,
-    roomLabel: string | null,
   ): Promise<ServiceRequest | undefined> {
     return this.q
       .selectFrom("service_requests")
@@ -164,11 +178,7 @@ export class HostRepository {
       .where("place_id", "=", placeId)
       .where("service_code", "=", serviceCode)
       .where("status", "in", ["new", "accepted", "in_progress"])
-      .where((eb) =>
-        roomLabel === null
-          ? eb("user_id", "=", userId)
-          : eb.or([eb("user_id", "=", userId), eb("room_label", "=", roomLabel)]),
-      )
+      .where("user_id", "=", userId)
       .orderBy("created_at", "desc")
       .executeTakeFirst();
   }

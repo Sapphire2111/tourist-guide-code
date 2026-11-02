@@ -874,7 +874,7 @@ export interface paths {
     };
     /**
      * «Про заклад» (C03): правила, Wi-Fi, контакты, часы приёма, услуги-заявки
-     * @description Без аутентификации. 404 — места нет в регионе, оно не опубликовано или модуль не настроен/выключен. С entryContextId входа по QR этого места — пароль Wi-Fi и номер комнаты QR номера (D-49).
+     * @description Без аутентификации. 404 — места нет в регионе, оно не опубликовано или модуль не настроен/выключен. С entryContextId входа по QR этого отеля (точка hotel этого места, активна, контекст не старше 30 дней; с сессией — только свой контекст) — пароль Wi-Fi и номер комнаты QR номера (D-49).
      */
     get: operations["getHostModule"];
     put?: never;
@@ -1490,6 +1490,8 @@ export interface components {
       messagingConsents: components["schemas"]["MessagingConsentDto"][];
       /** @description Открытые запросы экспорта/удаления */
       privacyRequests: components["schemas"]["PrivacyRequestDto"][];
+      /** @description Есть роль персонала заведения (ORG_STAFF/ORG_OWNER) — показать режим «Персонал» (D-50, блок 5) */
+      staffMode: boolean;
     };
     /** @enum {string} */
     Locale: "uk" | "en";
@@ -2033,6 +2035,8 @@ export interface components {
       verifiedAt: string | null;
       /** @description id тегов */
       tagIds: string[];
+      /** @description Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5) */
+      hostCapable: boolean;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */

@@ -60,7 +60,14 @@ const regionAdmin: Grant = {
   validUntil: null,
 };
 
-async function start(opts: { authenticated?: boolean; grants?: Grant[]; flagOn?: boolean } = {}) {
+async function start(
+  opts: {
+    authenticated?: boolean;
+    grants?: Grant[];
+    flagOn?: boolean;
+    isEnabled?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   const service = fakeService();
   const { db } = recordingDb({});
   const moduleRef = await Test.createTestingModule({
@@ -78,7 +85,7 @@ async function start(opts: { authenticated?: boolean; grants?: Grant[]; flagOn?:
     .overrideProvider(RoleAssignmentsRepository)
     .useValue({ activeGrantsOf: () => Promise.resolve(opts.grants ?? []) })
     .overrideProvider(FeatureFlagsService)
-    .useValue({ isEnabled: () => Promise.resolve(opts.flagOn ?? true) })
+    .useValue({ isEnabled: opts.isEnabled ?? (() => Promise.resolve(opts.flagOn ?? true)) })
     .overrideProvider(HostService)
     .useValue(service)
     .compile();
@@ -99,7 +106,7 @@ describe("GET /host/{placeId}/module", () => {
     await http().get(`/host/nope/module?regionId=${REGION}`).expect(400);
     await http().get(`/host/${PLACE}/module?regionId=${REGION}&entryContextId=x`).expect(400);
     await http().get(`/host/${PLACE}/module?regionId=${REGION}&entryContextId=${REQ}`).expect(200);
-    expect(service.guestModule).toHaveBeenCalledWith(REGION, PLACE, REQ);
+    expect(service.guestModule).toHaveBeenCalledWith(REGION, PLACE, REQ, undefined);
   });
 
   it("флаг module.host_requests выключен — 404", async () => {
@@ -237,5 +244,44 @@ describe("админка отеля", () => {
       .expect(400);
     await http().delete(`/admin/places/${PLACE}/staff/${REQ}`).expect(204);
     expect(service.adminRevokeStaff).toHaveBeenCalledWith(PLACE, REQ, expect.anything());
+  });
+});
+
+describe("правки по проверке", () => {
+  const OTHER_REGION = "0190f5c2-7d3e-7000-8000-00000000000b";
+
+  it("флаг туристского эндпоинта — по региону запроса, а не по региону назначения сотрудника", async () => {
+    const isEnabled = vi.fn(() => Promise.resolve(true));
+    const staffInOtherRegion: Grant = {
+      id: "0190f5c2-7d3e-7000-8000-0000000000a8",
+      role: "ORG_STAFF",
+      scopeType: "PLACE",
+      scopeId: PLACE,
+      regionId: OTHER_REGION,
+      validUntil: null,
+    };
+    const { http } = await start({ authenticated: true, grants: [staffInOtherRegion], isEnabled });
+    await http().get(`/host/${PLACE}/module?regionId=${REGION}`).expect(200);
+    expect(isEnabled).toHaveBeenCalledWith("module.host_requests", REGION);
+    await http().get(`/me/service-requests?regionId=${REGION}`).expect(200);
+    expect(isEnabled).toHaveBeenLastCalledWith("module.host_requests", REGION);
+  });
+
+  it("GET /host/… с сессией передаёт пользователя (сверка контекста входа)", async () => {
+    const { http, service } = await start({ authenticated: true });
+    await http().get(`/host/${PLACE}/module?regionId=${REGION}&entryContextId=${REQ}`).expect(200);
+    expect(service.guestModule).toHaveBeenCalledWith(REGION, PLACE, REQ, USER);
+  });
+
+  it("telegramUserId больше 2^53 − 1 — 400", async () => {
+    const { http } = await start({ authenticated: true, grants: [regionAdmin] });
+    await http()
+      .post(`/admin/places/${PLACE}/staff`)
+      .send({ telegramUserId: "9007199254740993" })
+      .expect(400);
+    await http()
+      .post(`/admin/places/${PLACE}/staff`)
+      .send({ telegramUserId: "9007199254740991" })
+      .expect(201);
   });
 });

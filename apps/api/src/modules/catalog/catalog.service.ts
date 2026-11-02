@@ -155,6 +155,9 @@ const CONSTRAINT_ERRORS: Readonly<Record<string, CatalogErrorReason>> = {
   "23503:places_category_fk:delete": "in_use",
   "23503:places_locality_fk:delete": "in_use",
   "23503:categories_parent_fk:delete": "in_use",
+  // Место в пункте сценария (0015, блок 5) или с заявками гостей — не удаляется (RESTRICT).
+  "23503:scenario_items_place_fk:delete": "in_use",
+  "23503:service_requests_place_fk:delete": "in_use",
   "23514:categories_depth": "parent_not_root",
 };
 
@@ -467,6 +470,19 @@ export class CatalogService {
     return { items: rows.slice(0, filter.limit), hasMore: rows.length > filter.limit };
   }
 
+  /**
+   * Места, которым нужен «Про заклад» (блок 5): категория проживания или привязанный QR отеля. Для признака
+   * hostCapable в админке.
+   */
+  async hostCapablePlaceIds(places: readonly { id: string; category_id: string }[]): Promise<Set<string>> {
+    if (places.length === 0) return new Set();
+    const [stay, qr] = await Promise.all([
+      this.repo.stayCategoryIds(),
+      this.repo.hotelQrPlaceIds(places.map((p) => p.id)),
+    ]);
+    return new Set(places.filter((p) => stay.has(p.category_id) || qr.has(p.id)).map((p) => p.id));
+  }
+
   async getPlace(id: string): Promise<PlaceDetails> {
     requireRegionContext();
     const place = (await this.repo.findPlace(id)) ?? notFound();
@@ -557,7 +573,7 @@ export class CatalogService {
     const before = (await this.repo.lockPlace(id)) ?? notFound();
     if (before.first_published_at !== null || (await this.repo.hasBadgeHistory(id)))
       throw new CatalogError("not_deletable");
-    await this.repo.deletePlace(id);
+    await guarded(() => this.repo.deletePlace(id), "delete");
     await this.record(meta, {
       action: "place.delete",
       entityType: "place",

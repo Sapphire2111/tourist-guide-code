@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Locale } from "@tg/i18n";
 import { ApiError } from "../../common/http/index.js";
 import {
@@ -16,6 +16,7 @@ import {
   type Consent,
 } from "../../db/index.js";
 import { AuditService } from "../audit/index.js";
+import { roleHasPermission, RoleAssignmentsRepository } from "../rbac/index.js";
 import type { RequestMeta } from "../auth/index.js";
 import { TelegramAccountsRepository, UsersRepository } from "../users/index.js";
 import { toMeDto, type MeDto } from "./profile.dto.js";
@@ -48,6 +49,8 @@ export class ProfileService {
     @Inject(MessagingConsentsRepository) private readonly messaging: MessagingConsentsRepository,
     @Inject(PrivacyRequestsRepository) private readonly privacy: PrivacyRequestsRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    // Необязательно: признак режима персонала в /me (блок 5); тесты сервиса без RBAC — false.
+    @Optional() @Inject(RoleAssignmentsRepository) private readonly roles?: RoleAssignmentsRepository,
   ) {}
 
   async me(userId: string): Promise<MeDto> {
@@ -59,7 +62,11 @@ export class ProfileService {
       this.messaging.list(userId),
       this.privacy.listOpen(userId),
     ]);
-    return toMeDto({ user, telegram, consents, messaging, privacy });
+    const grants = this.roles ? await this.roles.activeGrantsOf(userId) : [];
+    const staffMode = grants.some(
+      (g) => g.scopeType === "PLACE" && roleHasPermission(g.role, "service_request.read"),
+    );
+    return toMeDto({ user, telegram, consents, messaging, privacy, staffMode });
   }
 
   async update(

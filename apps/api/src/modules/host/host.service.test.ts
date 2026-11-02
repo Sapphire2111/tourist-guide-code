@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
 import type { HostModule, ServiceRequest } from "../../db/index.js";
 import type { ApiError } from "../../common/http/index.js";
+import { regionContext, withTenant } from "../../db/index.js";
 import type { AuditService } from "../audit/index.js";
 import type { Grant, RbacService } from "../rbac/index.js";
 import type { RegionsRepository } from "../regions/index.js";
@@ -133,7 +134,7 @@ const create = { regionId: REGION, placeId: PLACE, serviceCode: "towels" };
 describe("HostService.createRequest", () => {
   it("комната QR номера (контекст этого места) важнее введённой гостем; уведомление персоналу", async () => {
     const { service, repo, notifications } = setup({
-      entryRoom: vi.fn(() => Promise.resolve({ matches: true, room_label: "204" })),
+      entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: GUEST })),
     });
     await service.createRequest(GUEST, { ...create, entryContextId: ENTRY, roomLabel: "999" });
     expect(repo.insertRequest).toHaveBeenCalledWith(
@@ -155,7 +156,7 @@ describe("HostService.createRequest", () => {
 
   it("общий QR: комната гостя с пометкой guest; контекст другого места не используется", async () => {
     const { service, repo } = setup({
-      entryRoom: vi.fn(() => Promise.resolve({ matches: false, room_label: null })),
+      entryRoom: vi.fn(() => Promise.resolve(undefined)),
     });
     await service.createRequest(GUEST, { ...create, entryContextId: ENTRY, roomLabel: " 305 " });
     expect(repo.insertRequest).toHaveBeenCalledWith(
@@ -285,9 +286,66 @@ describe("HostService.guestModule", () => {
     expect(plain.services.map((s) => s.code)).toEqual(["towels"]);
     expect(plain.acceptingNow).toBe(true);
     const viaQr = await setup({
-      entryRoom: vi.fn(() => Promise.resolve({ matches: true, room_label: "204" })),
+      entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: GUEST })),
     }).service.guestModule(REGION, PLACE, ENTRY);
     expect(viaQr.wifi?.password).toBe("secret");
     expect(viaQr.room).toEqual({ label: "204", source: "qr" });
+  });
+});
+
+describe("правки по проверке", () => {
+  it("контекст входа другого пользователя не даёт пароль Wi-Fi и номер комнаты; анонимный контекст — даёт", async () => {
+    const foreign = setup({
+      entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: STAFF })),
+    });
+    const other = await foreign.service.guestModule(REGION, PLACE, ENTRY, GUEST);
+    expect(other.wifi?.password).toBeNull();
+    expect(other.room).toBeNull();
+    await foreign.service.createRequest(GUEST, { ...create, entryContextId: ENTRY, roomLabel: "305" });
+    expect(foreign.repo.insertRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ room_label: "305", room_source: "guest", entry_context_id: null }),
+    );
+    const anon = setup({ entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: null })) });
+    expect((await anon.service.guestModule(REGION, PLACE, ENTRY, GUEST)).room).toEqual({
+      label: "204",
+      source: "qr",
+    });
+  });
+
+  it("дубль — по ключу уникального индекса (гость, место, услуга), без номера комнаты", async () => {
+    const { service, repo } = setup();
+    await service.createRequest(GUEST, { ...create, roomLabel: "204" });
+    expect(repo.findActiveDuplicate).toHaveBeenCalledWith(PLACE, "towels", GUEST);
+  });
+
+  it("гонка: 409 отдаёт текущий статус заявки", async () => {
+    const findRequest = vi
+      .fn()
+      .mockResolvedValueOnce(request())
+      .mockResolvedValueOnce(request({ status: "accepted" }));
+    const { service } = setup({ findRequest, updateStatus: vi.fn(() => Promise.resolve(undefined)) }, [
+      staffGrant(PLACE),
+    ]);
+    const err = (await service
+      .staffUpdate(STAFF, REQ, { status: "accepted" }, meta)
+      .catch((e: unknown) => e)) as ApiError;
+    expect(err.code).toBe("CONFLICT");
+    expect(err.details).toMatchObject({ currentStatus: "accepted", to: "accepted" });
+  });
+
+  it("админка: без контекста региона (SUPERADMIN) — 403; часы с одинаковыми началом и концом — 422", async () => {
+    const { service } = setup();
+    const put = { sections: [], services: [], hours: { from: "08:00", to: "08:00" } };
+    await expect(service.adminPutModule(PLACE, put, meta)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: { reason: "region_context_required" },
+    });
+    await expect(service.adminAssignStaff(PLACE, { telegramUserId: "1" }, meta)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const { db } = recordingDb({});
+    await expect(
+      withTenant(db, regionContext(REGION), () => service.adminPutModule(PLACE, put, meta)),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE", details: { reason: "hours_empty" } });
   });
 });

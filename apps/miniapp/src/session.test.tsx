@@ -61,6 +61,7 @@ function meWith(accepted: boolean, extra: Partial<Me> = {}): Me {
       : [],
     messagingConsents: [],
     privacyRequests: [],
+    staffMode: false,
     ...extra,
   };
 }

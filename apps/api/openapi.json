@@ -5948,7 +5948,7 @@
     },
     "/host/{placeId}/module": {
       "get": {
-        "description": "Без аутентификации. 404 — места нет в регионе, оно не опубликовано или модуль не настроен/выключен. С entryContextId входа по QR этого места — пароль Wi-Fi и номер комнаты QR номера (D-49).",
+        "description": "Без аутентификации. 404 — места нет в регионе, оно не опубликовано или модуль не настроен/выключен. С entryContextId входа по QR этого отеля (точка hotel этого места, активна, контекст не старше 30 дней; с сессией — только свой контекст) — пароль Wi-Fi и номер комнаты QR номера (D-49).",
         "operationId": "getHostModule",
         "parameters": [
           {
@@ -8670,6 +8670,10 @@
             "description": "Открытые запросы экспорта/удаления",
             "type": "array",
             "items": { "$ref": "#/components/schemas/PrivacyRequestDto" }
+          },
+          "staffMode": {
+            "type": "boolean",
+            "description": "Есть роль персонала заведения (ORG_STAFF/ORG_OWNER) — показать режим «Персонал» (D-50, блок 5)"
           }
         },
         "required": [
@@ -8680,7 +8684,8 @@
           "telegram",
           "consents",
           "messagingConsents",
-          "privacyRequests"
+          "privacyRequests",
+          "staffMode"
         ]
       },
       "Locale": { "type": "string", "enum": ["uk", "en"] },
@@ -9529,6 +9534,10 @@
             "description": "Дата перевірки інформації"
           },
           "tagIds": { "description": "id тегов", "type": "array", "items": { "type": "string" } },
+          "hostCapable": {
+            "type": "boolean",
+            "description": "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -9547,6 +9556,7 @@
           "recommended",
           "verifiedAt",
           "tagIds",
+          "hostCapable",
           "createdAt",
           "updatedAt"
         ]
