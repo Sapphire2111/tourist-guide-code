@@ -12,14 +12,19 @@ import { createWorkerDb, type WorkerDb } from "../db/worker-db.js";
 import { deadLetterPurger } from "./dead-letter.js";
 import { createHandlers } from "./handlers.js";
 import { startQueueRuntime, type QueueRuntime, type QueueRuntimeOptions } from "./runtime.js";
-import { AUDIT_PII_PURGE_SCHEDULE, DEAD_LETTER_PURGE_SCHEDULE, SCHEDULES } from "./schedules.js";
+import {
+  AUDIT_PII_PURGE_SCHEDULE,
+  DEAD_LETTER_PURGE_SCHEDULE,
+  SCHEDULES,
+  SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
+} from "./schedules.js";
 
 export const WORKER_ENV = Symbol("WORKER_ENV");
 export const QUEUE_RUNTIME_FACTORY = Symbol("QUEUE_RUNTIME_FACTORY");
 export const WORKER_DB_FACTORY = Symbol("WORKER_DB_FACTORY");
 export type QueueRuntimeFactory = (options: QueueRuntimeOptions) => Promise<QueueRuntime>;
 /** Доступ к БД по строке подключения (очистка ПДн аудита, запись событий); тесты подменяют. */
-export type WorkerDbFactory = (databaseUrl: string) => WorkerDb;
+export type WorkerDbFactory = (databaseUrl: string, serviceRequestRetentionDays?: number) => WorkerDb;
 
 /**
  * Запускает воркеры при старте приложения и закрывает их при остановке (SIGTERM → app.close()).
@@ -50,7 +55,9 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
   async onApplicationBootstrap(): Promise<void> {
     // Задачи с БД (очистка ПДн аудита, запись событий) — только при DATABASE_URL; без него расписание очистки
     // не ставится, а задачи analytics.record падают без ретраев в dead-letter.
-    const db = this.env.DATABASE_URL ? this.dbFactory(this.env.DATABASE_URL) : undefined;
+    const db = this.env.DATABASE_URL
+      ? this.dbFactory(this.env.DATABASE_URL, this.env.SERVICE_REQUEST_RETENTION_DAYS)
+      : undefined;
     if (!db)
       this.logger.warn(
         "DATABASE_URL не задан: очистка ПДн аудита не запускается, события аналитики не пишутся",
@@ -61,6 +68,7 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
         redisUrl: this.env.REDIS_URL,
         handlers: createHandlers({
           auditPii: db?.purger,
+          serviceRequests: db?.serviceRequests,
           analytics: db?.analytics,
           // Очередь dead-letter открывает рантайм — геттер читает её на момент задачи.
           deadLetter: deadLetterPurger(() => this.runtime?.deadLetter),
@@ -69,7 +77,11 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
             ? { assets: db.media, storage: createStorage(this.env, "http://worker.invalid").driver }
             : undefined,
         }),
-        schedules: [...SCHEDULES, DEAD_LETTER_PURGE_SCHEDULE, ...(db ? [AUDIT_PII_PURGE_SCHEDULE] : [])],
+        schedules: [
+          ...SCHEDULES,
+          DEAD_LETTER_PURGE_SCHEDULE,
+          ...(db ? [AUDIT_PII_PURGE_SCHEDULE, SERVICE_REQUESTS_ANONYMIZE_SCHEDULE] : []),
+        ],
         logger: this.logger,
         errorTracker: this.errorTracker,
         metricsIntervalMs: this.env.QUEUE_METRICS_INTERVAL_MS,

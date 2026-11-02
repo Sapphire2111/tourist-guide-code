@@ -408,6 +408,8 @@ export interface QrPointsTable {
   venue_phone: ColumnType<string | null, string | null | undefined, string | null>;
   venue_website: ColumnType<string | null, string | null | undefined, string | null>;
   venue_telegram: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Номер комнаты QR номера (0015, D-49): контекст без ПДн, только у hotel. */
+  room_label: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -733,6 +735,187 @@ export interface FavoritesTable {
 export type Favorite = Selectable<FavoritesTable>;
 export type NewFavorite = Insertable<FavoritesTable>;
 
+// --- Заявки гостиницы и планировщик (tenant; миграция 0015, блок 5, ADR-0020) ---
+
+/** Раздел «Про заклад» (правила, контакты, сніданок…): форма проверяется api (DTO модуля host). */
+export type HostSectionRecord = {
+  kind: string;
+  title: LocalizedText;
+  content: LocalizedText;
+  sortOrder: number;
+};
+/** Услуга-заявка отеля с SLA (D-55). */
+export type HostServiceRecord = {
+  code: string;
+  title: LocalizedText;
+  description: LocalizedText | null;
+  slaMinutes: number;
+  enabled: boolean;
+  sortOrder: number;
+};
+/** jsonb-массив: pg сериализует JS-массив как массив PostgreSQL, поэтому запись — JSON.stringify. */
+type JsonbArray<T> = ColumnType<T[], string | undefined, string>;
+
+export interface HostModulesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  wifi_ssid: Nullable<string>;
+  wifi_password: Nullable<string>;
+  reception_phone: Nullable<string>;
+  hours_from: Nullable<LocalTime>;
+  hours_to: Nullable<LocalTime>;
+  sections: JsonbArray<HostSectionRecord>;
+  services: JsonbArray<HostServiceRecord>;
+  updated_by: Nullable<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type HostModule = Selectable<HostModulesTable>;
+
+export const SERVICE_REQUEST_STATUSES = [
+  "new",
+  "accepted",
+  "in_progress",
+  "done",
+  "rejected",
+  "cancelled_by_guest",
+] as const;
+export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
+export const ROOM_SOURCES = ["qr", "guest"] as const;
+export type RoomSource = (typeof ROOM_SOURCES)[number];
+
+export interface ServiceRequestsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  user_id: ColumnType<string | null, string, never>;
+  entry_context_id: ColumnType<string | null, string | null | undefined, never>;
+  service_code: ColumnType<string, string, never>;
+  service_title_i18n: ColumnType<LocalizedText, LocalizedText, never>;
+  room_label: ColumnType<string | null, string | null | undefined, never>;
+  room_source: ColumnType<RoomSource | null, RoomSource | null | undefined, never>;
+  comment: ColumnType<string | null, string | null | undefined, never>;
+  status: ColumnType<ServiceRequestStatus, ServiceRequestStatus | undefined, ServiceRequestStatus>;
+  status_reason: Nullable<string>;
+  outside_hours: ColumnType<boolean, boolean | undefined, never>;
+  process_from: ColumnType<Date | null, Date | null | undefined, never>;
+  sla_minutes: ColumnType<number | null, number | null | undefined, never>;
+  sla_due_at: ColumnType<Date | null, Date | null | undefined, never>;
+  assigned_to: Nullable<string>;
+  accepted_at: ColumnType<Date | null, never, Date | null>;
+  started_at: ColumnType<Date | null, never, Date | null>;
+  closed_at: ColumnType<Date | null, never, Date | null>;
+  anonymized_at: ColumnType<Date | null, never, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type ServiceRequest = Selectable<ServiceRequestsTable>;
+
+export const SERVICE_REQUEST_ACTORS = ["guest", "staff", "system"] as const;
+export type ServiceRequestActor = (typeof SERVICE_REQUEST_ACTORS)[number];
+
+/** Только дописывается (у app — SELECT, INSERT). */
+export interface ServiceRequestEventsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  service_request_id: ColumnType<string, string, never>;
+  from_status: ColumnType<ServiceRequestStatus | null, ServiceRequestStatus | null, never>;
+  to_status: ColumnType<ServiceRequestStatus, ServiceRequestStatus, never>;
+  actor_type: ColumnType<ServiceRequestActor, ServiceRequestActor, never>;
+  actor_user_id: ColumnType<string | null, string | null | undefined, never>;
+  reason: ColumnType<string | null, string | null | undefined, never>;
+  created_at: InsertedAt;
+}
+export type ServiceRequestEvent = Selectable<ServiceRequestEventsTable>;
+
+export const NOTIFICATION_STATUSES = ["pending", "sent", "failed", "skipped"] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export interface NotificationsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  recipient_user_id: ColumnType<string, string, never>;
+  channel: ColumnType<"telegram_bot", "telegram_bot" | undefined, never>;
+  template: ColumnType<string, string, never>;
+  entity_type: ColumnType<string, string, never>;
+  entity_id: ColumnType<string, string, never>;
+  body: ColumnType<string, string, never>;
+  status: ColumnType<NotificationStatus, NotificationStatus | undefined, NotificationStatus>;
+  attempts: ColumnType<number, number | undefined, number>;
+  last_error: Nullable<string>;
+  sent_at: Nullable<Date>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Notification = Selectable<NotificationsTable>;
+
+export const SCENARIO_STATUSES = ["draft", "published", "archived"] as const;
+export type ScenarioStatus = (typeof SCENARIO_STATUSES)[number];
+
+export interface ScenariosTable {
+  id: UuidPk;
+  region_id: RegionId;
+  code: string;
+  title_i18n: Jsonb<LocalizedText>;
+  description_i18n: Nullable<LocalizedText>;
+  days: ColumnType<number, number | undefined, number>;
+  tags: ColumnType<string[], string[] | undefined, string[]>;
+  status: ColumnType<ScenarioStatus, ScenarioStatus | undefined, ScenarioStatus>;
+  version: ColumnType<number, number | undefined, number>;
+  is_sponsored: ColumnType<boolean, boolean | undefined, boolean>;
+  ad_label: Nullable<PromotionAdLabel>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Scenario = Selectable<ScenariosTable>;
+
+export interface ScenarioItemsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  scenario_id: ColumnType<string, string, never>;
+  day_no: number;
+  position: number;
+  place_id: string;
+  time_hint: Nullable<LocalTime>;
+  duration_min: Nullable<number>;
+  note_i18n: Nullable<LocalizedText>;
+  alternatives: ColumnType<string[], string[] | undefined, string[]>;
+  created_at: CreatedAt;
+}
+export type ScenarioItem = Selectable<ScenarioItemsTable>;
+
+/** Пункт плана пользователя (копия пункта сценария с заменой). */
+export type UserPlanItemRecord = {
+  id: string;
+  dayNo: number;
+  position: number;
+  placeId: string;
+  timeHint: string | null;
+  durationMin: number | null;
+  note: LocalizedText | null;
+  alternatives: string[];
+  /** Исходное место пункта сценария, если пункт заменён. */
+  replacedPlaceId: string | null;
+};
+
+export interface UserPlansTable {
+  id: UuidPk;
+  region_id: RegionId;
+  user_id: ColumnType<string, string, never>;
+  scenario_id: ColumnType<string | null, string | null | undefined, never>;
+  scenario_version: ColumnType<number | null, number | null | undefined, never>;
+  title_i18n: Jsonb<LocalizedText>;
+  start_date: Nullable<string>;
+  items: JsonbArray<UserPlanItemRecord>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type UserPlan = Selectable<UserPlansTable>;
+
 export interface Database {
   app_meta: AppMetaTable;
   feature_flags: FeatureFlagsTable;
@@ -771,4 +954,12 @@ export interface Database {
   place_badge_events: PlaceBadgeEventsTable;
   // Публичный каталог (0014, ADR-0019).
   favorites: FavoritesTable;
+  // Заявки гостиницы и планировщик (0015, ADR-0020).
+  host_modules: HostModulesTable;
+  service_requests: ServiceRequestsTable;
+  service_request_events: ServiceRequestEventsTable;
+  notifications: NotificationsTable;
+  scenarios: ScenariosTable;
+  scenario_items: ScenarioItemsTable;
+  user_plans: UserPlansTable;
 }

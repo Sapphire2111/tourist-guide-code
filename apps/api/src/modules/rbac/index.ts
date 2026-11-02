@@ -30,6 +30,7 @@ export {
   type ScopeParentLoaders,
   type ScopeRef,
 } from "./scope.js";
+export { placeParentLoader } from "./scope-loaders.js";
 export {
   platformScope,
   scopeFromBody,

@@ -48,7 +48,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
     expect([...enabled].sort()).toEqual([...tenantTableNames()].sort());
   });
 
-  it("глобальные: regions, users, idempotency_keys, sessions, app_meta, Telegram и профиль; tenant-optional: журналы, назначения, risk_flags, qr_scan_events, attribution_touches; tenant: media_assets, qr_points, entry_contexts, emergency_contacts, promotions, каталог (0012), favorites (0014); глобальные admin_credentials, admin_login_failures", () => {
+  it("глобальные: regions, users, idempotency_keys, sessions, app_meta, Telegram и профиль; tenant-optional: журналы, назначения, risk_flags, qr_scan_events, attribution_touches; tenant: media_assets, qr_points, entry_contexts, emergency_contacts, promotions, каталог (0012), favorites (0014), блок 5 (0015); глобальные admin_credentials, admin_login_failures", () => {
     expect([...tenantTableNames()].sort()).toEqual([
       "analytics_events",
       "attribution_touches",
@@ -58,8 +58,10 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "emergency_contacts",
       "entry_contexts",
       "favorites",
+      "host_modules",
       "localities",
       "media_assets",
+      "notifications",
       "place_badge_events",
       "place_media",
       "place_schedule_exceptions",
@@ -71,7 +73,12 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "qr_scan_events",
       "risk_flags",
       "role_assignments",
+      "scenario_items",
+      "scenarios",
+      "service_request_events",
+      "service_requests",
       "tags",
+      "user_plans",
     ]);
     expect(
       Object.keys(TABLE_TENANCY)

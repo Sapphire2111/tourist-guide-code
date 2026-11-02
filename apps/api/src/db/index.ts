@@ -151,6 +151,29 @@ export {
 } from "./schema.js";
 // Публичный каталог (0014, ADR-0019).
 export { type Favorite, type NewFavorite } from "./schema.js";
+// Заявки гостиницы и планировщик (0015, ADR-0020).
+export {
+  NOTIFICATION_STATUSES,
+  ROOM_SOURCES,
+  SCENARIO_STATUSES,
+  SERVICE_REQUEST_ACTORS,
+  SERVICE_REQUEST_STATUSES,
+  type HostModule,
+  type HostSectionRecord,
+  type HostServiceRecord,
+  type Notification,
+  type NotificationStatus,
+  type RoomSource,
+  type Scenario,
+  type ScenarioItem,
+  type ScenarioStatus,
+  type ServiceRequest,
+  type ServiceRequestActor,
+  type ServiceRequestEvent,
+  type ServiceRequestStatus,
+  type UserPlan,
+  type UserPlanItemRecord,
+} from "./schema.js";
 export { setLocalLockTimeout } from "./lock-timeout.js";
 // Каталог (0012, ADR-0017).
 export {

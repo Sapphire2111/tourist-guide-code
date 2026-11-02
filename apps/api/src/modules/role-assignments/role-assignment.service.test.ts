@@ -162,7 +162,7 @@ describe("RoleAssignmentService.assign", () => {
   it("отказы: неизвестная роль, недопустимая область, объект не найден, дубль — без вставки и аудита", async () => {
     const cases: [Parameters<RoleAssignmentService["assign"]>[1], string, boolean][] = [
       [
-        { userId: USER, role: "ORG_OWNER", scope: PLATFORM_SCOPE, actor: { type: "system" } },
+        { userId: USER, role: "AMBASSADOR", scope: PLATFORM_SCOPE, actor: { type: "system" } },
         "unknown_role",
         false,
       ],
@@ -362,6 +362,9 @@ describe("кого может назначить актор (roles-and-data §1.
   it("canAssignRole: REGION_ADMIN — MODERATOR и AMBASSADOR; SUPERADMIN и REGION_ADMIN — только SUPERADMIN", () => {
     expect(canAssignRole("REGION_ADMIN", "MODERATOR")).toBe(true);
     expect(canAssignRole("REGION_ADMIN", "AMBASSADOR")).toBe(true);
+    // Персонал заведения (блок 5, ADR-0020).
+    expect(canAssignRole("REGION_ADMIN", "ORG_STAFF")).toBe(true);
+    expect(canAssignRole("REGION_ADMIN", "ORG_OWNER")).toBe(true);
     for (const target of ["REGION_ADMIN", "SUPERADMIN", "TECH_AUDITOR"])
       expect(canAssignRole("REGION_ADMIN", target), target).toBe(false);
     for (const target of ["REGION_ADMIN", "SUPERADMIN", "MODERATOR"])

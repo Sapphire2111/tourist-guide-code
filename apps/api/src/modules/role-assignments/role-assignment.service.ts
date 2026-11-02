@@ -153,8 +153,16 @@ const PLATFORM_ASSIGNED_ROLES: ReadonlySet<string> = new Set([
   "REGION_ADMIN",
 ]);
 const PLATFORM_ASSIGNERS: ReadonlySet<string> = new Set(["SUPERADMIN", "TECH_SUPERUSER"]);
-/** Кого назначает REGION_ADMIN в своём регионе (AMBASSADOR — блок 11, пока не в реестре). */
-const REGION_ADMIN_ASSIGNS: ReadonlySet<string> = new Set(["MODERATOR", "AMBASSADOR"]);
+/**
+ * Кого назначает REGION_ADMIN в своём регионе (AMBASSADOR — блок 11, пока не в реестре): модератора, персонал
+ * заведения ORG_STAFF/ORG_OWNER (блок 5 — назначение админом до кабинета партнёра блока 6, ADR-0020).
+ */
+const REGION_ADMIN_ASSIGNS: ReadonlySet<string> = new Set([
+  "MODERATOR",
+  "AMBASSADOR",
+  "ORG_STAFF",
+  "ORG_OWNER",
+]);
 
 /**
  * Может ли актор с ролью actorRole назначить роль target. undefined — назначение актора не найдено: отказ

@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ApiError } from "../../common/http/index.js";
+import { isWithoutTenantContext } from "../../common/tenancy/index.js";
 import { RequestAccess } from "../rbac/index.js";
 import type { FeatureFlagKey } from "./catalog.js";
 import { FeatureFlagsService } from "./feature-flags.service.js";
@@ -52,7 +53,8 @@ type Requirement = { readonly key: FeatureFlagKey; readonly region?: FeatureRegi
 
 /**
  * Включён ли флаг для запроса. Регион: tenant-контекст региона запроса (назначения принципала, RBAC) → резолвер
- * региона эндпоинта (`RequireFeatureOptions.region`) → нет (значение уровня окружения; региональное
+ * региона эндпоинта (`RequireFeatureOptions.region`) → нет; у эндпоинтов @WithoutTenantContext (турист) резолвер —
+ * первым (значение уровня окружения; региональное
  * переопределение тогда не действует). Выбранный в сессии регион без назначения — 403, как в RequestAccess.
  * Регион туриста из QR-контекста (блок 2) подключается резолвером.
  */
@@ -61,6 +63,7 @@ export class FeatureAccess {
   constructor(
     @Inject(FeatureFlagsService) private readonly flags: FeatureFlagsService,
     @Inject(RequestAccess) private readonly access: RequestAccess,
+    @Inject(Reflector) private readonly reflector: Reflector,
   ) {}
 
   async isEnabled(
@@ -75,12 +78,20 @@ export class FeatureAccess {
     context: ExecutionContext,
     resolver?: FeatureRegionResolver,
   ): Promise<string | null> {
+    const request = context.switchToHttp().getRequest<FeatureRegionResolveArgs["request"]>();
+    const resolved = async () => {
+      const region = resolver ? await resolver({ request }) : undefined;
+      return typeof region === "string" && UUID.test(region) ? region.toLowerCase() : null;
+    };
+    // Эндпоинт без tenant-контекста (турист: регион — из запроса) — регион запроса, а не регион назначений
+    // принципала: сотрудник отеля региона A, открывший гид региона B, получает флаг региона B (блок 5, ADR-0020).
+    if (resolver && isWithoutTenantContext(this.reflector, context)) {
+      const region = await resolved();
+      if (region) return region;
+    }
     const tenant = await this.access.tenant(context);
     if (tenant?.kind === "region") return tenant.regionId;
-    if (!resolver) return null;
-    const request = context.switchToHttp().getRequest<FeatureRegionResolveArgs["request"]>();
-    const region = await resolver({ request });
-    return typeof region === "string" && UUID.test(region) ? region.toLowerCase() : null;
+    return resolved();
   }
 }
 
