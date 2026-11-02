@@ -212,6 +212,7 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
       title: meLabel,
       alt: meLabel,
       keyboard: false,
+      interactive: false,
       zIndexOffset: 1000,
     }).addTo(layer);
     const node = marker.getElement();

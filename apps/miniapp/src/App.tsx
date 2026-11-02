@@ -137,7 +137,7 @@ function venueOf(session?: Session) {
   return c?.status === "ok" && c.entryType === "hotel" ? c.venue : null;
 }
 
-/** Одна строка о регионе: «Ви в Прикарпатті.» (местный падеж по коду региона) или «Ви в регіоні: …». */
+/** Одна строка о регионе: «Ви на Прикарпатті.» (место с предлогом по коду региона) или «Ви в регіоні: …». */
 function regionLine(
   context: Session["context"],
   t: (key: string, params?: Record<string, string | number>) => string,
@@ -153,7 +153,7 @@ function regionLine(
 }
 
 /**
- * Приветствие и контекст входа в одну строку: «Вітаємо, {name}! Ви в Прикарпатті.» При входе по QR заведения —
+ * Приветствие и контекст входа в одну строку: «Вітаємо, {name}! Ви на Прикарпатті.» При входе по QR заведения —
  * приветствие и «Ви відкрили гід: <заклад>» (регион не нужен).
  */
 function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "session" | "retryContext">) {

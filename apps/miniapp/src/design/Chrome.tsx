@@ -1,6 +1,7 @@
 // Оболочка «Сучасна Косівщина»: заставка старта, кнопка меню (настройки и профиль) и переключатель сезона.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useT } from "@tg/ui";
+import { interceptBack } from "../telegram.js";
 import { ICONS, VaseIcon } from "./Ornament.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
@@ -78,6 +79,10 @@ export function AppTop({ path, profile }: { path: string; profile: boolean }) {
   useEffect(() => {
     if (!open) return;
     sheet.current?.querySelector<HTMLElement>("button, a[href]")?.focus();
+    // Фон не прокручивается, «Назад» Telegram закрывает лист (как просмотр фото).
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const releaseBack = interceptBack(close);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         close();
@@ -98,7 +103,11 @@ export function AppTop({ path, profile }: { path: string; profile: boolean }) {
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      releaseBack();
+    };
   }, [open, close]);
   return (
     <div className="kosiv-top" data-testid="app-top">

@@ -6,7 +6,7 @@ import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
 import { HOME_PLACES, ResortPlaces, SeasonTags } from "./HomeParts.js";
 import { ResortProvider, useResort } from "./ResortProvider.js";
@@ -227,7 +227,7 @@ describe("курорты", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(menu);
     expect(menu.getAttribute("aria-expanded")).toBe("true");
-    const dialog = screen.getByRole("dialog", { name: "Налаштування" });
+    const dialog = screen.getByRole("dialog", { name: "Меню" });
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
     // Фокус внутри листа; Escape закрывает и возвращает фокус на кнопку.
@@ -258,6 +258,22 @@ describe("курорты", () => {
       </SeasonProvider>,
     );
     expect(screen.queryByTestId("app-settings")).toBeNull();
+  });
+
+  it("лист меню: фон не прокручивается, «Назад» Telegram закрывает лист", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile />
+      </SeasonProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(document.body.style.overflow).toBe("hidden");
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(consumeBack()).toBe(false);
   });
 
   it("Tab в листе не выходит за его пределы", () => {

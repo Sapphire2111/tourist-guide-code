@@ -12,7 +12,6 @@ const calls = vi.hoisted(() => ({
   markers: 0,
   me: 0,
   meCircles: 0,
-  layers: 0,
 }));
 
 vi.mock("leaflet", () => {
@@ -33,11 +32,9 @@ vi.mock("leaflet", () => {
     },
     control: { zoom: () => chain() },
     tileLayer: () => chain(),
-    // Первый слой — маркеры мест (его очистки считаем), второй — «Ви тут».
     layerGroup: () => {
       const o = chain();
-      if (++calls.layers % 2 === 1) o.clearLayers = () => calls.clear++;
-      else o.clearLayers = () => undefined;
+      o.clearLayers = () => calls.clear++;
       return o;
     },
     circleMarker: () => {
@@ -103,7 +100,8 @@ describe("PlacesMap", () => {
     );
     expect(calls.map).toBe(1);
     expect(calls.remove).toBe(0);
-    expect(calls.clear).toBe(2);
+    // Слой мест перестроен дважды: центр + 1 место, затем центр + 2 места.
+    expect(calls.markers).toBe(5);
     expect(calls.fit).toBe(2);
     // Легенда без справочника: группа «Інше».
     expect(view.getByTestId("map-legend").textContent).toContain("Інше");
@@ -112,7 +110,7 @@ describe("PlacesMap", () => {
   });
 
   it("позиция устройства: значок и круг точности: только слой «Ви тут», карта не пересоздаётся", async () => {
-    Object.assign(calls, { map: 0, remove: 0, clear: 0, fit: 0, markers: 0, me: 0, meCircles: 0, layers: 0 });
+    Object.assign(calls, { map: 0, remove: 0, clear: 0, fit: 0, markers: 0, me: 0, meCircles: 0 });
     const e = env(vi.fn(async () => Promise.reject(new Error("net"))));
     const places = [place("a")];
     const view = render(
