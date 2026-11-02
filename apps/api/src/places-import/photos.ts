@@ -6,6 +6,7 @@ import {
   detectMime,
   ImageRejectError,
   IMAGE_MIME_TYPES,
+  IMAGE_VARIANT_WIDTHS,
   MAX_UPLOAD_BYTES,
   mediaKeys,
   processImage,
@@ -87,11 +88,18 @@ export async function importPhotos(
         const id = uuidv7();
         const originalKey = mediaKeys.original(regionId, id);
         await storage.driver.write(originalKey, bytes, mime);
+        // Уборка файлов этого фото (best-effort): оригинал и все возможные варианты.
+        const cleanup = () =>
+          Promise.all(
+            [originalKey, ...IMAGE_VARIANT_WIDTHS.map((w) => mediaKeys.variant(regionId, id, w))].map((key) =>
+              storage.driver.delete(key).catch(() => undefined),
+            ),
+          );
         let result;
         try {
           result = await processImage(storage.driver, { id, regionId, originalKey, mime });
         } catch (err) {
-          await storage.driver.delete(originalKey);
+          await cleanup();
           if (err instanceof ImageRejectError) {
             stats.rejected++;
             continue;
@@ -100,44 +108,50 @@ export async function importPhotos(
         }
         const sortOrder = have.maxSort + 10 * (k + 1);
         const isCover = have.n === 0 && k === 0;
-        await inRegion(async (trx) => {
-          await trx
-            .insertInto("media_assets")
-            .values({
-              id,
-              region_id: regionId,
-              owner_type: "place",
-              owner_id: placeId,
-              kind: "image",
-              status: "processing",
-              mime,
-              size_bytes: bytes.length,
-              original_key: originalKey,
-              alt_i18n: { uk: p.name },
-            })
-            .execute();
-          await trx
-            .updateTable("media_assets")
-            .set({
-              status: "ready",
-              uploaded_at: new Date(),
-              width: result.width,
-              height: result.height,
-              variants: result.variants,
-            })
-            .where("id", "=", id)
-            .execute();
-          await trx
-            .insertInto("place_media")
-            .values({
-              region_id: regionId,
-              place_id: placeId,
-              media_asset_id: id,
-              sort_order: sortOrder,
-              is_cover: isCover,
-            })
-            .execute();
-        });
+        try {
+          await inRegion(async (trx) => {
+            await trx
+              .insertInto("media_assets")
+              .values({
+                id,
+                region_id: regionId,
+                owner_type: "place",
+                owner_id: placeId,
+                kind: "image",
+                status: "processing",
+                mime,
+                size_bytes: bytes.length,
+                original_key: originalKey,
+                alt_i18n: { uk: p.name },
+              })
+              .execute();
+            await trx
+              .updateTable("media_assets")
+              .set({
+                status: "ready",
+                uploaded_at: new Date(),
+                width: result.width,
+                height: result.height,
+                variants: result.variants,
+              })
+              .where("id", "=", id)
+              .execute();
+            await trx
+              .insertInto("place_media")
+              .values({
+                region_id: regionId,
+                place_id: placeId,
+                media_asset_id: id,
+                sort_order: sortOrder,
+                is_cover: isCover,
+              })
+              .execute();
+          });
+        } catch (err) {
+          // Запись в БД откатилась — файлы без строки никому не нужны.
+          await cleanup();
+          throw err;
+        }
         // Оригинал не нужен после COMMIT (как в конвейере api: туристу отдаются только варианты).
         await storage.driver.delete(originalKey);
         stats.added++;

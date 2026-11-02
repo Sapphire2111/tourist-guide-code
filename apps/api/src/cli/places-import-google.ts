@@ -6,41 +6,14 @@
 // подключается. --photos — ещё и хранилище медиа из env (STORAGE_DRIVER, STORAGE_LOCAL_DIR, S3_*).
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createStorage, type StorageEnv } from "@tg/media";
+import { createStorage } from "@tg/media";
 import { createDatabase } from "../db/index.js";
-import { ImportArgsError, parseImportArgs } from "../places-import/args.js";
+import { ImportArgsError, parseImportArgs, photoStorageEnv } from "../places-import/args.js";
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import { importPhotos } from "../places-import/photos.js";
 import { CATEGORY_NAMES, googlePlaceIds, ImportWriteError, writePlaces } from "../places-import/writer.js";
 import { SEED_PLACES } from "../seed/seed-catalog.js";
-
-/**
- * Хранилище этапа --photos из env. local на staging/prod запрещён: CLI запускается не на сервере api, файлы легли бы
- * на диск этой машины, а записи media_assets — в общую БД (фото у туриста — битые ссылки). Там нужен s3, общий с api.
- */
-function photoStorageEnv(env: NodeJS.ProcessEnv): StorageEnv {
-  const driver = env.STORAGE_DRIVER?.trim() || "local";
-  if (driver !== "local" && driver !== "s3")
-    throw new ImportArgsError(`STORAGE_DRIVER=${driver}: нужен local или s3`);
-  const appEnv = env.APP_ENV?.trim() || "local";
-  if (driver === "local" && appEnv !== "local")
-    throw new ImportArgsError(
-      `--photos при APP_ENV=${appEnv} и STORAGE_DRIVER=local: файлы не попадут на сервер api — нужен STORAGE_DRIVER=s3 (общий бакет)`,
-    );
-  const opt = (k: string) => env[k]?.trim() || undefined;
-  return {
-    STORAGE_DRIVER: driver,
-    STORAGE_LOCAL_DIR: opt("STORAGE_LOCAL_DIR"),
-    STORAGE_SIGNING_SECRET: opt("STORAGE_SIGNING_SECRET"),
-    STORAGE_PUBLIC_BASE_URL: opt("STORAGE_PUBLIC_BASE_URL"),
-    S3_ENDPOINT: opt("S3_ENDPOINT"),
-    S3_REGION: opt("S3_REGION"),
-    S3_BUCKET: opt("S3_BUCKET"),
-    S3_ACCESS_KEY_ID: opt("S3_ACCESS_KEY_ID"),
-    S3_SECRET_ACCESS_KEY: opt("S3_SECRET_ACCESS_KEY"),
-  };
-}
 
 const sortedEntries = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1]);
 
@@ -54,7 +27,10 @@ try {
     maxRequests: args.maxRequests,
   });
   console.log(`Кэш ответов Google: ${args.cacheDir}; лимит запросов: ${args.maxRequests}`);
-  const { places, stats } = await collect(client, { categoryNames: CATEGORY_NAMES, log: console.log });
+  const { places, stats, closedIds, seenIds } = await collect(client, {
+    categoryNames: CATEGORY_NAMES,
+    log: console.log,
+  });
   const report: Record<string, unknown> = { collect: stats };
 
   console.log(
@@ -68,7 +44,8 @@ try {
   console.log(`По категориям: ${JSON.stringify(Object.fromEntries(sortedEntries(stats.byCategory)))}`);
   console.log(
     `С телефоном ${stats.withPhone}, с сайтом (https) ${stats.withWebsite}, с графиком ${stats.withSchedule}, ` +
-      `график отброшен ${stats.scheduleDropped}, с фото у Google ${stats.withPhotos}.`,
+      `график не разобран ${stats.scheduleDropped}, с фото у Google ${stats.withPhotos}; ` +
+      `закрытых навсегда в радиусе ${closedIds.length}, страниц пропущено (устаревший токен) ${stats.pagesFailed}.`,
   );
   console.log(
     `Типы Google без категории: ${JSON.stringify(Object.fromEntries(sortedEntries(stats.unmappedTypes)))}`,
@@ -80,12 +57,20 @@ try {
     if (!url) throw new ImportWriteError("Не задан DATABASE_URL (или DATABASE_MIGRATION_URL)");
     const db = createDatabase({ connectionString: url, maxConnections: 1 });
     try {
-      const written = await writePlaces(db, args.region, places, new Date());
+      const written = await writePlaces(db, args.region, places, new Date(), {
+        closedIds,
+        seenIds,
+        complete: !stats.limitReached && stats.pagesFailed === 0,
+      });
       report.write = written;
       console.log(
         `\nЗапись в регион ${args.region}: новых мест ${written.inserted}, обновлено ${written.updated}, ` +
           `интервалов графика ${written.schedulesWritten}, новых населённых пунктов ${written.localitiesCreated}, ` +
           `новых категорий ${written.categoriesCreated}; мест не из Google (seed/админка, не тронуты): ${written.manualPlaces}.`,
+      );
+      console.log(
+        `Снято с публикации (закрыты навсегда): ${written.suspendedClosed}; графиков отклонено правилами: ` +
+          `${written.schedulesRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
       );
       if (storage) {
         const ids = await googlePlaceIds(db, written.regionId);

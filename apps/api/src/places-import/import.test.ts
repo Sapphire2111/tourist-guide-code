@@ -3,10 +3,16 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseImportArgs } from "./args.js";
+import { parseImportArgs, photoStorageEnv } from "./args.js";
 import { collect } from "./collect.js";
 import { IMPORT_LOCALITIES } from "./config.js";
-import { GoogleApiError, GooglePlacesClient, RequestLimitError, SEARCH_FIELD_MASK } from "./google-client.js";
+import {
+  GoogleApiError,
+  GooglePlacesClient,
+  isAllowedPhotoUrl,
+  RequestLimitError,
+  SEARCH_FIELD_MASK,
+} from "./google-client.js";
 import type { GooglePlace } from "./mapping.js";
 import { photosToAdd } from "./photos.js";
 
@@ -189,5 +195,157 @@ describe("выгрузка", () => {
     expect(stats.limitReached).toBe(true);
     expect(stats.queriesDone).toBe(2);
     expect(places).toHaveLength(1);
+  });
+});
+
+describe("--photos: хранилище", () => {
+  const neon = "postgres://u:p@ep-x.eu-central-1.aws.neon.tech/db";
+  it("local — только с локальной БД и APP_ENV=local", () => {
+    expect(photoStorageEnv({ DATABASE_URL: "postgres://u:p@localhost:5432/db" }).STORAGE_DRIVER).toBe(
+      "local",
+    );
+    expect(
+      photoStorageEnv({ DATABASE_URL: "postgres://u:p@127.0.0.1/db", STORAGE_DRIVER: "local" })
+        .STORAGE_DRIVER,
+    ).toBe("local");
+    expect(() => photoStorageEnv({ DATABASE_URL: neon })).toThrow(/s3/);
+    expect(() => photoStorageEnv({ DATABASE_URL: neon, APP_ENV: "local" })).toThrow(/s3/);
+    expect(() =>
+      photoStorageEnv({ DATABASE_URL: "postgres://u:p@localhost/db", APP_ENV: "staging" }),
+    ).toThrow(/s3/);
+    expect(() => photoStorageEnv({ DATABASE_URL: "postgres://u:p@localhost/db?host=remote" })).toThrow(/s3/);
+    expect(() => photoStorageEnv({})).toThrow(/s3/);
+  });
+  it("s3 — с любой БД; неизвестный драйвер — ошибка", () => {
+    expect(photoStorageEnv({ DATABASE_URL: neon, STORAGE_DRIVER: "s3", S3_BUCKET: "b" })).toMatchObject({
+      STORAGE_DRIVER: "s3",
+      S3_BUCKET: "b",
+    });
+    expect(() => photoStorageEnv({ STORAGE_DRIVER: "ftp" })).toThrow(/local или s3/);
+  });
+});
+
+describe("клиент Google: фото и формат ответов", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "gp-photo-"));
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  it("разрешённые адреса фото — только https на хостах Google", () => {
+    expect(isAllowedPhotoUrl("https://lh3.googleusercontent.com/p/abc=w1600")).toBe(true);
+    expect(isAllowedPhotoUrl("https://lh5.ggpht.com/x")).toBe(true);
+    expect(isAllowedPhotoUrl("https://places.googleapis.com/v1/x")).toBe(true);
+    expect(isAllowedPhotoUrl("http://lh3.googleusercontent.com/x")).toBe(false);
+    expect(isAllowedPhotoUrl("https://evil.com/googleusercontent.com")).toBe(false);
+    expect(isAllowedPhotoUrl("https://googleusercontent.com.evil.com/x")).toBe(false);
+    expect(isAllowedPhotoUrl("https://lh3.googleusercontent.com:8443/x")).toBe(false);
+    expect(isAllowedPhotoUrl("not a url")).toBe(false);
+  });
+
+  it("редирект на чужой хост — ошибка; на хост Google — следуем вручную", async () => {
+    const fetch = vi.fn(async (url: string) =>
+      url.includes("first")
+        ? new Response(null, {
+            status: 302,
+            headers: { location: "https://lh4.googleusercontent.com/second" },
+          })
+        : url.includes("second")
+          ? new Response(new Uint8Array([1, 2, 3]))
+          : new Response(null, { status: 302, headers: { location: "https://evil.example/x" } }),
+    );
+    const c = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 10,
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    expect([...(await c.photoBytes("places/a/photos/1", "https://lh3.googleusercontent.com/first"))]).toEqual(
+      [1, 2, 3],
+    );
+    expect(
+      fetch.mock.calls.every((call) => (call as unknown as [string, RequestInit])[1].redirect === "manual"),
+    ).toBe(true);
+    await expect(c.photoBytes("places/a/photos/2", "https://lh3.googleusercontent.com/bad")).rejects.toThrow(
+      /хосте Google/,
+    );
+    await expect(c.photoBytes("places/a/photos/3", "https://evil.example/x")).rejects.toThrow(/хосте Google/);
+  });
+
+  it("фото больше лимита — ошибка, в кэш не пишется", async () => {
+    const fetch = vi.fn(async () => new Response(new Uint8Array(100)));
+    const c = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 10, fetch });
+    await expect(
+      c.photoBytes("places/a/photos/1", "https://lh3.googleusercontent.com/x", 50),
+    ).rejects.toThrow(/больше/);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("испорченный ответ в кэше — запрашивается заново; неожиданный формат ответа Google — ошибка", async () => {
+    const body = {
+      textQuery: "кафе",
+      languageCode: "uk",
+      regionCode: "UA",
+      pageSize: 20,
+      locationRestriction: {
+        rectangle: { low: { latitude: 1, longitude: 1 }, high: { latitude: 2, longitude: 2 } },
+      },
+    };
+    const good = vi.fn(async () => ok({ places: [place("a")] }));
+    const c = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 10, fetch: good });
+    await c.searchText(body);
+    const [file] = await readdir(dir);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(path.join(dir, file!), JSON.stringify({ places: "oops" }));
+    const c2 = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 10, fetch: good });
+    expect((await c2.searchText(body)).places).toHaveLength(1);
+    expect(c2.requests.search).toBe(1);
+    const bad = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 10,
+      fetch: vi.fn(async () => ok([1])),
+    });
+    await expect(bad.searchText({ ...body, textQuery: "x" })).rejects.toThrow(/формат/);
+  });
+});
+
+describe("выгрузка: устаревший токен и закрытые", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "gp-token-"));
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  it("400 на странице с pageToken — страница пропущена, кэш первой страницы сброшен; закрытые — в closedIds", async () => {
+    const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const b = JSON.parse(String(init.body)) as { pageToken?: string };
+      if (b.pageToken) return new Response("INVALID_ARGUMENT", { status: 400 });
+      return ok({
+        places: [place("a"), place("z", { businessStatus: "CLOSED_PERMANENTLY" })],
+        nextPageToken: "old",
+      });
+    });
+    const client = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 10,
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    const r = await collect(client, { localities: IMPORT_LOCALITIES.slice(0, 1), queries: ["q"] });
+    expect(r.stats.pagesFailed).toBe(1);
+    expect(r.stats.queriesDone).toBe(1);
+    expect(r.places.map((p) => p.googlePlaceId)).toEqual(["a"]);
+    expect(r.closedIds).toEqual(["z"]);
+    expect(r.seenIds.sort()).toEqual(["a", "z"]);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("400 на первой странице — ошибка прогона", async () => {
+    const fetch = vi.fn(async () => new Response("bad", { status: 400 }));
+    const client = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 10, fetch });
+    await expect(
+      collect(client, { localities: IMPORT_LOCALITIES.slice(0, 1), queries: ["q"] }),
+    ).rejects.toBeInstanceOf(GoogleApiError);
   });
 });

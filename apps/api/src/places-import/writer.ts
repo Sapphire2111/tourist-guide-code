@@ -2,6 +2,8 @@
 // api. Идемпотентно: населённые пункты и дополнительные категории — ON CONFLICT DO NOTHING по коду (правки админки не
 // трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются.
 import { point, regionContext, withTenant, type Db } from "../db/index.js";
+import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
+import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
 import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES } from "./config.js";
 import type { MappedPlace } from "./mapping.js";
@@ -25,7 +27,25 @@ export type WriteStats = {
   categoriesCreated: number;
   /** Мест не из Google в регионе (демо-seed и созданные в админке) — не тронуты. */
   manualPlaces: number;
+  /** Графики, не прошедшие правила каталога (не записаны, существующий оставлен). */
+  schedulesRejected: number;
+  /** Опубликованные места импорта, которые Google теперь отдаёт как закрытые навсегда, — сняты с публикации. */
+  suspendedClosed: number;
+  /** Места импорта в БД, которых не было в этой выгрузке (только отчёт; null — выгрузка неполная, не считалось). */
+  missingFromGoogle: number | null;
+  missingExamples: string[];
 };
+
+export type WriteOptions = {
+  /** id закрытых навсегда (collect.closedIds). */
+  closedIds?: readonly string[];
+  /** Все id выгрузки (collect.seenIds); вместе с complete — для отчёта «пропали из выдачи». */
+  seenIds?: readonly string[];
+  /** Выгрузка полная (без лимита запросов). */
+  complete?: boolean;
+};
+
+const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 /** Мест в одном INSERT … ON CONFLICT. */
 const BATCH = 100;
@@ -52,6 +72,7 @@ export async function writePlaces(
   regionCode: string,
   places: readonly MappedPlace[],
   now: Date,
+  options: WriteOptions = {},
 ): Promise<WriteStats> {
   const regionId = await findRegionId(db, regionCode);
   return withTenant(db, regionContext(regionId), async (trx) => {
@@ -63,6 +84,10 @@ export async function writePlaces(
       localitiesCreated: 0,
       categoriesCreated: 0,
       manualPlaces: 0,
+      schedulesRejected: 0,
+      suspendedClosed: 0,
+      missingFromGoogle: null,
+      missingExamples: [],
     };
 
     const newLocalities = await trx
@@ -161,12 +186,14 @@ export async function writePlaces(
           })),
         )
         .onConflict((oc) =>
+          // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
+          // uk обновляет Google, переводы админки (en…) остаются.
           oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => ({
-            address_i18n: eb.ref("excluded.address_i18n"),
+            address_i18n: eb(eb.ref("places.address_i18n"), "||", eb.ref("excluded.address_i18n")),
             location: eb.ref("excluded.location"),
-            locality_id: eb.ref("excluded.locality_id"),
-            phone: eb.ref("excluded.phone"),
-            website: eb.ref("excluded.website"),
+            locality_id: eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")),
+            phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
+            website: eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")),
             verified_at: eb.ref("excluded.verified_at"),
             last_synced_at: eb.ref("excluded.last_synced_at"),
           })),
@@ -177,8 +204,18 @@ export async function writePlaces(
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
       stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
 
-      // График: заменяется целиком у мест, где Google его отдал в разбираемом виде.
-      const withWeek = batch.filter((p) => p.week !== null);
+      // График: заменяется целиком только у мест, где Google отдал непустой график, прошедший правила каталога
+      // (scheduleProblems — те же, что у админки). Нет графика или он плохой — существующий не трогается; плохая
+      // строка не доходит до INSERT и не откатывает всю транзакцию.
+      const withWeek = batch.filter((p) => {
+        if (!p.week?.length) return false;
+        const ok =
+          p.week.every(
+            (w) => HHMM.test(w.opensAt) && HHMM.test(w.closesAt) && w.dayOfWeek >= 1 && w.dayOfWeek <= 7,
+          ) && scheduleProblems(p.week, []).length === 0;
+        if (!ok) stats.schedulesRejected++;
+        return ok;
+      });
       const ids = withWeek.map((p) => placeId.get(p.googlePlaceId)!);
       if (ids.length) await trx.deleteFrom("place_schedules").where("place_id", "in", ids).execute();
       const schedule = withWeek.flatMap((p) =>
@@ -193,6 +230,50 @@ export async function writePlaces(
       if (schedule.length) await trx.insertInto("place_schedules").values(schedule).execute();
       stats.schedulesWritten += schedule.length;
     }
+
+    // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем.
+    const closed = [...new Set(options.closedIds ?? [])];
+    for (let from = 0; from < closed.length; from += BATCH) {
+      const r = await trx
+        .updateTable("places")
+        .set({ status: "suspended" })
+        .where("source", "=", "google")
+        .where("status", "=", "published")
+        .where("google_place_id", "in", closed.slice(from, from + BATCH))
+        .executeTakeFirst();
+      stats.suspendedClosed += Number(r.numUpdatedRows);
+    }
+
+    // Пропавшие из выдачи — только отчёт: место могло не попасть в запросы, это не повод его скрывать.
+    if (options.complete && options.seenIds) {
+      const seen = new Set(options.seenIds);
+      const imported = await trx
+        .selectFrom("places")
+        .select(["google_place_id", "name_i18n"])
+        .where("source", "=", "google")
+        .execute();
+      const missing = imported.filter((r) => !seen.has(r.google_place_id!));
+      stats.missingFromGoogle = missing.length;
+      stats.missingExamples = missing.slice(0, 30).map((r) => `${r.name_i18n.uk} (${r.google_place_id})`);
+    }
+
+    // Одна запись аудита на прогон (актор SYSTEM, регион — из контекста).
+    await new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS).record(trx, {
+      actor: { type: "system" },
+      action: "place.import",
+      entityType: "region",
+      entityId: regionId,
+      newValues: {
+        source: "google",
+        inserted: stats.inserted,
+        updated: stats.updated,
+        suspendedClosed: stats.suspendedClosed,
+        schedulesWritten: stats.schedulesWritten,
+        categoriesCreated: stats.categoriesCreated,
+        localitiesCreated: stats.localitiesCreated,
+      },
+      reason: "places:import-google",
+    });
     return stats;
   });
 }

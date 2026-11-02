@@ -307,11 +307,20 @@ const pointMinutes = (p: GooglePoint): number => ((p.day ?? 0) * 24 + (p.hour ??
  * - период длиннее суток — дни целиком (первый — с часа открытия, последний — до часа закрытия);
  * - пересечения в один день (график нашей схемы их не допускает) — график отбрасывается целиком: лучше «график
  *   неизвестен», чем неверный «Відкрито зараз».
- * Нет периодов — пустой график.
+ * - вырожденные интервалы (открытие = закрытие, напр. открытие в 23:59 многодневного периода) — отбрасываются;
+ * - день/час/минута вне диапазона — график не разобран.
+ * null — графика нет или он не разобран: запись не трогает существующий график места (его могла завести админка).
  */
 export function mapOpeningHours(hours: GoogleOpeningHours | undefined): WeeklyRow[] | null {
   const periods = hours?.periods ?? [];
-  if (!periods.length) return [];
+  if (!periods.length) return null;
+  const valid = (p: GooglePoint | undefined) =>
+    !p ||
+    (inRange(p.day ?? 0, 0, 6) &&
+      inRange(p.hour ?? 0, 0, 24) &&
+      inRange(p.minute ?? 0, 0, 59) &&
+      ((p.hour ?? 0) < 24 || (p.minute ?? 0) === 0));
+  if (!periods.every((p) => valid(p.open) && valid(p.close))) return null;
   if (periods.length === 1 && periods[0]!.open && !periods[0]!.close)
     return [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({ dayOfWeek, opensAt: "00:00", closesAt: "23:59" }));
   const rows: WeeklyRow[] = [];
@@ -341,8 +350,15 @@ export function mapOpeningHours(hours: GoogleOpeningHours | undefined): WeeklyRo
       });
     }
   }
-  return overlapping(rows) ? null : rows;
+  const nonEmpty = rows.filter((r) => r.opensAt !== r.closesAt);
+  if (!nonEmpty.length || overlapping(nonEmpty)) return null;
+  return nonEmpty;
 }
+
+const inRange = (v: number, min: number, max: number) => Number.isInteger(v) && v >= min && v <= max;
+
+/** id места Google — формат CHECK places_google_place_id_format (0016). */
+export const GOOGLE_PLACE_ID = /^[A-Za-z0-9_-]{1,255}$/;
 
 /** Пересечение интервалов в один день (то же правило, что catalog-rules scheduleProblems). */
 function overlapping(rows: readonly WeeklyRow[]): boolean {
@@ -424,7 +440,7 @@ export type MappedPlace = {
   at: LonLat;
   phone: string | null;
   website: string | null;
-  /** null — периоды не разобрать (график не пишется), [] — графика нет. */
+  /** null — графика нет у Google или он не разобран: существующий график места не трогается. */
   week: WeeklyRow[] | null;
   /** Имена фото Google (places/…/photos/…), не больше двух. */
   photos: string[];
@@ -432,7 +448,13 @@ export type MappedPlace = {
   ratingCount: number | null;
 };
 
-export type SkipReason = "closed_permanently" | "no_location" | "outside_radius" | "no_category" | "no_name";
+export type SkipReason =
+  | "closed_permanently"
+  | "invalid_id"
+  | "no_location"
+  | "outside_radius"
+  | "no_category"
+  | "no_name";
 
 /** Описание места: краткое описание Google (если есть) или «<тип> у <пункті>.», плюс источник. */
 export function describe(p: GooglePlace, locality: ImportLocality, fallbackType: string): string {
@@ -453,6 +475,7 @@ export function mapPlace(
 ): { ok: true; place: MappedPlace } | { ok: false; reason: SkipReason } {
   if (p.businessStatus === "CLOSED_PERMANENTLY") return { ok: false, reason: "closed_permanently" };
   const name = p.displayName?.text?.trim();
+  if (typeof p.id !== "string" || !GOOGLE_PLACE_ID.test(p.id)) return { ok: false, reason: "invalid_id" };
   if (!name) return { ok: false, reason: "no_name" };
   const lat = p.location?.latitude;
   const lon = p.location?.longitude;

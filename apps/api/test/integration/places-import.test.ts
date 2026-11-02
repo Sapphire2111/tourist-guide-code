@@ -217,4 +217,98 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     expect(again).toMatchObject({ added: 0, placesConsidered: 0 });
     expect(calls).toBe(before);
   });
+
+  it("повтор не затирает ручные правки пустым от Google: телефон, сайт, перевод адреса, график", async () => {
+    const t0 = new Date("2026-11-04T10:00:00Z");
+    const gc = (over: Partial<MappedPlace> = {}) =>
+      place("gC", { week: [{ dayOfWeek: 1, opensAt: "09:00", closesAt: "18:00" }], ...over });
+    await writePlaces(appDb, "test-region", [gc()], t0);
+    await sql(
+      `UPDATE places SET address_i18n = '{"uk":"старий","en":"Svobody st, 1"}', phone = '+380671234567',
+         website = 'https://admin.example/' WHERE google_place_id = 'gC'`,
+    );
+    const row = async () =>
+      (
+        await sql(
+          `SELECT p.phone, p.website, p.address_i18n, p.status,
+                  (SELECT count(*)::int FROM place_schedules s WHERE s.place_id = p.id) AS schedules
+           FROM places p WHERE google_place_id = 'gC'`,
+        )
+      ).rows[0];
+
+    // Нет телефона, сайт был http (в маппинге — null), нет часов.
+    const r1 = await writePlaces(
+      appDb,
+      "test-region",
+      [gc({ phone: null, website: null, week: null, address: "вулиця Нова, 2, Яремче" })],
+      t0,
+    );
+    expect(r1).toMatchObject({ updated: 1, schedulesWritten: 0 });
+    expect(await row()).toEqual({
+      phone: "+380671234567",
+      website: "https://admin.example/",
+      address_i18n: { uk: "вулиця Нова, 2, Яремче", en: "Svobody st, 1" },
+      status: "published",
+      schedules: 1,
+    });
+
+    // Пустой график и график, не прошедший правила (пересечение), существующий не трогают.
+    await writePlaces(appDb, "test-region", [gc({ week: [] })], t0);
+    const bad = await writePlaces(
+      appDb,
+      "test-region",
+      [
+        gc({
+          week: [
+            { dayOfWeek: 1, opensAt: "09:00", closesAt: "15:00" },
+            { dayOfWeek: 1, opensAt: "14:00", closesAt: "18:00" },
+          ],
+        }),
+      ],
+      t0,
+    );
+    expect(bad.schedulesRejected).toBe(1);
+    expect((await row()).schedules).toBe(1);
+  });
+
+  it("закрытые навсегда снимаются с публикации; пропавшие — только в отчёт; аудит — запись на прогон", async () => {
+    const auditBefore = (await sql("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'place.import'"))
+      .rows[0].n as number;
+    expect(auditBefore).toBeGreaterThan(0);
+    const r = await writePlaces(appDb, "test-region", [], new Date(), {
+      closedIds: ["gC", "gNotImported"],
+      seenIds: ["gC"],
+      complete: true,
+    });
+    expect(r.suspendedClosed).toBe(1);
+    expect(r.missingFromGoogle).toBe(2); // gA, gB
+    expect(r.missingExamples).toHaveLength(2);
+    expect((await sql("SELECT status FROM places WHERE google_place_id = 'gC'")).rows[0].status).toBe(
+      "suspended",
+    );
+    expect(
+      (await sql("SELECT status FROM places WHERE google_place_id IN ('gA','gB') ORDER BY google_place_id"))
+        .rows,
+    ).toEqual([{ status: "published" }, { status: "published" }]);
+    expect(
+      (await sql("SELECT count(*)::int AS n FROM places WHERE source = 'manual' AND status = 'suspended'"))
+        .rows[0].n,
+    ).toBe(0);
+
+    const audit = (
+      await sql(
+        `SELECT a.actor_type, a.entity_type, a.new_values, r.code FROM audit_logs a JOIN regions r ON r.id = a.region_id
+         WHERE a.action = 'place.import' ORDER BY a.created_at DESC, a.id DESC LIMIT 1`,
+      )
+    ).rows[0];
+    expect(audit).toMatchObject({ actor_type: "system", entity_type: "region", code: "test-region" });
+    expect(audit.new_values).toMatchObject({ source: "google", suspendedClosed: 1, inserted: 0 });
+    expect(
+      (await sql("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'place.import'")).rows[0].n,
+    ).toBe(auditBefore + 1);
+
+    // Неполная выгрузка — пропавшие не считаются.
+    const partial = await writePlaces(appDb, "test-region", [], new Date(), { seenIds: [], complete: false });
+    expect(partial.missingFromGoogle).toBeNull();
+  });
 });

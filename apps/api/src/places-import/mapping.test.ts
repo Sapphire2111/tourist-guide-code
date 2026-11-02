@@ -152,10 +152,26 @@ describe("часы работы → place_schedules", () => {
     expect(mapOpeningHours({ periods: [p(2, 9, 2, 15), p(2, 14, 2, 19)] })).toBeNull();
   });
 
-  it("нет периодов — пустой график; период без close среди нескольких — null", () => {
-    expect(mapOpeningHours(undefined)).toEqual([]);
-    expect(mapOpeningHours({ periods: [] })).toEqual([]);
+  it("нет периодов — null (график неизвестен, существующий не трогается); период без close среди нескольких — null", () => {
+    expect(mapOpeningHours(undefined)).toBeNull();
+    expect(mapOpeningHours({ periods: [] })).toBeNull();
     expect(mapOpeningHours({ periods: [p(1, 9, 1, 18), { open: { day: 2, hour: 9 } }] })).toBeNull();
+  });
+
+  it("вырожденный интервал (открытие в 23:59 многодневного периода) отбрасывается", () => {
+    expect(mapOpeningHours({ periods: [p(1, 23, 2, 10, 59)] })).toEqual([
+      { dayOfWeek: 1, opensAt: "23:59", closesAt: "10:00" },
+    ]);
+    expect(mapOpeningHours({ periods: [p(1, 23, 3, 10, 59)] })).toEqual([
+      { dayOfWeek: 2, opensAt: "00:00", closesAt: "23:59" },
+      { dayOfWeek: 3, opensAt: "00:00", closesAt: "10:00" },
+    ]);
+  });
+
+  it("день/час/минута вне диапазона — график не разобран", () => {
+    expect(mapOpeningHours({ periods: [p(7, 9, 7, 18)] })).toBeNull();
+    expect(mapOpeningHours({ periods: [p(1, 25, 1, 26)] })).toBeNull();
+    expect(mapOpeningHours({ periods: [p(1, 9, 1, 18, 60)] })).toBeNull();
   });
 
   it("результат всегда проходит правила графика каталога", () => {
@@ -256,6 +272,11 @@ describe("место целиком", () => {
     });
   });
 
+  it("без часов у Google — week null", () => {
+    const r = mapPlace({ ...base, regularOpeningHours: undefined }, IMPORT_LOCALITIES);
+    expect(r.ok && r.place.week).toBeNull();
+  });
+
   it("описание — editorialSummary, если есть", () => {
     const r = mapPlace({ ...base, editorialSummary: { text: "Панорамний ресторан." } }, IMPORT_LOCALITIES);
     expect(r.ok && r.place.description).toBe("Панорамний ресторан. Джерело: Google Maps.");
@@ -269,6 +290,8 @@ describe("место целиком", () => {
     expect(reason({ ...base, businessStatus: "CLOSED_PERMANENTLY" })).toBe("closed_permanently");
     expect(reason({ ...base, businessStatus: "CLOSED_TEMPORARILY" })).toBe("ok");
     expect(reason({ ...base, displayName: { text: " " } })).toBe("no_name");
+    expect(reason({ ...base, id: "bad id/../x" })).toBe("invalid_id");
+    expect(reason({ ...base, id: "a".repeat(256) })).toBe("invalid_id");
     expect(reason({ ...base, location: undefined })).toBe("no_location");
     expect(reason({ ...base, location: { latitude: 48.92, longitude: 24.71 } })).toBe("outside_radius");
     expect(reason({ ...base, primaryType: undefined, types: ["point_of_interest"] })).toBe("no_category");

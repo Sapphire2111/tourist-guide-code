@@ -1,6 +1,8 @@
 // Аргументы CLI places:import-google (README apps/api, «Импорт мест из Google»).
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { StorageEnv } from "@tg/media";
+import { databaseHost } from "../seed/guard.js";
 
 export type ImportArgs = {
   /** Код региона (regions.code), куда писать. */
@@ -78,4 +80,40 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
       "places:import-google: --photos пишет в БД и хранилище — несовместим с --dry-run",
     );
   return args;
+}
+
+/** Хосты БД, при которых local-хранилище фото допустимо: БД на этой же машине, где лежат файлы. */
+const LOCAL_DB_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "::1"];
+
+/**
+ * Хранилище этапа --photos из env. STORAGE_DRIVER=local допустим только с локальной БД (хост DATABASE_URL, иначе
+ * DATABASE_MIGRATION_URL — localhost/127.0.0.1/::1) и APP_ENV=local: CLI запускается не на сервере api, файлы легли бы
+ * на диск этой машины, а записи media_assets — в общую БД (у туриста — битые ссылки). Иначе нужен s3, общий с api.
+ */
+export function photoStorageEnv(env: Record<string, string | undefined>): StorageEnv {
+  const driver = env.STORAGE_DRIVER?.trim() || "local";
+  if (driver !== "local" && driver !== "s3")
+    throw new ImportArgsError(`STORAGE_DRIVER=${driver}: нужен local или s3`);
+  if (driver === "local") {
+    const url = env.DATABASE_URL?.trim() || env.DATABASE_MIGRATION_URL?.trim();
+    const host = url ? databaseHost(url) : undefined;
+    const appEnv = env.APP_ENV?.trim() || "local";
+    if (!host || !LOCAL_DB_HOSTS.includes(host) || appEnv !== "local")
+      throw new ImportArgsError(
+        `--photos со STORAGE_DRIVER=local только для локальной БД (хост ${host ?? "не разобран"}, APP_ENV=${appEnv}): ` +
+          "файлы не попадут на сервер api — нужен STORAGE_DRIVER=s3 (бакет, общий с api)",
+      );
+  }
+  const opt = (k: string) => env[k]?.trim() || undefined;
+  return {
+    STORAGE_DRIVER: driver,
+    STORAGE_LOCAL_DIR: opt("STORAGE_LOCAL_DIR"),
+    STORAGE_SIGNING_SECRET: opt("STORAGE_SIGNING_SECRET"),
+    STORAGE_PUBLIC_BASE_URL: opt("STORAGE_PUBLIC_BASE_URL"),
+    S3_ENDPOINT: opt("S3_ENDPOINT"),
+    S3_REGION: opt("S3_REGION"),
+    S3_BUCKET: opt("S3_BUCKET"),
+    S3_ACCESS_KEY_ID: opt("S3_ACCESS_KEY_ID"),
+    S3_SECRET_ACCESS_KEY: opt("S3_SECRET_ACCESS_KEY"),
+  };
 }

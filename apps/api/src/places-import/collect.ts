@@ -1,8 +1,21 @@
 // Выгрузка из Google и разбор: Text Search по каждому пункту и запросу (с пагинацией), дедуп по id места, маппинг и
 // статистика. Без БД — общий для --dry-run и записи.
 import { IMPORT_LOCALITIES, IMPORT_QUERIES, type ImportLocality } from "./config.js";
-import { RequestLimitError, type GooglePlacesClient } from "./google-client.js";
-import { boundingBox, mapPlace, type GooglePlace, type MappedPlace, type SkipReason } from "./mapping.js";
+import {
+  GoogleApiError,
+  RequestLimitError,
+  type GooglePlacesClient,
+  type SearchTextRequest,
+} from "./google-client.js";
+import {
+  boundingBox,
+  GOOGLE_PLACE_ID,
+  mapPlace,
+  nearestLocality,
+  type GooglePlace,
+  type MappedPlace,
+  type SkipReason,
+} from "./mapping.js";
 
 /** Страниц на запрос: Text Search отдаёт до 20 мест на страницу и не больше 60 на запрос. */
 export const MAX_PAGES = 3;
@@ -22,7 +35,10 @@ export type CollectStats = {
   withPhone: number;
   withWebsite: number;
   withSchedule: number;
+  /** Часы у Google есть, но не разобраны (пересечения, вне диапазона) — график не пишется. */
   scheduleDropped: number;
+  /** Страницы с pageToken, отклонённые Google (400: токен устарел) — пропущены, кэш предыдущей страницы сброшен. */
+  pagesFailed: number;
   withPhotos: number;
   /** Выгрузка остановлена лимитом запросов (данные неполные). */
   limitReached: boolean;
@@ -30,7 +46,14 @@ export type CollectStats = {
   queriesTotal: number;
 };
 
-export type CollectResult = { places: MappedPlace[]; stats: CollectStats };
+export type CollectResult = {
+  places: MappedPlace[];
+  stats: CollectStats;
+  /** Закрытые навсегда (в радиусе пунктов): уже импортированные такие места снимаются с публикации. */
+  closedIds: string[];
+  /** Все id, которые Google вернул за прогон (для отчёта «пропали из выдачи»). */
+  seenIds: string[];
+};
 
 const inc = (m: Record<string, number>, k: string, by = 1) => {
   m[k] = (m[k] ?? 0) + by;
@@ -52,14 +75,16 @@ export async function collect(
   let fetched = 0;
   let queriesDone = 0;
   let limitReached = false;
+  let pagesFailed = 0;
 
   outer: for (const locality of localities) {
     const box = boundingBox(locality.at, locality.radiusM);
     for (const textQuery of queries) {
       let pageToken: string | undefined;
+      let previous: SearchTextRequest | undefined;
       try {
         for (let page = 0; page < MAX_PAGES; page++) {
-          const res = await client.searchText({
+          const request: SearchTextRequest = {
             textQuery,
             languageCode: "uk",
             regionCode: "UA",
@@ -71,7 +96,20 @@ export async function collect(
                 high: { latitude: box.high.lat, longitude: box.high.lon },
               },
             },
-          });
+          };
+          let res;
+          try {
+            res = await client.searchText(request);
+          } catch (err) {
+            // Токен следующей страницы из кэша устарел: страница пропускается, кэш предыдущей сбрасывается —
+            // следующий прогон запросит её заново со свежим токеном.
+            if (!(err instanceof GoogleApiError && err.status === 400 && pageToken && previous)) throw err;
+            log(`${locality.code} «${textQuery}»: страница ${page + 1} отклонена Google (400), пропущена`);
+            pagesFailed++;
+            await client.forgetSearch(previous);
+            break;
+          }
+          previous = request;
           for (const p of res.places ?? []) {
             fetched++;
             if (p.id && !raw.has(p.id)) raw.set(p.id, p);
@@ -94,7 +132,14 @@ export async function collect(
     fetched,
     unique: raw.size,
     imported: 0,
-    skipped: { closed_permanently: 0, no_location: 0, outside_radius: 0, no_category: 0, no_name: 0 },
+    skipped: {
+      closed_permanently: 0,
+      invalid_id: 0,
+      no_location: 0,
+      outside_radius: 0,
+      no_category: 0,
+      no_name: 0,
+    },
     byLocality: {},
     byCategory: {},
     unmappedTypes: {},
@@ -103,16 +148,28 @@ export async function collect(
     withWebsite: 0,
     withSchedule: 0,
     scheduleDropped: 0,
+    pagesFailed,
     withPhotos: 0,
     limitReached,
     queriesDone,
     queriesTotal: localities.length * queries.length,
   };
   const places: MappedPlace[] = [];
+  const closedIds: string[] = [];
   for (const p of raw.values()) {
     const r = mapPlace(p, localities, opts.categoryNames);
     if (!r.ok) {
       stats.skipped[r.reason]++;
+      const lat = p.location?.latitude;
+      const lon = p.location?.longitude;
+      if (
+        r.reason === "closed_permanently" &&
+        GOOGLE_PLACE_ID.test(p.id) &&
+        typeof lat === "number" &&
+        typeof lon === "number" &&
+        nearestLocality({ lon, lat }, localities)
+      )
+        closedIds.push(p.id);
       if (r.reason === "no_category") {
         inc(stats.unmappedTypes, p.primaryType ?? p.types?.[0] ?? "(нет типа)");
         if (stats.unmappedExamples.length < 30)
@@ -128,11 +185,11 @@ export async function collect(
     inc(stats.byCategory, m.categoryCode);
     if (m.phone) stats.withPhone++;
     if (m.website) stats.withWebsite++;
-    if (m.week === null) stats.scheduleDropped++;
-    else if (m.week.length) stats.withSchedule++;
+    if (m.week) stats.withSchedule++;
+    else if (raw.get(m.googlePlaceId)?.regularOpeningHours?.periods?.length) stats.scheduleDropped++;
     if (m.photos.length) stats.withPhotos++;
   }
   stats.imported = places.length;
   places.sort((a, b) => a.googlePlaceId.localeCompare(b.googlePlaceId));
-  return { places, stats };
+  return { places, stats, closedIds, seenIds: [...raw.keys()] };
 }
