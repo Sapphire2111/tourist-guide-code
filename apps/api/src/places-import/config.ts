@@ -108,7 +108,7 @@ export const IMPORT_QUERIES: readonly string[] = [
   "SPA",
   "чани",
   "сауна",
-  // Для дітей і для дорослих (03.11.2026)
+  // «Для дітей» и «Для дорослих» (03.11.2026)
   "дитячий майданчик",
   "дитячі розваги",
   "зоопарк",
@@ -172,11 +172,11 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
       icon: "ticket",
     },
     { code: "sights", parent: "nearby", name: { uk: "Пам'ятки", en: "Sights" }, icon: "landmark" },
-    // Розваги, розведені за аудиторією (03.11.2026); entertainment лишається для атракціонів «для всіх»
-    // (зіплайн, родельбан, кіно) — уже імпортовані місця переразмічаються при наступному імпорті.
+    // Развлечения по аудитории (03.11.2026); entertainment остаётся для аттракционов «для всех»
+    // (зиплайн, родельбан, кино) — уже импортированные места переразмечаются при следующем импорте.
     { code: "kids", parent: "fun", name: { uk: "Для дітей", en: "For kids" }, icon: "baby" },
     { code: "adult-fun", parent: "fun", name: { uk: "Для дорослих", en: "For adults" }, icon: "dice" },
-    // Розділ «Сервіси» (0020)
+    // Раздел «Сервіси» (0020)
     {
       code: "tech-repair",
       parent: "services",

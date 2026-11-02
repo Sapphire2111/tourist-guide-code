@@ -23,7 +23,7 @@ export type GooglePhotosConfig = {
   apiKey?: string | undefined;
   /** Публичный адрес api (PUBLIC_API_URL) — для ссылок на прокси фото в карточке. */
   apiBaseUrl?: string;
-  /** Запросов к Google Place Photos в сутки (UTC) не больше. */
+  /** Запросов к Google Place Photos в сутки (America/Los_Angeles, как сбрасывает Google) не больше. */
   dailyLimit?: number;
   /** И в месяц не больше (общий счётчик с CLI; по умолчанию — бесплатный объём Google, 1000). */
   monthlyLimit?: number;

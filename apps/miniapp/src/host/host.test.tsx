@@ -240,7 +240,7 @@ describe("заявки", () => {
     expect(setStatus).toHaveBeenCalledWith("r1", "accepted", null);
     expect(text("staff-message")).toBe("Статус змінено: Прийнята");
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Прийняти" })));
-    expect(text("staff-message")).toContain("Статус уже змінено");
+    expect(text("staff-message")).toContain("Статус уже змінив");
     expect(staffRequests).toHaveBeenCalledTimes(3);
     fireEvent.click(await screen.findByRole("button", { name: "Відхилити" }));
     fireEvent.change(screen.getByLabelText("Причина відхилення"), {

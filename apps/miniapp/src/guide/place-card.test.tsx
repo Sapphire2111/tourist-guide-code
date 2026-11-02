@@ -5,7 +5,8 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import type { ApiSchemas } from "@tg/api-client";
 import type { Analytics } from "./analytics.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
-import { cardOf } from "./guide-api.js";
+import { cardOf, coverPhotoOf } from "./guide-api.js";
+import { CoverCredit, PlaceMedia } from "./parts.js";
 import { PlaceCard } from "./PlaceCard.js";
 import type { GuideApi, PlaceDetail } from "./types.js";
 
@@ -97,7 +98,7 @@ describe("богатая картка місця", () => {
     await renderCard({ ...base, ...rich });
     expect(screen.getByTestId("place-type").textContent).toBe("Ресторан · Середні ціни");
     expect(screen.getByTestId("place-rating").textContent).toContain("4.8");
-    expect(screen.getByTestId("place-rating").textContent).toContain("792 оцінок у Google");
+    expect(screen.getByTestId("place-rating").textContent).toContain("Оцінок у Google: 792");
     const about = screen.getByTestId("place-about");
     expect(about.textContent).toContain("Ресторан у Яремчі з терасою");
     expect(screen.getByTestId("place-ai-label").textContent).toBe("Згенеровано ШІ");
@@ -316,6 +317,41 @@ describe("обложка у нас (Google/Wikimedia)", () => {
       url: "https://api.example/places/p/cover?regionId=r&v=1",
       credit: { source: "wikimedia", license: "CC BY-SA 3.0", authors: [{ name: "MSha" }] },
     });
+  });
+});
+
+describe("обложка в списках", () => {
+  const google = {
+    authors: [{ name: "Олена", uri: null, photoUri: null }],
+    license: null,
+    sourceUrl: null,
+    source: "google" as const,
+  };
+
+  it("coverPhotoOf: свой путь — да, protocol-relative //host — нет", () => {
+    const cov = (url: string) => ({ url, width: 400, height: 300, ...google });
+    expect(coverPhotoOf(cov("/places/p/cover?v=1") as never)?.url).toBe("/places/p/cover?v=1");
+    expect(coverPhotoOf(cov("//evil.example/x.webp") as never)).toBeNull();
+    expect(coverPhotoOf(cov("/\\evil.example/x.webp") as never)).toBeNull();
+    expect(coverPhotoOf(cov("/\t/evil.example/x") as never)).toBeNull();
+    expect(coverPhotoOf(cov("/places/p\n/cover") as never)).toBeNull();
+  });
+
+  it("подпись Google-обложки — «Дані: Google Maps»", () => {
+    render(<CoverCredit credit={google} />);
+    expect(screen.getByTestId("cover-credit").textContent).toBe("Фото: Олена · Дані: Google Maps");
+    cleanup();
+    render(<CoverCredit credit={{ ...google, authors: [] }} />);
+    expect(screen.getByTestId("cover-credit").textContent).toBe("Дані: Google Maps");
+  });
+
+  it("файл обложки не загрузился — подложка вместо битой картинки", () => {
+    const { container } = render(
+      <PlaceMedia place={{ ...base, cover: { url: "https://api.example/c", alt: null, credit: google } }} />,
+    );
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.queryByTestId("cover-credit")).toBeNull();
   });
 });
 

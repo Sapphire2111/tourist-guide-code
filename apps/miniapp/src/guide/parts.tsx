@@ -1,5 +1,5 @@
 // Общие элементы экранов гида: состояния загрузки/ошибки, бейджи, список мест.
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
@@ -94,8 +94,8 @@ export function CoverCredit({
         ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
         : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
       : names
-        ? t("miniapp.place.photoBy", { name: names })
-        : t("miniapp.place.photoSource");
+        ? t("miniapp.place.googleCover", { name: names })
+        : t("miniapp.place.googleCoverNoAuthor");
   return (
     <span className={className} data-testid="cover-credit">
       {text}
@@ -104,10 +104,17 @@ export function CoverCredit({
 }
 
 export function PlaceMedia({ place }: { place: PlaceSummary }) {
+  // Файл не загрузился (404, предел, сеть) — подложка с иконкой вместо битой картинки; подпись не нужна.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const cover = place.cover && place.cover.url !== failedUrl ? place.cover : null;
   return (
     <div className="kosiv-place-media">
-      {place.cover ? <img src={place.cover.url} alt="" loading="lazy" decoding="async" /> : ICONS.nearby}
-      {place.cover?.credit && <CoverCredit credit={place.cover.credit} className="kosiv-place-credit" />}
+      {cover ? (
+        <img src={cover.url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(cover.url)} />
+      ) : (
+        ICONS.nearby
+      )}
+      {cover?.credit && <CoverCredit credit={cover.credit} className="kosiv-place-credit" />}
     </div>
   );
 }

@@ -5629,7 +5629,7 @@
     },
     "/places/{id}/cover": {
       "get": {
-        "description": "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.",
+        "description": "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag (в т. ч. W/\"…\" и список) — 304. Источник, автор и лицензия — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет. Rate limit 600/мин.",
         "operationId": "getGuidePlaceCover",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },

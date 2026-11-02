@@ -108,6 +108,9 @@ export class GoogleApiError extends Error {
   }
 }
 
+/** Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше (необязательный шаг можно пропустить). */
+export class NoApiKeyError extends GoogleApiError {}
+
 export type GoogleClientOptions = {
   /** Ключ нужен только для запросов мимо кэша. */
   apiKey: string | undefined;
@@ -379,7 +382,7 @@ export class GooglePlacesClient {
       throw new PlannedRequest();
     }
     const key = this.options.apiKey;
-    if (!key) throw new GoogleApiError("Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше");
+    if (!key) throw new NoApiKeyError("Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше");
     // Бесплатные запросы (IDs Only) в --max-requests не входят — он страхует платные.
     if (kind !== "detailsIds" && this.paidRequests >= this.options.maxRequests)
       throw new RequestLimitError(`Достигнут лимит запросов к Google: ${this.options.maxRequests}`);

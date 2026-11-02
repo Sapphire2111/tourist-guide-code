@@ -1,5 +1,11 @@
 // Rate limit (T1-24, ADR-0012).
-export { RATE_LIMIT_RULE, RateLimit, SkipRateLimit, type RateLimitRule } from "./rate-limit.decorator.js";
+export {
+  RATE_LIMIT_RULE,
+  RateLimit,
+  SkipIpRateLimit,
+  SkipRateLimit,
+  type RateLimitRule,
+} from "./rate-limit.decorator.js";
 export { clientIpKey, RateLimitInterceptor, type RateLimitOptions } from "./rate-limit.interceptor.js";
 export { DEFAULT_RATE_LIMITS, RateLimitModule, type RateLimitModuleOptions } from "./rate-limit.module.js";
 export {

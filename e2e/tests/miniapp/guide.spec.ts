@@ -179,7 +179,7 @@ test.describe("QR отеля demoHotel01", () => {
   test("«Що поруч» без геолокации: от базовой точки отеля, радиус; a11y", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
-    await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч із Тестовий готель");
+    await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч: Тестовий готель");
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const state = apiMockState.get(page)!;
     expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "500" });
@@ -205,7 +205,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.goto("/");
     await page.getByTestId("near-me").click();
     await expect(page.getByTestId("geo-off")).toHaveText(
-      "Геолокацію вимкнено. Показуємо місця біля Тестовий готель.",
+      "Геолокацію вимкнено. Показуємо місця поруч: Тестовий готель.",
     );
     await expect(page.getByTestId("place-item")).toHaveCount(2);
   });
