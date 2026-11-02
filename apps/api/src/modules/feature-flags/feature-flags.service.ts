@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Db, FeatureFlagGateMark, FeatureFlagRow } from "../../db/index.js";
+import { hasSupportedMfa } from "../admin-auth/index.js";
 import { AuditService, type AuditActor, type AuditPii } from "../audit/index.js";
 import { isGrantActive, RbacService } from "../rbac/index.js";
 import { RegionsRepository } from "../regions/index.js";
@@ -34,6 +35,7 @@ export type FeatureFlagErrorReason =
   | "region_not_found"
   | "finance_gate_role"
   | "finance_gate_open"
+  | "finance_gate_mfa"
   | "unknown_decision"
   | "already_marked";
 
@@ -89,7 +91,8 @@ export type FeatureFlagState = {
  * Фича-флаги (T1-22, ADR-0011): эффективные значения (каталог + переопределения окружения и региона) и их
  * изменение админом платформы с записью в аудит в той же транзакции. Финансовый гейт (D-81): включить флаг с
  * financeGate (finance.live) в prod может только пользователь с назначением SUPERADMIN на PLATFORM и только когда
- * отмечено закрытие всех ⚖-решений FINANCE_GATE_DECISIONS. Выключить можно всегда (аварийный выключатель).
+ * отмечено закрытие всех ⚖-решений FINANCE_GATE_DECISIONS, и только со вторым фактором (D-52, пока не реализован —
+ * гейт закрыт). Выключить можно всегда (аварийный выключатель).
  */
 @Injectable()
 export class FeatureFlagsService {
@@ -221,7 +224,8 @@ export class FeatureFlagsService {
 
   /**
    * Финансовый гейт в prod: актор — пользователь с действующим назначением FINANCE_GATE_ROLE на PLATFORM, и все
-   * решения FINANCE_GATE_DECISIONS отмечены. Возвращает назначение SUPERADMIN — оно и пишется в аудит.
+   * решения FINANCE_GATE_DECISIONS отмечены, и у актора настроен поддержанный второй фактор (D-52; пока методов нет —
+   * гейт закрыт). Возвращает назначение SUPERADMIN — оно и пишется в аудит.
    */
   private async checkFinanceGate(actor: AuditActor): Promise<string> {
     if (actor.type !== "user") throw new FeatureFlagError("finance_gate_role");
@@ -233,6 +237,10 @@ export class FeatureFlagsService {
     const marked = new Set((await this.repo.gateMarks()).map((m) => m.decision));
     const missing = FINANCE_GATE_DECISIONS.filter((d) => !marked.has(d));
     if (missing.length) throw new FeatureFlagError("finance_gate_open", missing);
+    // Второй фактор у SUPERADMIN (roles-and-data §1.4 «P 2FA»): пока D-52 не реализован, поддержанных методов нет —
+    // гейт в prod закрыт для всех, даже с полными отметками (иначе SUPERADMIN один, по паролю, открыл бы финансы).
+    if (!hasSupportedMfa(await this.repo.mfaMethodOf(actor.userId)))
+      throw new FeatureFlagError("finance_gate_mfa");
     return grant.id;
   }
 }

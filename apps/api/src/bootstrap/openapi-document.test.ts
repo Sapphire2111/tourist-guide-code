@@ -44,6 +44,12 @@ describe("OpenAPI-контракт", () => {
     expect(committed).toEqual(JSON.parse(JSON.stringify(buildOpenApiDocument(app))));
   });
 
+  it("Promotion — только сущность: выдачи и показа нет ни в одном эндпоинте (до D-63)", () => {
+    const doc = buildOpenApiDocument(app);
+    expect(Object.keys(doc.paths).filter((p) => /promot/i.test(p))).toEqual([]);
+    expect(Object.keys(doc.components?.schemas ?? {}).filter((s) => /promot/i.test(s))).toEqual([]);
+  });
+
   it("вне prod отдаёт /openapi.json и Swagger UI", async () => {
     const res = await request(app.getHttpServer()).get("/openapi.json").expect(200);
     expect((res.body as { paths: object }).paths).toHaveProperty("/health");

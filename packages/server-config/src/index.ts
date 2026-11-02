@@ -189,6 +189,21 @@ export const storageEnvShape = {
   STORAGE_PUBLIC_BASE_URL: optionalUrl("http", "https"),
 };
 
+/**
+ * Вход админа (api, ADR-0018): ADMIN_LOGIN_HMAC_SECRET — ключ HMAC-SHA256 псевдонимов логина и адреса клиента в
+ * admin_login_failures, не короче 32 байт. Обязателен в staging/prod (requireInEnvs у api); в local/test не задан —
+ * фиксированный ключ разработки.
+ */
+export const adminAuthEnvShape = {
+  ADMIN_LOGIN_HMAC_SECRET: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .refine((v) => Buffer.byteLength(v, "utf8") >= 32, "не короче 32 байт")
+      .optional(),
+  ),
+};
+
 type StorageCfg = { APP_ENV: AppEnv } & {
   [K in keyof typeof storageEnvShape]?: unknown;
 };

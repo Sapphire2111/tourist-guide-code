@@ -1,6 +1,7 @@
 import {
   baseEnvShape,
   storageEnvRefine,
+  adminAuthEnvShape,
   storageEnvShape,
   commaList,
   port,
@@ -19,6 +20,7 @@ export const apiEnvSchema = z
   .object({
     ...baseEnvShape,
     ...storageEnvShape,
+    ...adminAuthEnvShape,
     PORT: port(4300),
     // Браузер шлёт Origin без пути и слэша, в нижнем регистре; cors сравнивает строки точно — иначе молча блок.
     CORS_ORIGINS: commaList().refine((list) => list.every(isOrigin), {
@@ -41,6 +43,14 @@ export const apiEnvSchema = z
     // REDIS_URL, иначе inline. Staging (Render free, без отдельного worker) — inline.
     MEDIA_PROCESSING: z.enum(["queue", "inline"]).optional(),
     TELEGRAM_BOT_TOKEN: optionalString(),
+    // Имя бота без @ (блок 3, ADR-0018): ссылка печати QR https://t.me/<бот>?startapp=<код>. Не задано — печать 409.
+    TELEGRAM_BOT_USERNAME: z.preprocess(
+      (v) => (typeof v === "string" ? blankToUndefined(v.trim().replace(/^@/, "")) : v),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_]{5,32}$/, "имя бота — 5–32 символа: латиница, цифры, _")
+        .optional(),
+    ),
     // Вход через Telegram (блок 2, ADR-0015): максимальный возраст initData (auth_date), часов. Старше — 401.
     TELEGRAM_INIT_DATA_MAX_AGE_HOURS: z.preprocess(
       blankToUndefined,
@@ -73,7 +83,15 @@ export const apiEnvSchema = z
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),
   })
-  .superRefine(requireInEnvs(["PUBLIC_API_URL", "CORS_ORIGINS", "REDIS_URL", "TELEGRAM_BOT_TOKEN"]))
+  .superRefine(
+    requireInEnvs([
+      "PUBLIC_API_URL",
+      "CORS_ORIGINS",
+      "REDIS_URL",
+      "TELEGRAM_BOT_TOKEN",
+      "ADMIN_LOGIN_HMAC_SECRET",
+    ]),
+  )
   .superRefine(storageEnvRefine)
   .superRefine((cfg, ctx) => {
     if (cfg.MEDIA_PROCESSING === "queue" && !cfg.REDIS_URL)

@@ -11,6 +11,8 @@ import {
 
 /** Фильтр ленты аудита для админа. Период — по created_at: from включительно, to не включительно. */
 export type AuditLogFilter = {
+  /** Код действия (role.assign, qr_point.create …). */
+  action?: string;
   entityType?: string;
   entityId?: string;
   actorUserId?: string;
@@ -73,6 +75,7 @@ export class AuditLogRepository {
    */
   search(filter: AuditLogFilter, page: { limit: number; beforeId?: string }): Promise<AuditLog[]> {
     let q = currentDb(this.db).selectFrom("audit_logs").selectAll();
+    if (filter.action !== undefined) q = q.where("action", "=", filter.action);
     if (filter.entityType !== undefined) q = q.where("entity_type", "=", filter.entityType);
     if (filter.entityId !== undefined) q = q.where("entity_id", "=", filter.entityId);
     if (filter.actorUserId !== undefined) q = q.where("actor_user_id", "=", filter.actorUserId);

@@ -2,9 +2,11 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { analyticsClientEventsEnabled, mediaProcessingMode, type ApiEnv } from "./config.js";
 import { TenancyModule } from "./common/tenancy/index.js";
 import { DatabaseModule } from "./db/index.js";
+import { AdminAuthModule } from "./modules/admin-auth/index.js";
 import { AnalyticsModule } from "./modules/analytics/index.js";
 import { AuditModule } from "./modules/audit/index.js";
 import { AuthModule } from "./modules/auth/index.js";
+import { EmergencyContactsModule } from "./modules/emergency-contacts/index.js";
 import { CatalogModule } from "./modules/catalog/index.js";
 import { FeatureFlagsModule } from "./modules/feature-flags/index.js";
 import { ClientIpDiagnosticsModule, HealthModule } from "./modules/health/index.js";
@@ -12,6 +14,7 @@ import { IdempotencyModule } from "./modules/idempotency/index.js";
 import { MediaModule } from "./modules/media/index.js";
 import { ProfileModule } from "./modules/profile/index.js";
 import { QrContextModule } from "./modules/qr-context/index.js";
+import { QrPointsModule } from "./modules/qr-points/index.js";
 import { RateLimitModule } from "./modules/rate-limit/index.js";
 import { RbacModule, RbacTenantContextSource } from "./modules/rbac/index.js";
 import { RoleAssignmentsModule } from "./modules/role-assignments/index.js";
@@ -48,6 +51,8 @@ export class AppModule {
           | "S3_SECRET_ACCESS_KEY"
           | "RATE_LIMIT"
           | "TELEGRAM_BOT_TOKEN"
+          | "TELEGRAM_BOT_USERNAME"
+          | "ADMIN_LOGIN_HMAC_SECRET"
           | "TELEGRAM_INIT_DATA_MAX_AGE_HOURS"
         >
       >,
@@ -88,6 +93,10 @@ export class AppModule {
         }),
         // QR-контекст входа (блок 2, ADR-0016): после AnalyticsModule — эмиссия qr_scanned.
         QrContextModule,
+        // Ядро админки (блок 3, ADR-0018): вход по логину и паролю, QR-менеджмент, экстренные контакты.
+        AdminAuthModule.forRoot({ loginHmacSecret: env.ADMIN_LOGIN_HMAC_SECRET }),
+        QrPointsModule.forRoot({ botUsername: env.TELEGRAM_BOT_USERNAME }),
+        EmergencyContactsModule,
         // Каталог региона для админки (блок 3, ADR-0017).
         CatalogModule,
         // Фича-флаги (T1-22): без APP_ENV (генерация OpenAPI) — значения prod.

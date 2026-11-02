@@ -61,6 +61,9 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      # Вход админа (ADR-0018): ключ HMAC счётчиков неудачных входов, ≥ 32 байт; без него api не стартует.
+      - key: ADMIN_LOGIN_HMAC_SECRET
+        sync: false
       # Rate limit (T1-24): один инстанс — счётчики в памяти процесса, команды Upstash не тратятся.
       # IP клиента — из X-Forwarded-For балансировщика Render (1 hop — проверить после деплоя, ADR-0012).
       - key: RATE_LIMIT

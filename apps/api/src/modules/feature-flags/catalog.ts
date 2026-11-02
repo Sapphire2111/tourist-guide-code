@@ -87,8 +87,9 @@ export function isFinanceGateDecision(code: string): code is FinanceGateDecision
 }
 
 /**
- * Роль, которая единственная может включить флаг финансового гейта в prod (назначение на PLATFORM). Условия гейта —
- * ADR-0011/0018.
+ * Роль, которая единственная может включить флаг финансового гейта в prod (назначение на PLATFORM). Бизнес-роль
+ * SUPERADMIN — в реестре ролей с блока 3 (ADR-0018). Кроме роли нужны отметки всех ⚖-решений и настроенный
+ * поддержанный второй фактор (D-52): пока 2FA не реализована, finance.live в prod не включить никому (намеренно).
  */
 export const FINANCE_GATE_ROLE = "SUPERADMIN";
 

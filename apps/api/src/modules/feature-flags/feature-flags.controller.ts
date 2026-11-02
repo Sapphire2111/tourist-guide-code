@@ -146,6 +146,7 @@ const ERROR_CODE = {
   unknown_decision: "UNPROCESSABLE",
   finance_gate_role: "FORBIDDEN",
   finance_gate_open: "CONFLICT",
+  finance_gate_mfa: "FORBIDDEN",
   already_marked: "CONFLICT",
 } as const satisfies Record<FeatureFlagError["reason"], ErrorCode>;
 

@@ -23,6 +23,12 @@ function IsRfc3339DateTime(): PropertyDecorator {
 }
 
 export class AuditLogsQueryDto extends CursorQueryDto {
+  @ApiPropertyOptional({ type: String, maxLength: 100, example: "qr_point.create" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  action?: string;
+
   @ApiPropertyOptional({ type: String, maxLength: 100, example: "region" })
   @IsOptional()
   @IsString()

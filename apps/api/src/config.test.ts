@@ -33,6 +33,42 @@ describe("apiEnvSchema", () => {
     }
   });
 
+  it("ADMIN_LOGIN_HMAC_SECRET: в local необязателен, в staging/prod обязателен, не короче 32 байт", () => {
+    const base = {
+      DATABASE_URL: "postgresql://tg:tg@localhost:4303/tg",
+      PUBLIC_API_URL: "https://api.example.com",
+      CORS_ORIGINS: "https://app.example.com",
+      REDIS_URL: "rediss://default:x@h:6379",
+      TELEGRAM_BOT_TOKEN: "123:abc",
+    };
+    expect(
+      parseEnv("api", apiEnvSchema, { DATABASE_URL: base.DATABASE_URL }).ADMIN_LOGIN_HMAC_SECRET,
+    ).toBeUndefined();
+    expect(() => parseEnv("api", apiEnvSchema, { ...base, APP_ENV: "staging" })).toThrow(
+      /ADMIN_LOGIN_HMAC_SECRET: обязательна при APP_ENV=staging/,
+    );
+    expect(() =>
+      parseEnv("api", apiEnvSchema, { ...base, APP_ENV: "staging", ADMIN_LOGIN_HMAC_SECRET: "x".repeat(31) }),
+    ).toThrow(/ADMIN_LOGIN_HMAC_SECRET/);
+    expect(
+      parseEnv("api", apiEnvSchema, { ...base, APP_ENV: "staging", ADMIN_LOGIN_HMAC_SECRET: "ї".repeat(16) })
+        .ADMIN_LOGIN_HMAC_SECRET,
+    ).toBe("ї".repeat(16));
+  });
+
+  it("TELEGRAM_BOT_USERNAME: необязателен, @ и пробелы отбрасываются, неверное имя — ошибка", () => {
+    const parse = (TELEGRAM_BOT_USERNAME?: string) =>
+      parseEnv("api", apiEnvSchema, {
+        DATABASE_URL: "postgresql://tg:tg@localhost:4303/tg",
+        TELEGRAM_BOT_USERNAME,
+      });
+    expect(parse().TELEGRAM_BOT_USERNAME).toBeUndefined();
+    expect(parse("  ").TELEGRAM_BOT_USERNAME).toBeUndefined();
+    expect(parse(" @tourist_guide_bot ").TELEGRAM_BOT_USERNAME).toBe("tourist_guide_bot");
+    for (const bad of ["bot", "bad name", "https://t.me/x_bot"])
+      expect(() => parse(bad), bad).toThrow(/TELEGRAM_BOT_USERNAME/);
+  });
+
   it("ANALYTICS_CLIENT_EVENTS: по умолчанию выключен только в prod, явное значение важнее", () => {
     expect(analyticsClientEventsEnabled({ APP_ENV: "local" })).toBe(true);
     expect(analyticsClientEventsEnabled({ APP_ENV: "staging" })).toBe(true);
