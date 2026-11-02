@@ -66,7 +66,10 @@ function setup(ui: React.ReactNode, api: Partial<HostApi>, env: Partial<HostEnv>
 describe("C03 Про заклад", () => {
   it("заявка: номер вводит гость, вне часов — «буде оброблено з …»", async () => {
     const createRequest = vi.fn(async () => request({ deferredUntil: "08:00" }));
-    setup(<About />, { hostModule: async () => module({ acceptingNow: false }), createRequest });
+    setup(<About header={<h1>Готель</h1>} />, {
+      hostModule: async () => module({ acceptingNow: false }),
+      createRequest,
+    });
     expect((await screen.findByTestId("intake-closed")).textContent).toContain("08:00");
     fireEvent.click(screen.getByRole("button", { name: "Замовити: Прибирання" }));
     fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" }));
@@ -81,7 +84,11 @@ describe("C03 Про заклад", () => {
 
   it("номер из QR не спрашивается; 409 — дубль", async () => {
     const createRequest = vi.fn(async () => Promise.reject(new ConflictError()));
-    setup(<About />, { hostModule: async () => module(), createRequest }, { qrRoom: "305" });
+    setup(
+      <About header={<h1>Готель</h1>} />,
+      { hostModule: async () => module(), createRequest },
+      { qrRoom: "305" },
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
     expect(screen.getByTestId("room-from-qr").textContent).toContain("305");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
@@ -92,7 +99,7 @@ describe("C03 Про заклад", () => {
   });
 
   it("без сессии — отправка требует входа", async () => {
-    setup(<About />, { hostModule: async () => module() }, {}, false);
+    setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module() }, {}, false);
     fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
     expect(screen.getByTestId("request-login")).toBeTruthy();
   });

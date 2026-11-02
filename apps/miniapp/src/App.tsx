@@ -289,7 +289,7 @@ function Routes(props: RoutesProps) {
   if (path === "/about" && venueOf(session))
     return (
       <Screen webApp={webApp}>
-        <About />
+        <About header={<ContextView context={session!.context} webApp={webApp} />} />
       </Screen>
     );
   if (path === "/requests")

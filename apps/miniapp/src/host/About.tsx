@@ -1,7 +1,7 @@
 // C03 «Про заклад» + форма заявки (S-03): правила, Wi-Fi, контакты, часы приёма, услуги → заявка.
 // Номер комнаты — из QR номера, иначе вводит гость (помечается «вказано гостем», D-49).
 // Вне часов приёма заявка принимается с пометкой «буде оброблено з …» (D-55, вариант Б).
-import { useId, useState, type CSSProperties, type FormEvent } from "react";
+import { useId, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
@@ -23,26 +23,29 @@ const field: CSSProperties = {
   borderRadius: "var(--radius)",
 };
 
-export function About() {
+/** header — карточка заведения из контекста QR (ContextView, h1 — название); ниже — HostModule. */
+export function About({ header }: { header: ReactNode }) {
   const { t } = useT();
   const { api, hotelPlaceId } = useHost();
   const [mod, retry] = useAsync(
     () => (hotelPlaceId ? api.hostModule(hotelPlaceId) : Promise.reject(new NotFoundError())),
     [api, hotelPlaceId],
   );
-  if (mod.status === "error" && mod.error instanceof NotFoundError)
-    return (
-      <Stack>
-        <h1>{t("miniapp.about.title")}</h1>
-        <p role="alert" data-testid="about-unavailable">
-          {t("miniapp.about.unavailable")}
-        </p>
-      </Stack>
-    );
   return (
-    <AsyncView state={mod} retry={retry}>
-      {(m) => <AboutView module={m} />}
-    </AsyncView>
+    <Stack>
+      {header}
+      {mod.status === "error" && mod.error instanceof NotFoundError ? (
+        // Модуль не включён/не настроен: информация с QR видна, заявок нет.
+        <p data-testid="about-empty">{t("miniapp.about.empty")}</p>
+      ) : (
+        <AsyncView state={mod} retry={retry}>
+          {(m) => <AboutView module={m} />}
+        </AsyncView>
+      )}
+      <Link to="/requests" data-testid="my-requests-link">
+        {t("miniapp.about.myRequests")}
+      </Link>
+    </Stack>
   );
 }
 
@@ -96,7 +99,6 @@ function AboutView({ module: m }: { module: HostModule }) {
   const empty = !m.rules && !m.wifi && !m.phone && m.services.length === 0;
   return (
     <Stack>
-      <h1>{pickLocalized(m.name, locale)}</h1>
       {empty && <p data-testid="about-empty">{t("miniapp.about.empty")}</p>}
       {m.rules && (
         <section style={card} aria-labelledby="rules-title">
@@ -173,9 +175,6 @@ function AboutView({ module: m }: { module: HostModule }) {
           )}
         </section>
       )}
-      <Link to="/requests" data-testid="my-requests-link">
-        {t("miniapp.about.myRequests")}
-      </Link>
     </Stack>
   );
 }
