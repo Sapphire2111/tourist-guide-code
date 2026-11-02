@@ -1,6 +1,6 @@
 // C04: раздел главной → корневая категория и её подкатегории, поиск по названию, список/карта.
 // Порядок выдачи задаёт сервер (релевантность, реклама — по правилам C-02); клиент только помечает рекламу.
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
@@ -47,15 +47,23 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
   const [q, setQ] = useState("");
   const [view, setView] = useState<"list" | "map">("list");
   const point = base?.point ?? null;
-  // search_used — по ответу на поиск с текстом (сам текст не отправляется: ПДн-риск).
+  // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
+  // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
+  const [submitId, setSubmitId] = useState(0);
+  const pendingSubmit = useRef<number | null>(null);
   const [places, retry] = useAsync(
     () =>
-      api.search({ categoryId, q: q || undefined, point }).then((list) => {
-        if (q) analytics.track("search_used", { categoryId, resultCount: list.length });
-        return list;
-      }),
-    [api, categoryId, q, point?.lat, point?.lng],
+      // Базовая точка ещё грузится — ждём её, чтобы не искать дважды (без точки и с ней).
+      base?.pending
+        ? new Promise<never>(() => undefined)
+        : api.search({ categoryId, q: q || undefined, point }).then((list) => ({ list, submitId })),
+    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng],
   );
+  useEffect(() => {
+    if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
+    pendingSubmit.current = null;
+    if (q) analytics.track("search_used", { categoryId, resultCount: places.data.list.length });
+  }, [analytics, categoryId, q, places]);
 
   useEffect(() => analytics.track("category_opened", { categoryId }), [analytics, categoryId]);
 
@@ -64,6 +72,8 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
     // api принимает запрос от 2 символов; короче — показываем весь раздел.
     const text = draft.trim();
     setQ(text.length >= 2 ? text : "");
+    pendingSubmit.current = submitId + 1;
+    setSubmitId((n) => n + 1);
   };
 
   return (
@@ -121,8 +131,14 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
           </button>
         ))}
       </div>
+      {/* Постоянная live-область: читалки объявляют изменение числа результатов. */}
+      <p role="status" data-testid="catalog-count">
+        {places.status === "ready" && places.data.list.length > 0
+          ? t("miniapp.catalog.results", { count: places.data.list.length })
+          : ""}
+      </p>
       <AsyncView state={places} retry={retry}>
-        {(list) =>
+        {({ list }) =>
           list.length === 0 ? (
             <div>
               <p data-testid="catalog-empty">{t("miniapp.catalog.empty")}</p>
@@ -140,7 +156,6 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
             </div>
           ) : (
             <Stack>
-              <p role="status">{t("miniapp.catalog.results", { count: list.length })}</p>
               {view === "map" && <MapSlot places={list} center={point} centerLabel={base?.name} />}
               <PlaceList places={list} />
             </Stack>

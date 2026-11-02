@@ -77,6 +77,13 @@ export class NotFoundError extends Error {
   }
 }
 
+/** Нет или истекла сессия (401) — нужен повторный вход, повтор запроса не поможет. */
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("unauthorized");
+  }
+}
+
 /** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
 export type GuideApi = {
   categories(): Promise<Category[]>;

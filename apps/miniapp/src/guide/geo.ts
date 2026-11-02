@@ -11,13 +11,18 @@ function fromTelegram(webApp: TelegramWebApp): Promise<LatLng | null> | null {
   const lm = webApp.LocationManager;
   const init = lm?.init;
   const getLocation = lm?.getLocation;
+  // LocationManager — Bot API 8.0+; на старых клиентах объекта может не быть или он не работает.
   if (!lm || !init || !getLocation) return null;
+  if (webApp.isVersionAtLeast && !webApp.isVersionAtLeast("8.0")) return null;
   return new Promise((resolve) => {
+    const read = () => {
+      if (!lm.isLocationAvailable) return resolve(null);
+      getLocation.call(lm, (loc) => resolve(loc ? { lat: loc.latitude, lng: loc.longitude } : null));
+    };
     try {
-      init.call(lm, () => {
-        if (!lm.isLocationAvailable) return resolve(null);
-        getLocation.call(lm, (loc) => resolve(loc ? { lat: loc.latitude, lng: loc.longitude } : null));
-      });
+      // Повторный init() колбэк не вызывает — после инициализации читаем сразу.
+      if (lm.isInited) read();
+      else init.call(lm, read);
     } catch {
       resolve(null);
     }
@@ -44,8 +49,11 @@ function fromBrowser(): Promise<LatLng | null> {
 export function requestLocation(webApp?: TelegramWebApp): Promise<LatLng | null> {
   const viaTelegram = webApp ? fromTelegram(webApp) : null;
   const request = viaTelegram ?? fromBrowser();
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), TIMEOUT_MS + 1_000));
-  return Promise.race([request, timeout]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), TIMEOUT_MS + 1_000);
+  });
+  return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** Расстояние по большому кругу, м (для подписи, когда сервер не вернул distance). */

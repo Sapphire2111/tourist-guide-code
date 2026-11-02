@@ -128,6 +128,10 @@ describe("каталог C04", () => {
       point: env.base!.point,
     });
     expect(analytics.track).toHaveBeenCalledWith("search_used", { categoryId: CAFE, resultCount: 2 });
+    // Смена подкатегории после поиска — новый запрос, но не новое search_used.
+    fireEvent.click(screen.getByRole("button", { name: "Усі" }));
+    await flush();
+    expect(analytics.track.mock.calls.filter(([e]) => e === "search_used")).toHaveLength(1);
   });
 
   it("раздел без категории — пустое состояние; сбой — повтор", async () => {
@@ -336,5 +340,31 @@ describe("адаптер api и аналитика", () => {
     expect(events[1]).not.toHaveProperty("placeId");
     // Пакет проходит ту же схему, что проверяет api (@tg/shared).
     expect(clientAnalyticsBatchSchema.safeParse(bodies[0]).success).toBe(true);
+  });
+});
+
+describe("аналитика: отправка без потерь", () => {
+  it("route_clicked уходит сразу с keepalive; накопленное — при уходе со страницы", async () => {
+    const reqs: Request[] = [];
+    const fetch = vi.fn(async (req: Request) => {
+      reqs.push(req);
+      return Response.json({ accepted: 1 }, { status: 202 });
+    });
+    const ctx = {
+      anonymousId: "7d0f3e1a-5b2c-4c8d-9e6f-0a1b2c3d4e5f",
+      regionId: REGION,
+      source: "qr" as const,
+    };
+    const a = createAnalytics(createApiClient({ baseUrl: "http://api.test", fetch }), () => ctx, 60_000);
+    a.track("route_clicked", { placeId: P1 });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(reqs[0]!.keepalive).toBe(true);
+    a.track("place_viewed", { placeId: P1 });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new Event("pagehide"));
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

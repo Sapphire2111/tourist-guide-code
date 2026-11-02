@@ -76,9 +76,10 @@ export function ContextView({ context, webApp }: { context: QrContext | null; we
     const address = venue.address && pickLocalized(venue.address, locale);
     return (
       <section aria-labelledby="venue-title" data-testid="venue">
-        <p>{t("miniapp.venue.opened", { name })}</p>
-        <h2 id="venue-title">{t("miniapp.venue.title")}</h2>
-        <h3 data-testid="venue-name">{name}</h3>
+        {/* Экран «Про заклад» (/about): заголовок страницы — название заведения. */}
+        <h1 id="venue-title" data-testid="venue-name">
+          {name}
+        </h1>
         {description && <p>{description}</p>}
         <dl>
           {address && (

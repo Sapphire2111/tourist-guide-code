@@ -11,7 +11,7 @@ export type GuideEnv = {
   analytics: Analytics;
   webApp?: TelegramWebApp;
   /** Базовая точка «Що поруч» (заведение/точка QR), если известна. */
-  base: { name: string; point: LatLng | null } | null;
+  base: { name: string; point: LatLng | null; /** Точка ещё загружается. */ pending?: boolean } | null;
   /** Регион гида из контекста входа; null — каталог недоступен (кроме 112 в «Халепа?»). */
   regionId: string | null;
   /** Есть сессия (вход через Telegram) — избранное доступно. */

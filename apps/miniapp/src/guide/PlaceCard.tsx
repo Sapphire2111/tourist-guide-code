@@ -6,7 +6,7 @@ import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { routeUrl } from "./geo.js";
 import { Badge, card, PlaceBadges, useDistance } from "./parts.js";
-import { NotFoundError, type PlaceDetail, type ScheduleInterval } from "./types.js";
+import { NotFoundError, UnauthorizedError, type PlaceDetail, type ScheduleInterval } from "./types.js";
 
 const action: CSSProperties = {
   display: "inline-block",
@@ -22,7 +22,11 @@ const action: CSSProperties = {
 export function PlaceCard({ id }: { id: string }) {
   const { t } = useT();
   const { api, analytics } = useGuide();
-  const [place, retry] = useAsync(() => api.place(id), [api, id]);
+  const [place, retry] = useAsync(
+    // Битый/не-UUID id из адреса — «Заклад недоступний» без запроса.
+    () => (id ? api.place(id) : Promise.reject(new NotFoundError())),
+    [api, id],
+  );
   useEffect(() => {
     if (place.status === "ready") analytics.track("place_viewed", { placeId: place.data.id });
   }, [analytics, place]);
@@ -85,7 +89,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
   // favorite в карточке: null — сервер не видит сессии.
   const [favorite, setFavorite] = useState<boolean | null>(place.favorite);
   const [busy, setBusy] = useState(false);
-  const [favError, setFavError] = useState(false);
+  const [favError, setFavError] = useState<"error" | "auth" | false>(false);
 
   const toggleFavorite = async () => {
     setBusy(true);
@@ -94,8 +98,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
       if (favorite) await api.removeFavorite(place.id);
       else await api.addFavorite(place.id);
       setFavorite(!favorite);
-    } catch {
-      setFavError(true);
+    } catch (e) {
+      setFavError(e instanceof UnauthorizedError ? "auth" : "error");
     }
     setBusy(false);
   };
@@ -203,7 +207,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           )}
         </div>
         {!signedIn && <p>{t("miniapp.place.favoriteNeedsLogin")}</p>}
-        {favError && <p role="alert">{t("miniapp.place.favoriteError")}</p>}
+        {favError && (
+          <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
+        )}
         {place.description && <p>{pickLocalized(place.description, locale)}</p>}
         {place.address && (
           <Section title={t("miniapp.place.address")}>

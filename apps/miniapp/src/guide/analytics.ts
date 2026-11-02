@@ -58,12 +58,22 @@ export function createAnalytics(
       await api.POST("/analytics/events", {
         // Конверт собран по clientAnalyticsEventSchema (@tg/shared); тип union событий тут не воспроизводим.
         body: { events } as never,
+        // keepalive — запрос переживает закрытие Mini App (pagehide/visibilitychange).
+        keepalive: true,
       });
     } catch {
       // сеть — событие теряется
     }
     if (queue.length) await flush();
   };
+
+  // Mini App сворачивают или закрывают — отправить накопленное, а не терять до таймера.
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", () => void flush());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") void flush();
+    });
+  }
 
   return {
     track(event, props) {
@@ -83,7 +93,9 @@ export function createAnalytics(
         event,
         props,
       });
-      if (!timer) timer = setTimeout(() => void flush(), flushMs);
+      // Маршрут и звонок обычно уводят из приложения — отправляем сразу.
+      if (event === "route_clicked" || event === "call_clicked") void flush();
+      else if (!timer) timer = setTimeout(() => void flush(), flushMs);
     },
     flush,
   };

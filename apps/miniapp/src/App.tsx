@@ -95,20 +95,22 @@ function Back({ webApp }: { webApp?: TelegramWebApp }) {
  * Базовая точка «Що поруч»: координаты места QR-точки (qrPoint.placeId → GET /places/{id}); в контексте входа
  * координат нет. Не загрузилась — null (режим без базовой точки).
  */
-function useBasePoint(api: GuideApi, placeId: string | null): LatLng | null {
-  const [point, setPoint] = useState<LatLng | null>(null);
+function useBasePoint(api: GuideApi, placeId: string | null): { point: LatLng | null; pending: boolean } {
+  const [loaded, setLoaded] = useState<{ placeId: string; point: LatLng | null } | null>(null);
   useEffect(() => {
     if (!placeId) return;
     let alive = true;
     api.place(placeId).then(
-      (p) => alive && setPoint(p.location),
-      () => undefined,
+      (p) => alive && setLoaded({ placeId, point: p.location }),
+      () => alive && setLoaded({ placeId, point: null }),
     );
     return () => {
       alive = false;
     };
   }, [api, placeId]);
-  return placeId ? point : null;
+  if (!placeId) return { point: null, pending: false };
+  if (loaded?.placeId !== placeId) return { point: null, pending: true };
+  return { point: loaded.point, pending: false };
 }
 
 function venueOf(session?: Session) {
@@ -179,10 +181,47 @@ function Screen({
   );
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** id места из #/place/<id>: битый или не-UUID — "" (экран «Заклад недоступний» без запроса). */
+function placeIdOf(path: string): string | undefined {
+  const raw = /^\/place\/([^/]+)$/.exec(path)?.[1];
+  if (raw === undefined) return undefined;
+  try {
+    const id = decodeURIComponent(raw);
+    return UUID_RE.test(id) ? id : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Смена экрана: фокус на h1 — читалка объявляет новый экран, клавиатура начинает сверху. */
+function useFocusHeading(path: string) {
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    // Заголовок может появиться после загрузки данных — пробуем сразу и ещё раз позже.
+    const focus = () => {
+      const h1 = document.querySelector<HTMLElement>("main h1");
+      if (!h1) return false;
+      if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
+      h1.focus();
+      return true;
+    };
+    if (focus()) return;
+    const id = window.setTimeout(focus, 300);
+    return () => window.clearTimeout(id);
+  }, [path]);
+}
+
 function Routes(props: RoutesProps) {
   const { api, role, webApp, session, onMe } = props;
   const { t } = useT();
   const [path] = useRoute();
+  useFocusHeading(path);
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
@@ -194,12 +233,12 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
-  const placeId = /^\/place\/([^/]+)$/.exec(path)?.[1];
-  if (placeId)
+  const placeId = placeIdOf(path);
+  if (placeId !== undefined)
     return (
       <Screen webApp={webApp}>
         <RequireRegion>
-          <PlaceCard key={placeId} id={decodeURIComponent(placeId)} />
+          <PlaceCard key={placeId} id={placeId} />
         </RequireRegion>
       </Screen>
     );
@@ -227,7 +266,7 @@ function Routes(props: RoutesProps) {
     );
   if (path === "/about" && venueOf(session))
     return (
-      <Screen title={t("miniapp.venue.title")} webApp={webApp}>
+      <Screen webApp={webApp}>
         <ContextView context={session!.context} webApp={webApp} />
       </Screen>
     );
@@ -304,9 +343,8 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
   const api = useMemo(() => guideApi ?? createGuideApi(props.api, regionId), [guideApi, props.api, regionId]);
   // Конверт аналитики берёт контекст входа на момент события.
   const contextRef = useRef(context);
-  useEffect(() => {
-    contextRef.current = context;
-  }, [context]);
+  // Синхронно в рендере: событие из эффекта того же рендера уже видит новый контекст.
+  contextRef.current = context;
   const tracker = useMemo(
     () =>
       analytics ??
@@ -320,17 +358,17 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
   );
   const venue = venueOf(session);
   const venueName = venue ? pickLocalized(venue.name, effectiveLocale) : null;
-  const basePoint = useBasePoint(api, context?.qrPoint?.placeId ?? null);
+  const { point: basePoint, pending: basePending } = useBasePoint(api, context?.qrPoint?.placeId ?? null);
   const guide = useMemo<GuideEnv>(
     () => ({
       api,
       analytics: tracker,
       webApp: props.webApp,
-      base: venueName ? { name: venueName, point: basePoint } : null,
+      base: venueName ? { name: venueName, point: basePoint, pending: basePending } : null,
       regionId,
       signedIn,
     }),
-    [api, tracker, props.webApp, venueName, basePoint, regionId, signedIn],
+    [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
   );
   return (
     <I18nProvider locale={effectiveLocale}>

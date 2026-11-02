@@ -11,13 +11,20 @@ import type { PlaceSummary } from "./types.js";
 export type PlacesMapProps = {
   places: PlaceSummary[];
   center: LatLng | null;
-  /** Подпись точки центра: базовая точка или «Ви тут». */
+  /** Подпись базовой точки. Координаты устройства сюда не передаются (приватность: карта не центрируется на туристе). */
   centerLabel?: string;
   radius?: number;
 };
 
 const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+/** Подпись маркера — DOM-узел с textContent: строку Leaflet вставляет как innerHTML (XSS из названия места). */
+export function textNode(text: string): HTMLElement {
+  const span = document.createElement("span");
+  span.textContent = text;
+  return span;
+}
 
 export default function PlacesMap({ places, center, centerLabel, radius }: PlacesMapProps) {
   const { t, locale } = useT();
@@ -26,12 +33,15 @@ export default function PlacesMap({ places, center, centerLabel, radius }: Place
 
   useEffect(() => {
     if (!el.current) return;
-    const map = L.map(el.current, { zoomControl: true, attributionControl: true });
+    const map = L.map(el.current, { zoomControl: false, attributionControl: true });
+    L.control
+      .zoom({ zoomInTitle: t("miniapp.map.zoomIn"), zoomOutTitle: t("miniapp.map.zoomOut") })
+      .addTo(map);
     L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(map);
     const bounds: L.LatLngExpression[] = [];
     if (center) {
       L.circleMarker([center.lat, center.lng], { radius: 8, color: "#d93025", fillOpacity: 0.9 })
-        .bindTooltip(centerLabel ?? t("miniapp.map.base"))
+        .bindTooltip(textNode(centerLabel ?? t("miniapp.map.base")))
         .addTo(map);
       if (radius) L.circle([center.lat, center.lng], { radius, weight: 1, fillOpacity: 0.05 }).addTo(map);
       bounds.push([center.lat, center.lng]);
@@ -39,7 +49,7 @@ export default function PlacesMap({ places, center, centerLabel, radius }: Place
     for (const p of places) {
       if (!p.location) continue;
       const marker = L.circleMarker([p.location.lat, p.location.lng], { radius: 7, fillOpacity: 0.8 })
-        .bindTooltip(pickLocalized(p.name, locale))
+        .bindTooltip(textNode(pickLocalized(p.name, locale)))
         .addTo(map);
       marker.on("click", () => navigate(`/place/${p.id}`));
       bounds.push([p.location.lat, p.location.lng]);

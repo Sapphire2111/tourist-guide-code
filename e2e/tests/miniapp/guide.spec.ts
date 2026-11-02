@@ -102,6 +102,46 @@ test.describe("QR отеля demoHotel01", () => {
     await expectNoSeriousA11yViolations(page);
   });
 
+  test("название места с HTML не исполняется в подсказке карты (XSS)", async ({ page }) => {
+    const evil = '<img src=x onerror="window.__xss=1">';
+    await page.route("**/places/search?**", (route) =>
+      route.fulfill({
+        headers: { "access-control-allow-origin": "*" },
+        json: {
+          items: [
+            {
+              id: CAFE_PLACE,
+              categoryId: CAFE_PLACE,
+              name: { uk: evil },
+              address: null,
+              location: { lon: 24.5612, lat: 48.4512 },
+              distanceMeters: 160,
+              recommended: false,
+              adLabel: null,
+              openNow: null,
+              phone: null,
+              cover: null,
+            },
+          ],
+          nextOffset: null,
+          radiusMeters: 500,
+        },
+      }),
+    );
+    await page.goto("/#/nearby");
+    const marker = page.locator(".leaflet-overlay-pane path.leaflet-interactive").last();
+    await marker.hover({ force: true });
+    const tooltip = page.locator(".leaflet-tooltip");
+    await expect(tooltip).toHaveText(evil);
+    await expect(tooltip.locator("img")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+  });
+
+  test("битый id места — «Заклад недоступний» без запроса", async ({ page }) => {
+    await page.goto("/#/place/%E0%A4%A");
+    await expect(page.getByTestId("place-not-found")).toBeVisible();
+  });
+
   test("неопубликованное/неизвестное место — «Заклад недоступний»", async ({ page }) => {
     await page.goto("/#/place/00000000-0000-4000-8000-000000000999");
     await expect(page.getByTestId("place-not-found")).toHaveText("Заклад недоступний.");

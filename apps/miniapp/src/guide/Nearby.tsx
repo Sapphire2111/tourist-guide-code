@@ -47,6 +47,11 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
           {base?.point ? t("miniapp.nearby.geoOff", { base: base.name }) : t("miniapp.nearby.geoOffNoBase")}
         </p>
       )}
+      {geo.status === "denied" && webApp?.LocationManager?.openSettings && (
+        <Button onClick={() => webApp.LocationManager?.openSettings?.()}>
+          {t("miniapp.nearby.openSettings")}
+        </Button>
+      )}
       <label>
         {t("miniapp.nearby.radius")}{" "}
         <select
@@ -67,7 +72,13 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
         </Button>
       )}
       {point ? (
-        <NearbyPlaces point={point} radius={radius} centerLabel={caption ?? undefined} />
+        <NearbyPlaces
+          point={point}
+          radius={radius}
+          // Приватность: карта строится по местам и базовой точке, координаты устройства на неё не попадают.
+          base={geo.status === "granted" ? null : (base?.point ?? null)}
+          baseLabel={caption ?? undefined}
+        />
       ) : (
         geo.status !== "locating" &&
         geo.status !== "denied" && <p data-testid="nearby-no-point">{t("miniapp.nearby.noBase")}</p>
@@ -79,11 +90,13 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
 function NearbyPlaces({
   point,
   radius,
-  centerLabel,
+  base,
+  baseLabel,
 }: {
   point: LatLng;
   radius: number;
-  centerLabel?: string;
+  base: LatLng | null;
+  baseLabel?: string;
 }) {
   const { t } = useT();
   const { api } = useGuide();
@@ -92,7 +105,7 @@ function NearbyPlaces({
     <AsyncView state={places} retry={retry}>
       {(list) => (
         <Stack>
-          <MapSlot places={list} center={point} centerLabel={centerLabel} radius={radius} />
+          <MapSlot places={list} center={base} centerLabel={baseLabel} radius={base ? radius : undefined} />
           {list.length === 0 ? (
             <p data-testid="nearby-empty">{t("miniapp.nearby.empty", { n: radius })}</p>
           ) : (

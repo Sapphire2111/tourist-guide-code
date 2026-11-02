@@ -3,6 +3,7 @@
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import {
   NotFoundError,
+  UnauthorizedError,
   type EmergencyContact,
   type GuideApi,
   type Photo,
@@ -43,8 +44,9 @@ export function cardOf(dto: CardDto): PlaceDetail {
     description: dto.description,
     address: dto.address,
     phone: dto.phone,
-    website: dto.website,
-    telegram: dto.telegram,
+    // Внешние ссылки — только https:// и корректное имя Telegram (javascript:/data: не попадут в href).
+    website: dto.website && /^https:\/\//i.test(dto.website) ? dto.website : null,
+    telegram: dto.telegram && /^[A-Za-z0-9_]{4,32}$/.test(dto.telegram) ? dto.telegram : null,
     photos: dto.photos.map(photoOf).filter((p): p is Photo => p !== null),
     schedule: dto.schedule.weekly.map((w) => ({
       weekday: w.dayOfWeek,
@@ -62,6 +64,7 @@ export function cardOf(dto: CardDto): PlaceDetail {
 async function ok<T>(p: Promise<{ data?: T; response: Response }>): Promise<T> {
   const res = await p;
   if (res.response.status === 404) throw new NotFoundError();
+  if (res.response.status === 401) throw new UnauthorizedError();
   if (!res.response.ok || res.data === undefined) throw new Error(`HTTP ${res.response.status}`);
   return res.data;
 }
@@ -69,6 +72,7 @@ async function ok<T>(p: Promise<{ data?: T; response: Response }>): Promise<T> {
 async function done(p: Promise<{ response: Response }>): Promise<void> {
   const res = await p;
   if (res.response.status === 404) throw new NotFoundError();
+  if (res.response.status === 401) throw new UnauthorizedError();
   if (!res.response.ok) throw new Error(`HTTP ${res.response.status}`);
 }
 

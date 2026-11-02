@@ -20,8 +20,12 @@ const callLink: CSSProperties = {
 
 export function Help() {
   const { t, locale } = useT();
-  const { api, webApp } = useGuide();
-  const [contacts] = useAsync(() => api.emergencyContacts(), [api]);
+  const { api, webApp, regionId } = useGuide();
+  // Без региона контактов нет — только 112, без сообщения об ошибке.
+  const [contacts] = useAsync(
+    () => (regionId ? api.emergencyContacts() : Promise.resolve(null)),
+    [api, regionId],
+  );
   const [geo, setGeo] = useState<"idle" | "locating" | "denied" | LatLng>("idle");
 
   return (
@@ -34,6 +38,7 @@ export function Help() {
       {contacts.status === "loading" && <p role="status">{t("miniapp.guide.loading")}</p>}
       {contacts.status === "error" && <p role="alert">{t("miniapp.help.error")}</p>}
       {contacts.status === "ready" &&
+        contacts.data !== null &&
         (contacts.data.length === 0 ? (
           <p data-testid="help-empty">{t("miniapp.help.empty")}</p>
         ) : (
@@ -43,12 +48,8 @@ export function Help() {
               return (
                 <li key={c.id} style={card}>
                   <p style={{ margin: "0 0 6px" }}>{t(`miniapp.help.kind.${c.kind}` as MessageKey)}</p>
-                  <a
-                    href={`tel:${c.phone}`}
-                    style={callLink}
-                    aria-label={t("miniapp.help.call", { name, phone: c.phone })}
-                  >
-                    {name}: {c.phone}
+                  <a href={`tel:${c.phone}`} style={callLink}>
+                    {t("miniapp.help.call", { name, phone: c.phone })}
                   </a>
                   {c.description && (
                     <p style={{ margin: "6px 0 0" }}>{pickLocalized(c.description, locale)}</p>

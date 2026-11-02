@@ -22,6 +22,8 @@ export type TelegramBackButton = {
 /** Используемая часть API Telegram WebApp. */
 export type TelegramWebApp = {
   initData?: string;
+  /** Bot API: версия клиента не ниже указанной. */
+  isVersionAtLeast?(version: string): boolean;
   /** "unknown" — скрипт загружен вне Telegram. */
   platform?: string;
   initDataUnsafe?: { user?: TelegramUser; start_param?: string };
@@ -45,6 +47,8 @@ export type TelegramLocationManager = {
   isLocationAvailable?: boolean;
   init?(cb?: () => void): void;
   getLocation?(cb: (location: { latitude: number; longitude: number } | null) => void): void;
+  /** Настройки доступа к геолокации бота в Telegram (после отказа). */
+  openSettings?(): void;
 };
 
 type TelegramWindow = { Telegram?: { WebApp?: TelegramWebApp } };
