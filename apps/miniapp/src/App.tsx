@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
@@ -31,6 +31,12 @@ import { Nearby } from "./guide/Nearby.js";
 import { PlaceCard } from "./guide/PlaceCard.js";
 import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
+import { About } from "./host/About.js";
+import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/context.js";
+import { createHostApi } from "./host/host-api.js";
+import { MyRequests, StaffRequests } from "./host/Requests.js";
+import type { HostApi } from "./host/types.js";
+import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import type { Role } from "./role.js";
 import type { TelegramUser, TelegramWebApp } from "./telegram.js";
 
@@ -59,10 +65,12 @@ export type AppProps = {
   guideApi?: GuideApi;
   /** Аналитика (тесты подменяют); по умолчанию — POST /analytics/events. */
   analytics?: Analytics;
+  /** API блока 5 (тесты подменяют); по умолчанию — поверх api. */
+  hostApi?: HostApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
-type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics"> & {
+type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics" | "hostApi"> & {
   session?: Session;
   onMe: (me: Me) => void;
   /** Явный повтор GET /context после сбоя (один запрос на нажатие); true — загружен. */
@@ -133,6 +141,7 @@ function ContextSummary({ context }: { context: Session["context"] }) {
 
 function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
   const { t } = useT();
+  const { staff } = useHost();
   return (
     <Stack>
       <h1>{t("app.name")}</h1>
@@ -150,6 +159,11 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
         <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
       )}
       <HomeSections hasVenue={venueOf(session) !== null} />
+      {staff === "yes" && (
+        <Link to="/staff" data-testid="staff-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+          {t("miniapp.staff.open")}
+        </Link>
+      )}
       <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
       {role === "partner" && (
         // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
@@ -195,6 +209,15 @@ function placeIdOf(path: string): string | undefined {
   }
 }
 
+function uuidOf(raw: string): string {
+  try {
+    const id = decodeURIComponent(raw);
+    return UUID_RE.test(id) ? id : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Смена экрана: фокус на h1 — читалка объявляет новый экран, клавиатура начинает сверху. */
 function useFocusHeading(path: string) {
   const first = useRef(true);
@@ -223,6 +246,24 @@ function Routes(props: RoutesProps) {
   const [path] = useRoute();
   useFocusHeading(path);
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
+  // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
+  const hostRequests = useFeatureFlag("module.host_requests");
+  // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
+  // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
+  const refreshMe = Boolean(session) && hostRequests && (path === "/" || path === "/staff");
+  useEffect(() => {
+    if (!refreshMe) return;
+    let alive = true;
+    api
+      .GET("/me")
+      .then((res) => {
+        if (alive && res.data) onMe(res.data);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [refreshMe, path, api, onMe]);
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
   if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))
@@ -267,9 +308,48 @@ function Routes(props: RoutesProps) {
   if (path === "/about" && venueOf(session))
     return (
       <Screen webApp={webApp}>
-        <ContextView context={session!.context} webApp={webApp} />
+        <About header={<ContextView context={session!.context} webApp={webApp} />} />
       </Screen>
     );
+  if (hostRequests && path === "/requests")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <MyRequests />
+        </RequireRegion>
+      </Screen>
+    );
+  if (hostRequests && path === "/staff")
+    return (
+      <Screen webApp={webApp}>
+        <StaffRequests />
+      </Screen>
+    );
+  if (hostRequests && (path === "/plan" || path === "/plan/saved"))
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <MyPlan tab={path === "/plan" ? "scenarios" : "saved"} />
+        </RequireRegion>
+      </Screen>
+    );
+  const planRoute = hostRequests && /^\/plan\/(scenario|saved)\/([^/]+)$/.exec(path);
+  if (planRoute) {
+    const id = uuidOf(planRoute[2]!);
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          {!id ? (
+            <p role="alert">{t("common.notFound")}</p>
+          ) : planRoute[1] === "scenario" ? (
+            <ScenarioScreen key={id} id={id} />
+          ) : (
+            <SavedPlanScreen key={id} id={id} />
+          )}
+        </RequireRegion>
+      </Screen>
+    );
+  }
   if (path === "/profile" && session && hasRequiredConsents(session.me)) {
     return (
       <Screen title={t("miniapp.profile.title")} webApp={webApp}>
@@ -311,7 +391,7 @@ function StartupStatus({ state }: { state: StartupState }) {
   );
 }
 
-export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...props }: AppProps) {
+export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hostApi, ...props }: AppProps) {
   const { webApp } = props;
   const [state, setState] = useState<StartupState>(startup ? { status: "loading" } : { status: "browser" });
   // ready() после первого рендера: Telegram снимает заглушку загрузки, когда интерфейс уже есть.
@@ -326,7 +406,7 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
     };
   }, [startup]);
   const session = state.status === "ready" ? state : undefined;
-  const onMe = (me: Me) => setState((s) => (s.status === "ready" ? { ...s, me } : s));
+  const onMe = useCallback((me: Me) => setState((s) => (s.status === "ready" ? { ...s, me } : s)), []);
   const retryContext = async () => {
     const startParam = session?.contextFailed;
     if (!startParam) return true;
@@ -372,6 +452,21 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
     }),
     [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
   );
+  const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
+  // Режим персонала (D-50): признак staffMode из /me (сервер считает роли ORG_STAFF/ORG_OWNER), только при
+  // включённом module.host_requests. Отдельный запрос не нужен — «нет доступа» не мелькает до ответа.
+  const hostRequests = flags?.["module.host_requests"] === true;
+  const staff: StaffRole = session && hostRequests && session.me.staffMode ? "yes" : "no";
+  const host = useMemo<HostEnv>(
+    () => ({
+      api: hApi,
+      hotelPlaceId: venue ? (context?.qrPoint?.placeId ?? null) : null,
+      entryContextId: context?.entryContextId ?? null,
+      staff,
+      timeZone: context?.region?.timezone ?? null,
+    }),
+    [hApi, venue, context, staff],
+  );
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
@@ -381,8 +476,10 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
             <StartupStatus state={state} />
           ) : (
             <GuideProvider value={guide}>
-              <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
-              <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
+              <HostProvider value={host}>
+                <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
+              </HostProvider>
             </GuideProvider>
           )}
         </main>

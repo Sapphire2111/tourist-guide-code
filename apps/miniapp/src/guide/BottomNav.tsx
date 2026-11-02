@@ -1,6 +1,6 @@
-// Нижняя навигация (C02): Головна | Обране | Халепа? | Профіль. «Мій план» и «Бонуси» — блоки 5 и 9.
+// Нижняя навигация (C02): Головна | Мій план | Обране | Халепа? | Профіль. «Бонуси» — блок 9.
 import type { CSSProperties } from "react";
-import { Link, useRoute, useT } from "@tg/ui";
+import { Link, useFeatureFlag, useRoute, useT } from "@tg/ui";
 
 /** Высота панели без safe area — столько же отступа снизу резервирует оболочка. */
 export const BOTTOM_NAV_HEIGHT = 64;
@@ -33,6 +33,7 @@ const item = (active: boolean): CSSProperties => ({
 
 const ITEMS = [
   { to: "/", key: "miniapp.nav.home" },
+  { to: "/plan", key: "miniapp.nav.plan" },
   { to: "/favorites", key: "miniapp.nav.favorites" },
   { to: "/help", key: "miniapp.nav.help" },
   { to: "/profile", key: "miniapp.nav.profile" },
@@ -41,14 +42,16 @@ const ITEMS = [
 export function BottomNav({ profile }: { profile: boolean }) {
   const { t } = useT();
   const [path] = useRoute();
+  const plan = useFeatureFlag("module.host_requests");
+  const active = (to: string) => path === to || (to !== "/" && path.startsWith(`${to}/`));
   return (
     <nav aria-label={t("miniapp.nav.label")} style={bar} data-testid="bottom-nav">
-      {ITEMS.filter((i) => profile || i.to !== "/profile").map((i) => (
+      {ITEMS.filter((i) => (profile || i.to !== "/profile") && (plan || i.to !== "/plan")).map((i) => (
         <Link
           key={i.to}
           to={i.to}
-          style={item(path === i.to)}
-          aria-current={path === i.to ? "page" : undefined}
+          style={item(active(i.to))}
+          aria-current={active(i.to) ? "page" : undefined}
         >
           {t(i.key)}
         </Link>

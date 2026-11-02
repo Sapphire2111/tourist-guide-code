@@ -16,7 +16,12 @@ export const test = base.extend<{ telegram: TelegramWebAppOptions | null }>({
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [{ key: "module.partner_cabinet", enabled: true }] }),
+        body: JSON.stringify({
+          items: [
+            { key: "module.partner_cabinet", enabled: true },
+            { key: "module.host_requests", enabled: true },
+          ],
+        }),
       }),
     );
     // Плитки OSM и фото мест — без сети: прозрачный PNG 1×1.

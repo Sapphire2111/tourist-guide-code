@@ -2,10 +2,12 @@
 // Состояние (язык, согласия, разрешения боту) — на страницу, меняется запросами, как на сервере.
 // Коды QR — как в seed api (seedQrPoints): demoHotel01 — «Тестовий готель», demoHotelOff1 — деактивирован.
 import type { Page, Route } from "@playwright/test";
+import { installBlock5Mock, newBlock5State, type Block5State } from "./block5-mock.js";
 
 const ANON = "7d0f3e1a-5b2c-4c8d-9e6f-0a1b2c3d4e5f";
+export const REGION_ID = "00000000-0000-4000-8000-0000000000a1";
 const REGION = {
-  id: "00000000-0000-4000-8000-0000000000a1",
+  id: REGION_ID,
   code: "test-region",
   name: { uk: "Тестовий регіон", en: "Test region" },
   timezone: "Europe/Kyiv",
@@ -170,7 +172,7 @@ export const EMERGENCY = [
   },
 ];
 
-export type ApiMockState = {
+export type ApiMockState = Block5State & {
   language: string;
   displayName: string | null;
   consents: { kind: string; version: string }[];
@@ -201,6 +203,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
     favorites: [],
     searches: [],
     events: [],
+    ...newBlock5State(),
   };
   apiMockState.set(page, state);
   const TOKEN = "e2e-session-token";
@@ -226,6 +229,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
         withdrawnAt: state.messaging[purpose] ? null : "2026-11-02T00:00:00Z",
       })),
     privacyRequests: state.privacyRequests,
+    staffMode: state.staff,
   });
   // api на другом origin, чем страница: CORS-заголовки, как у настоящего api (Bearer → preflight).
   const cors = {
@@ -378,5 +382,6 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
       return json(route, { error: { code: "NOT_FOUND" } }, 404);
     },
   );
+  await installBlock5Mock(page, state, json, cors, TOKEN);
   return state;
 }
