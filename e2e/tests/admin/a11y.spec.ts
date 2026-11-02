@@ -14,6 +14,8 @@ for (const [path, heading] of [
   ["/#/places", "Місця"],
   ["/#/places/new", "Місця"],
   ["/#/qr", "QR-коди"],
+  ["/#/scenarios", "Сценарії «Мій план»"],
+  ["/#/scenarios/new", "Сценарії «Мій план»"],
   ["/#/emergency", "Екстрені контакти"],
   ["/#/audit", "Аудит"],
 ] as const) {
@@ -38,5 +40,15 @@ test("карточка места и печать QR: нет нарушений 
   await form.getByRole("button", { name: "Створити" }).click();
   await page.getByRole("link", { name: "Друк: Стенд на вокзалі" }).click();
   await expect(page.getByRole("img", { name: "QR-код «Стенд на вокзалі»" })).toBeVisible();
+  await expectNoSeriousA11yViolations(page);
+});
+
+test("карточка места: модуль готелю и персонал без нарушений a11y", async ({ page }) => {
+  await login(page, "/#/places");
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
+  const host = page.getByRole("form", { name: "Модуль готелю" });
+  await host.getByRole("button", { name: "Додати розділ" }).click();
+  await host.getByRole("button", { name: "Додати послугу" }).click();
+  await expect(page.getByRole("region", { name: "Персонал закладу" })).toBeVisible();
   await expectNoSeriousA11yViolations(page);
 });
