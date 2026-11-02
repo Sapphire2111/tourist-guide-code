@@ -456,11 +456,20 @@ export class PlaceDto {
   })
   verifiedAt!: string | null;
   @ApiProperty({ type: [String], description: "id тегов" }) tagIds!: string[];
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)",
+  })
+  hostCapable!: boolean;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) updatedAt!: string;
 }
 
-export const toPlaceDto = (p: PlaceDetails | (Omit<PlaceDetails, "tagIds"> & { tagIds?: string[] })) => ({
+export const toPlaceDto = (
+  p: PlaceDetails | (Omit<PlaceDetails, "tagIds"> & { tagIds?: string[] }),
+  hostCapable = false,
+) => ({
   id: p.id,
   status: p.status,
   categoryId: p.category_id,
@@ -475,6 +484,7 @@ export const toPlaceDto = (p: PlaceDetails | (Omit<PlaceDetails, "tagIds"> & { t
   recommended: p.recommended,
   verifiedAt: p.verified_at?.toISOString() ?? null,
   tagIds: p.tagIds ?? [],
+  hostCapable,
   createdAt: p.created_at.toISOString(),
   updatedAt: p.updated_at.toISOString(),
 });

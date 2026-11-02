@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/index.js";
+import { RbacModule } from "../rbac/index.js";
 import { UsersModule } from "../users/index.js";
 import { ProfileController } from "./profile.controller.js";
 import {
@@ -14,7 +15,7 @@ import { ProfileService } from "./profile.service.js";
  * Сессия и @RequireAuth — из глобального AuthModule; Db — из глобального DatabaseModule.
  */
 @Module({
-  imports: [AuditModule, UsersModule],
+  imports: [AuditModule, UsersModule, RbacModule],
   controllers: [ProfileController],
   providers: [ProfileService, ConsentsRepository, MessagingConsentsRepository, PrivacyRequestsRepository],
   exports: [ProfileService, ConsentsRepository, MessagingConsentsRepository, PrivacyRequestsRepository],

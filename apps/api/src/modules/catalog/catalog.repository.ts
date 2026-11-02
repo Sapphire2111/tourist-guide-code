@@ -33,6 +33,9 @@ import {
 type WithLocation<T extends { location: unknown }> = Omit<T, "location"> & { location: LonLat | null };
 
 export type LocalityRecord = WithLocation<Locality>;
+/** Коды категорий проживания демо-каталога (D-02): у таких мест в админке есть «Модуль готелю» (блок 5). */
+export const STAY_CATEGORY_CODES = ["stay", "hotels", "sadyby"] as const;
+
 export type PlaceRecord = WithLocation<Place>;
 
 /** Запись места: точка — долгота/широта (null — убрать), остальное — как в таблице. */
@@ -296,6 +299,32 @@ export class CatalogRepository {
   }
 
   // --- places ---
+
+  /** Категории проживания (раздел stay и его подкатегории, hotels, sadyby) — места, которым нужен «Про заклад». */
+  async stayCategoryIds(): Promise<Set<string>> {
+    const roots = await this.q
+      .selectFrom("categories")
+      .select("id")
+      .where("code", "in", [...STAY_CATEGORY_CODES])
+      .execute();
+    const ids = roots.map((r) => r.id);
+    const kids = ids.length
+      ? await this.q.selectFrom("categories").select("id").where("parent_id", "in", ids).execute()
+      : [];
+    return new Set([...ids, ...kids.map((k) => k.id)]);
+  }
+
+  /** Места, к которым привязан QR отеля (type = hotel). */
+  async hotelQrPlaceIds(placeIds: readonly string[]): Promise<Set<string>> {
+    if (placeIds.length === 0) return new Set();
+    const rows = await this.q
+      .selectFrom("qr_points")
+      .select("place_id")
+      .where("type", "=", "hotel")
+      .where("place_id", "in", [...placeIds])
+      .execute();
+    return new Set(rows.flatMap((r) => (r.place_id ? [r.place_id] : [])));
+  }
 
   listPlaces(filter: PlaceListFilter): Promise<PlaceRecord[]> {
     let query = this.q
