@@ -44,10 +44,18 @@ describe("OpenAPI-контракт", () => {
     expect(committed).toEqual(JSON.parse(JSON.stringify(buildOpenApiDocument(app))));
   });
 
-  it("Promotion — только сущность: выдачи и показа нет ни в одном эндпоинте (до D-63)", () => {
+  it("Promotion: эндпоинтов и схем размещения нет (до D-63); наружу — только метка AdLabel каталога гида (ADR-0019)", () => {
     const doc = buildOpenApiDocument(app);
-    expect(Object.keys(doc.paths).filter((p) => /promot/i.test(p))).toEqual([]);
-    expect(Object.keys(doc.components?.schemas ?? {}).filter((s) => /promot/i.test(s))).toEqual([]);
+    expect(Object.keys(doc.paths).filter((p) => /promot|placement|sponsor/i.test(p))).toEqual([]);
+    const schemas = Object.keys(doc.components?.schemas ?? {});
+    expect(schemas.filter((s) => /promot|placement|sponsor|advert/i.test(s) || /^Ad[A-Z]/.test(s))).toEqual([
+      "AdLabel",
+    ]);
+    // AdLabel — только перечисление меток; поля с ним — adLabel в выдаче гида.
+    expect(doc.components?.schemas?.AdLabel).toMatchObject({
+      type: "string",
+      enum: ["advertising", "partner"],
+    });
   });
 
   it("вне prod отдаёт /openapi.json и Swagger UI", async () => {

@@ -776,7 +776,7 @@ export interface paths {
     };
     /**
      * Поиск мест: «Що поруч» (lat/lng + радиус), категория, текст q
-     * @description Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). 404 — региона нет или он не активен.
+     * @description Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). Rate limit 60/мин. 404 — региона нет или он не активен.
      */
     get: operations["searchPlaces"];
     put?: never;
@@ -819,7 +819,7 @@ export interface paths {
     put?: never;
     /**
      * Добавить место в избранное (повтор — без изменений, тот же ответ)
-     * @description 404 — места нет в регионе или оно не опубликовано.
+     * @description 404 — места нет в регионе или оно не опубликовано. 409 errors.favorites.limitReached — в избранном региона уже 200 мест.
      */
     post: operations["addFavorite"];
     delete?: never;
@@ -8133,6 +8133,17 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

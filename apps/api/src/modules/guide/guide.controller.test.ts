@@ -17,6 +17,8 @@ import {
   RbacTenantContextSource,
   RoleAssignmentsRepository,
 } from "../rbac/index.js";
+import { RATE_LIMIT_RULE, RateLimitModule } from "../rate-limit/index.js";
+import { GuidePlacesController, SEARCH_RATE_LIMIT } from "./guide.controller.js";
 import { likeContains } from "./guide.repository.js";
 import { GuideModule } from "./guide.module.js";
 import { GuideService } from "./guide.service.js";
@@ -45,13 +47,16 @@ function fakeService() {
   };
 }
 
-async function start(opts: { authenticated?: boolean } = {}) {
+async function start(opts: { authenticated?: boolean; perEndpoint?: number } = {}) {
   const service = fakeService();
   const { db, queries } = recordingDb({});
   const moduleRef = await Test.createTestingModule({
     imports: [
       DatabaseModule.forRoot({ connectionString: "postgres://u:p@127.0.0.1:1/db" }),
       TenancyModule.forRoot({ source: RbacTenantContextSource, imports: [RbacModule] }),
+      ...(opts.perEndpoint
+        ? [RateLimitModule.forRoot({ perEndpoint: { limit: opts.perEndpoint, windowSec: 60 } })]
+        : []),
       GuideModule,
     ],
   })
@@ -90,6 +95,17 @@ describe("GET /categories, /emergency-contacts", () => {
     service.categories.mockRejectedValueOnce(new ApiError("NOT_FOUND"));
     const res = await http().get(`/categories?regionId=${REGION}`).expect(404);
     expect((res.body as ErrorEnvelope).error.code).toBe("NOT_FOUND");
+    // Публичный кеш — только успешному ответу: ошибка не кешируется.
+    expect(res.headers["cache-control"]).toBe("no-store");
+    const bad = await http().get("/emergency-contacts?regionId=nope").expect(400);
+    expect(bad.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("429 (rate limit) — без публичного кеша", async () => {
+    const { http } = await start({ perEndpoint: 1 });
+    await http().get(`/categories?regionId=${REGION}`).expect(200);
+    const res = await http().get(`/categories?regionId=${REGION}`).expect(429);
+    expect(res.headers["cache-control"]).toBe("no-store");
   });
 });
 
@@ -152,6 +168,13 @@ describe("GET /places/search", () => {
   });
 });
 
+it("поиск — свой rate limit 60/мин (ILIKE без индекса)", () => {
+  expect(SEARCH_RATE_LIMIT).toEqual({ limit: 60, windowSec: 60 });
+  expect(Reflect.getMetadata(RATE_LIMIT_RULE, GuidePlacesController.prototype.search)).toBe(
+    SEARCH_RATE_LIMIT,
+  );
+});
+
 describe("GET /places/{id}", () => {
   it("карточка; не найдено (в т. ч. неопубликованное) — 404; без сессии favorite не спрашивается", async () => {
     const { http, service } = await start();
@@ -190,6 +213,14 @@ describe("/favorites", () => {
       .send({ regionId: REGION, placeId: PLACE })
       .expect(201, { placeId: PLACE, createdAt: "2026-11-02T10:00:00.000Z" });
     await http().post("/favorites").send({ regionId: REGION, placeId: REGION }).expect(404);
+    service.addFavorite.mockRejectedValueOnce(
+      new ApiError("CONFLICT", {
+        messageKey: "errors.favorites.limitReached",
+        details: { reason: "favorites_limit" },
+      }),
+    );
+    const full = await http().post("/favorites").send({ regionId: REGION, placeId: PLACE }).expect(409);
+    expect((full.body as ErrorEnvelope).error.messageKey).toBe("errors.favorites.limitReached");
     await http().post("/favorites").send({ placeId: PLACE }).expect(400);
     await http().delete(`/favorites/${PLACE}?regionId=${REGION}`).expect(204);
     expect(service.removeFavorite).toHaveBeenCalledWith(REGION, USER, PLACE);
