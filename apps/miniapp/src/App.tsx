@@ -31,6 +31,12 @@ import { Nearby } from "./guide/Nearby.js";
 import { PlaceCard } from "./guide/PlaceCard.js";
 import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
+import { About } from "./host/About.js";
+import { HostProvider, type HostEnv } from "./host/context.js";
+import { createHostApi, isStaff, roomFromContext } from "./host/host-api.js";
+import { MyRequests, StaffRequests } from "./host/Requests.js";
+import type { HostApi } from "./host/types.js";
+import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import type { Role } from "./role.js";
 import type { TelegramUser, TelegramWebApp } from "./telegram.js";
 
@@ -59,10 +65,12 @@ export type AppProps = {
   guideApi?: GuideApi;
   /** Аналитика (тесты подменяют); по умолчанию — POST /analytics/events. */
   analytics?: Analytics;
+  /** API блока 5 (тесты подменяют); по умолчанию — поверх api. */
+  hostApi?: HostApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
-type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics"> & {
+type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics" | "hostApi"> & {
   session?: Session;
   onMe: (me: Me) => void;
   /** Явный повтор GET /context после сбоя (один запрос на нажатие); true — загружен. */
@@ -150,6 +158,11 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
         <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
       )}
       <HomeSections hasVenue={venueOf(session) !== null} />
+      {session && isStaff(session.me) && (
+        <Link to="/staff" data-testid="staff-link">
+          {t("miniapp.staff.open")}
+        </Link>
+      )}
       <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
       {role === "partner" && (
         // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
@@ -187,6 +200,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function placeIdOf(path: string): string | undefined {
   const raw = /^\/place\/([^/]+)$/.exec(path)?.[1];
   if (raw === undefined) return undefined;
+  try {
+    const id = decodeURIComponent(raw);
+    return UUID_RE.test(id) ? id : "";
+  } catch {
+    return "";
+  }
+}
+
+function uuidOf(raw: string): string {
   try {
     const id = decodeURIComponent(raw);
     return UUID_RE.test(id) ? id : "";
@@ -267,9 +289,46 @@ function Routes(props: RoutesProps) {
   if (path === "/about" && venueOf(session))
     return (
       <Screen webApp={webApp}>
-        <ContextView context={session!.context} webApp={webApp} />
+        <About />
       </Screen>
     );
+  if (path === "/requests")
+    return (
+      <Screen webApp={webApp}>
+        <MyRequests />
+      </Screen>
+    );
+  if (path === "/staff")
+    return (
+      <Screen webApp={webApp}>
+        <StaffRequests />
+      </Screen>
+    );
+  if (path === "/plan" || path === "/plan/saved")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <MyPlan tab={path === "/plan" ? "scenarios" : "saved"} />
+        </RequireRegion>
+      </Screen>
+    );
+  const planRoute = /^\/plan\/(scenario|saved)\/([^/]+)$/.exec(path);
+  if (planRoute) {
+    const id = uuidOf(planRoute[2]!);
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          {!id ? (
+            <p role="alert">{t("common.notFound")}</p>
+          ) : planRoute[1] === "scenario" ? (
+            <ScenarioScreen key={id} id={id} />
+          ) : (
+            <SavedPlanScreen key={id} id={id} />
+          )}
+        </RequireRegion>
+      </Screen>
+    );
+  }
   if (path === "/profile" && session && hasRequiredConsents(session.me)) {
     return (
       <Screen title={t("miniapp.profile.title")} webApp={webApp}>
@@ -311,7 +370,7 @@ function StartupStatus({ state }: { state: StartupState }) {
   );
 }
 
-export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...props }: AppProps) {
+export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hostApi, ...props }: AppProps) {
   const { webApp } = props;
   const [state, setState] = useState<StartupState>(startup ? { status: "loading" } : { status: "browser" });
   // ready() после первого рендера: Telegram снимает заглушку загрузки, когда интерфейс уже есть.
@@ -372,6 +431,18 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
     }),
     [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
   );
+  const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
+  const staff = session ? isStaff(session.me) : false;
+  const host = useMemo<HostEnv>(
+    () => ({
+      api: hApi,
+      hotelPlaceId: venue ? (context?.qrPoint?.placeId ?? null) : null,
+      qrRoom: roomFromContext(context),
+      entryContextId: context?.entryContextId ?? null,
+      staff,
+    }),
+    [hApi, venue, context, staff],
+  );
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
@@ -381,8 +452,10 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
             <StartupStatus state={state} />
           ) : (
             <GuideProvider value={guide}>
-              <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
-              <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
+              <HostProvider value={host}>
+                <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
+              </HostProvider>
             </GuideProvider>
           )}
         </main>
