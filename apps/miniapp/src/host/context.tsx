@@ -1,13 +1,11 @@
 // Окружение экранов блока 5: доступ к API заявок/планов, контекст отеля из QR, роль персонала.
 import { createContext, useContext, type ReactNode } from "react";
-import type { HostApi, RoomContext } from "./types.js";
+import type { HostApi } from "./types.js";
 
 export type HostEnv = {
   api: HostApi;
   /** Заведение из QR отеля (placeId точки), иначе null — «Про заклад» недоступен. */
   hotelPlaceId: string | null;
-  /** Номер комнаты из QR номера (D-49, источник «qr»). */
-  qrRoom: string | null;
   entryContextId: string | null;
   /** Роль ORG_STAFF (D-50): режим персонала. */
   staff: boolean;
@@ -31,18 +29,15 @@ export function noopHostApi(): HostApi {
     hostModule: fail,
     createRequest: fail,
     myRequests: fail,
+    cancelRequest: fail,
+    isStaff: async () => false,
     staffRequests: fail,
     setStatus: fail,
     scenarios: fail,
     scenario: fail,
     plans: fail,
+    plan: fail,
     savePlan: fail,
     updatePlan: fail,
   };
-}
-
-export function roomOf(qrRoom: string | null, typed: string): RoomContext | null {
-  if (qrRoom) return { value: qrRoom, source: "qr" };
-  const v = typed.trim();
-  return v ? { value: v, source: "guest" } : null;
 }

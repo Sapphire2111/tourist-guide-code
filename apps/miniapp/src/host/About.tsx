@@ -4,10 +4,12 @@
 import { useId, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
+import { uuidv7 } from "../guide/analytics.js";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError } from "../guide/types.js";
-import { roomOf, useHost } from "./context.js";
+import { useHost } from "./context.js";
+import { formatTime } from "./format.js";
 import { ConflictError, type HostModule, type HostService, type ServiceRequest } from "./types.js";
 
 const field: CSSProperties = {
@@ -26,10 +28,10 @@ const field: CSSProperties = {
 /** header — карточка заведения из контекста QR (ContextView, h1 — название); ниже — HostModule. */
 export function About({ header }: { header: ReactNode }) {
   const { t } = useT();
-  const { api, hotelPlaceId } = useHost();
+  const { api, hotelPlaceId, entryContextId } = useHost();
   const [mod, retry] = useAsync(
-    () => (hotelPlaceId ? api.hostModule(hotelPlaceId) : Promise.reject(new NotFoundError())),
-    [api, hotelPlaceId],
+    () => (hotelPlaceId ? api.hostModule(hotelPlaceId, entryContextId) : Promise.reject(new NotFoundError())),
+    [api, hotelPlaceId, entryContextId],
   );
   return (
     <Stack>
@@ -42,7 +44,7 @@ export function About({ header }: { header: ReactNode }) {
           {(m) => <AboutView module={m} />}
         </AsyncView>
       )}
-      <Link to="/requests" data-testid="my-requests-link">
+      <Link to="/requests" data-testid="my-requests-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
         {t("miniapp.about.myRequests")}
       </Link>
     </Stack>
@@ -96,42 +98,34 @@ function AboutView({ module: m }: { module: HostModule }) {
   const { t, locale } = useT();
   const [service, setService] = useState<HostService | null>(null);
   const [sent, setSent] = useState<ServiceRequest | null>(null);
-  const empty = !m.rules && !m.wifi && !m.phone && m.services.length === 0;
+  const empty = m.sections.length === 0 && !m.wifi && !m.phone && m.services.length === 0;
   return (
     <Stack>
       {empty && <p data-testid="about-empty">{t("miniapp.about.empty")}</p>}
-      {m.rules && (
-        <section style={card} aria-labelledby="rules-title">
-          <h2 id="rules-title" style={{ fontSize: "1.1rem", margin: "0 0 6px" }}>
-            {t("miniapp.about.rules")}
+      {m.room && <p data-testid="about-room">{t("miniapp.request.roomFromQr", { room: m.room.value })}</p>}
+      {m.sections.map((sec, i) => (
+        <section key={i} style={card} aria-labelledby={`host-section-${i}`} data-testid="host-section">
+          <h2 id={`host-section-${i}`} style={{ fontSize: "1.1rem", margin: "0 0 6px" }}>
+            {pickLocalized(sec.title, locale)}
           </h2>
-          <p style={{ whiteSpace: "pre-line", margin: 0 }}>{pickLocalized(m.rules, locale)}</p>
+          <p style={{ whiteSpace: "pre-line", margin: 0 }}>{pickLocalized(sec.content, locale)}</p>
         </section>
-      )}
+      ))}
       {m.wifi && <Wifi wifi={m.wifi} />}
-      {(m.phone || m.telegram) && (
+      {m.phone && (
         <section style={card} aria-labelledby="contacts-title">
           <h2 id="contacts-title" style={{ fontSize: "1.1rem", margin: "0 0 6px" }}>
             {t("miniapp.about.contacts")}
           </h2>
-          {m.phone && (
-            <a href={`tel:${m.phone}`}>
-              {t("miniapp.about.call")} {m.phone}
-            </a>
-          )}
-          {m.telegram && (
-            <p>
-              <a href={`https://t.me/${m.telegram}`} target="_blank" rel="noreferrer">
-                @{m.telegram}
-              </a>
-            </p>
-          )}
+          <a href={`tel:${m.phone}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+            {t("miniapp.about.call")} {m.phone}
+          </a>
         </section>
       )}
       {sent && (
         <p role="status" data-testid="request-sent">
-          {sent.deferredUntil
-            ? t("miniapp.request.sentDeferred", { from: sent.deferredUntil })
+          {sent.processFrom
+            ? t("miniapp.request.sentDeferred", { from: formatTime(sent.processFrom, locale) })
             : t("miniapp.request.sent")}
         </p>
       )}
@@ -191,10 +185,12 @@ function RequestForm({
   onSent: (r: ServiceRequest) => void;
 }) {
   const { t, locale } = useT();
-  const { api, qrRoom, entryContextId } = useHost();
+  const { api, entryContextId } = useHost();
+  const qrRoom = m.room?.source === "qr" ? m.room.value : null;
   const { signedIn } = useGuide();
   const [room, setRoom] = useState("");
   const [comment, setComment] = useState("");
+  const [idempotencyKey] = useState(() => uuidv7());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roomId = useId();
@@ -213,8 +209,8 @@ function RequestForm({
     );
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const roomCtx = roomOf(qrRoom, room);
-    if (!roomCtx) {
+    const roomLabel = room.trim();
+    if (!qrRoom && !roomLabel) {
       setError(t("miniapp.request.roomRequired"));
       return;
     }
@@ -225,8 +221,9 @@ function RequestForm({
         placeId: m.placeId,
         serviceId: service.id,
         comment: comment.trim() || null,
-        room: roomCtx,
+        roomLabel: qrRoom ? null : roomLabel,
         entryContextId,
+        idempotencyKey,
       });
       onSent(created);
     } catch (err) {

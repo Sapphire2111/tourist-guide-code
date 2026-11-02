@@ -41,6 +41,17 @@ const LIGHT_THEME = {
   secondary_bg_color: "#f4f4f5",
 };
 
+/** Тёмная тема Telegram Desktop/Web (night). */
+const DARK_THEME = {
+  bg_color: "#17212b",
+  text_color: "#f5f5f5",
+  hint_color: "#9aa3ad",
+  link_color: "#6ab3f3",
+  button_color: "#2f6ea5",
+  button_text_color: "#ffffff",
+  secondary_bg_color: "#232e3c",
+};
+
 /**
  * Строка initData в формате Telegram. Подпись — по алгоритму из документации Telegram:
  * secret = HMAC_SHA256(key="WebAppData", token), hash = hex(HMAC_SHA256(secret, data_check_string)).
@@ -155,7 +166,7 @@ export async function installTelegramWebApp(page: Page, options: TelegramWebAppO
       hash: new URLSearchParams(initData).get("hash"),
     },
     colorScheme: options.colorScheme ?? "light",
-    themeParams: options.themeParams ?? LIGHT_THEME,
+    themeParams: options.themeParams ?? (options.colorScheme === "dark" ? DARK_THEME : LIGHT_THEME),
     platform: options.platform ?? "android",
   });
 }

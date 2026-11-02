@@ -4,9 +4,18 @@ import { useState, type CSSProperties } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
-import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
+import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
+import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "../host/context.js";
-import type { PlanDay, PlanItem, PlanPlace, ScenarioSummary, UserPlan } from "../host/types.js";
+import type {
+  PlanChange,
+  PlanDay,
+  PlanItem,
+  PlanPlace,
+  ScenarioDetail,
+  ScenarioSummary,
+  UserPlan,
+} from "../host/types.js";
 
 const tabStyle = (active: boolean): CSSProperties => ({
   flex: 1,
@@ -15,7 +24,7 @@ const tabStyle = (active: boolean): CSSProperties => ({
   borderRadius: "var(--radius)",
   background: active ? "var(--color-button)" : "var(--color-bg)",
   color: active ? "var(--color-button-text)" : "var(--color-text)",
-  fontSize: "1rem",
+  fontSize: "1.2rem",
   fontWeight: 700,
 });
 
@@ -108,124 +117,47 @@ export function ScenarioScreen({ id }: { id: string }) {
   const [s, retry] = useAsync(() => api.scenario(id), [api, id]);
   return (
     <AsyncView state={s} retry={retry}>
-      {(sc) => (
-        <PlanEditor key={sc.id} title={sc.title} scenarioId={sc.id} initial={sc.schedule} planId={null} />
-      )}
+      {(sc) => <ScenarioView scenario={sc} />}
     </AsyncView>
   );
 }
 
-export function SavedPlanScreen({ id }: { id: string }) {
-  const { api } = useHost();
-  const [plan, retry] = useAsync(
-    () =>
-      api.plans().then((all) => {
-        const p = all.find((x) => x.id === id);
-        if (!p) throw new Error("not found");
-        return p;
-      }),
-    [api, id],
-  );
-  return (
-    <AsyncView state={plan} retry={retry}>
-      {(p) => (
-        <PlanEditor key={p.id} title={p.title} scenarioId={p.scenarioId} initial={p.schedule} planId={p.id} />
-      )}
-    </AsyncView>
-  );
-}
-
-function replaceItem(days: PlanDay[], itemId: string, place: PlanPlace): PlanDay[] {
-  return days.map((d) => ({
-    ...d,
-    items: d.items.map((i) =>
-      i.id === itemId
-        ? { ...i, place, alternatives: [i.place, ...i.alternatives.filter((a) => a.id !== place.id)] }
-        : i,
-    ),
-  }));
-}
-
-function removeItem(days: PlanDay[], itemId: string): PlanDay[] {
-  return days.map((d) => ({ ...d, items: d.items.filter((i) => i.id !== itemId) }));
-}
-
-function PlanEditor({
-  title,
-  scenarioId,
-  initial,
-  planId,
-}: {
-  title: ScenarioSummary["title"];
-  scenarioId: string | null;
-  initial: PlanDay[];
-  planId: string | null;
-}) {
+/** Готовый сценарий: просмотр по дням; правки — после «Зберегти як план» (план пользователя на сервере). */
+function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
   const { t, locale } = useT();
   const { signedIn } = useGuide();
   const { api } = useHost();
-  const [days, setDays] = useState(initial);
-  const [savedId, setSavedId] = useState(planId);
-  const [status, setStatus] = useState<{ text: string; alert: boolean } | null>(null);
+  const [, navigate] = useRoute();
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Message>(null);
   const save = async () => {
     setBusy(true);
     setStatus(null);
     try {
-      const plan = savedId
-        ? await api.updatePlan(savedId, days)
-        : await api.savePlan(scenarioId, title, days);
-      setSavedId(plan.id);
-      setStatus({ text: t("miniapp.plan.savedOk"), alert: false });
+      const plan = await api.savePlan(scenario.id);
+      navigate(`/plan/saved/${plan.id}`, { replace: true });
     } catch {
       setStatus({ text: t("miniapp.plan.saveError"), alert: true });
-    } finally {
       setBusy(false);
     }
   };
   return (
     <Stack>
-      <h1>{pickLocalized(title, locale)}</h1>
-      <Link to={planId ? "/plan/saved" : "/plan"}>{t("miniapp.plan.backToList")}</Link>
-      {days.map((d) => (
-        <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day">
-          <h2 id={`day-${d.day}`} style={{ fontSize: "1.1rem" }}>
-            {t("miniapp.plan.day", { n: d.day })}
-          </h2>
-          {d.items.length ? (
-            <ol style={listStyle}>
-              {d.items.map((i) => (
-                <PlanItemRow
-                  key={i.id}
-                  item={i}
-                  onReplace={(p) => {
-                    setDays((ds) => replaceItem(ds, i.id, p));
-                    setStatus({
-                      text: t("miniapp.plan.replaced", { name: pickLocalized(p.name, locale) }),
-                      alert: false,
-                    });
-                  }}
-                  onRemove={() => {
-                    setDays((ds) => removeItem(ds, i.id));
-                    setStatus({
-                      text: t("miniapp.plan.removed", { name: pickLocalized(i.place.name, locale) }),
-                      alert: false,
-                    });
-                  }}
-                />
-              ))}
-            </ol>
-          ) : (
-            <p>{t("miniapp.plan.dayEmpty")}</p>
-          )}
-        </section>
-      ))}
-      <p role={status?.alert ? "alert" : "status"} data-testid="plan-status">
-        {status?.text ?? ""}
-      </p>
+      <h1>{pickLocalized(scenario.title, locale)}</h1>
+      {scenario.adLabel && (
+        <span>
+          <Badge>{t(scenario.adLabel === "partner" ? "miniapp.place.partner" : "miniapp.place.ad")}</Badge>
+        </span>
+      )}
+      {scenario.description && <p>{pickLocalized(scenario.description, locale)}</p>}
+      <Link to="/plan" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        {t("miniapp.plan.backToList")}
+      </Link>
+      <Days days={scenario.schedule} />
+      <Live message={status} testId="plan-status" />
       {signedIn ? (
         <Button onClick={() => void save()} disabled={busy} data-testid="plan-save">
-          {t(savedId ? "miniapp.plan.saveChanges" : "miniapp.plan.save")}
+          {t("miniapp.plan.save")}
         </Button>
       ) : (
         <p data-testid="plan-login">{t("miniapp.plan.needsLogin")}</p>
@@ -234,57 +166,176 @@ function PlanEditor({
   );
 }
 
-function PlanItemRow({
-  item,
-  onReplace,
-  onRemove,
-}: {
-  item: PlanItem;
-  onReplace: (p: PlanPlace) => void;
-  onRemove: () => void;
-}) {
+export function SavedPlanScreen({ id }: { id: string }) {
+  const { t } = useT();
+  const { api } = useHost();
+  const { signedIn } = useGuide();
+  const [plan, retry] = useAsync(
+    () => (signedIn ? api.plan(id) : Promise.reject(new UnauthorizedError())),
+    [api, id, signedIn],
+  );
+  if (plan.status === "error" && plan.error instanceof NotFoundError)
+    return <p role="alert">{t("miniapp.plan.notFound")}</p>;
+  if (plan.status === "error" && plan.error instanceof UnauthorizedError)
+    return <p role="alert">{t("miniapp.plan.needsLogin")}</p>;
+  return (
+    <AsyncView state={plan} retry={retry}>
+      {(p) => <PlanEditor key={p.id} initial={p} />}
+    </AsyncView>
+  );
+}
+
+type Message = { text: string; alert: boolean } | null;
+
+function Live({ message, testId }: { message: Message; testId: string }) {
+  return (
+    <p role={message?.alert ? "alert" : "status"} data-testid={testId}>
+      {message?.text ?? ""}
+    </p>
+  );
+}
+
+/** Сохранённый план: «Замінити» (из alternatives) и «Видалити» — PATCH /me/plan/{id}, ответ — новый план. */
+function PlanEditor({ initial }: { initial: UserPlan }) {
   const { t, locale } = useT();
+  const { api } = useHost();
+  const [plan, setPlan] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Message>(null);
+  const apply = async (change: PlanChange, done: string) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      setPlan(await api.updatePlan(plan.id, change));
+      setStatus({ text: done, alert: false });
+    } catch {
+      setStatus({ text: t("miniapp.plan.changeError"), alert: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const nameOf = (item: PlanItem) =>
+    item.place ? pickLocalized(item.place.name, locale) : t("miniapp.plan.unavailable");
+  return (
+    <Stack>
+      <h1>{pickLocalized(plan.title, locale)}</h1>
+      {plan.scenarioUpdated && <p>{t("miniapp.plan.scenarioUpdated")}</p>}
+      <Link to="/plan/saved" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        {t("miniapp.plan.backToList")}
+      </Link>
+      <Live message={status} testId="plan-status" />
+      <Days
+        days={plan.schedule}
+        edit={{
+          busy,
+          onReplace: (item, p) =>
+            void apply(
+              { replace: { itemId: item.id, placeId: p.id } },
+              t("miniapp.plan.replaced", { name: pickLocalized(p.name, locale) }),
+            ),
+          onRemove: (item) =>
+            void apply({ remove: item.id }, t("miniapp.plan.removed", { name: nameOf(item) })),
+        }}
+      />
+    </Stack>
+  );
+}
+
+type Edit = {
+  busy: boolean;
+  onReplace: (item: PlanItem, place: PlanPlace) => void;
+  onRemove: (item: PlanItem) => void;
+};
+
+function Days({ days, edit }: { days: PlanDay[]; edit?: Edit }) {
+  const { t } = useT();
+  return (
+    <>
+      {days.map((d) => (
+        <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day">
+          <h2 id={`day-${d.day}`} style={{ fontSize: "1.1rem" }}>
+            {t("miniapp.plan.day", { n: d.day })}
+          </h2>
+          {d.items.length ? (
+            <ol style={listStyle}>
+              {d.items.map((i) => (
+                <PlanItemRow key={i.id} item={i} edit={edit} />
+              ))}
+            </ol>
+          ) : (
+            <p>{t("miniapp.plan.dayEmpty")}</p>
+          )}
+        </section>
+      ))}
+    </>
+  );
+}
+
+function PlanItemRow({ item, edit }: { item: PlanItem; edit?: Edit }) {
+  const { t, locale } = useT();
+  const distance = useDistance();
   const [open, setOpen] = useState(false);
-  const name = pickLocalized(item.place.name, locale);
+  const name = item.place ? pickLocalized(item.place.name, locale) : t("miniapp.plan.unavailable");
+  const d = distance(item.distanceMeters);
   return (
     <li style={card} data-testid="plan-item">
       {item.time && <span style={{ fontWeight: 700, marginRight: 8 }}>{item.time}</span>}
-      <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.1rem", fontWeight: 700 }}>
-        {name}
-      </Link>{" "}
-      {item.place.adLabel && (
-        <Badge>{t(item.place.adLabel === "partner" ? "miniapp.place.partner" : "miniapp.place.ad")}</Badge>
+      {item.place ? (
+        <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+          {name}
+        </Link>
+      ) : (
+        <strong data-testid="plan-item-unavailable">{name}</strong>
       )}
+      {d && <span style={{ display: "block" }}>{t("miniapp.plan.distance", { n: d })}</span>}
       {item.note && <p style={{ margin: "4px 0" }}>{pickLocalized(item.note, locale)}</p>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-        <Button aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {t("miniapp.plan.replace")}
-        </Button>
-        <Button onClick={onRemove} aria-label={t("miniapp.plan.removeItem", { name })}>
-          {t("miniapp.plan.remove")}
-        </Button>
-      </div>
-      {open && (
-        <div role="group" aria-label={t("miniapp.plan.alternatives", { name })} data-testid="alternatives">
-          {item.alternatives.length ? (
-            <ul style={{ ...listStyle, marginTop: 8 }}>
-              {item.alternatives.map((a) => (
-                <li key={a.id}>
-                  <Button
-                    onClick={() => {
-                      setOpen(false);
-                      onReplace(a);
-                    }}
-                  >
-                    {t("miniapp.plan.replaceWith", { name: pickLocalized(a.name, locale) })}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>{t("miniapp.plan.noAlternatives")}</p>
+      {edit && (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <Button
+              aria-expanded={open}
+              aria-label={`${t("miniapp.plan.replace")}: ${name}`}
+              disabled={edit.busy}
+              onClick={() => setOpen((o) => !o)}
+            >
+              {t("miniapp.plan.replace")}
+            </Button>
+            <Button
+              disabled={edit.busy}
+              onClick={() => edit.onRemove(item)}
+              aria-label={t("miniapp.plan.removeItem", { name })}
+            >
+              {t("miniapp.plan.remove")}
+            </Button>
+          </div>
+          {open && (
+            <div
+              role="group"
+              aria-label={t("miniapp.plan.alternatives", { name })}
+              data-testid="alternatives"
+            >
+              {item.alternatives.length ? (
+                <ul style={{ ...listStyle, marginTop: 8 }}>
+                  {item.alternatives.map((a) => (
+                    <li key={a.id}>
+                      <Button
+                        disabled={edit.busy}
+                        onClick={() => {
+                          setOpen(false);
+                          edit.onReplace(item, a);
+                        }}
+                      >
+                        {t("miniapp.plan.replaceWith", { name: pickLocalized(a.name, locale) })}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{t("miniapp.plan.noAlternatives")}</p>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </li>
   );

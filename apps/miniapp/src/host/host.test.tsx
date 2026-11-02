@@ -1,13 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { createApiClient } from "@tg/api-client";
 import { I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
-import { MyPlan, ScenarioScreen } from "../plan/MyPlan.js";
+import { MyPlan, SavedPlanScreen, ScenarioScreen } from "../plan/MyPlan.js";
 import { About } from "./About.js";
 import { HostProvider, noopHostApi, type HostEnv } from "./context.js";
+import { createHostApi } from "./host-api.js";
 import { MyRequests, StaffRequests } from "./Requests.js";
-import { ConflictError, type HostApi, type HostModule, type ServiceRequest } from "./types.js";
+import {
+  ConflictError,
+  type HostApi,
+  type HostModule,
+  type PlanDay,
+  type ServiceRequest,
+  type UserPlan,
+} from "./types.js";
 
 afterEach(() => {
   cleanup();
@@ -19,13 +29,13 @@ const PLACE = "00000000-0000-4000-8000-000000000201";
 const module = (over: Partial<HostModule> = {}): HostModule => ({
   placeId: PLACE,
   name: { uk: "Тестовий готель" },
-  rules: { uk: "Тиша після 22:00" },
+  sections: [{ kind: "rules", title: { uk: "Правила" }, content: { uk: "Тиша після 22:00" } }],
   wifi: { ssid: "Hotel", password: "secret" },
   phone: "+380501234567",
-  telegram: null,
   intake: { from: "08:00", to: "22:00" },
   acceptingNow: true,
-  services: [{ id: "s1", title: { uk: "Прибирання" }, description: null, slaMinutes: 60 }],
+  room: null,
+  services: [{ id: "cleaning", title: { uk: "Прибирання" }, description: null, slaMinutes: 60 }],
   ...over,
 });
 
@@ -35,19 +45,22 @@ const request = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
   placeName: { uk: "Тестовий готель" },
   service: { uk: "Прибирання" },
   status: "new",
+  statusReason: null,
   comment: null,
   room: { value: "12", source: "guest" },
   createdAt: "2026-11-02T10:00:00Z",
-  deferredUntil: null,
+  processFrom: null,
   overdue: false,
+  cancellable: true,
+  guestName: null,
+  transitions: [],
   ...over,
 });
 
-function setup(ui: React.ReactNode, api: Partial<HostApi>, env: Partial<HostEnv> = {}, signedIn = true) {
+function setup(ui: ReactNode, api: Partial<HostApi>, env: Partial<HostEnv> = {}, signedIn = true) {
   const host: HostEnv = {
     api: { ...noopHostApi(), ...api },
     hotelPlaceId: PLACE,
-    qrRoom: null,
     entryContextId: null,
     staff: false,
     ...env,
@@ -63,129 +76,195 @@ function setup(ui: React.ReactNode, api: Partial<HostApi>, env: Partial<HostEnv>
   );
 }
 
+const text = (id: string) => screen.getByTestId(id).textContent ?? "";
+
 describe("C03 Про заклад", () => {
   it("заявка: номер вводит гость, вне часов — «буде оброблено з …»", async () => {
-    const createRequest = vi.fn(async () => request({ deferredUntil: "08:00" }));
+    const createRequest = vi.fn(async () => request({ processFrom: "2026-11-03T06:00:00Z" }));
     setup(<About header={<h1>Готель</h1>} />, {
       hostModule: async () => module({ acceptingNow: false }),
       createRequest,
     });
     expect((await screen.findByTestId("intake-closed")).textContent).toContain("08:00");
+    expect(screen.getByRole("heading", { name: "Правила" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Замовити: Прибирання" }));
     fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" }));
-    expect(screen.getByTestId("request-error").textContent).toContain("Вкажіть номер кімнати.");
+    expect(text("request-error")).toContain("Вкажіть номер кімнати.");
     fireEvent.change(screen.getByLabelText("Номер кімнати"), { target: { value: " 12 " } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
     expect(createRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ serviceId: "s1", room: { value: "12", source: "guest" }, comment: null }),
+      expect.objectContaining({ serviceId: "cleaning", roomLabel: "12", comment: null }),
     );
-    expect(screen.getByTestId("request-sent").textContent).toContain("Її буде оброблено з 08:00");
+    expect(text("request-sent")).toContain("Її буде оброблено з");
   });
 
   it("номер из QR не спрашивается; 409 — дубль", async () => {
     const createRequest = vi.fn(async () => Promise.reject(new ConflictError()));
-    setup(
-      <About header={<h1>Готель</h1>} />,
-      { hostModule: async () => module(), createRequest },
-      { qrRoom: "305" },
-    );
+    setup(<About header={<h1>Готель</h1>} />, {
+      hostModule: async () => module({ room: { value: "305", source: "qr" } }),
+      createRequest,
+    });
     fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
-    expect(screen.getByTestId("room-from-qr").textContent).toContain("305");
+    expect(text("room-from-qr")).toContain("305");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
-    expect(createRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ room: { value: "305", source: "qr" } }),
-    );
-    expect(screen.getByTestId("request-error").textContent).toContain("Така заявка вже є");
+    expect(createRequest).toHaveBeenCalledWith(expect.objectContaining({ roomLabel: null }));
+    expect(text("request-error")).toContain("Така заявка вже є");
   });
 
-  it("без сессии — отправка требует входа", async () => {
+  it("без сессии — отправка требует входа; модуль не настроен — пусто", async () => {
     setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module() }, {}, false);
     fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
     expect(screen.getByTestId("request-login")).toBeTruthy();
+    cleanup();
+    setup(<About header={<h1>Готель</h1>} />, {}, { hotelPlaceId: null });
+    expect(await screen.findByTestId("about-empty")).toBeTruthy();
   });
 });
 
 describe("заявки", () => {
-  it("гость видит статус и пометку «вказано гостем»", async () => {
-    setup(<MyRequests />, { myRequests: async () => [request({ status: "accepted" })] });
-    expect((await screen.findByTestId("request-status")).textContent).toContain("Прийнята");
-    expect(screen.getByTestId("request-room").textContent).toContain("Номер 12 (вказано гостем)");
+  it("гость видит статус, пометку «вказано гостем», может отменить", async () => {
+    const cancelRequest = vi.fn(async () => request({ status: "cancelled_by_guest" }));
+    setup(<MyRequests />, { myRequests: async () => [request({ status: "accepted" })], cancelRequest });
+    expect((await screen.findByTestId("request-status")).textContent).toBe("Прийнята");
+    expect(text("request-room")).toBe("Номер 12 (вказано гостем)");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скасувати заявку" })));
+    expect(cancelRequest).toHaveBeenCalledWith("r1");
+    expect(text("requests-message")).toBe("Заявку скасовано.");
   });
 
-  it("персонал: смена статуса, 409 — сообщение и перезагрузка, просрочка", async () => {
-    const staffRequests = vi.fn(async () => [request({ overdue: true })]);
+  it("персонал: смена статуса, 409 — сообщение и перезагрузка, отклонение с причиной, просрочка", async () => {
+    const staffRequests = vi.fn(async () => [
+      request({ overdue: true, transitions: ["accepted", "rejected"] }),
+    ]);
     const setStatus = vi
       .fn<HostApi["setStatus"]>()
       .mockResolvedValueOnce(request({ status: "accepted" }))
-      .mockRejectedValueOnce(new ConflictError());
+      .mockRejectedValueOnce(new ConflictError())
+      .mockResolvedValueOnce(request({ status: "rejected" }));
     setup(<StaffRequests />, { staffRequests, setStatus }, { staff: true });
     expect(await screen.findByTestId("request-overdue")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Прийняти" })));
-    expect(setStatus).toHaveBeenCalledWith("r1", "accepted");
-    expect(screen.getByTestId("staff-message").textContent).toContain("Статус змінено: Прийнята");
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Відхилити" })));
-    expect(screen.getByTestId("staff-message").textContent).toContain("Статус уже змінено");
+    expect(setStatus).toHaveBeenCalledWith("r1", "accepted", null);
+    expect(text("staff-message")).toBe("Статус змінено: Прийнята");
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Прийняти" })));
+    expect(text("staff-message")).toContain("Статус уже змінено");
     expect(staffRequests).toHaveBeenCalledTimes(3);
+    fireEvent.click(await screen.findByRole("button", { name: "Відхилити" }));
+    fireEvent.change(screen.getByLabelText("Причина відхилення"), {
+      target: { value: "Немає вільного персоналу" },
+    });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Відхилити" })));
+    expect(setStatus).toHaveBeenLastCalledWith("r1", "rejected", "Немає вільного персоналу");
     fireEvent.change(screen.getByTestId("staff-filter"), { target: { value: "done" } });
     expect(staffRequests).toHaveBeenLastCalledWith("done");
   });
 
-  it("без роли ORG_STAFF — нет доступа", () => {
+  it("без роли персонала — нет доступа", () => {
     setup(<StaffRequests />, {});
     expect(screen.getByTestId("staff-forbidden")).toBeTruthy();
   });
 });
 
 describe("C09 Мій план", () => {
-  const place = (id: string, name: string) => ({ id, name: { uk: name }, adLabel: null });
-  it("список сценариев", async () => {
-    setup(<MyPlan tab="scenarios" />, {
-      scenarios: async () => [{ id: "sc1", title: { uk: "Один день" }, description: null, days: 1 }],
-    });
-    expect(await screen.findByRole("link", { name: "Один день" })).toBeTruthy();
+  const place = (id: string, name: string) => ({ id, name: { uk: name } });
+  const days = (first: string): PlanDay[] => [
+    {
+      day: 1,
+      items: [
+        {
+          id: "i1",
+          time: "09:00",
+          place: place(first, first === "a" ? "Кав'ярня" : "Пекарня"),
+          note: null,
+          alternatives: [place("b", "Пекарня")],
+          distanceMeters: null,
+        },
+        { id: "i2", time: "11:00", place: null, note: null, alternatives: [], distanceMeters: 1200 },
+      ],
+    },
+  ];
+  const plan = (over: Partial<UserPlan> = {}): UserPlan => ({
+    id: "00000000-0000-4000-8000-000000000901",
+    scenarioId: "sc1",
+    title: { uk: "Один день" },
+    schedule: days("a"),
+    scenarioUpdated: false,
+    updatedAt: "",
+    ...over,
   });
 
-  it("замена и удаление пункта, сохранение плана", async () => {
-    const savePlan = vi.fn<HostApi["savePlan"]>(async (scenarioId, title, schedule) => ({
-      id: "p1",
-      scenarioId,
-      title,
-      schedule,
-      updatedAt: "",
-    }));
+  it("список сценариев; сценарий → «Зберегти як план» → переход к плану", async () => {
+    setup(<MyPlan tab="scenarios" />, {
+      scenarios: async () => [
+        { id: "sc1", title: { uk: "Один день" }, description: null, days: 1, adLabel: null },
+      ],
+    });
+    expect(await screen.findByRole("link", { name: "Один день" })).toBeTruthy();
+    cleanup();
+    const savePlan = vi.fn(async () => plan());
     setup(<ScenarioScreen id="sc1" />, {
       scenario: async () => ({
         id: "sc1",
         title: { uk: "Один день" },
         description: null,
         days: 1,
-        schedule: [
-          {
-            day: 1,
-            items: [
-              {
-                id: "i1",
-                time: "09:00",
-                place: place("a", "Кав'ярня"),
-                note: null,
-                alternatives: [place("b", "Пекарня")],
-              },
-              { id: "i2", time: "11:00", place: place("c", "Музей"), note: null, alternatives: [] },
-            ],
-          },
-        ],
+        adLabel: "partner",
+        schedule: days("a"),
       }),
       savePlan,
     });
-    fireEvent.click((await screen.findAllByRole("button", { name: "Замінити" }))[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Замінити на: Пекарня" }));
-    expect(screen.getByRole("link", { name: "Пекарня" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Видалити «Музей»" }));
-    expect(screen.queryByRole("link", { name: "Музей" })).toBeNull();
+    expect(await screen.findByTestId("plan-item-unavailable")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти як план" })));
-    const schedule = savePlan.mock.calls[0]![2];
-    expect(schedule[0]!.items.map((i) => i.place.id)).toEqual(["b"]);
-    expect(screen.getByTestId("plan-status").textContent).toContain("План збережено.");
-    expect(screen.getByRole("button", { name: "Зберегти зміни" })).toBeTruthy();
+    expect(savePlan).toHaveBeenCalledWith("sc1");
+    expect(window.location.hash).toBe(`#/plan/saved/${plan().id}`);
+  });
+
+  it("сохранённый план: замена и удаление пункта — PATCH", async () => {
+    const updatePlan = vi
+      .fn<HostApi["updatePlan"]>()
+      .mockResolvedValueOnce(plan({ schedule: days("b") }))
+      .mockResolvedValueOnce(plan({ schedule: [{ day: 1, items: [] }] }));
+    setup(<SavedPlanScreen id={plan().id} />, { plan: async () => plan(), updatePlan });
+    fireEvent.click(await screen.findByRole("button", { name: "Замінити: Кав'ярня" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Замінити на: Пекарня" })));
+    expect(updatePlan).toHaveBeenCalledWith(plan().id, { replace: { itemId: "i1", placeId: "b" } });
+    expect(screen.getByRole("link", { name: "Пекарня" })).toBeTruthy();
+    expect(text("plan-status")).toBe("Пункт замінено: Пекарня");
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Видалити «Недоступно. Замініть пункт.»" })),
+    );
+    expect(updatePlan).toHaveBeenLastCalledWith(plan().id, { remove: "i2" });
+    expect(screen.getByText("На цей день пунктів немає.")).toBeTruthy();
+  });
+});
+
+describe("адаптер host-api", () => {
+  it("POST /service-requests: Idempotency-Key, regionId; 409 → ConflictError", async () => {
+    const calls: Request[] = [];
+    const fetchMock = vi.fn(async (req: Request) => {
+      calls.push(req);
+      return new Response(
+        JSON.stringify({ error: { code: "CONFLICT", messageKey: "errors.serviceRequests.duplicate" } }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    });
+    const api = createHostApi(createApiClient({ baseUrl: "http://api", fetch: fetchMock }), "reg");
+    await expect(
+      api.createRequest({
+        placeId: PLACE,
+        serviceId: "cleaning",
+        comment: null,
+        roomLabel: "12",
+        entryContextId: null,
+        idempotencyKey: "k1",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(calls[0]!.headers.get("Idempotency-Key")).toBe("k1");
+    expect(await calls[0]!.json()).toEqual({
+      regionId: "reg",
+      placeId: PLACE,
+      serviceCode: "cleaning",
+      roomLabel: "12",
+    });
   });
 });

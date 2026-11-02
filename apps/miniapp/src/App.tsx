@@ -32,8 +32,8 @@ import { PlaceCard } from "./guide/PlaceCard.js";
 import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
 import { About } from "./host/About.js";
-import { HostProvider, type HostEnv } from "./host/context.js";
-import { createHostApi, isStaff, roomFromContext } from "./host/host-api.js";
+import { HostProvider, useHost, type HostEnv } from "./host/context.js";
+import { createHostApi } from "./host/host-api.js";
 import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
 import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
@@ -141,6 +141,7 @@ function ContextSummary({ context }: { context: Session["context"] }) {
 
 function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
   const { t } = useT();
+  const { staff } = useHost();
   return (
     <Stack>
       <h1>{t("app.name")}</h1>
@@ -158,8 +159,8 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
         <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
       )}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      {session && isStaff(session.me) && (
-        <Link to="/staff" data-testid="staff-link">
+      {staff && (
+        <Link to="/staff" data-testid="staff-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
           {t("miniapp.staff.open")}
         </Link>
       )}
@@ -432,12 +433,23 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
     [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
   );
   const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
-  const staff = session ? isStaff(session.me) : false;
+  // Режим персонала (D-50): есть места, где пользователь — ORG_STAFF/ORG_OWNER (GET /staff/places).
+  const [staff, setStaff] = useState(false);
+  useEffect(() => {
+    if (!signedIn) return;
+    let alive = true;
+    hApi.isStaff().then(
+      (v) => alive && setStaff(v),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [hApi, signedIn]);
   const host = useMemo<HostEnv>(
     () => ({
       api: hApi,
       hotelPlaceId: venue ? (context?.qrPoint?.placeId ?? null) : null,
-      qrRoom: roomFromContext(context),
       entryContextId: context?.entryContextId ?? null,
       staff,
     }),
