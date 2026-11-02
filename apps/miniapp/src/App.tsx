@@ -20,7 +20,7 @@ import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash } from "./design/Chrome.js";
-import { ResortPlaces, SeasonHero, SeasonTags } from "./design/HomeParts.js";
+import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
 import { ICONS } from "./design/Ornament.js";
 import { ResortProvider } from "./design/ResortProvider.js";
 import { hasResorts } from "./design/resorts.js";
@@ -168,7 +168,6 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
   const { staff } = useHost();
   return (
     <>
-      <SeasonHero />
       <Welcome user={user} session={session} retryContext={retryContext} />
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
@@ -180,9 +179,10 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {t("miniapp.staff.open")}
         </Link>
       )}
+      {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
+      <HomeSections hasVenue={venueOf(session) !== null} />
       <ResortPlaces />
       <SeasonTags />
-      <HomeSections hasVenue={venueOf(session) !== null} />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
         {role === "partner" && (
@@ -538,7 +538,8 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          <ResortProvider enabled={hasResorts(context?.region?.code)} venueEntry={venue !== null}>
+          {/* Свайпера курортов нет — выдача от QR-контекста / всего региона (сохранённый курорт не фильтрует незаметно). */}
+          <ResortProvider enabled={false} venueEntry={venue !== null}>
             <main className="kosiv-shell" lang={effectiveLocale}>
               {state.status === "loading" || state.status === "error" ? (
                 <StartupStatus state={state} />

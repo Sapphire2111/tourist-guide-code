@@ -1,7 +1,7 @@
 // Оболочка «Сучасна Косівщина»: заставка старта, липкая шапка с волной и свайпером курортов, переключатель сезона.
+import { useState } from "react";
 import { Link, useT } from "@tg/ui";
 import { ICONS, KosivWave, VaseIcon } from "./Ornament.js";
-import { ResortSwiper } from "./ResortProvider.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
@@ -61,6 +61,9 @@ export function AppTop({
 }) {
   const { t } = useT();
   const home = path === "/";
+  // Выбор сезона оформления — под шестерёнкой (не занимает главную).
+  const [settings, setSettings] = useState(false);
+  void resorts; // свайпер курортов убран с шапки; выдача — от QR-контекста / центра региона
   return (
     <div className="kosiv-top" data-testid="app-top">
       <header className="kosiv-header">
@@ -75,6 +78,17 @@ export function AppTop({
             <span>{t("app.name")}</span>
           </Link>
         )}
+        <button
+          type="button"
+          className="kosiv-icon-btn"
+          aria-label={t("miniapp.settings.open")}
+          aria-expanded={settings}
+          aria-controls="app-settings"
+          data-testid="settings-btn"
+          onClick={() => setSettings((v) => !v)}
+        >
+          {ICONS.settings}
+        </button>
         {profile && (
           <Link
             to="/profile"
@@ -86,8 +100,12 @@ export function AppTop({
           </Link>
         )}
       </header>
+      {settings && (
+        <div id="app-settings" className="kosiv-settings" data-testid="app-settings">
+          <SeasonSwitcher />
+        </div>
+      )}
       <KosivWave />
-      {resorts && hasResortFilter(path) && <ResortSwiper />}
     </div>
   );
 }

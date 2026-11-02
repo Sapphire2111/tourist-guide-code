@@ -1,16 +1,34 @@
 // C05 «Що поруч»: места в радиусе от базовой точки (QR) или — по нажатию и с разрешения — от устройства.
 // Подпись «Поруч із вами» только при полученной геолокации, иначе «Поруч із <база>».
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
-import { MapSlot } from "./MapSlot.js";
+import type { Async } from "./context.js";
+import { MapSlot, preloadMap } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
+import type { PlaceSummary } from "./types.js";
 
-export const RADII = [300, 500, 1000] as const;
+/** Ползунок радиуса, м: от 500 м до 10 км шагом 500 м. */
+export const RADIUS_MIN = 500;
+export const RADIUS_MAX = 10_000;
+export const RADIUS_STEP = 500;
 export const DEFAULT_RADIUS = 500;
+/** Задержка запроса при перетаскивании ползунка, мс. */
+export const RADIUS_DEBOUNCE_MS = 350;
+/** Не больше стольких ближайших мест на 10 км (сервер сортирует по расстоянию). */
+export const NEARBY_LIMIT = 50;
 /** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
 export const DEVICE_MAX_ZOOM = 14;
+
+/** Подпись радиуса: «500 м», «1,5 км», «10 км». */
+export function useRadiusLabel(): (m: number) => string {
+  const { t } = useT();
+  return (m) =>
+    m < 1000
+      ? t("miniapp.nearby.meters", { n: m })
+      : t("miniapp.place.distanceKm", { n: String(Math.round(m / 100) / 10).replace(".", ",") });
+}
 
 type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; point: LatLng };
 
@@ -18,6 +36,18 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   const { t } = useT();
   const { webApp, base } = useGuide();
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
+  /** Радиус запроса — значение ползунка после паузы в перетаскивании. */
+  const [queryRadius, setQueryRadius] = useState<number>(DEFAULT_RADIUS);
+  useEffect(() => {
+    if (radius === queryRadius) return;
+    const timer = window.setTimeout(() => setQueryRadius(radius), RADIUS_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [radius, queryRadius]);
+  // Модуль карты и соединение с тайлами — параллельно запросу мест.
+  useEffect(() => {
+    preloadMap().catch(() => undefined);
+  }, []);
+  const radiusText = useRadiusLabel()(radius);
   const [geo, setGeo] = useState<Geo>({ status: useMyLocation ? "locating" : "idle" });
 
   const locate = () => {
@@ -54,20 +84,24 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
           {t("miniapp.nearby.openSettings")}
         </Button>
       )}
-      <label>
-        {t("miniapp.nearby.radius")}{" "}
-        <select
+      <div className="kosiv-range">
+        <div className="kosiv-range-head">
+          <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
+          <output htmlFor="nearby-radius" data-testid="radius-value">
+            {radiusText}
+          </output>
+        </div>
+        <input
+          id="nearby-radius"
+          type="range"
+          min={RADIUS_MIN}
+          max={RADIUS_MAX}
+          step={RADIUS_STEP}
           value={radius}
+          aria-valuetext={radiusText}
           onChange={(e) => setRadius(Number(e.target.value))}
-          style={{ font: "inherit", padding: "4px 8px" }}
-        >
-          {RADII.map((r) => (
-            <option key={r} value={r}>
-              {t("miniapp.nearby.meters", { n: r })}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
       {geo.status !== "granted" && (
         <Button disabled={geo.status === "locating"} onClick={locate}>
           {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
@@ -76,7 +110,7 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
       {point ? (
         <NearbyPlaces
           point={point}
-          radius={radius}
+          radius={queryRadius}
           // Приватность: карта строится по местам и базовой точке, координаты устройства на неё не попадают.
           base={geo.status === "granted" ? null : (base?.point ?? null)}
           baseLabel={caption ?? undefined}
@@ -102,11 +136,24 @@ function NearbyPlaces({
 }) {
   const { t } = useT();
   const { api } = useGuide();
-  const [places, retry] = useAsync(() => api.search({ point, radius }), [api, point.lat, point.lng, radius]);
+  const radiusLabel = useRadiusLabel()(radius);
+  const [fresh, retry] = useAsync(
+    () => api.search({ point, radius, limit: NEARBY_LIMIT }),
+    [api, point.lat, point.lng, radius],
+  );
+  // Смена радиуса: прежний список и карта остаются до ответа (карта не пересоздаётся, тайлы не грузятся заново).
+  const last = useRef<Async<PlaceSummary[]>>(fresh);
+  if (fresh.status !== "loading") last.current = fresh;
+  const places = fresh.status === "loading" && last.current.status === "ready" ? last.current : fresh;
   return (
     <AsyncView state={places} retry={retry}>
       {(list) => (
         <Stack>
+          {fresh.status === "loading" && (
+            <p role="status" className="kosiv-muted">
+              {t("miniapp.guide.loading")}
+            </p>
+          )}
           <MapSlot
             places={list}
             center={base}
@@ -116,7 +163,7 @@ function NearbyPlaces({
             maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
           />
           {list.length === 0 ? (
-            <p data-testid="nearby-empty">{t("miniapp.nearby.empty", { n: radius })}</p>
+            <p data-testid="nearby-empty">{t("miniapp.nearby.emptyRadius", { r: radiusLabel })}</p>
           ) : (
             <PlaceList places={list} />
           )}

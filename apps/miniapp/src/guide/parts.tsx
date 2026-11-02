@@ -3,7 +3,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
-import type { Async } from "./context.js";
+import { useCategoryIndex } from "./categories.js";
+import { useMaybeGuide, type Async } from "./context.js";
 import type { PlaceSummary } from "./types.js";
 
 /** Список без маркеров с отступом между пунктами (li — прямые потомки ul). */
@@ -102,6 +103,8 @@ export function PlaceSummaryCard({
 }) {
   const { t, locale } = useT();
   const raw = useDistance()(place.distanceMeters);
+  // Что это за место («Кафе», «Пам'ятка») — название категории из справочника.
+  const category = useCategoryIndex(useMaybeGuide()?.api).byId.get(place.categoryId);
   const d = raw && distanceFrom ? t("miniapp.place.distanceFrom", { d: raw, from: distanceFrom }) : raw;
   return (
     <Tag className={`kosiv-card kosiv-place${layout === "row" ? " kosiv-row" : ""}`} data-testid={testId}>
@@ -110,6 +113,11 @@ export function PlaceSummaryCard({
         <Link to={`/place/${place.id}`} className="kosiv-place-title">
           {pickLocalized(place.name, locale)}
         </Link>
+        {category && (
+          <span className="kosiv-place-cat" data-testid="place-category">
+            {pickLocalized(category.name, locale)}
+          </span>
+        )}
         {place.address && <span className="kosiv-place-addr">{pickLocalized(place.address, locale)}</span>}
         <span className="kosiv-place-meta">
           {d && <span className="kosiv-chip">{d}</span>}

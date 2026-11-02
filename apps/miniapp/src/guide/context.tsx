@@ -30,6 +30,11 @@ export function useGuide(): GuideEnv {
   return env;
 }
 
+/** Как useGuide, но без провайдера — null (общие элементы, которые встречаются и вне гида). */
+export function useMaybeGuide(): GuideEnv | null {
+  return useContext(GuideContext);
+}
+
 export function noopGuideApi(): GuideApi {
   const fail = () => Promise.reject(new Error("no api"));
   return {

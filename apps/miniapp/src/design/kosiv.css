@@ -702,8 +702,9 @@ html[data-season] :focus-visible {
 .kosiv-tile {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 10px;
   min-height: 96px;
   height: 100%;
@@ -884,4 +885,66 @@ html[data-season] :focus-visible {
   .kosiv-photos {
     scroll-behavior: auto;
   }
+}
+
+/* Легенда карты мест: цвет маркера — раздел. */
+.kosiv-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--app-text);
+}
+.kosiv-map-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kosiv-map-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.kosiv-map-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+.kosiv-map-popup span {
+  color: #44403c;
+}
+.kosiv-map-popup a {
+  margin-top: 4px;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.kosiv-place-cat {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-accent-ink);
+}
+.kosiv-range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kosiv-range-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.kosiv-range input[type="range"] {
+  width: 100%;
+  min-height: 32px;
+  accent-color: var(--app-accent-ink);
+}
+.kosiv-settings {
+  padding: 8px 16px 10px;
+  background: var(--app-bg);
 }

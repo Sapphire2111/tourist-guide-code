@@ -9,7 +9,7 @@ import type { GuideApi } from "../guide/types.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
 import { HOME_PLACES, RESORT_DEBOUNCE_MS, ResortPlaces, SeasonTags } from "./HomeParts.js";
-import { ResortProvider, useResort } from "./ResortProvider.js";
+import { ResortProvider, ResortSwiper, useResort } from "./ResortProvider.js";
 import { hasResorts, RESORTS } from "./resorts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
 import {
@@ -157,6 +157,7 @@ describe("свайпер курортов", () => {
       <GuideProvider value={env(search)}>
         <ResortProvider>
           <AppTop path="/" profile={false} />
+          <ResortSwiper />
           <ResortPlaces />
         </ResortProvider>
       </GuideProvider>,
@@ -205,6 +206,22 @@ describe("свайпер курортов", () => {
       radius: bukovel.area!.radius,
     });
     expect(screen.getByTestId("resort-caption").textContent).toBe("Поблизу: Буковель (до 5 км від центру)");
+  });
+
+  it("шапка главной: без свайпера курортов; сезон — под шестерёнкой", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile={false} />
+      </SeasonProvider>,
+    );
+    expect(screen.queryByTestId("resort-swiper")).toBeNull();
+    expect(screen.queryByTestId("season-switcher")).toBeNull();
+    const gear = screen.getByRole("button", { name: "Налаштування" });
+    expect(gear.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(gear);
+    expect(gear.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: /Весна/ }));
+    expect(document.documentElement.dataset.season).toBe("spring");
   });
 
   it("шапка вне главной — ссылка на главную, без свайпера на экранах без фильтра", () => {
