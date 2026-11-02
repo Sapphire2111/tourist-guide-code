@@ -29,6 +29,7 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     id: dto.id,
     name: dto.name,
     categoryId: dto.categoryId,
+    address: dto.address ?? null,
     location: dto.location ? { lat: dto.location.lat, lng: dto.location.lon } : null,
     distanceMeters: dto.distanceMeters,
     cover: photoOf(dto.cover),
@@ -91,14 +92,14 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         homeSection: c.homeSection,
       }));
     },
-    search: async ({ point, radius, categoryId, q }) => {
+    search: async ({ point, radius, categoryId, q, limit }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
         ...(point && radius ? { radius } : {}),
         ...(categoryId ? { category: categoryId } : {}),
         ...(q ? { q } : {}),
-        limit: 50,
+        limit: limit ?? 50,
       };
       const data = await ok(api.GET("/places/search", { params: { query } }));
       return data.items.map(summaryOf);

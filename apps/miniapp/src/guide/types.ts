@@ -21,6 +21,8 @@ export type PlaceSummary = {
   id: string;
   name: LocalizedText;
   categoryId: string;
+  /** Адрес (населённый пункт, улица) — подпись в карточке. */
+  address?: LocalizedText | null;
   location: LatLng | null;
   /** Расстояние от точки поиска, м (считает сервер). */
   distanceMeters: number | null;
@@ -38,7 +40,6 @@ export type ScheduleInterval = { weekday: number; opens: string; closes: string 
 
 export type PlaceDetail = PlaceSummary & {
   description: LocalizedText | null;
-  address: LocalizedText | null;
   phone: string | null;
   website: string | null;
   /** Telegram без @. */
@@ -68,6 +69,8 @@ export type SearchParams = {
   radius?: number;
   categoryId?: string;
   q?: string;
+  /** Размер страницы (по умолчанию 50). */
+  limit?: number;
 };
 
 /** Ошибка «не найдено» (404) — отличается от сбоя сети/сервера. */

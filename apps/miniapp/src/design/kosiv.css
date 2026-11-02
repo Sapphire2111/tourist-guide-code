@@ -1,0 +1,887 @@
+/* Дизайн-система «Сучасна Косівщина»: шрифты (свои, без Google Fonts), привязка токенов @tg/ui к сезону,
+   базовые элементы и компоненты. Токены сезонов (--app-*) — в index.html (критичный стиль первого кадра). */
+
+/* Шрифты: только кириллица и латиница, вариативные (одно начертание на все веса), font-display: swap. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-cyrillic-wght-normal.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-cyrillic-wght-normal.woff2")
+    format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-wght-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-cyrillic-wght-italic.woff2")
+    format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+/* Токены @tg/ui (кнопки, ссылки, поверхности) — из сезона. Специфичность выше :root темы Telegram:
+   светлая палитра и в тёмной теме Telegram (решение владельца), без белого текста на светлом фоне. */
+html[data-season] {
+  --color-bg: var(--app-bg);
+  --color-text: var(--app-text);
+  --color-hint: var(--app-muted);
+  --color-link: var(--app-accent-ink);
+  --color-button: var(--app-accent);
+  --color-button-text: #ffffff;
+  --color-surface: var(--app-surface-2);
+  --radius: 16px;
+  --button-radius: 9999px;
+  --button-font-size: 1rem;
+  --button-font-weight: 600;
+  --button-padding: 12px 20px;
+  --shadow-card: 0 8px 20px -4px rgba(60, 42, 20, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --gutter: 16px;
+  color-scheme: light;
+}
+
+html[data-season] body {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  font: 16px/1.5 var(--font-body);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.28s ease,
+    color 0.28s ease;
+}
+
+/* :where — без специфичности: классы компонентов (.kosiv-tile, .kosiv-nav-item…) задают свой цвет. */
+:where(html[data-season]) a {
+  color: var(--app-accent-ink);
+  text-underline-offset: 3px;
+}
+html[data-season] :focus-visible {
+  outline: 2.5px solid var(--app-accent-ink);
+  outline-offset: 2px;
+}
+
+/* Заголовки экранов — Cormorant Garamond. */
+.kosiv-content h1,
+.kosiv-content h2,
+.kosiv-content h3,
+.kosiv-heading {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: var(--app-text);
+}
+.kosiv-content h1 {
+  font-size: 2.1rem;
+  margin: 4px 0 2px;
+}
+/* Фокус на заголовке экрана не прячет его под липкой шапкой со свайпером. */
+.kosiv-content h1,
+.kosiv-content h2,
+.kosiv-content h3 {
+  scroll-margin-top: 150px;
+}
+.kosiv-content h2 {
+  font-size: 1.45rem;
+  margin: 8px 0 4px;
+}
+.kosiv-content h3 {
+  font-size: 1.25rem;
+}
+.kosiv-content p {
+  margin: 0;
+}
+
+/* Поля ввода и выбор. */
+.kosiv-content input:not([type="checkbox"]):not([type="radio"]),
+.kosiv-content select,
+.kosiv-content textarea {
+  font: inherit;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-sizing: border-box;
+}
+.kosiv-content input::placeholder,
+.kosiv-content textarea::placeholder {
+  color: var(--app-muted);
+}
+.kosiv-content input[type="checkbox"],
+.kosiv-content input[type="radio"] {
+  accent-color: var(--app-accent);
+  width: 20px;
+  height: 20px;
+  vertical-align: -4px;
+  margin: 0 8px 0 0;
+}
+.kosiv-content label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 32px;
+}
+.kosiv-content fieldset {
+  border: 1.5px solid var(--app-border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin: 0;
+  background: var(--app-surface);
+}
+.kosiv-content legend {
+  font-weight: 600;
+  padding: 0 6px;
+}
+.kosiv-content dl {
+  margin: 0;
+}
+.kosiv-content dt {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  margin-top: 8px;
+}
+.kosiv-content dd {
+  margin: 2px 0 0;
+}
+.kosiv-content table {
+  border-collapse: collapse;
+}
+.kosiv-content th,
+.kosiv-content td {
+  padding: 3px 0;
+}
+.kosiv-content button:disabled {
+  cursor: not-allowed;
+}
+
+/* Классы спецификации. */
+.kosiv-card {
+  background-color: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+}
+.kosiv-pill {
+  border-radius: 9999px;
+  border: 1px solid var(--app-border);
+  transition: all 0.2s ease;
+}
+
+/* Оболочка: липкая шапка, волна, свайпер; содержимое; нижняя навигация. */
+.kosiv-shell {
+  min-height: var(--tg-viewport-stable-height, 100vh);
+  padding-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
+}
+.kosiv-top {
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  background: var(--app-bg);
+}
+.kosiv-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: calc(
+      var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+        var(--tg-content-safe-area-inset-top, 0px) + 6px
+    )
+    var(--gutter) 6px;
+  background: var(--app-surface);
+}
+.kosiv-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--app-text);
+  text-decoration: none;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.6rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.kosiv-brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kosiv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-accent-ink);
+}
+.kosiv-icon-btn[aria-current="page"] {
+  background: var(--app-pill-bg);
+  border-color: transparent;
+}
+.kosiv-wave {
+  display: block;
+  width: 100%;
+  height: 14px;
+  background: var(--app-bg);
+}
+.kosiv-resorts {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px var(--gutter) 10px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--app-border);
+}
+.kosiv-resorts::-webkit-scrollbar {
+  display: none;
+}
+.kosiv-resort {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 48px;
+  padding: 7px 16px 8px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  scroll-snap-align: center;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+.kosiv-resort-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.kosiv-resort-meta {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--app-muted);
+}
+.kosiv-resort[aria-pressed="true"] {
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color: #ffffff;
+  box-shadow: 0 6px 14px -6px rgba(60, 42, 20, 0.25);
+}
+.kosiv-resort[aria-pressed="true"] .kosiv-resort-meta {
+  color: #ffffff;
+}
+
+.kosiv-content {
+  padding: 16px var(--gutter)
+    calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--nav-height, 72px) + 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: kosiv-in 0.35s ease-out both;
+}
+/* Только сдвиг, без прозрачности: текст с первого кадра в полном контрасте (и для проверок axe). */
+@keyframes kosiv-in {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* Заставка внутри React — те же классы, что в index.html; плавное появление содержимого. */
+.kosiv-splash-wave {
+  display: block;
+}
+
+/* Главная: герой. */
+.kosiv-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--app-surface);
+}
+.kosiv-hero > * {
+  position: relative;
+}
+.kosiv-hero-rosette {
+  position: absolute !important;
+  width: 132px;
+  height: 132px;
+  top: -52px;
+  right: -52px;
+  opacity: 0.26;
+  pointer-events: none;
+}
+.kosiv-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: var(--app-pill-bg);
+  color: var(--app-accent-ink);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+.kosiv-hero-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 2rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  max-width: 15ch;
+}
+.kosiv-quote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--app-accent-2);
+  font-family: var(--font-heading);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.12rem;
+  line-height: 1.35;
+  color: var(--app-muted);
+}
+.kosiv-seasons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+}
+.kosiv-season {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.kosiv-season[aria-pressed="true"] {
+  background: var(--app-surface);
+  color: var(--app-accent-ink);
+  box-shadow: 0 2px 8px -2px rgba(60, 42, 20, 0.18);
+}
+
+.kosiv-welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kosiv-welcome-hello {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.45rem;
+  line-height: 1.15;
+}
+.kosiv-muted {
+  color: var(--app-muted);
+}
+.kosiv-context {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--app-surface-2);
+}
+.kosiv-context-icon {
+  flex: none;
+  color: var(--app-accent-ink);
+  margin-top: 1px;
+}
+.kosiv-context section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kosiv-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kosiv-section-head h2 {
+  margin: 0;
+}
+.kosiv-section-link {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+/* Горизонтальная лента карточек мест. */
+.kosiv-rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 4px var(--gutter) 12px;
+  list-style: none;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.kosiv-rail::-webkit-scrollbar {
+  display: none;
+}
+.kosiv-rail > li {
+  flex: 0 0 72%;
+  max-width: 260px;
+  scroll-snap-align: start;
+}
+
+/* Карточка места. */
+.kosiv-place {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.kosiv-place-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--app-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-accent-ink);
+}
+.kosiv-place-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.kosiv-place-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+.kosiv-place-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.2rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--app-text);
+  text-decoration: none;
+}
+/* Вся карточка кликабельна через растянутую ссылку названия. */
+.kosiv-place-title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.kosiv-place-title:focus-visible {
+  outline: none;
+}
+.kosiv-place:has(.kosiv-place-title:focus-visible) {
+  outline: 2.5px solid var(--app-accent-ink);
+  outline-offset: 2px;
+}
+.kosiv-place-addr {
+  color: var(--app-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.kosiv-place-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+.kosiv-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+.kosiv-row .kosiv-place-media {
+  aspect-ratio: auto;
+  min-height: 88px;
+  height: 100%;
+}
+.kosiv-row .kosiv-place-body {
+  padding: 10px 14px 12px;
+}
+
+/* Бейджи и чипы. */
+.kosiv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.kosiv-chip[data-tone="accent"] {
+  background: var(--app-pill-bg);
+  color: var(--app-accent-ink);
+}
+.kosiv-chip[data-tone="accent2"] {
+  background: var(--app-surface-2);
+  color: var(--app-accent-2-ink);
+}
+.kosiv-chip[data-tone="outline"] {
+  background: transparent;
+  border: 1px solid var(--app-border);
+}
+.kosiv-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kosiv-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+  box-shadow: 0 4px 10px -6px rgba(60, 42, 20, 0.12);
+}
+.kosiv-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.kosiv-toggle[aria-pressed="true"] {
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color: #ffffff;
+}
+
+/* Крупная кнопка-призыв (ссылка). */
+.kosiv-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 12px 20px;
+  border-radius: 9999px;
+  background: var(--app-accent);
+  color: #ffffff !important;
+  font-weight: 600;
+  font-size: 1.02rem;
+  text-decoration: none;
+  box-shadow: 0 10px 22px -10px rgba(60, 42, 20, 0.25);
+}
+.kosiv-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 9999px;
+  background: var(--app-accent);
+  color: #ffffff !important;
+  font-weight: 600;
+  text-decoration: none;
+}
+.kosiv-action[data-variant="ghost"] {
+  background: var(--app-surface);
+  color: var(--app-accent-ink) !important;
+  border: 1.5px solid var(--app-border);
+}
+
+/* Плитки разделов. */
+.kosiv-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kosiv-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 96px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  color: var(--app-text);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+.kosiv-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--app-pill-bg);
+  color: var(--app-accent-ink);
+}
+.kosiv-tile[data-tone="alert"] .kosiv-tile-icon {
+  background: var(--app-accent);
+  color: #ffffff;
+}
+
+.kosiv-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+/* Нижняя навигация: 4 вкладки, safe area снизу. */
+.kosiv-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: space-around;
+  gap: 4px;
+  padding: 6px max(8px, var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)))
+    max(8px, var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))
+    max(8px, var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px)));
+  background: var(--app-surface);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-top: 1.5px solid var(--app-border);
+  box-shadow: 0 -8px 20px -12px rgba(60, 42, 20, 0.18);
+}
+.kosiv-nav-item {
+  flex: 1;
+  max-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  color: var(--app-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 16px;
+}
+.kosiv-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 30px;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+.kosiv-nav-item[aria-current="page"] {
+  color: var(--app-accent-ink);
+}
+.kosiv-nav-item[aria-current="page"] .kosiv-nav-icon {
+  background: var(--app-pill-bg);
+}
+
+/* Карточки-секции (экраны гида, «Про заклад», заявки, план). */
+.kosiv-panel {
+  padding: 14px 16px;
+}
+.kosiv-photos {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 0 var(--gutter) 4px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.kosiv-photos::-webkit-scrollbar {
+  display: none;
+}
+.kosiv-photos img {
+  flex: 0 0 auto;
+  height: 210px;
+  max-width: 86%;
+  border-radius: 20px;
+  object-fit: cover;
+  scroll-snap-align: start;
+  border: 1.5px solid var(--app-border);
+}
+.kosiv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kosiv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--app-muted);
+}
+
+/* Полупрозрачные оттенки — только где есть color-mix (старые WebView берут обычные значения выше).
+   Запасное значение рядом с color-mix(var()) не сработало бы: такое объявление валидно при разборе. */
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .kosiv-resorts {
+    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+  }
+  .kosiv-resort[aria-pressed="true"] {
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--app-accent) 70%, transparent);
+  }
+  .kosiv-hero {
+    background:
+      radial-gradient(
+        120% 90% at 100% 0%,
+        color-mix(in srgb, var(--app-pill-bg) 90%, transparent) 0%,
+        transparent 60%
+      ),
+      var(--app-surface);
+  }
+  .kosiv-place-media {
+    background:
+      radial-gradient(
+        circle at 30% 30%,
+        color-mix(in srgb, var(--app-accent-2) 22%, transparent),
+        transparent 55%
+      ),
+      radial-gradient(
+        circle at 75% 70%,
+        color-mix(in srgb, var(--app-accent) 18%, transparent),
+        transparent 55%
+      ),
+      var(--app-surface-2);
+  }
+  .kosiv-cta {
+    box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--app-accent) 80%, transparent);
+  }
+  .kosiv-nav {
+    background: color-mix(in srgb, var(--app-surface) 94%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-season] body,
+  .kosiv-resort,
+  .kosiv-pill,
+  .kosiv-nav-icon {
+    transition: none;
+  }
+  .kosiv-content {
+    animation: none;
+  }
+  .kosiv-resorts,
+  .kosiv-rail,
+  .kosiv-photos {
+    scroll-behavior: auto;
+  }
+}

@@ -38,6 +38,12 @@ export type TelegramWebApp = {
   openTelegramLink?(url: string): void;
   /** Открыть внешнюю ссылку во встроенном/внешнем браузере (Bot API 6.1+). */
   openLink?(url: string): void;
+  /** Цвет шапки окна (Bot API 6.1+): «#RRGGBB». */
+  setHeaderColor?(color: string): void;
+  /** Цвет фона окна (Bot API 6.1+). */
+  setBackgroundColor?(color: string): void;
+  /** Цвет нижней панели (Bot API 7.10+). */
+  setBottomBarColor?(color: string): void;
   /** Bot API 8.0+: геолокация устройства с разрешением в Telegram. */
   LocationManager?: TelegramLocationManager;
 };

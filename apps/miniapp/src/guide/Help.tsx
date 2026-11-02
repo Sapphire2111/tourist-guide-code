@@ -9,12 +9,13 @@ import { card, listStyle } from "./parts.js";
 
 const callLink: CSSProperties = {
   display: "block",
-  padding: "12px 16px",
-  borderRadius: "var(--radius)",
+  padding: "14px 18px",
+  borderRadius: 18,
   background: "var(--color-button)",
   color: "var(--color-button-text)",
-  fontSize: "1.25rem",
+  fontSize: "1.1rem",
   fontWeight: 700,
+  lineHeight: 1.3,
   textDecoration: "none",
 };
 

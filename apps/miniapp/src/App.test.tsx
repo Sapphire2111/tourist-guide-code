@@ -68,6 +68,27 @@ describe("главная", () => {
 });
 
 describe("роутинг и ролевой режим", () => {
+  it("переход между экранами: фокус на h1 нового экрана, BackButton не мигает", async () => {
+    const webApp = fakeWebApp();
+    render(<App api={apiWith(200)} role="guest" webApp={webApp} />);
+    const go = (hash: string) =>
+      act(async () => {
+        window.location.hash = hash;
+        await new Promise((r) => setTimeout(r, 0));
+      });
+    await go("#/help");
+    expect(document.activeElement?.tagName).toBe("H1");
+    expect(document.activeElement?.textContent).toBe("Халепа?");
+    expect(webApp.BackButton.show).toHaveBeenCalledTimes(1);
+    await go("#/nope");
+    expect(document.activeElement?.textContent).toBe("Сторінку не знайдено");
+    // Экран не пересоздаётся целиком: кнопка «Назад» Telegram не скрывается между экранами.
+    expect(webApp.BackButton.hide).not.toHaveBeenCalled();
+    await go("#/");
+    expect(document.activeElement?.textContent).toBe("Гід туриста");
+    expect(webApp.BackButton.hide).toHaveBeenCalledTimes(1);
+  });
+
   it("партнёр: ссылка в кабинет и экран кабинета", async () => {
     render(<App api={apiWith(200)} role="partner" />);
     expect(screen.getByTestId("role").textContent).toBe("Режим: партнер");

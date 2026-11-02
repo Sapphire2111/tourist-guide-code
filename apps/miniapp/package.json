@@ -12,6 +12,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@fontsource-variable/cormorant-garamond": "5.3.0",
+    "@fontsource-variable/inter": "5.3.0",
     "@tg/api-client": "workspace:*",
     "@tg/i18n": "workspace:*",
     "@tg/ui": "workspace:*",
@@ -23,6 +25,7 @@
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
     "@tg/config": "workspace:*",
+    "@tg/shared": "workspace:*",
     "@types/leaflet": "1.9.20",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
@@ -31,7 +34,6 @@
     "jsdom": "29.1.1",
     "typescript": "5.8.3",
     "vite": "6.4.5",
-    "vitest": "4.1.9",
-    "@tg/shared": "workspace:*"
+    "vitest": "4.1.9"
   }
 }

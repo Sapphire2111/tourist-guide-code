@@ -67,6 +67,24 @@ test.describe("QR отеля demoHotel01", () => {
     expect(search.regionId).toBe("00000000-0000-4000-8000-0000000000a1");
   });
 
+  test("поиск мест по ссылке #/search?q=…; вход по QR сбрасывает сохранённый курорт; a11y", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => localStorage.setItem("tg.resort", "tatariv"));
+    await page.goto("/#/search?q=" + encodeURIComponent("смерека"));
+    await expect(page.getByRole("heading", { level: 1, name: "Пошук місць" })).toBeVisible();
+    await expect(page.getByRole("searchbox")).toHaveValue("смерека");
+    await expect(page.getByTestId("place-item")).toHaveCount(1);
+    const swiper = page.getByTestId("resort-swiper");
+    await expect(swiper.getByRole("button", { name: /Усе Прикарпаття/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const state = apiMockState.get(page)!;
+    expect(state.searches.at(-1)).toMatchObject({ q: "смерека" });
+    await expectNoSeriousA11yViolations(page);
+  });
+
   test("картка місця: бейджи, маршрут, звонок, обране; события; a11y", async ({ page }) => {
     await page.goto(`/#/place/${CAFE_PLACE}`);
     await expect(page.getByRole("heading", { level: 1, name: "Кав'ярня «Смерека»" })).toBeVisible();
