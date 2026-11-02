@@ -182,7 +182,7 @@ function CategoryPlaces({
                   radius={radius}
                 />
               )}
-              <PlaceList places={list} />
+              <PlaceList places={list} distanceFrom={area ? t(resort.name) : undefined} />
             </Stack>
           )
         }

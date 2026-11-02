@@ -14,17 +14,26 @@ function initialSeason(): Season {
   return isSeason(attr) ? attr : readSeason();
 }
 
-/** Цвета окна Telegram под сезон (Bot API 6.1+; старые клиенты и браузер — без вызова). */
-export function syncTelegramColors(webApp: TelegramWebApp | undefined, season: Season): void {
-  if (!webApp || (webApp.isVersionAtLeast && !webApp.isVersionAtLeast("6.1"))) return;
-  const { bg, surface } = WINDOW_COLORS[season];
+/** Вызов метода Telegram без падения: отказ клиента не мешает остальным вызовам. */
+function safe(call: () => void): void {
   try {
-    webApp.setHeaderColor?.(surface);
-    webApp.setBackgroundColor?.(bg);
-    if (!webApp.isVersionAtLeast || webApp.isVersionAtLeast("7.10")) webApp.setBottomBarColor?.(surface);
+    call();
   } catch {
-    // Клиент отверг цвет — оформление окна останется стандартным.
+    // Клиент отверг цвет — эта часть окна останется стандартной.
   }
+}
+
+/**
+ * Цвета окна Telegram под сезон. Фон — Bot API 6.1+; шапка цветом #RRGGBB — 6.9+ (до 6.9 принимает только
+ * ключи bg_color/secondary_bg_color и бросает исключение); нижняя панель — 7.10+. Браузер — без вызовов.
+ */
+export function syncTelegramColors(webApp: TelegramWebApp | undefined, season: Season): void {
+  if (!webApp) return;
+  const at = (v: string) => !webApp.isVersionAtLeast || webApp.isVersionAtLeast(v);
+  const { bg, surface } = WINDOW_COLORS[season];
+  if (at("6.1")) safe(() => webApp.setBackgroundColor?.(bg));
+  if (at("6.9")) safe(() => webApp.setHeaderColor?.(surface));
+  if (at("7.10")) safe(() => webApp.setBottomBarColor?.(surface));
 }
 
 export function SeasonProvider({ webApp, children }: { webApp?: TelegramWebApp; children?: ReactNode }) {

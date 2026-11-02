@@ -97,7 +97,7 @@ export const SEASON_CONFIG: Record<Season, SeasonConfig> = {
     title: "miniapp.season.summer.title",
     quote: "miniapp.season.summer.quote",
     tags: [
-      { icon: "🥾", label: "miniapp.season.summer.tag1", query: "Хом'як" },
+      { icon: "🥾", label: "miniapp.season.summer.tag1", query: "Хом" },
       { icon: "🏊", label: "miniapp.season.summer.tag2", query: "озеро" },
       { icon: "🫐", label: "miniapp.season.summer.tag3", query: "афин" },
       { icon: "🚲", label: "miniapp.season.summer.tag4", query: "вело" },

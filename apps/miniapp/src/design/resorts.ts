@@ -65,3 +65,11 @@ export function isResortId(v: unknown): v is ResortId {
 }
 
 export const RESORT_STORAGE_KEY = "tg.resort";
+
+/** Код региона, к которому относятся курорты: регион «Прикарпаття» (в seed api — test-region). */
+export const RESORTS_REGION_CODE = "test-region";
+
+/** Свайпер курортов — только в своём регионе (в другом регионе эти координаты не имеют смысла). */
+export function hasResorts(regionCode: string | null | undefined): boolean {
+  return regionCode === RESORTS_REGION_CODE;
+}

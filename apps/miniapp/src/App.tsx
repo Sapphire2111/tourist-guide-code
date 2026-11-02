@@ -23,6 +23,7 @@ import { AppTop, Splash } from "./design/Chrome.js";
 import { ResortPlaces, SeasonHero, SeasonTags } from "./design/HomeParts.js";
 import { ICONS } from "./design/Ornament.js";
 import { ResortProvider } from "./design/ResortProvider.js";
+import { hasResorts } from "./design/resorts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
@@ -424,14 +425,31 @@ function StartupStatus({ state }: { state: StartupState }) {
   );
 }
 
-/** Шапка, содержимое экрана и нижняя навигация. */
-function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+/**
+ * Шапка, содержимое экрана и нижняя навигация. Появление экрана — анимацией того же узла (Web Animations), без
+ * пересоздания дерева: фокус на h1, BackButton и состояние экранов при смене пути сохраняются.
+ */
+function Shell({ routes, profile, resorts }: { routes: ReactNode; profile: boolean; resorts: boolean }) {
   const [path] = useRoute();
+  const content = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (reducedMotion()) return;
+    content.current?.animate?.([{ transform: "translateY(8px)" }, { transform: "none" }], {
+      duration: 280,
+      easing: "ease-out",
+    });
+  }, [path]);
   return (
     <>
-      <AppTop path={path} profile={profile} />
-      {/* key — плавное появление каждого экрана. */}
-      <div className="kosiv-content" key={path}>
+      <AppTop path={path} profile={profile} resorts={resorts} />
+      <div className="kosiv-content" ref={content}>
         {routes}
       </div>
       <BottomNav />
@@ -520,7 +538,7 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          <ResortProvider>
+          <ResortProvider enabled={hasResorts(context?.region?.code)} venueEntry={venue !== null}>
             <main className="kosiv-shell" lang={effectiveLocale}>
               {state.status === "loading" || state.status === "error" ? (
                 <StartupStatus state={state} />
@@ -529,6 +547,7 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
                   <HostProvider value={host}>
                     <Shell
                       profile={Boolean(session && hasRequiredConsents(session.me))}
+                      resorts={hasResorts(context?.region?.code)}
                       routes={<Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />}
                     />
                   </HostProvider>

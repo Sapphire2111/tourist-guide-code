@@ -69,6 +69,8 @@ export type SearchParams = {
   radius?: number;
   categoryId?: string;
   q?: string;
+  /** Размер страницы (по умолчанию 50). */
+  limit?: number;
 };
 
 /** Ошибка «не найдено» (404) — отличается от сбоя сети/сервера. */

@@ -20,13 +20,20 @@
     summer: ["#FDFBF6", "#FFFFFF"],
     autumn: ["#FAF5EE", "#FFFDF9"],
   }[season];
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (!tg || tg.platform === "unknown") return;
+  var at = function (v) {
+    return !tg.isVersionAtLeast || tg.isVersionAtLeast(v);
+  };
+  // Каждый вызов отдельно: отказ одного (старый клиент) не отменяет другой. Шапка цветом #RRGGBB — с Bot API 6.9.
   try {
-    var tg = window.Telegram && window.Telegram.WebApp;
-    if (tg && tg.platform !== "unknown" && (!tg.isVersionAtLeast || tg.isVersionAtLeast("6.1"))) {
-      if (tg.setHeaderColor) tg.setHeaderColor(colors[1]);
-      if (tg.setBackgroundColor) tg.setBackgroundColor(colors[0]);
-    }
+    if (at("6.1") && tg.setBackgroundColor) tg.setBackgroundColor(colors[0]);
   } catch {
-    // Старый клиент — стандартные цвета окна.
+    // Старый клиент — стандартный фон окна.
+  }
+  try {
+    if (at("6.9") && tg.setHeaderColor) tg.setHeaderColor(colors[1]);
+  } catch {
+    // Старый клиент — стандартная шапка.
   }
 })();

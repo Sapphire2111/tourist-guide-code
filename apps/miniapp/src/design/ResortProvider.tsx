@@ -33,18 +33,42 @@ function readResort(): ResortId {
   }
 }
 
-export function ResortProvider({ children }: { children?: ReactNode }) {
+function storeResort(id: ResortId): void {
+  try {
+    if (id === "all") window.localStorage.removeItem(RESORT_STORAGE_KEY);
+    else window.localStorage.setItem(RESORT_STORAGE_KEY, id);
+  } catch {
+    // Не сохранилось — выбор действует до закрытия.
+  }
+}
+
+/**
+ * enabled — регион курортов (иначе всегда «весь регион»). venueEntry — вход по QR заведения: сохранённый курорт
+ * сбрасывается, базовая точка выдачи — само заведение.
+ */
+export function ResortProvider({
+  enabled = true,
+  venueEntry = false,
+  children,
+}: {
+  enabled?: boolean;
+  venueEntry?: boolean;
+  children?: ReactNode;
+}) {
   const [id, setId] = useState<ResortId>(readResort);
+  useEffect(() => {
+    if (!venueEntry) return;
+    storeResort("all");
+    setId("all");
+  }, [venueEntry]);
   const setResort = useCallback((next: ResortId) => {
-    try {
-      if (next === "all") window.localStorage.removeItem(RESORT_STORAGE_KEY);
-      else window.localStorage.setItem(RESORT_STORAGE_KEY, next);
-    } catch {
-      // Не сохранилось — выбор действует до закрытия.
-    }
+    storeResort(next);
     setId(next);
   }, []);
-  const value = useMemo(() => ({ resort: resortById(id), setResort }), [id, setResort]);
+  const value = useMemo(
+    () => ({ resort: resortById(enabled ? id : "all"), setResort }),
+    [enabled, id, setResort],
+  );
   return <ResortContext.Provider value={value}>{children}</ResortContext.Provider>;
 }
 
@@ -91,9 +115,11 @@ export function ResortSwiper() {
 
 /** Подпись выдачи по курорту: «Поблизу: Яремче (до 4,5 км від центру)»; весь регион — ничего. */
 export function useResortCaption(): string | null {
-  const { t } = useT();
+  const { t, locale } = useT();
   const { resort } = useResort();
   if (!resort.area) return null;
-  const km = (resort.area.radius / 1000).toFixed(1).replace(".", ",").replace(/,0$/, "");
+  const km = new Intl.NumberFormat(locale === "uk" ? "uk-UA" : "en-GB", { maximumFractionDigits: 1 }).format(
+    resort.area.radius / 1000,
+  );
   return t("miniapp.resort.near", { name: t(resort.name), km });
 }

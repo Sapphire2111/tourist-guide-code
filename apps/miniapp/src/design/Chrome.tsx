@@ -49,7 +49,16 @@ export function hasResortFilter(path: string): boolean {
  * Липкая шапка: оберег и название (на главной — заголовок экрана h1, на остальных — ссылка на главную), профиль,
  * «Косівська хвиля»; под ней — свайпер курортов там, где он фильтрует места.
  */
-export function AppTop({ path, profile }: { path: string; profile: boolean }) {
+export function AppTop({
+  path,
+  profile,
+  resorts = true,
+}: {
+  path: string;
+  profile: boolean;
+  /** Регион курортов (иначе свайпера нет). */
+  resorts?: boolean;
+}) {
   const { t } = useT();
   const home = path === "/";
   return (
@@ -78,7 +87,7 @@ export function AppTop({ path, profile }: { path: string; profile: boolean }) {
         )}
       </header>
       <KosivWave />
-      {hasResortFilter(path) && <ResortSwiper />}
+      {resorts && hasResortFilter(path) && <ResortSwiper />}
     </div>
   );
 }

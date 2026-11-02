@@ -1,7 +1,9 @@
 // Главная в стиле «Сучасна Косівщина»: сезонный герой, места выбранного курорта, быстрый поиск сезона.
 // Только реальные данные мест (GET /places/search); сезонные слоганы — общий текст спецификации.
 import { Link, useT } from "@tg/ui";
-import { useAsync, useGuide } from "../guide/context.js";
+import { useEffect, useRef, useState } from "react";
+import { useGuide, type Async } from "../guide/context.js";
+import type { PlaceSummary } from "../guide/types.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { ICONS, Rosette } from "./Ornament.js";
 import { useResort, useResortCaption } from "./ResortProvider.js";
@@ -11,6 +13,8 @@ import { useSeason } from "./SeasonProvider.js";
 
 /** Сколько мест в ленте главной. */
 export const HOME_PLACES = 8;
+/** Задержка запроса ленты после смены курорта, мс. */
+export const RESORT_DEBOUNCE_MS = 250;
 
 export function SeasonHero() {
   const { t } = useT();
@@ -68,15 +72,28 @@ export function ResortPlaces() {
   const { resort } = useResort();
   const caption = useResortCaption();
   const area = resort.area;
-  const [places] = useAsync(
-    () =>
-      regionId
-        ? api
-            .search(area ? { point: area.center, radius: area.radius } : {})
-            .then((l) => l.slice(0, HOME_PLACES))
-        : Promise.resolve([]),
-    [api, regionId, resort.id],
-  );
+  const [places, setPlaces] = useState<Async<PlaceSummary[]>>({ status: "loading" });
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    if (!regionId) return;
+    let alive = true;
+    setPlaces({ status: "loading" });
+    // Быстрое листание свайпера — один запрос на остановку (первая загрузка — сразу).
+    const delay = firstLoad.current ? 0 : RESORT_DEBOUNCE_MS;
+    firstLoad.current = false;
+    const timer = window.setTimeout(() => {
+      api.search({ ...(area ? { point: area.center, radius: area.radius } : {}), limit: HOME_PLACES }).then(
+        (data) => alive && setPlaces({ status: "ready", data }),
+        (error: unknown) => alive && setPlaces({ status: "error", error }),
+      );
+    }, delay);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+    // area определяется resort.id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, regionId, resort.id]);
   if (!regionId) return null;
   // Сбой ленты не мешает главной: разделы ниже работают, лента просто не показывается.
   if (places.status === "error") return null;
@@ -105,7 +122,13 @@ export function ResortPlaces() {
       ) : (
         <ul className="kosiv-rail" data-testid="home-places">
           {places.data.map((p) => (
-            <PlaceSummaryCard key={p.id} place={p} layout="tile" testId="home-place" />
+            <PlaceSummaryCard
+              key={p.id}
+              place={p}
+              layout="tile"
+              testId="home-place"
+              distanceFrom={area ? t(resort.name) : undefined}
+            />
           ))}
         </ul>
       )}

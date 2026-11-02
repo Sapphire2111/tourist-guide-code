@@ -8,9 +8,10 @@ import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
-import { ResortPlaces, SeasonTags } from "./HomeParts.js";
-import { ResortProvider } from "./ResortProvider.js";
-import { RESORTS } from "./resorts.js";
+import { HOME_PLACES, RESORT_DEBOUNCE_MS, ResortPlaces, SeasonTags } from "./HomeParts.js";
+import { ResortProvider, useResort } from "./ResortProvider.js";
+import { hasResorts, RESORTS } from "./resorts.js";
+import { PlaceSearch } from "../guide/Catalog.js";
 import {
   readSeason,
   saveSeason,
@@ -19,7 +20,7 @@ import {
   SEASONS,
   WINDOW_COLORS,
 } from "./season.js";
-import { SeasonProvider } from "./SeasonProvider.js";
+import { SeasonProvider, syncTelegramColors } from "./SeasonProvider.js";
 
 afterEach(() => {
   cleanup();
@@ -161,13 +162,22 @@ describe("свайпер курортов", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(search).toHaveBeenLastCalledWith({});
+    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     expect(screen.getByTestId("home-place").textContent).toContain("Яремче, вул. Свободи, 1");
     const yaremche = RESORTS.find((r) => r.id === "yaremche")!;
+    // Быстрое листание: Микуличин → Яремче — один запрос после паузы, по последнему выбору.
+    const before = search.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /Микуличин/ }));
     fireEvent.click(screen.getByRole("button", { name: /Яремче/ }));
-    await flush();
-    expect(search).toHaveBeenLastCalledWith({ point: yaremche.area!.center, radius: yaremche.area!.radius });
+    await act(async () => new Promise((r) => setTimeout(r, RESORT_DEBOUNCE_MS + 50)));
+    expect(search.mock.calls.length).toBe(before + 1);
+    expect(search).toHaveBeenLastCalledWith({
+      point: yaremche.area!.center,
+      radius: yaremche.area!.radius,
+      limit: HOME_PLACES,
+    });
+    expect(screen.getByTestId("home-place").textContent).toContain("від центру Яремче");
     expect(screen.getByText("Поблизу: Яремче (до 4,5 км від центру)")).toBeDefined();
     expect(localStorage.getItem("tg.resort")).toBe("yaremche");
   });
@@ -200,6 +210,109 @@ describe("свайпер курортов", () => {
     expect(screen.getByRole("link", { name: "Гід туриста — на головну" }).getAttribute("href")).toBe("#/");
     expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
+  });
+});
+
+function CurrentResort() {
+  return <p data-testid="current">{useResort().resort.id}</p>;
+}
+
+describe("курорт и контекст входа", () => {
+  it("вход по QR заведения сбрасывает сохранённый курорт; чужой регион — всегда весь регион", () => {
+    localStorage.setItem("tg.resort", "tatariv");
+    const { rerender } = render(
+      <ResortProvider venueEntry={false}>
+        <CurrentResort />
+      </ResortProvider>,
+    );
+    expect(screen.getByTestId("current").textContent).toBe("tatariv");
+    rerender(
+      <ResortProvider venueEntry>
+        <CurrentResort />
+      </ResortProvider>,
+    );
+    expect(screen.getByTestId("current").textContent).toBe("all");
+    expect(localStorage.getItem("tg.resort")).toBeNull();
+    cleanup();
+    localStorage.setItem("tg.resort", "tatariv");
+    render(
+      <ResortProvider enabled={false}>
+        <CurrentResort />
+      </ResortProvider>,
+    );
+    expect(screen.getByTestId("current").textContent).toBe("all");
+    expect(hasResorts("test-region")).toBe(true);
+    expect(hasResorts("other")).toBe(false);
+    expect(hasResorts(undefined)).toBe(false);
+  });
+
+  it("свайпера нет вне региона курортов", () => {
+    render(<AppTop path="/" profile={false} resorts={false} />);
+    expect(screen.queryByTestId("resort-swiper")).toBeNull();
+  });
+});
+
+describe("цвета окна Telegram по версии", () => {
+  // Сравнение версий как в telegram-web-app.js: по числам частей (7.10 > 7.9).
+  const atLeast = (have: string) => (want: string) => {
+    const h = have.split(".").map(Number);
+    const w = want.split(".").map(Number);
+    for (let i = 0; i < Math.max(h.length, w.length); i++) {
+      if ((h[i] ?? 0) !== (w[i] ?? 0)) return (h[i] ?? 0) > (w[i] ?? 0);
+    }
+    return true;
+  };
+  const app = (version: string, over: Partial<TelegramWebApp> = {}) => ({
+    ready: vi.fn(),
+    expand: vi.fn(),
+    isVersionAtLeast: atLeast(version),
+    setHeaderColor: vi.fn(),
+    setBackgroundColor: vi.fn(),
+    setBottomBarColor: vi.fn(),
+    ...over,
+  });
+
+  it("Bot API 6.5: фон — да, шапка цветом #RRGGBB (6.9+) и нижняя панель (7.10+) — нет", () => {
+    const webApp = app("6.5");
+    syncTelegramColors(webApp, "winter");
+    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.winter.bg);
+    expect(webApp.setHeaderColor).not.toHaveBeenCalled();
+    expect(webApp.setBottomBarColor).not.toHaveBeenCalled();
+  });
+
+  it("отказ одного вызова не отменяет остальные", () => {
+    const webApp = app("8.0", {
+      setHeaderColor: vi.fn(() => {
+        throw new Error("WebAppHeaderColorKeyInvalid");
+      }),
+    });
+    syncTelegramColors(webApp, "spring");
+    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.spring.bg);
+    expect(webApp.setBottomBarColor).toHaveBeenCalledWith(WINDOW_COLORS.spring.surface);
+  });
+});
+
+describe("поиск мест /search", () => {
+  it("запрос из адреса подставлен в поле и ушёл в поиск без категории", async () => {
+    const search = vi.fn(async () => [place]);
+    render(
+      <GuideProvider value={env(search)}>
+        <ResortProvider>
+          <PlaceSearch initialQuery="чан" />
+        </ResortProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByRole("heading", { level: 1, name: "Пошук місць" })).toBeDefined();
+    expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("чан");
+    expect(search).toHaveBeenLastCalledWith({
+      categoryId: undefined,
+      q: "чан",
+      point: { lat: 48.4, lng: 24.5 },
+    });
+    expect(screen.getAllByTestId("place-item")).toHaveLength(1);
+    expect(screen.queryByRole("group", { name: "Підкатегорії" })).toBeNull();
   });
 });
 

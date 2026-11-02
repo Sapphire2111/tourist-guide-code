@@ -91,14 +91,18 @@ export function PlaceSummaryCard({
   layout = "row",
   testId = "place-item",
   as: Tag = "li",
+  distanceFrom,
 }: {
   place: PlaceSummary;
+  /** Откуда расстояние, если не от пользователя/заведения: «від центру Яремче». */
+  distanceFrom?: string;
   layout?: "row" | "tile";
   testId?: string;
   as?: "li" | "div";
 }) {
-  const { locale } = useT();
-  const d = useDistance()(place.distanceMeters);
+  const { t, locale } = useT();
+  const raw = useDistance()(place.distanceMeters);
+  const d = raw && distanceFrom ? t("miniapp.place.distanceFrom", { d: raw, from: distanceFrom }) : raw;
   return (
     <Tag className={`kosiv-card kosiv-place${layout === "row" ? " kosiv-row" : ""}`} data-testid={testId}>
       <PlaceMedia place={place} />
@@ -116,11 +120,19 @@ export function PlaceSummaryCard({
   );
 }
 
-export function PlaceList({ places, testId = "place-list" }: { places: PlaceSummary[]; testId?: string }) {
+export function PlaceList({
+  places,
+  testId = "place-list",
+  distanceFrom,
+}: {
+  places: PlaceSummary[];
+  testId?: string;
+  distanceFrom?: string;
+}) {
   return (
     <ul data-testid={testId} style={listStyle}>
       {places.map((p) => (
-        <PlaceSummaryCard key={p.id} place={p} />
+        <PlaceSummaryCard key={p.id} place={p} distanceFrom={distanceFrom} />
       ))}
     </ul>
   );
