@@ -38,11 +38,11 @@ test("переходы: черновик → архив; недоступных 
   await form.getByLabel("Категорія").selectOption({ label: "Де відпочити" });
   await form.getByRole("button", { name: "Зберегти" }).click();
   const status = page.getByRole("region", { name: /Статус: Чернетка/ });
-  await status.getByRole("button", { name: "В архів" }).click();
+  await status.getByRole("button", { name: "До архіву" }).click();
   const archived = page.getByRole("region", { name: /Статус: В архіві/ });
   await expect(archived).toBeVisible();
   await expect(archived.getByRole("button", { name: "Призупинити" })).toHaveCount(0);
-  await expect(archived.getByRole("button", { name: "В архів" })).toHaveCount(0);
+  await expect(archived.getByRole("button", { name: "До архіву" })).toHaveCount(0);
 });
 
 test("SUPERADMIN: регион применяется кнопкой «Застосувати», одна PUT", async ({ page }) => {

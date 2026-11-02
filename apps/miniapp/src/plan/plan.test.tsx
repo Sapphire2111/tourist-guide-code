@@ -146,7 +146,7 @@ describe("Мій план: параметри поїздки", () => {
     expect(screen.getByText("Відстані — по прямій від: Hotel Sofia")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Змінити параметри" }));
     fireEvent.click(screen.getByRole("button", { name: "Менше: Днів" }));
-    expect(screen.getByText("Обрані місця на дні після 1-го буде прибрано з плану.")).toBeTruthy();
+    expect(screen.getByText("Місця, обрані для днів після 1-го, буде прибрано з плану.")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти параметри" })));
     expect(updatePlan).toHaveBeenCalledWith(PLAN, {
       trip: { adults: 2, children: 1, withCar: false, days: 1, startDate: "2026-11-10" },

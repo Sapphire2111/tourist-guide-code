@@ -213,7 +213,7 @@ describe("P01/P13 дашборд", () => {
 
   it("владелец: статус, комментарий модератора, ссылки P06/P07/P09/P10", async () => {
     setup(<PartnerDashboard />, { me: () => Promise.resolve({ organizations: [org()] }) });
-    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібні доопрацювання");
+    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібно доопрацювати");
     expect(screen.getByTestId("moderator-comment").textContent).toContain("Додайте фото фасаду");
     expect(screen.getByRole("link", { name: "Редагувати заклад" }).getAttribute("href")).toBe(
       `#/partner/place/${PLACE}`,
