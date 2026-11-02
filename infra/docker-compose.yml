@@ -1,0 +1,142 @@
+# Local-окружение «Гід туриста». Запуск из корня: `pnpm local:up` (сборка образов + старт), `pnpm local:down`.
+# Порты хоста 4300–4306 (3000/5173 заняты на машине разработчика). Секретов здесь нет — только
+# локальные учётки контейнеров; токен Telegram (если нужен) берётся из корневого .env.
+name: tourist-guide
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  APP_ENV: local
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgresql://tg:tg@postgres:5432/tourist_guide
+  REDIS_URL: redis://redis:6379
+  S3_ENDPOINT: http://s3:9090
+  S3_REGION: us-east-1
+  S3_BUCKET: tourist-guide
+  S3_ACCESS_KEY_ID: local
+  S3_SECRET_ACCESS_KEY: local
+  # Файлы (T1-20): local — в контейнере api, ресайз там же (inline). s3 через S3Mock здесь не подходит: подписанная
+  # ссылка вела бы на внутренний адрес s3:9090, недоступный браузеру. Файлы живут до пересоздания контейнера.
+  STORAGE_DRIVER: local
+  MEDIA_PROCESSING: inline
+
+x-backend-depends: &backend-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  s3:
+    condition: service_started
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: tg
+      POSTGRES_PASSWORD: tg
+      POSTGRES_DB: tourist_guide
+    ports:
+      - "4303:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tg -d tourist_guide"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "4304:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # S3-эмулятор: Adobe S3Mock (Apache-2.0, бесплатный; принимает любые ключи). MinIO не взят: официальные
+  # образы minio/minio сняты с Docker Hub. В staging хранилище позже (Backblaze B2 или др. S3-совместимое).
+  # Healthcheck не задан: в образе нет гарантированного curl/wget; зависимые сервисы ждут только старта.
+  s3:
+    image: adobe/s3mock:5.2.3
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: tourist-guide
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    ports:
+      - "4305:9090" # S3 API (http)
+    volumes:
+      - s3data:/s3mockroot # каталог, доступный не-root пользователю образа
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: tourist-guide-api:local
+    environment:
+      <<: *backend-env
+      PORT: "4300"
+      PUBLIC_API_URL: http://localhost:4300
+      PUBLIC_MINIAPP_URL: http://localhost:4301
+      PUBLIC_ADMIN_URL: http://localhost:4302
+      CORS_ORIGINS: http://localhost:4301,http://localhost:4302
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    ports:
+      - "4300:4300"
+    depends_on: *backend-depends
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4300/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  # worker держится воркерами BullMQ (T1-21) и работает постоянно, как api: перезапуск при любом выходе, кроме
+  # docker stop. SIGTERM → дожидается активных задач (stop_grace_period) → закрывает соединения Redis.
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    image: tourist-guide-worker:local
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  # bot: HTTP-сервер webhook Telegram (T1-28) на BOT_PORT, очередь исходящих сообщений — в Redis.
+  bot:
+    build:
+      context: ..
+      dockerfile: apps/bot/Dockerfile
+    image: tourist-guide-bot:local
+    environment:
+      <<: *backend-env
+      PUBLIC_API_URL: http://localhost:4300
+      PUBLIC_MINIAPP_URL: http://localhost:4301
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+    ports:
+      - "4306:4306"
+    depends_on: *backend-depends
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:

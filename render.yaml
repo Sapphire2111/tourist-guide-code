@@ -1,0 +1,143 @@
+# Render Blueprint — staging «Гід туриста» (только бесплатные тарифы).
+# Секретов здесь нет: переменные с `sync: false` Render запросит при создании Blueprint,
+# дальше они живут только в Render → сервис → Environment. Как включить — README, «Окружения и конфигурация».
+#
+# Бот и воркер на staging работают в процессе api: Background Worker на Render платный, а отдельный
+# free Web Service засыпает через 15 мин без HTTP-трафика (очередь встала бы). Webhook Telegram приходит
+# в api (будит его), фоновые задачи там же (T1-21, T1-28). В prod — отдельные процессы (образы worker/bot).
+# Код бота (T1-28) — apps/bot: POST /telegram/webhook, очередь bot-outbox в Redis; подключение его в процесс
+# api на staging и регистрация webhook (`pnpm --filter @tg/bot webhook:set`) — отдельный шаг деплоя.
+services:
+  - type: web
+    name: tg-api-staging
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: staging
+      - key: LOG_LEVEL
+        value: info
+      # PORT задаёт сам Render (10000); api читает его из env.
+      - key: PUBLIC_API_URL
+        sync: false
+      - key: PUBLIC_MINIAPP_URL
+        sync: false
+      - key: PUBLIC_ADMIN_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      # События аналитики (T1-25) — сразу в БД из api: worker-рантайм в процесс api ещё не встроен, задачи
+      # очереди analytics на staging никто бы не разбирал. После встраивания — убрать (будет queue).
+      # Blueprint не подключён: файл сам не применяется — значение выставляется вручную в Render → api → Environment.
+      - key: ANALYTICS_SINK
+        value: direct
+      # Файлы и фото (T1-20, ADR-0013): ключей S3 пока нет — драйвер local, ресайз в процессе api (отдельного worker
+      # нет). Диск Render free ЭФЕМЕРЕН: загруженные файлы пропадают при деплое/рестарте/засыпании — только для демо.
+      # Долговечно — STORAGE_DRIVER=s3 (рекомендация — Cloudflare R2, S3_*). Публичный доступ R2 открывает весь бакет:
+      # на основном не включать (STORAGE_PUBLIC_BASE_URL — только отдельный публичный бакет или правило на /public/*).
+      # Как и ANALYTICS_SINK, выставляется вручную в Render → api → Environment (Blueprint не подключён).
+      - key: STORAGE_DRIVER
+        value: local
+      - key: MEDIA_PROCESSING
+        value: inline
+      # Секрет HMAC-подписи ссылок local (≥ 32 символов); не задан — случайный на время процесса.
+      - key: STORAGE_SIGNING_SECRET
+        sync: false
+      - key: S3_BUCKET
+        value: tourist-guide-staging
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      # Rate limit (T1-24): один инстанс — счётчики в памяти процесса, команды Upstash не тратятся.
+      # IP клиента — из X-Forwarded-For балансировщика Render (1 hop — проверить после деплоя, ADR-0012).
+      - key: RATE_LIMIT
+        value: memory
+      - key: TRUST_PROXY_HOPS
+        # Цепочка на Render: клиент → Cloudflare → балансировщик Render → локальный прокси (::1); проверено 02.11.2026.
+        value: "3"
+
+  - type: web
+    name: tg-miniapp-staging
+    runtime: static
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@tg/miniapp
+    staticPublishPath: ./apps/miniapp/dist
+    # Заголовки безопасности (T1-24). Blueprint не подключён — выставить через API Render:
+    # PUT https://api.render.com/v1/services/<id сайта>/headers  (тело — массив {path, name, value} ниже),
+    # проверить: curl -sI https://<сайт>/ . Mini App открывается во фрейме web.telegram.org (Web K/A) — поэтому
+    # frame-ancestors с Telegram и без X-Frame-Options; скрипт SDK — https://telegram.org. connect-src — адрес api
+    # (VITE_API_URL); фото мест (T1-20) — img-src https:. Добавятся внешние ресурсы (тайлы карты) — расширить CSP.
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://tg-api-staging.onrender.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Адрес api для клиента (@tg/api-client) — переменная сборки Vite, вшивается в бандл (не секрет).
+      # Смена адреса требует пересборки сайта. Origin miniapp должен быть в CORS_ORIGINS api.
+      - key: VITE_API_URL
+        value: https://tg-api-staging.onrender.com
+      - key: NODE_VERSION
+        value: 22.17.0
+      - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS
+        value: "1"
+
+  - type: web
+    name: tg-admin-staging
+    runtime: static
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@tg/admin
+    staticPublishPath: ./apps/admin/dist
+    # Заголовки безопасности (T1-24) — как у miniapp (через API Render), но во фрейм не встраивается.
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://tg-api-staging.onrender.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 22.17.0
+      - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS
+        value: "1"

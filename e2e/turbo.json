@@ -1,0 +1,20 @@
+{
+  "extends": ["//"],
+  "tags": ["e2e"],
+  "tasks": {
+    "typecheck": {
+      "dependsOn": []
+    },
+    "test": {
+      "dependsOn": []
+    },
+    "test:coverage": {
+      "dependsOn": []
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["CI", "E2E_*", "PLAYWRIGHT_*"]
+    }
+  }
+}

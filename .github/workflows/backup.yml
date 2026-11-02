@@ -1,0 +1,220 @@
+name: Backup
+
+# T1-19 (ADR-0014, docs/runbooks/backup-restore.md): ежедневный логический бэкап staging-БД (Neon)
+# и проверка восстановления в том же прогоне. Только GitHub-hosted ubuntu: машина владельца
+# (self-hosted tg-local) может быть выключена, а бэкап должен идти всегда.
+# Алерт облегчённый: упавший scheduled-прогон = письмо GitHub о сбое. Heartbeat «нет бэкапа за 26 ч»
+# (ADR-0010) — позже, вместе с T1-18.
+on:
+  schedule:
+    - cron: "17 2 * * *" # ежедневно 02:17 UTC (не ровный час — меньше задержек очереди GitHub)
+  workflow_dispatch:
+  pull_request:
+    # Сам workflow проверяется на своём PR (секреты доступны только PR из этого же репозитория).
+    paths: [".github/workflows/backup.yml"]
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PG_MAJOR: 18
+  DUMP_FILE: staging.dump.gpg
+
+jobs:
+  backup:
+    name: pg_dump staging
+    # Для PR из форков и dependabot секретов нет — пропускаем.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      started_at: ${{ steps.dump.outputs.started_at }}
+    steps:
+      - name: Проверка секретов
+        env:
+          DB_URL: ${{ secrets.STAGING_DATABASE_BACKUP_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          missing=""
+          [ -n "$DB_URL" ] || missing="$missing STAGING_DATABASE_BACKUP_URL"
+          [ -n "$PASSPHRASE" ] || missing="$missing BACKUP_ENCRYPTION_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::Не заданы секреты репозитория:$missing (Settings → Secrets and variables → Actions). Ранбук: docs/runbooks/backup-restore.md"
+            exit 1
+          fi
+      - name: Клиент PostgreSQL (PGDG)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --version
+      - name: pg_dump + шифрование
+        id: dump
+        env:
+          DB_URL: ${{ secrets.STAGING_DATABASE_BACKUP_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+          # verify-full: libpq берёт системные корневые сертификаты (на раннере нет ~/.postgresql/root.crt).
+          PGSSLROOTCERT: system
+        run: |
+          set -euo pipefail
+          bin="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          started=$(date -u +%s)
+          echo "started_at=$started" >> "$GITHUB_OUTPUT"
+          # Незашифрованный дамп на диск не пишем: сразу в gpg. Пароль — через fd 3, не в argv.
+          "$bin/pg_dump" --format=custom --no-password --dbname="$DB_URL" \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 --pinentry-mode loopback \
+                --passphrase-fd 3 --output "$DUMP_FILE" 3<<<"$PASSPHRASE"
+          took=$(( $(date -u +%s) - started ))
+          size=$(stat -c %s "$DUMP_FILE")
+          if [ "$size" -lt 1024 ]; then
+            echo "::error::Дамп подозрительно мал ($size байт)"
+            exit 1
+          fi
+          {
+            echo "## Бэкап staging"
+            echo "| Параметр | Значение |"
+            echo "|---|---|"
+            echo "| Начало (UTC) | $(date -u -d "@$started" '+%Y-%m-%d %H:%M:%S') |"
+            echo "| Время дампа | ${took} с |"
+            echo "| Размер (зашифр.) | $(numfmt --to=iec "$size") ($size байт) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-db-backup
+          path: ${{ env.DUMP_FILE }}
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 14 }}
+          if-no-files-found: error
+          compression-level: 0 # зашифрованное не сжимается
+
+  restore-check:
+    name: проверка восстановления
+    needs: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # Та же мажорная версия, что на Neon (PG 18 + PostGIS 3.6): дамп pg_dump 18 в PG 17 не ляжет.
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_PASSWORD: restore
+          POSTGRES_DB: restore
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: restore
+      PGDATABASE: restore
+    steps:
+      - name: Клиент PostgreSQL (PGDG)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+      - uses: actions/download-artifact@v4
+        with:
+          name: staging-db-backup
+      - name: Расшифровка
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+            --output staging.dump --decrypt "$DUMP_FILE" 3<<<"$PASSPHRASE"
+      - name: Восстановление
+        run: |
+          set -euo pipefail
+          bin="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          # Роли кластерные и в дамп не входят, а GRANT/ALTER DEFAULT PRIVILEGES/политики RLS ссылаются на
+          # них (app/tg_api из миграции 0003, neondb_owner, neon_superuser и т. п.). Берём имена из самого
+          # дампа (только схема), создаём недостающие NOLOGIN. --no-owner: владельца с Neon здесь нет.
+          "$bin/pg_restore" --schema-only -f schema.sql staging.dump
+          python3 - schema.sql > roles.txt <<'PY'
+          import re, sys
+          ID = r'(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)'
+          LST = ID + r'(?:\s*,\s*' + ID + r')*'
+          skip = {"public", "postgres", "current_user", "current_role", "session_user", "group"}
+          roles = set()
+          def add(lst):
+              for m in re.finditer(ID, lst):
+                  t = m.group(0)
+                  n = t[1:-1].replace('""', '"') if t[0] == '"' else t.lower()
+                  if n.lower() not in skip:
+                      roles.add(n)
+          for line in open(sys.argv[1], encoding="utf-8"):
+              if not re.match(r"(GRANT|REVOKE|ALTER)\b", line):
+                  continue
+              for m in re.finditer(r"\bFOR ROLE (" + ID + ")", line):
+                  add(m.group(1))
+              for m in re.finditer(r"\b(?:TO|FROM) (?:GROUP )?(" + LST + ")", line):
+                  add(m.group(1))
+              m = re.match(r"(?:GRANT|REVOKE) (" + LST + r") (?:TO|FROM)\b", line)
+              if m and " ON " not in line:  # членство в роли: GRANT role TO role
+                  add(m.group(1))
+          print("\n".join(sorted(roles)))
+          PY
+          echo "Роли из дампа: $(tr '\n' ' ' < roles.txt)"
+          # app — без BYPASSRLS, tg_api — логин-роль API (README apps/api, «Роли БД»).
+          "$bin/psql" -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE app NOLOGIN NOSUPERUSER NOBYPASSRLS" \
+            -c "CREATE ROLE tg_api LOGIN IN ROLE app"
+          while IFS= read -r r; do
+            [ -n "$r" ] || continue
+            "$bin/psql" -v ON_ERROR_STOP=1 -v "r=$r" <<'SQL'
+          SELECT format('CREATE ROLE %I NOLOGIN', :'r')
+          WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'r') \gexec
+          SQL
+          done < roles.txt
+          started=$(date -u +%s)
+          "$bin/pg_restore" --no-owner --exit-on-error --dbname=restore staging.dump
+          echo "RESTORE_SECONDS=$(( $(date -u +%s) - started ))" >> "$GITHUB_ENV"
+      - name: Sanity-проверка и отчёт
+        env:
+          BACKUP_STARTED_AT: ${{ needs.backup.outputs.started_at }}
+        run: |
+          set -euo pipefail
+          q() { "/usr/lib/postgresql/${PG_MAJOR}/bin/psql" -v ON_ERROR_STOP=1 -tAc "$1"; }
+          migrations=$(q "SELECT count(*) FROM schema_migrations")
+          if [ "$migrations" -eq 0 ]; then
+            echo "::error::schema_migrations пуста — дамп без схемы?"
+            exit 1
+          fi
+          last=$(q "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1")
+          age_min=$(( ($(date -u +%s) - BACKUP_STARTED_AT) / 60 ))
+          {
+            echo "## Проверка восстановления"
+            echo "| Параметр | Значение |"
+            echo "|---|---|"
+            echo "| RTO факт. (pg_restore) | ${RESTORE_SECONDS} с (цель ≤ 4 ч) |"
+            echo "| Возраст данных при проверке | ${age_min} мин |"
+            echo "| RPO факт. | ≤ интервал расписания 24 ч + длительность прогона (цель ≤ 24 ч) |"
+            echo "| Миграций | $migrations (последняя: $last) |"
+            echo ""
+            echo "| Таблица | Строк |"
+            echo "|---|---|"
+            for t in schema_migrations regions users role_assignments sessions feature_flags media_assets audit_logs analytics_events; do
+              if [ "$(q "SELECT to_regclass('public.$t') IS NOT NULL")" = "t" ]; then
+                echo "| $t | $(q "SELECT count(*) FROM public.$t") |"
+              else
+                echo "| $t | нет таблицы |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

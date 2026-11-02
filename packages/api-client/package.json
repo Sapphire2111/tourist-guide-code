@@ -1,0 +1,32 @@
+{
+  "name": "@tg/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "generate": "openapi-typescript ../../apps/api/openapi.json -o src/generated/schema.ts && prettier --write src/generated/schema.ts"
+  },
+  "dependencies": {
+    "@tg/shared": "workspace:*",
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@tg/config": "workspace:*",
+    "@vitest/coverage-v8": "4.1.9",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.8.4",
+    "typescript": "5.8.3",
+    "vitest": "4.1.9"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": [
+    "packages/config/*.json",
+    "packages/config/*.js",
+    "eslint.config.js",
+    ".prettierrc",
+    ".prettierignore"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "APP_ENV",
+        "LOG_LEVEL",
+        "PORT",
+        "MINIAPP_PORT",
+        "VITE_*",
+        "ADMIN_PORT",
+        "PUBLIC_*",
+        "CORS_ORIGINS",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "S3_*",
+        "STORAGE_*",
+        "MEDIA_PROCESSING",
+        "TELEGRAM_*"
+      ]
+    },
+    "//#lint:root": {
+      "inputs": ["$TURBO_DEFAULT$", "!docs/**"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:coverage": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["CI", "DOCKER_*", "TESTCONTAINERS_*"]
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["CI", "E2E_*", "PLAYWRIGHT_*"]
+    },
+    "test:load": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "passThroughEnv": ["CI", "LOAD_*"]
+    }
+  },
+  "boundaries": {
+    "tags": {
+      "app": {
+        "dependencies": {
+          "deny": ["app"]
+        },
+        "dependents": {
+          "deny": ["app", "package"]
+        }
+      },
+      "frontend": {
+        "dependencies": {
+          "deny": ["backend"]
+        }
+      },
+      "backend": {
+        "dependencies": {
+          "deny": ["frontend"]
+        }
+      },
+      "isomorphic": {
+        "dependencies": {
+          "deny": ["frontend", "backend"]
+        }
+      }
+    }
+  }
+}

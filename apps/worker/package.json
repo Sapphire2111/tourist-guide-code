@@ -1,0 +1,44 @@
+{
+  "name": "@tg/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json && concurrently -k -n tsc,node \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --env-file-if-exists=../../.env --watch dist/main.js\"",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@tg/media": "workspace:*",
+    "@tg/queue-contract": "workspace:*",
+    "@tg/server-config": "workspace:*",
+    "@tg/shared": "workspace:*",
+    "bullmq": "6.3.16",
+    "ioredis": "6.0.0",
+    "pg": "8.22.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.2.8",
+    "@testcontainers/redis": "11.14.0",
+    "@tg/config": "workspace:*",
+    "@types/node": "22.15.32",
+    "@types/pg": "8.20.0",
+    "@vitest/coverage-v8": "4.1.9",
+    "concurrently": "9.1.2",
+    "sharp": "0.35.5",
+    "testcontainers": "11.14.0",
+    "typescript": "5.8.3",
+    "vitest": "4.1.9"
+  }
+}

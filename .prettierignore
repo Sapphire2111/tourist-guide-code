@@ -1,0 +1,12 @@
+# Документацию не переформатируем
+docs/
+*.md
+pnpm-lock.yaml
+dist/
+coverage/
+.turbo/
+node_modules/
+.claude/
+test-results/
+playwright-report/
+blob-report/

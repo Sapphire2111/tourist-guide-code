@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+.DS_Store
+.claude/worktrees/
+test-results/
+playwright-report/
+blob-report/
+!.env.staging.example
+# Описания проекта (*.md) хранятся только локально (.docs-git), в публичный репозиторий не попадают.
+*.md
+!.github/pull_request_template.md
+.docs-git/

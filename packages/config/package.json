@@ -1,0 +1,42 @@
+{
+  "name": "@tg/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "tsconfig.*.json",
+    "eslint.config.js",
+    "module-boundaries.js",
+    "no-raw-sql.js",
+    "vitest.base.js"
+  ],
+  "exports": {
+    "./eslint": "./eslint.config.js",
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsconfig.lib.json": "./tsconfig.lib.json",
+    "./tsconfig.node.json": "./tsconfig.node.json",
+    "./tsconfig.react.json": "./tsconfig.react.json",
+    "./tsconfig.react-lib.json": "./tsconfig.react-lib.json",
+    "./vitest": "./vitest.base.js"
+  },
+  "dependencies": {
+    "@eslint/js": "9.39.4",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "16.5.0",
+    "typescript-eslint": "8.59.4",
+    "unplugin-swc": "1.5.9",
+    "@swc/core": "1.15.43"
+  },
+  "peerDependencies": {
+    "eslint": "9.39.4",
+    "vitest": "4.1.9"
+  },
+  "scripts": {
+    "test": "node --test module-boundaries.test.js no-raw-sql.test.js"
+  },
+  "devDependencies": {
+    "eslint": "9.39.4",
+    "vitest": "4.1.9"
+  }
+}

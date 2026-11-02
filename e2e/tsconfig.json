@@ -1,0 +1,5 @@
+{
+  "extends": "@tg/config/tsconfig.lib.json",
+  "compilerOptions": { "noEmit": true, "lib": ["ES2022", "DOM"], "types": ["node"] },
+  "include": ["playwright.config.ts", "support", "tests"]
+}
