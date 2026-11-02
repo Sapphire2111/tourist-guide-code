@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
@@ -19,8 +19,13 @@ import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
-import { BottomNav, BOTTOM_NAV_HEIGHT } from "./guide/BottomNav.js";
-import { Catalog } from "./guide/Catalog.js";
+import { AppTop, Splash } from "./design/Chrome.js";
+import { ResortPlaces, SeasonHero, SeasonTags } from "./design/HomeParts.js";
+import { ICONS } from "./design/Ornament.js";
+import { ResortProvider } from "./design/ResortProvider.js";
+import { SeasonProvider } from "./design/SeasonProvider.js";
+import { BottomNav } from "./guide/BottomNav.js";
+import { Catalog, PlaceSearch } from "./guide/Catalog.js";
 import { GuideProvider, RequireRegion, type GuideEnv } from "./guide/context.js";
 import { Favorites } from "./guide/Favorites.js";
 import { createGuideApi } from "./guide/guide-api.js";
@@ -40,18 +45,8 @@ import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import type { Role } from "./role.js";
 import type { TelegramUser, TelegramWebApp } from "./telegram.js";
 
-// Safe areas: переменные Telegram (Bot API 8.0+, их ставит telegram-web-app.js), иначе env() браузера.
-const inset = (side: "top" | "bottom" | "left" | "right") =>
-  `calc(var(--tg-safe-area-inset-${side}, env(safe-area-inset-${side}, 0px)) + var(--tg-content-safe-area-inset-${side}, 0px) + 16px)`;
-
-const shellStyle: CSSProperties = {
-  minHeight: "var(--tg-viewport-stable-height, 100vh)",
-  paddingTop: inset("top"),
-  // Снизу — место под фиксированную нижнюю навигацию (у неё свой отступ safe area).
-  paddingBottom: `calc(${inset("bottom")} + ${BOTTOM_NAV_HEIGHT}px)`,
-  paddingLeft: inset("left"),
-  paddingRight: inset("right"),
-};
+// Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
+// липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
 
 export type AppProps = {
   api: ApiClient;
@@ -139,40 +134,65 @@ function ContextSummary({ context }: { context: Session["context"] }) {
   return <ContextView context={context} />;
 }
 
+/** Приветствие и контекст входа (заведение QR или регион) — под героем. */
+function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "session" | "retryContext">) {
+  const { t } = useT();
+  return (
+    <div className="kosiv-welcome">
+      {user && (
+        <p data-testid="tg-user" className="kosiv-welcome-hello">
+          {t("miniapp.greeting", { name: user.first_name })}
+        </p>
+      )}
+      {session ? (
+        session.contextFailed ? (
+          <ContextUnavailable retry={retryContext} />
+        ) : (
+          <div className="kosiv-context">
+            <span className="kosiv-context-icon">{ICONS.nearby}</span>
+            <ContextSummary context={session.context} />
+          </div>
+        )
+      ) : (
+        <p data-testid="browser-notice" className="kosiv-context">
+          {t("miniapp.browser.notice")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
   const { t } = useT();
   const { staff } = useHost();
   return (
-    <Stack>
-      <h1>{t("app.name")}</h1>
-      {user && <p data-testid="tg-user">{t("miniapp.greeting", { name: user.first_name })}</p>}
-      {session ? (
-        <>
-          {session.contextFailed ? (
-            <ContextUnavailable retry={retryContext} />
-          ) : (
-            <ContextSummary context={session.context} />
-          )}
-          {!hasRequiredConsents(session.me) && <Onboarding api={api} webApp={webApp} onDone={onMe} />}
-        </>
-      ) : (
-        <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
+    <>
+      <SeasonHero />
+      <Welcome user={user} session={session} retryContext={retryContext} />
+      {session && !hasRequiredConsents(session.me) && (
+        <div className="kosiv-card kosiv-panel">
+          <Onboarding api={api} webApp={webApp} onDone={onMe} />
+        </div>
       )}
-      <HomeSections hasVenue={venueOf(session) !== null} />
       {staff === "yes" && (
-        <Link to="/staff" data-testid="staff-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        <Link to="/staff" data-testid="staff-link" className="kosiv-cta">
           {t("miniapp.staff.open")}
         </Link>
       )}
-      <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
-      {role === "partner" && (
-        // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
-        <Feature flag="module.partner_cabinet">
-          <Link to="/partner">{t("miniapp.partner.open")}</Link>
-        </Feature>
-      )}
-      <Health api={api} />
-    </Stack>
+      <ResortPlaces />
+      <SeasonTags />
+      <HomeSections hasVenue={venueOf(session) !== null} />
+      <div className="kosiv-meta-block">
+        <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
+        {role === "partner" && (
+          // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
+          <Feature flag="module.partner_cabinet">
+            <Link to="/partner">{t("miniapp.partner.open")}</Link>
+          </Feature>
+        )}
+        <Health api={api} />
+      </div>
+    </>
   );
 }
 
@@ -274,6 +294,17 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
+  if (path === "/search") {
+    // Запрос — из адреса (#/search?q=…): быстрые чипы сезона на главной.
+    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q") ?? "";
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <PlaceSearch key={q} initialQuery={q.slice(0, 100)} />
+        </RequireRegion>
+      </Screen>
+    );
+  }
   const placeId = placeIdOf(path);
   if (placeId !== undefined)
     return (
@@ -378,16 +409,33 @@ function Routes(props: RoutesProps) {
 
 function StartupStatus({ state }: { state: StartupState }) {
   const { t } = useT();
-  if (state.status === "loading") return <p role="status">{t("miniapp.start.loading")}</p>;
+  if (state.status === "loading") return <Splash />;
   if (state.status !== "error") return null;
   return (
-    <Stack>
-      <h1>{t("app.name")}</h1>
-      <p role="alert" data-testid="start-error">
-        {t(state.messageKey)}
-      </p>
-      <p>{t("miniapp.start.reopen")}</p>
-    </Stack>
+    <div className="kosiv-content">
+      <div className="kosiv-card kosiv-empty">
+        <h1>{t("app.name")}</h1>
+        <p role="alert" data-testid="start-error">
+          {t(state.messageKey)}
+        </p>
+        <p>{t("miniapp.start.reopen")}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Шапка, содержимое экрана и нижняя навигация. */
+function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
+  const [path] = useRoute();
+  return (
+    <>
+      <AppTop path={path} profile={profile} />
+      {/* key — плавное появление каждого экрана. */}
+      <div className="kosiv-content" key={path}>
+        {routes}
+      </div>
+      <BottomNav />
+    </>
   );
 }
 
@@ -471,18 +519,24 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
-        <main style={shellStyle} lang={effectiveLocale}>
-          {state.status === "loading" || state.status === "error" ? (
-            <StartupStatus state={state} />
-          ) : (
-            <GuideProvider value={guide}>
-              <HostProvider value={host}>
-                <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
-                <BottomNav profile={Boolean(session && hasRequiredConsents(session.me))} />
-              </HostProvider>
-            </GuideProvider>
-          )}
-        </main>
+        <SeasonProvider webApp={webApp}>
+          <ResortProvider>
+            <main className="kosiv-shell" lang={effectiveLocale}>
+              {state.status === "loading" || state.status === "error" ? (
+                <StartupStatus state={state} />
+              ) : (
+                <GuideProvider value={guide}>
+                  <HostProvider value={host}>
+                    <Shell
+                      profile={Boolean(session && hasRequiredConsents(session.me))}
+                      routes={<Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />}
+                    />
+                  </HostProvider>
+                </GuideProvider>
+              )}
+            </main>
+          </ResortProvider>
+        </SeasonProvider>
       </FeatureFlagsProvider>
     </I18nProvider>
   );

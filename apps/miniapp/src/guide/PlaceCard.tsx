@@ -1,23 +1,12 @@
 // C06 «Картка місця»: фото, бейджи, график, атрибуты, дата проверки; маршрут (OSM), звонок (tel:), сайт, обране.
 // «Доступно зараз» — блок 7; до него всегда «Уточнити доступність» (ТЗ §10.3).
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { routeUrl } from "./geo.js";
 import { Badge, card, PlaceBadges, useDistance } from "./parts.js";
 import { NotFoundError, UnauthorizedError, type PlaceDetail, type ScheduleInterval } from "./types.js";
-
-const action: CSSProperties = {
-  display: "inline-block",
-  padding: "10px 16px",
-  borderRadius: "var(--radius)",
-  background: "var(--color-button)",
-  color: "var(--color-button-text)",
-  fontSize: "1.2rem",
-  fontWeight: 700,
-  textDecoration: "none",
-};
 
 export function PlaceCard({ id }: { id: string }) {
   const { t } = useT();
@@ -52,7 +41,7 @@ export function PlaceCard({ id }: { id: string }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section style={card}>
-      <h2 style={{ fontSize: "1.1rem", margin: "0 0 6px" }}>{title}</h2>
+      <h2 style={{ fontSize: "1.2rem", margin: "0 0 6px" }}>{title}</h2>
       {children}
     </section>
   );
@@ -114,34 +103,28 @@ function PlaceView({ place }: { place: PlaceDetail }) {
     <article aria-labelledby="place-title">
       <Stack>
         {place.photos.length > 0 && (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto" }} data-testid="place-photos">
+          <div className="kosiv-photos" data-testid="place-photos">
             {place.photos.map((p) => (
-              <img
-                key={p.url}
-                src={p.url}
-                alt={p.alt ? pickLocalized(p.alt, locale) : ""}
-                loading="lazy"
-                style={{ height: 180, borderRadius: "var(--radius)", objectFit: "cover", flex: "0 0 auto" }}
-              />
+              <img key={p.url} src={p.url} alt={p.alt ? pickLocalized(p.alt, locale) : ""} loading="lazy" />
             ))}
           </div>
         )}
         <h1 id="place-title" ref={titleRef} tabIndex={-1} style={{ margin: 0 }}>
           {name}
         </h1>
-        {distance && <p style={{ margin: 0 }}>{distance}</p>}
-        {place.openNow && place.openUntil && (
-          <p style={{ margin: 0 }}>{t("miniapp.place.openUntil", { time: place.openUntil })}</p>
-        )}
-        <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <span className="kosiv-place-meta">
+          {distance && <span className="kosiv-chip">{distance}</span>}
+          {place.openNow && place.openUntil && (
+            <span className="kosiv-chip">{t("miniapp.place.openUntil", { time: place.openUntil })}</span>
+          )}
           <PlaceBadges place={place} />
           <Badge testId="badge-availability">{t("miniapp.place.checkAvailability")}</Badge>
         </span>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div className="kosiv-actions">
           {route && (
             <a
               href={route}
-              style={action}
+              className="kosiv-action"
               target="_blank"
               rel="noopener noreferrer"
               data-testid="place-route"
@@ -159,7 +142,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           {place.phone && (
             <a
               href={`tel:${place.phone}`}
-              style={action}
+              className="kosiv-action"
+              data-variant="ghost"
               data-testid="place-call"
               onClick={() => analytics.track("call_clicked", { placeId: place.id })}
             >
@@ -169,7 +153,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           {place.website && (
             <a
               href={place.website}
-              style={action}
+              className="kosiv-action"
+              data-variant="ghost"
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => {
@@ -185,7 +170,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           {place.telegram && (
             <a
               href={`https://t.me/${place.telegram}`}
-              style={action}
+              className="kosiv-action"
+              data-variant="ghost"
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => {

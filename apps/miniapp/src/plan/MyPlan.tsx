@@ -18,15 +18,20 @@ import type {
   UserPlan,
 } from "../host/types.js";
 
+// Сегменты в стиле переключателя сезонов (.kosiv-seasons): активный — поверхность и акцент.
 const tabStyle = (active: boolean): CSSProperties => ({
   flex: 1,
-  padding: "10px 12px",
-  border: "1px solid var(--color-button)",
-  borderRadius: "var(--radius)",
-  background: active ? "var(--color-button)" : "var(--color-bg)",
-  color: active ? "var(--color-button-text)" : "var(--color-text)",
-  fontSize: "1.2rem",
-  fontWeight: 700,
+  minHeight: 44,
+  padding: "8px 12px",
+  border: 0,
+  borderRadius: 9999,
+  background: active ? "var(--app-surface, var(--color-button))" : "transparent",
+  color: active ? "var(--app-accent-ink, var(--color-button-text))" : "var(--color-text)",
+  boxShadow: active ? "0 2px 8px -2px rgba(60, 42, 20, 0.18)" : "none",
+  font: "inherit",
+  fontSize: "0.95rem",
+  fontWeight: 600,
+  cursor: "pointer",
 });
 
 export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
@@ -35,7 +40,17 @@ export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
   return (
     <Stack>
       <h1>{t("miniapp.plan.title")}</h1>
-      <div role="group" aria-label={t("miniapp.plan.tabs")} style={{ display: "flex", gap: 8 }}>
+      <div
+        role="group"
+        aria-label={t("miniapp.plan.tabs")}
+        style={{
+          display: "flex",
+          gap: 4,
+          padding: 4,
+          borderRadius: 9999,
+          background: "var(--color-surface)",
+        }}
+      >
         <button
           type="button"
           style={tabStyle(tab === "scenarios")}
