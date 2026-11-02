@@ -29,6 +29,12 @@ import {
 } from "./ui.js";
 
 type Place = ApiSchemas["PlaceDto"];
+/** Статусы партнёрской модерации (блок 6): у места есть заявка. */
+const MODERATION_STATUSES: readonly Place["status"][] = [
+  "pending_moderation",
+  "changes_requested",
+  "rejected",
+];
 
 type PlaceForm = {
   name: LocalizedValue;
@@ -357,6 +363,12 @@ function Editor({ place }: { place?: Place }) {
       {current && (
         <p style={{ margin: 0 }}>
           {t("admin.field.status")}: {tDynamic(`admin.placeStatus.${current.status}`)}
+        </p>
+      )}
+      {current && MODERATION_STATUSES.includes(current.status) && (
+        <p role="note" style={{ margin: 0 }}>
+          {t("admin.place.moderationNote", { status: tDynamic(`admin.placeStatus.${current.status}`) })}{" "}
+          <Link to="/moderation">{t("admin.place.moderationLink")}</Link>
         </p>
       )}
       <Form
