@@ -29,7 +29,7 @@
     "api:generate": "turbo run build --filter=@tg/api^... && pnpm --filter @tg/api openapi && pnpm --filter @tg/api-client generate"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.5.3",
+    "@commitlint/cli": "21.2.4",
     "@commitlint/config-conventional": "20.5.3",
     "@tg/config": "workspace:*",
     "eslint": "9.39.4",
