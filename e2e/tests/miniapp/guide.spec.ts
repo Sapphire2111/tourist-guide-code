@@ -1,7 +1,7 @@
 // Блок 4: гид туриста — главная C02, каталог C04, «Що поруч» C05, картка місця C06, «Халепа?» C14, обране.
 // api не поднят — каталог отдаёт support/api-mock.ts; карта OSM и фото — заглушки без сети (fixtures.ts).
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
-import { apiMockState, CAFE_PLACE } from "../../support/api-mock.js";
+import { apiMockState, CAFE_PLACE, LOCALITY_TATARIV } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -16,9 +16,9 @@ test.describe("QR отеля demoHotel01", () => {
   test("главная: 8 разделов и нижняя навигация; a11y", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("venue-summary")).toBeVisible();
-    // Сезон — под шестерёнкой, без декоративного героя и свайпера курортов.
+    // Сезон — под шестерёнкой, без декоративного героя; «Локація» — кнопка под приветствием.
     await expect(page.getByTestId("season-hero")).toHaveCount(0);
-    await expect(page.getByTestId("resort-swiper")).toHaveCount(0);
+    await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
     await page.getByRole("button", { name: "Налаштування" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     const sections = page.getByTestId("home-sections").getByRole("link");
@@ -79,19 +79,51 @@ test.describe("QR отеля demoHotel01", () => {
     expect(search.regionId).toBe("00000000-0000-4000-8000-0000000000a1");
   });
 
-  test("поиск мест по ссылке #/search?q=…; сохранённый курорт не фильтрует (свайпера нет); a11y", async ({
-    page,
-  }) => {
-    await page.addInitScript(() => localStorage.setItem("tg.resort", "tatariv"));
+  test("поиск мест по ссылке #/search?q=…; a11y", async ({ page }) => {
     await page.goto("/#/search?q=" + encodeURIComponent("смерека"));
     await expect(page.getByRole("heading", { level: 1, name: "Пошук місць" })).toBeVisible();
     await expect(page.getByRole("searchbox")).toHaveValue("смерека");
     await expect(page.getByTestId("place-item")).toHaveCount(1);
-    await expect(page.getByTestId("resort-swiper")).toHaveCount(0);
     const state = apiMockState.get(page)!;
     expect(state.searches.at(-1)).toMatchObject({ q: "смерека" });
-    expect(state.searches.at(-1)).not.toHaveProperty("radius");
+    expect(state.searches.at(-1)).not.toHaveProperty("localityIds");
     await expectNoSeriousA11yViolations(page);
+  });
+
+  test("«Локація»: мультивыбор на главной фильтрует раздел и главную; вход по QR сбрасывает; a11y", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByTestId("location-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Локація" });
+    await expect(sheet).toBeVisible();
+    await expectNoSeriousA11yViolations(page);
+    await sheet.getByRole("checkbox", { name: "Татарів" }).check();
+    await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).not.toBeChecked();
+    await sheet.getByRole("button", { name: "Готово" }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
+
+    await page.getByRole("link", { name: "Де поїсти" }).click();
+    await expect(page.getByTestId("location-caption")).toHaveText("Локація: Татарів");
+    await expect(page.getByTestId("place-item")).toHaveCount(1);
+    await expect(page.getByTestId("place-item")).toContainText("Піцерія «Реклама»");
+    const state = apiMockState.get(page)!;
+    expect(state.searches.at(-1)).toMatchObject({ localityIds: LOCALITY_TATARIV });
+    expect(state.searches.at(-1)).not.toHaveProperty("lat");
+
+    // Главная: лента — по выбранной локации.
+    await page
+      .getByRole("navigation", { name: "Основна навігація" })
+      .getByRole("link", { name: "Головна" })
+      .click();
+    await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
+    await expect
+      .poll(() => state.searches.at(-1))
+      .toMatchObject({ localityIds: LOCALITY_TATARIV, limit: "8" });
+    // Повторный вход по QR заведения — выдача от заведения: сохранённый выбор сброшен.
+    await page.reload();
+    await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
   });
 
   test("картка місця: бейджи, маршрут, звонок, обране; события; a11y", async ({ page }) => {

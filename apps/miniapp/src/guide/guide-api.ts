@@ -176,13 +176,18 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         homeSection: c.homeSection,
       }));
     },
-    search: async ({ point, radius, categoryId, q, limit }) => {
+    localities: async () => {
+      const data = await ok(api.GET("/localities", { params: { query: { regionId: region() } } }));
+      return data.items.map((l) => ({ id: l.id, name: l.name, placeCount: l.placeCount }));
+    },
+    search: async ({ point, radius, categoryId, q, localityIds, limit }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
         ...(point && radius ? { radius } : {}),
         ...(categoryId ? { category: categoryId } : {}),
         ...(q ? { q } : {}),
+        ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
         limit: limit ?? 50,
       };
       const data = await ok(api.GET("/places/search", { params: { query } }));

@@ -3,15 +3,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
-import { useResort, useResortCaption } from "../design/ResortProvider.js";
 import { ICONS } from "../design/Ornament.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
+import { useLocationCaption, useLocations } from "./LocationProvider.js";
 import { MapSlot } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import type { CatalogSection, Category } from "./types.js";
 
-/** Поиск мест по всему региону или курорту (#/search?q=…): быстрые запросы сезона, «Усі місця». */
+/** Поиск мест по всему региону или выбранным локациям (#/search?q=…): быстрые запросы сезона, «Усі місця». */
 export function PlaceSearch({ initialQuery = "" }: { initialQuery?: string }) {
   const { t } = useT();
   return (
@@ -55,17 +55,17 @@ function CategoryPlaces({
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const { resort } = useResort();
-  const resortCaption = useResortCaption();
+  const { selected: localityIds } = useLocations();
+  const locationCaption = useLocationCaption();
   const rootId = root?.id;
   const [categoryId, setCategoryId] = useState(rootId);
   const [draft, setDraft] = useState(initialQuery);
   const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
   const [view, setView] = useState<"list" | "map">("list");
-  // Курорт свайпера — места в радиусе от его центра; «Усе Прикарпаття» — как раньше (от базовой точки QR).
-  const area = resort.area;
-  const point = area ? area.center : (base?.point ?? null);
-  const radius = area?.radius;
+  // Выбраны локации — места этих пунктов по всему их числу (без радиуса от точки QR); иначе — как раньше (от базовой
+  // точки QR).
+  const byLocation = localityIds.length > 0;
+  const point = byLocation ? null : (base?.point ?? null);
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -74,10 +74,12 @@ function CategoryPlaces({
     () =>
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
-      (!area && base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() => api.search({ categoryId, q: q || undefined, point, ...(radius ? { radius } : {}) }))
+      (!byLocation && base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
+        .then(() =>
+          api.search({ categoryId, q: q || undefined, point, ...(byLocation ? { localityIds } : {}) }),
+        )
         .then((list) => ({ list, submitId })),
-    [api, categoryId, q, submitId, area ? false : base?.pending, point?.lat, point?.lng, radius],
+    [api, categoryId, q, submitId, byLocation ? false : base?.pending, point?.lat, point?.lng, localityIds],
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -145,9 +147,9 @@ function CategoryPlaces({
         ))}
       </div>
       {/* Постоянная live-область: читалки объявляют изменение числа результатов. */}
-      {resortCaption && (
-        <p className="kosiv-muted" data-testid="resort-caption">
-          {resortCaption}
+      {locationCaption && (
+        <p className="kosiv-muted" data-testid="location-caption">
+          {locationCaption}
         </p>
       )}
       <p role="status" data-testid="catalog-count" className="kosiv-muted" style={{ fontSize: "0.875rem" }}>
@@ -176,14 +178,9 @@ function CategoryPlaces({
           ) : (
             <Stack>
               {view === "map" && (
-                <MapSlot
-                  places={list}
-                  center={point}
-                  centerLabel={area ? t(resort.name) : base?.name}
-                  radius={radius}
-                />
+                <MapSlot places={list} center={point} centerLabel={byLocation ? undefined : base?.name} />
               )}
-              <PlaceList places={list} distanceFrom={area ? t(resort.name) : undefined} />
+              <PlaceList places={list} />
             </Stack>
           )
         }

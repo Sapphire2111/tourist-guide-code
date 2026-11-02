@@ -114,6 +114,18 @@ const places = [
   summary(AD_PLACE, "Піцерія «Реклама»", 48.4535, 24.5635, { adLabel: "advertising", openNow: false }),
 ];
 
+/** Населённые пункты региона (GET /localities): кав'ярня — в Яремчі, піцерія — в Татарові. */
+export const LOCALITY_YAREMCHE = "00000000-0000-4000-8000-000000000501";
+export const LOCALITY_TATARIV = "00000000-0000-4000-8000-000000000502";
+const localities = [
+  { id: LOCALITY_YAREMCHE, code: "yaremche", name: { uk: "Яремче", en: "Yaremche" }, placeCount: 1 },
+  { id: LOCALITY_TATARIV, code: "tatariv", name: { uk: "Татарів", en: "Tatariv" }, placeCount: 1 },
+].map((l, i) => ({ ...l, aliases: [], location: { lon: 24.56, lat: 48.45 }, sortOrder: i + 1 }));
+const placeLocality: Record<string, string> = {
+  [CAFE_PLACE]: LOCALITY_YAREMCHE,
+  [AD_PLACE]: LOCALITY_TATARIV,
+};
+
 function distance(a: { lat: number; lon: number }, lat: number, lng: number): number {
   const rad = (d: number) => (d * Math.PI) / 180;
   const h =
@@ -328,7 +340,9 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
   // Каталог гида: только с regionId региона из контекста (как RegionQueryDto на сервере).
   await page.route(
     (url) =>
-      /^\/(categories|places\/.+|favorites(\/.+)?|emergency-contacts|analytics\/events)$/.test(url.pathname),
+      /^\/(categories|localities|places\/.+|favorites(\/.+)?|emergency-contacts|analytics\/events)$/.test(
+        url.pathname,
+      ),
     async (route) => {
       const req = route.request();
       const url = new URL(req.url());
@@ -345,9 +359,11 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
         method === "POST" ? (req.postDataJSON() as { regionId?: string }).regionId : query.regionId;
       if (regionId !== REGION.id) return json(route, { error: { code: "NOT_FOUND" } }, 404);
       if (path === "/categories") return json(route, { items: categories });
+      if (path === "/localities") return json(route, { items: localities });
       if (path === "/emergency-contacts") return json(route, { items: EMERGENCY });
       if (path === "/places/search") {
         state.searches.push(query);
+        const localityIds = url.searchParams.getAll("localityIds").flatMap((v) => v.split(","));
         const lat = query.lat ? Number(query.lat) : undefined;
         const lng = query.lng ? Number(query.lng) : undefined;
         const radius = Number(query.radius ?? 500);
@@ -358,6 +374,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
         const items = places
           .filter((p) => p.id !== HOTEL_PLACE)
           .filter(inCategory)
+          .filter((p) => localityIds.length === 0 || localityIds.includes(placeLocality[p.id] ?? ""))
           .filter((p) => !query.q || p.name.uk.toLowerCase().includes(query.q.toLowerCase()))
           .map((p) => ({
             ...p,
