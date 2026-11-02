@@ -159,9 +159,11 @@ test.describe("QR отеля demoHotel01", () => {
     await expectNoSeriousA11yViolations(page);
     await page.getByRole("button", { name: "Замінити на: Піцерія «Реклама»" }).click();
     await expect(page.getByTestId("plan-status")).toHaveText("Пункт замінено: Піцерія «Реклама»");
-    await expect(page.getByTestId("plan-item").first().getByRole("link")).toHaveText("Піцерія «Реклама»");
+    await expect(page.getByTestId("plan-item").first().getByRole("checkbox")).toHaveAccessibleName(
+      "Піцерія «Реклама»",
+    );
 
-    await page.getByRole("button", { name: "Видалити «Тестовий готель»" }).click();
+    await page.getByRole("checkbox", { name: "Тестовий готель" }).uncheck();
     await expect(page.getByTestId("plan-item")).toHaveCount(1);
 
     await page.getByRole("link", { name: "До списку" }).click();
@@ -169,6 +171,63 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByTestId("saved-plan").getByRole("link").click();
     await page.getByTestId("plan-item").first().getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1, name: "Піцерія «Реклама»" })).toBeVisible();
+  });
+
+  test("Мій план: параметри (діти, без авто, 2 дні) → варіанти → галочки → план; a11y", async ({ page }) => {
+    const state = apiMockState.get(page)!;
+    await page.goto("/#/plan");
+    await page.getByRole("link", { name: "Скласти свій план" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Свій план" })).toBeVisible();
+    await page.getByRole("button", { name: "Більше: Діти" }).click();
+    await page.getByRole("button", { name: "Більше: Днів" }).click();
+    await page.getByRole("button", { name: "Без авто" }).click();
+    await expect(page.getByText(/не пропонуємо бари й нічні клуби/)).toBeVisible();
+    await expectNoSeriousA11yViolations(page);
+    await page.getByRole("button", { name: "Підібрати варіанти" }).click();
+
+    await expect(page.getByTestId("trip-line")).toHaveText("Дорослих: 2 · Дітей: 1 · Без авто · Днів: 2");
+    await expect(page.getByText("Відстані — по прямій від: Тестовий готель")).toBeVisible();
+    expect(state.plans[0]!.trip).toMatchObject({ adults: 2, children: 1, withCar: false, days: 2 });
+    await expect(page.getByTestId("plan-day")).toHaveCount(2);
+    const day1 = page.getByTestId("plan-day").first();
+    // С детьми бара нет; далеко без авто — «Потрібен транспорт»; что это — подпись вида.
+    await expect(day1.getByText("Бар «Нічний Прут»")).toHaveCount(0);
+    const mountain = day1.getByTestId("plan-option").filter({ hasText: "Гора Маковиця" });
+    await expect(mountain).toContainText("Потрібен транспорт");
+    await expect(mountain.getByTestId("option-kind")).toHaveText("Пам'ятка природи");
+    await expect(
+      day1.getByTestId("plan-option").filter({ hasText: "Водоспад Пробій" }).getByTestId("option-kind"),
+    ).toHaveText("Водоспад");
+    await expectNoSeriousA11yViolations(page);
+
+    await day1.getByRole("checkbox", { name: "Водоспад Пробій" }).check();
+    await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Водоспад Пробій");
+    await day1.getByRole("checkbox", { name: "Колиба «Ватра»" }).check();
+    await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Колиба «Ватра»");
+    const rain = day1.getByTestId("plan-slot-rain");
+    await expect(rain.getByRole("heading", { name: "Якщо дощ — план Б" })).toBeVisible();
+    await rain.getByRole("checkbox", { name: "Музей писанки" }).check();
+    await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Музей писанки");
+
+    await expect(day1.getByTestId("plan-item")).toHaveCount(3);
+    await expect(day1.getByRole("checkbox", { name: "Водоспад Пробій" })).toBeChecked();
+    // Остальные варианты утра свёрнуты.
+    await expect(day1.getByTestId("plan-slot-morning").getByText("Ще варіанти: 2")).toBeVisible();
+    await expect(
+      day1.getByTestId("plan-slot-morning").getByRole("checkbox", { name: "Кав'ярня «Смерека»" }),
+    ).toBeHidden();
+    await expectNoSeriousA11yViolations(page);
+
+    // Снять галочку — убрать из плана.
+    await day1.getByRole("checkbox", { name: "Колиба «Ватра»" }).uncheck();
+    await expect(day1.getByTestId("plan-item")).toHaveCount(2);
+
+    // Параметры: 1 день.
+    await page.getByRole("button", { name: "Змінити параметри" }).click();
+    await page.getByRole("button", { name: "Менше: Днів" }).click();
+    await page.getByRole("button", { name: "Зберегти параметри" }).click();
+    await expect(page.getByTestId("plan-status")).toHaveText("Параметри збережено — варіанти оновлено.");
+    await expect(page.getByTestId("plan-day")).toHaveCount(1);
   });
 });
 

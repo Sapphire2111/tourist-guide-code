@@ -42,7 +42,7 @@ import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/cont
 import { createHostApi } from "./host/host-api.js";
 import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
-import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
+import { MyPlan, NewPlanScreen, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import type { Role } from "./role.js";
 import type { TelegramUser, TelegramWebApp } from "./telegram.js";
 
@@ -362,6 +362,14 @@ function Routes(props: RoutesProps) {
       <Screen webApp={webApp}>
         <RequireRegion>
           <MyPlan tab={path === "/plan" ? "scenarios" : "saved"} />
+        </RequireRegion>
+      </Screen>
+    );
+  if (hostRequests && path === "/plan/new")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <NewPlanScreen />
         </RequireRegion>
       </Screen>
     );

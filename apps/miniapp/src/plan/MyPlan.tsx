@@ -1,22 +1,31 @@
-// C09 «Мій план»: готовые сценарии региона и сохранённые планы; сценарий по дням, замена пункта альтернативой,
-// удаление пункта, «Зберегти як план» (UserPlan). Пункт → картка місця C06. Сохранение — только с сессией (C-24).
-import { useState, type CSSProperties } from "react";
-import { pickLocalized } from "@tg/i18n";
+// C09 «Мій план»: готовые сценарии региона и сохранённые планы. Сценарий — просмотр по дням и «Зберегти як план».
+// План пользователя — параметры поездки (дорослі, діти, з авто / без, днів) и по каждой части дня (ранок, день,
+// вечір, «якщо дощ») список с галочками: отмеченное — в плане, ниже — 3–5 вариантов из каталога (что это, чому
+// підходить, скільки йти/їхати); галочка — PATCH addItem, снятая — removeItemId. «Скласти свій план» — план без
+// сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24).
+import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "../host/context.js";
-import { useErrorText } from "../host/errors.js";
-import type {
-  PlanChange,
-  PlanDay,
-  PlanItem,
-  PlanPlace,
-  ScenarioDetail,
-  ScenarioSummary,
-  UserPlan,
+import { isMessageKey, useErrorText } from "../host/errors.js";
+import {
+  PLAN_SLOTS,
+  type PlanChange,
+  type PlanDay,
+  type PlanItem,
+  type PlanOption,
+  type PlanPlace,
+  type PlanSlot,
+  type PlanTrip,
+  type ScenarioDetail,
+  type ScenarioSummary,
+  type TripInput,
+  type UserPlan,
 } from "../host/types.js";
+import "./plan.css";
 
 // Сегменты в стиле переключателя сезонов (.kosiv-seasons): активный — поверхность и акцент.
 const tabStyle = (active: boolean): CSSProperties => ({
@@ -33,6 +42,9 @@ const tabStyle = (active: boolean): CSSProperties => ({
   fontWeight: 600,
   cursor: "pointer",
 });
+
+const PEOPLE_MAX = 20;
+const DAYS_MAX = 14;
 
 export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
   const { t } = useT();
@@ -67,6 +79,14 @@ export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
         >
           {t("miniapp.plan.saved")}
         </button>
+      </div>
+      <div style={card} data-testid="plan-custom">
+        <Link to="/plan/new" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+          {t("miniapp.plan.custom")}
+        </Link>
+        <p className="kosiv-muted" style={{ margin: "4px 0 0" }}>
+          {t("miniapp.plan.customHint")}
+        </p>
       </div>
       {tab === "scenarios" ? <ScenarioList /> : <SavedPlans />}
     </Stack>
@@ -116,7 +136,7 @@ function SavedPlans() {
                 <Link to={`/plan/saved/${p.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
                   {pickLocalized(p.title, locale)}
                 </Link>
-                <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: p.schedule.length })}</span>
+                <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: p.trip.days })}</span>
               </li>
             ))}
           </ul>
@@ -127,6 +147,186 @@ function SavedPlans() {
     </AsyncView>
   );
 }
+
+// --- параметры поездки ---
+
+function Stepper({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+}) {
+  const { t } = useT();
+  const id = useId();
+  return (
+    <div className="plan-stepper" role="group" aria-labelledby={`${id}-l`}>
+      <span id={`${id}-l`} className="plan-stepper-label">
+        {label}
+      </span>
+      <button
+        type="button"
+        className="plan-stepper-btn"
+        aria-label={t("miniapp.plan.trip.decrease", { label })}
+        disabled={value <= min}
+        onClick={() => onChange(value - 1)}
+      >
+        −
+      </button>
+      <output className="plan-stepper-value" aria-live="polite" data-testid={`trip-${label}`}>
+        {value}
+      </output>
+      <button
+        type="button"
+        className="plan-stepper-btn"
+        aria-label={t("miniapp.plan.trip.increase", { label })}
+        disabled={value >= max}
+        onClick={() => onChange(value + 1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+const DEFAULT_TRIP: PlanTrip = { adults: 2, children: 0, withCar: true, days: 1 };
+
+/** Форма параметров: дорослі, діти, з авто / без, днів, дата початку. */
+function TripForm({
+  initial,
+  startDate,
+  submitLabel,
+  busy,
+  trimFrom,
+  onSubmit,
+}: {
+  initial: PlanTrip;
+  startDate: string | null;
+  submitLabel: string;
+  busy: boolean;
+  /** Сколько дней сейчас в плане: меньше — предупреждение «пункти буде прибрано». */
+  trimFrom?: number;
+  onSubmit: (trip: PlanTrip, startDate: string | null) => void;
+}) {
+  const { t } = useT();
+  const [trip, setTrip] = useState(initial);
+  const [date, setDate] = useState(startDate ?? "");
+  const dateId = useId();
+  const set = (patch: Partial<PlanTrip>) => setTrip((v) => ({ ...v, ...patch }));
+  return (
+    <form
+      className="plan-trip-form"
+      data-testid="trip-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(trip, date || null);
+      }}
+    >
+      <Stepper
+        label={t("miniapp.plan.trip.adults")}
+        value={trip.adults}
+        min={1}
+        max={PEOPLE_MAX}
+        onChange={(adults) => set({ adults })}
+      />
+      <Stepper
+        label={t("miniapp.plan.trip.children")}
+        value={trip.children}
+        min={0}
+        max={PEOPLE_MAX}
+        onChange={(children) => set({ children })}
+      />
+      <Stepper
+        label={t("miniapp.plan.trip.days")}
+        value={trip.days}
+        min={1}
+        max={DAYS_MAX}
+        onChange={(days) => set({ days })}
+      />
+      <div role="group" aria-label={t("miniapp.plan.trip.transport")} className="kosiv-seasons plan-car">
+        {[true, false].map((car) => (
+          <button
+            key={String(car)}
+            type="button"
+            className="kosiv-season"
+            aria-pressed={trip.withCar === car}
+            onClick={() => set({ withCar: car })}
+          >
+            {t(car ? "miniapp.plan.trip.withCar" : "miniapp.plan.trip.noCar")}
+          </button>
+        ))}
+      </div>
+      <label htmlFor={dateId} className="plan-date">
+        <span>{t("miniapp.plan.trip.startDate")}</span>
+        <input id={dateId} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      {trip.children > 0 && <p className="kosiv-muted plan-note">{t("miniapp.plan.trip.kidsNote")}</p>}
+      {!trip.withCar && <p className="kosiv-muted plan-note">{t("miniapp.plan.trip.noCarNote")}</p>}
+      {trimFrom !== undefined && trip.days < trimFrom && (
+        <p className="plan-note" role="status">
+          {t("miniapp.plan.trip.trimWarning", { n: trip.days })}
+        </p>
+      )}
+      <Button type="submit" disabled={busy} data-testid="trip-submit">
+        {submitLabel}
+      </Button>
+    </form>
+  );
+}
+
+/** «Скласти свій план»: параметры → план без сценария → экран плана с вариантами. */
+export function NewPlanScreen() {
+  const { t } = useT();
+  const { signedIn } = useGuide();
+  const { api, hotelPlaceId } = useHost();
+  const [, navigate] = useRoute();
+  const errorText = useErrorText();
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Message>(null);
+  const create = async (trip: PlanTrip, startDate: string | null) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const input: TripInput = { ...trip, startDate, ...(hotelPlaceId ? { basePlaceId: hotelPlaceId } : {}) };
+      const plan = await api.createPlan(input);
+      navigate(`/plan/saved/${plan.id}`, { replace: true });
+    } catch (err) {
+      setStatus({ text: errorText(err, "miniapp.plan.createError"), alert: true });
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack>
+      <h1>{t("miniapp.plan.newTitle")}</h1>
+      <Link to="/plan" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        {t("miniapp.plan.backToList")}
+      </Link>
+      <p>{t("miniapp.plan.customHint")}</p>
+      {signedIn ? (
+        <>
+          <TripForm
+            initial={DEFAULT_TRIP}
+            startDate={null}
+            submitLabel={t("miniapp.plan.trip.create")}
+            busy={busy}
+            onSubmit={(trip, date) => void create(trip, date)}
+          />
+          <Live message={status} testId="plan-status" />
+        </>
+      ) : (
+        <p data-testid="plan-login">{t("miniapp.plan.needsLogin")}</p>
+      )}
+    </Stack>
+  );
+}
+
+// --- сценарий ---
 
 export function ScenarioScreen({ id }: { id: string }) {
   const { api } = useHost();
@@ -183,6 +383,53 @@ function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
   );
 }
 
+function Days({ days }: { days: PlanDay[] }) {
+  const { t } = useT();
+  return (
+    <>
+      {days.map((d) => (
+        <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day">
+          <h2 id={`day-${d.day}`} style={{ fontSize: "1.1rem" }}>
+            {t("miniapp.plan.day", { n: d.day })}
+          </h2>
+          {d.items.length ? (
+            <ol style={listStyle}>
+              {d.items.map((i) => (
+                <ScenarioItemRow key={i.id} item={i} />
+              ))}
+            </ol>
+          ) : (
+            <p>{t("miniapp.plan.dayEmpty")}</p>
+          )}
+        </section>
+      ))}
+    </>
+  );
+}
+
+function ScenarioItemRow({ item }: { item: PlanItem }) {
+  const { t, locale } = useT();
+  const distance = useDistance();
+  const name = item.place ? pickLocalized(item.place.name, locale) : t("miniapp.plan.unavailable");
+  const d = distance(item.distanceMeters);
+  return (
+    <li style={card} data-testid="plan-item">
+      {item.time && <span style={{ fontWeight: 700, marginRight: 8 }}>{item.time}</span>}
+      {item.place ? (
+        <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+          {name}
+        </Link>
+      ) : (
+        <strong data-testid="plan-item-unavailable">{name}</strong>
+      )}
+      {d && <span style={{ display: "block" }}>{t("miniapp.plan.distance", { n: d })}</span>}
+      {item.note && <p style={{ margin: "4px 0" }}>{pickLocalized(item.note, locale)}</p>}
+    </li>
+  );
+}
+
+// --- план пользователя ---
+
 export function SavedPlanScreen({ id }: { id: string }) {
   const { t } = useT();
   const { api } = useHost();
@@ -212,13 +459,31 @@ function Live({ message, testId }: { message: Message; testId: string }) {
   );
 }
 
-/** Сохранённый план: «Замінити» (из alternatives) и «Видалити» — PATCH /me/plan/{id}, ответ — новый план. */
+type Edit = {
+  busy: boolean;
+  apply: (change: PlanChange, done: string) => void;
+};
+
+/** Дата дня плана: «пн, 10.11» (локальная дата без часового пояса). */
+function dayDate(start: string | null, day: number, locale: string): string | null {
+  if (!start) return null;
+  const [y, m, d] = start.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d + day - 1);
+  return new Intl.DateTimeFormat(locale, { weekday: "short", day: "2-digit", month: "2-digit" }).format(date);
+}
+
+/**
+ * Сохранённый план: параметры поездки (свернуты в строку, «Змінити параметри»), по дням — части дня с галочками.
+ * Каждое изменение — PATCH /me/plan/{id}, ответ — новый план с пересчитанными вариантами.
+ */
 function PlanEditor({ initial }: { initial: UserPlan }) {
   const { t, locale } = useT();
   const { api } = useHost();
   const [plan, setPlan] = useState(initial);
   const errorText = useErrorText();
   const [busy, setBusy] = useState(false);
+  const [editTrip, setEditTrip] = useState(false);
   const [status, setStatus] = useState<Message>(null);
   const apply = async (change: PlanChange, done: string) => {
     setBusy(true);
@@ -226,14 +491,16 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
     try {
       setPlan(await api.updatePlan(plan.id, change));
       setStatus({ text: done, alert: false });
+      return true;
     } catch (err) {
       setStatus({ text: errorText(err, "miniapp.plan.changeError"), alert: true });
+      return false;
     } finally {
       setBusy(false);
     }
   };
-  const nameOf = (item: PlanItem) =>
-    item.place ? pickLocalized(item.place.name, locale) : t("miniapp.plan.unavailable");
+  const edit: Edit = { busy, apply: (c, done) => void apply(c, done) };
+  const { trip } = plan;
   return (
     <Stack>
       <h1>{pickLocalized(plan.title, locale)}</h1>
@@ -241,120 +508,305 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
       <Link to="/plan/saved" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
         {t("miniapp.plan.backToList")}
       </Link>
+      <section style={card} aria-labelledby="trip-title" data-testid="trip-summary">
+        <h2 id="trip-title" style={{ fontSize: "1.1rem", margin: 0 }}>
+          {t("miniapp.plan.trip.title")}
+        </h2>
+        <p style={{ margin: "4px 0" }} data-testid="trip-line">
+          {t("miniapp.plan.trip.summary", {
+            adults: trip.adults,
+            children: trip.children,
+            car: t(trip.withCar ? "miniapp.plan.trip.withCar" : "miniapp.plan.trip.noCar"),
+            days: trip.days,
+          })}
+        </p>
+        {plan.base && (
+          <p className="kosiv-muted" style={{ margin: "0 0 8px" }}>
+            {t("miniapp.plan.trip.base", { name: pickLocalized(plan.base, locale) })}
+          </p>
+        )}
+        {editTrip ? (
+          <TripForm
+            initial={trip}
+            startDate={plan.startDate}
+            submitLabel={t("miniapp.plan.trip.save")}
+            busy={busy}
+            trimFrom={trip.days}
+            onSubmit={(next, startDate) =>
+              void apply({ trip: { ...next, startDate } }, t("miniapp.plan.trip.saved")).then(
+                (ok) => ok && setEditTrip(false),
+              )
+            }
+          />
+        ) : (
+          <Button disabled={busy} onClick={() => setEditTrip(true)} data-testid="trip-edit">
+            {t("miniapp.plan.trip.edit")}
+          </Button>
+        )}
+      </section>
       <Live message={status} testId="plan-status" />
-      <Days
-        days={plan.schedule}
-        edit={{
-          busy,
-          onReplace: (item, p) =>
-            void apply(
-              { replace: { itemId: item.id, placeId: p.id } },
-              t("miniapp.plan.replaced", { name: pickLocalized(p.name, locale) }),
-            ),
-          onRemove: (item) =>
-            void apply({ remove: item.id }, t("miniapp.plan.removed", { name: nameOf(item) })),
-        }}
-      />
+      {plan.schedule.map((d) => {
+        const date = dayDate(plan.startDate, d.day, locale);
+        const options = plan.options.find((o) => o.day === d.day)?.slots ?? [];
+        return (
+          <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day" className="plan-day">
+            <h2 id={`day-${d.day}`} style={{ fontSize: "1.25rem" }}>
+              {t("miniapp.plan.day", { n: d.day })}
+              {date && <span className="kosiv-muted plan-day-date"> · {date}</span>}
+            </h2>
+            {PLAN_SLOTS.map((slot) => (
+              <SlotSection
+                key={slot}
+                day={d.day}
+                slot={slot}
+                items={d.items.filter((i) => i.slot === slot)}
+                options={options.find((s) => s.slot === slot)?.options ?? []}
+                edit={edit}
+              />
+            ))}
+          </section>
+        );
+      })}
     </Stack>
   );
 }
 
-type Edit = {
-  busy: boolean;
-  onReplace: (item: PlanItem, place: PlanPlace) => void;
-  onRemove: (item: PlanItem) => void;
-};
-
-function Days({ days, edit }: { days: PlanDay[]; edit?: Edit }) {
+/** Часть дня: отмеченные (в плане) и варианты на выбор; после выбора варианты свёрнуты в «Ще варіанти». */
+function SlotSection({
+  day,
+  slot,
+  items,
+  options,
+  edit,
+}: {
+  day: number;
+  slot: PlanSlot;
+  items: PlanItem[];
+  options: PlanOption[];
+  edit: Edit;
+}) {
   const { t } = useT();
-  return (
-    <>
-      {days.map((d) => (
-        <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day">
-          <h2 id={`day-${d.day}`} style={{ fontSize: "1.1rem" }}>
-            {t("miniapp.plan.day", { n: d.day })}
-          </h2>
-          {d.items.length ? (
-            <ol style={listStyle}>
-              {d.items.map((i) => (
-                <PlanItemRow key={i.id} item={i} edit={edit} />
-              ))}
-            </ol>
-          ) : (
-            <p>{t("miniapp.plan.dayEmpty")}</p>
-          )}
-        </section>
+  const headingId = `day-${day}-${slot}`;
+  const optionList = options.length ? (
+    <ul className="plan-choices" aria-label={t("miniapp.plan.options")}>
+      {options.map((o) => (
+        <OptionRow key={o.place.id} day={day} slot={slot} option={o} edit={edit} />
       ))}
+    </ul>
+  ) : (
+    <p className="kosiv-muted">{t("miniapp.plan.noOptions")}</p>
+  );
+  const body = (
+    <>
+      {slot === "rain" && <p className="kosiv-muted plan-note">{t("miniapp.plan.rainHint")}</p>}
+      {items.length ? (
+        <ul className="plan-choices" aria-labelledby={headingId}>
+          {items.map((i) => (
+            <ChosenRow key={i.id} item={i} edit={edit} />
+          ))}
+        </ul>
+      ) : (
+        <p className="kosiv-muted plan-note">{t("miniapp.plan.chosenNone")}</p>
+      )}
+      {items.length && options.length ? (
+        <details className="plan-more">
+          <summary>{t("miniapp.plan.moreOptions", { n: options.length })}</summary>
+          {optionList}
+        </details>
+      ) : (
+        <>
+          <h4 className="plan-options-title">{t("miniapp.plan.options")}</h4>
+          {optionList}
+        </>
+      )}
     </>
+  );
+  return (
+    <section
+      className={`plan-slot plan-slot-${slot}`}
+      aria-labelledby={headingId}
+      data-testid={`plan-slot-${slot}`}
+    >
+      <h3 id={headingId} className="plan-slot-title">
+        {t(`miniapp.plan.slot.${slot}` as MessageKey)}
+      </h3>
+      {body}
+    </section>
   );
 }
 
-function PlanItemRow({ item, edit }: { item: PlanItem; edit?: Edit }) {
+function Choice({
+  checked,
+  disabled,
+  label,
+  onChange,
+  children,
+  testId,
+  labelTestId,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onChange: () => void;
+  children?: ReactNode;
+  testId: string;
+  labelTestId?: string;
+}) {
+  const id = useId();
+  // Галочка меняется сразу (пока идёт PATCH); ответ сервера — источник истины, ошибка — галочка как была.
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (!disabled) setPending(false);
+  }, [disabled]);
+  const shown = pending ? !checked : checked;
+  return (
+    <li className="plan-choice" data-checked={shown} data-testid={testId}>
+      <input
+        id={id}
+        type="checkbox"
+        className="plan-check"
+        checked={shown}
+        disabled={disabled}
+        aria-describedby={`${id}-d`}
+        onChange={() => {
+          setPending(true);
+          onChange();
+        }}
+      />
+      <div className="plan-choice-body">
+        <label htmlFor={id} className="plan-choice-name" data-testid={labelTestId}>
+          {label}
+        </label>
+        <div id={`${id}-d`} className="plan-choice-meta">
+          {children}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Подпись «что это»: перевод вида (Ресторан, Водоспад, Бар…), иначе — название категории справочника. */
+function useKindLabel(): (o: PlanOption) => string {
+  const { t, locale } = useT();
+  return (o) => {
+    const key = `miniapp.plan.kind.${o.kind}`;
+    return isMessageKey(key) ? t(key) : pickLocalized(o.place.categoryName, locale);
+  };
+}
+
+function travelText(o: PlanOption, t: (k: MessageKey, p?: Record<string, string | number>) => string) {
+  if (o.travelMinutes === null)
+    return o.travel === "transport" ? t("miniapp.plan.travel.transportUnknown") : null;
+  return t(`miniapp.plan.travel.${o.travel}` as MessageKey, { min: o.travelMinutes });
+}
+
+function OptionRow({
+  day,
+  slot,
+  option,
+  edit,
+}: {
+  day: number;
+  slot: PlanSlot;
+  option: PlanOption;
+  edit: Edit;
+}) {
+  const { t, locale } = useT();
+  const distance = useDistance();
+  const kind = useKindLabel();
+  const name = pickLocalized(option.place.name, locale);
+  const d = distance(option.distanceMeters);
+  const travel = travelText(option, t);
+  return (
+    <Choice
+      checked={false}
+      disabled={edit.busy}
+      label={name}
+      testId="plan-option"
+      onChange={() =>
+        edit.apply({ add: { day, slot, placeId: option.place.id } }, t("miniapp.plan.added", { name }))
+      }
+    >
+      <span className="kosiv-chip" data-tone="accent" data-testid="option-kind">
+        {kind(option)}
+      </span>
+      <span className="plan-reason">{t(`miniapp.plan.reason.${option.reason}` as MessageKey)}</span>
+      <span className="plan-chips">
+        {d && <span className="kosiv-chip">{d}</span>}
+        {travel && (
+          <span className="kosiv-chip" data-tone={option.travel === "transport" ? "outline" : undefined}>
+            {travel}
+          </span>
+        )}
+        {option.kidsFriendly && (
+          <span className="kosiv-chip" data-tone="accent2">
+            {t("miniapp.plan.kidsFriendly")}
+          </span>
+        )}
+      </span>
+      <Link to={`/place/${option.place.id}`} aria-label={t("miniapp.plan.details", { name })}>
+        {t("miniapp.plan.detailsShort")}
+      </Link>
+    </Choice>
+  );
+}
+
+/** Отмеченный пункт плана: снять галочку — убрать; «Замінити» — альтернатива из сценария. */
+function ChosenRow({ item, edit }: { item: PlanItem; edit: Edit }) {
   const { t, locale } = useT();
   const distance = useDistance();
   const [open, setOpen] = useState(false);
   const name = item.place ? pickLocalized(item.place.name, locale) : t("miniapp.plan.unavailable");
   const d = distance(item.distanceMeters);
+  const replace = (p: PlanPlace) => {
+    setOpen(false);
+    edit.apply(
+      { replace: { itemId: item.id, placeId: p.id } },
+      t("miniapp.plan.replaced", { name: pickLocalized(p.name, locale) }),
+    );
+  };
   return (
-    <li style={card} data-testid="plan-item">
-      {item.time && <span style={{ fontWeight: 700, marginRight: 8 }}>{item.time}</span>}
-      {item.place ? (
-        <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
-          {name}
-        </Link>
-      ) : (
-        <strong data-testid="plan-item-unavailable">{name}</strong>
+    <Choice
+      checked
+      disabled={edit.busy}
+      label={name}
+      testId="plan-item"
+      labelTestId={item.place ? undefined : "plan-item-unavailable"}
+      onChange={() => edit.apply({ remove: item.id }, t("miniapp.plan.removed", { name }))}
+    >
+      {item.time && <span className="kosiv-chip">{item.time}</span>}
+      {d && <span className="plan-reason">{t("miniapp.plan.distance", { n: d })}</span>}
+      {item.note && <span className="plan-reason">{pickLocalized(item.note, locale)}</span>}
+      <span className="plan-chips">
+        {item.place && (
+          <Link to={`/place/${item.place.id}`} aria-label={t("miniapp.plan.details", { name })}>
+            {t("miniapp.plan.detailsShort")}
+          </Link>
+        )}
+        {item.alternatives.length > 0 && (
+          <Button
+            aria-expanded={open}
+            aria-label={`${t("miniapp.plan.replace")}: ${name}`}
+            disabled={edit.busy}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {t("miniapp.plan.replace")}
+          </Button>
+        )}
+      </span>
+      {open && (
+        <div role="group" aria-label={t("miniapp.plan.alternatives", { name })} data-testid="alternatives">
+          <ul style={{ ...listStyle, marginTop: 8 }}>
+            {item.alternatives.map((a) => (
+              <li key={a.id}>
+                <Button disabled={edit.busy} onClick={() => replace(a)}>
+                  {t("miniapp.plan.replaceWith", { name: pickLocalized(a.name, locale) })}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      {d && <span style={{ display: "block" }}>{t("miniapp.plan.distance", { n: d })}</span>}
-      {item.note && <p style={{ margin: "4px 0" }}>{pickLocalized(item.note, locale)}</p>}
-      {edit && (
-        <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <Button
-              aria-expanded={open}
-              aria-label={`${t("miniapp.plan.replace")}: ${name}`}
-              disabled={edit.busy}
-              onClick={() => setOpen((o) => !o)}
-            >
-              {t("miniapp.plan.replace")}
-            </Button>
-            <Button
-              disabled={edit.busy}
-              onClick={() => edit.onRemove(item)}
-              aria-label={t("miniapp.plan.removeItem", { name })}
-            >
-              {t("miniapp.plan.remove")}
-            </Button>
-          </div>
-          {open && (
-            <div
-              role="group"
-              aria-label={t("miniapp.plan.alternatives", { name })}
-              data-testid="alternatives"
-            >
-              {item.alternatives.length ? (
-                <ul style={{ ...listStyle, marginTop: 8 }}>
-                  {item.alternatives.map((a) => (
-                    <li key={a.id}>
-                      <Button
-                        disabled={edit.busy}
-                        onClick={() => {
-                          setOpen(false);
-                          edit.onReplace(item, a);
-                        }}
-                      >
-                        {t("miniapp.plan.replaceWith", { name: pickLocalized(a.name, locale) })}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{t("miniapp.plan.noAlternatives")}</p>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </li>
+    </Choice>
   );
 }

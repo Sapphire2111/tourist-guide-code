@@ -1,0 +1,183 @@
+/* «Мій план»: параметры поездки и варианты с галочками. Токены — сезона «Сучасна Косівщина» (--app-*),
+   запасные значения — для окружения без data-season (тесты). Цели касания — не меньше 44px. */
+
+.plan-trip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+.plan-stepper {
+  display: grid;
+  grid-template-columns: 1fr 44px 3ch 44px;
+  align-items: center;
+  gap: 8px;
+}
+.plan-stepper-label {
+  font-weight: 600;
+}
+.plan-stepper-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border, #ccc);
+  background: var(--app-surface, #fff);
+  color: var(--app-accent-ink, inherit);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.plan-stepper-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.plan-stepper-value {
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.plan-car {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.plan-car .kosiv-season {
+  min-height: 44px;
+  font-size: 0.95rem;
+}
+.plan-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+.plan-date input {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--app-border, #ccc);
+  background: var(--app-surface, #fff);
+  color: var(--app-text, inherit);
+  font: inherit;
+}
+.plan-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.plan-day {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-day-date {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.plan-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 16px;
+  border-radius: 20px;
+  background: var(--app-surface, #fff);
+  border: 1.5px solid var(--app-border, transparent);
+}
+.plan-slot-rain {
+  background: var(--app-surface-2, #f4f4f4);
+}
+.plan-slot-title {
+  margin: 0;
+  font-family: var(--font-heading, inherit);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.plan-options-title {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  color: var(--app-muted, inherit);
+}
+.plan-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1.5px solid var(--app-border, #ddd);
+  background: var(--app-surface, #fff);
+}
+.plan-choice[data-checked="true"] {
+  border-color: var(--app-accent, currentColor);
+  background: var(--app-pill-bg, #eef);
+}
+.plan-check {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 10px 0 0;
+  accent-color: var(--app-accent, auto);
+  cursor: pointer;
+}
+.plan-choice-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan-choice-name {
+  display: block;
+  min-height: 44px;
+  padding-top: 8px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.plan-choice-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.plan-choice-meta .kosiv-chip {
+  align-self: flex-start;
+}
+.plan-reason {
+  flex-basis: 100%;
+  font-size: 0.92rem;
+}
+.plan-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.plan-chips a,
+.plan-choice-meta > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+.plan-more > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--app-accent-ink, inherit);
+  cursor: pointer;
+}
+.plan-more[open] > summary {
+  margin-bottom: 8px;
+}

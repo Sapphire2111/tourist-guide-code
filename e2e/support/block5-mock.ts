@@ -47,8 +47,167 @@ type ItemMock = {
   alternatives: PlaceMock[];
   distanceFromPreviousMeters: number | null;
   replaced?: boolean;
+  slot?: string;
 };
-type PlanMock = { id: string; plan: { dayNo: number; items: ItemMock[] }[] } & Record<string, unknown>;
+type TripMock = { adults: number; children: number; withCar: boolean; days: number; base: unknown };
+type PlanMock = {
+  id: string;
+  trip: TripMock;
+  plan: { dayNo: number; items: ItemMock[] }[];
+  options: unknown[];
+} & Record<string, unknown>;
+
+/** Каталог для вариантов «Мій план» (как будто из Google Maps): часть дня, вид, причина, расстояние от базы. */
+type OptionSeed = {
+  id: string;
+  name: string;
+  slot: string;
+  kind: string;
+  reason: string;
+  m: number;
+  bar?: boolean;
+};
+const OPTION_SEEDS: readonly OptionSeed[] = [
+  {
+    id: "00000000-0000-4000-8000-000000000a01",
+    name: "Кав'ярня «Смерека»",
+    slot: "morning",
+    kind: "cafes",
+    reason: "breakfast",
+    m: 400,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a02",
+    name: "Водоспад Пробій",
+    slot: "morning",
+    kind: "waterfall",
+    reason: "walk",
+    m: 1200,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a03",
+    name: "Музей «Гуцульщина»",
+    slot: "morning",
+    kind: "museums",
+    reason: "culture",
+    m: 900,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a04",
+    name: "Колиба «Ватра»",
+    slot: "afternoon",
+    kind: "kolyby",
+    reason: "lunch",
+    m: 700,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a05",
+    name: "Гора Маковиця",
+    slot: "afternoon",
+    kind: "nature",
+    reason: "walk",
+    m: 6500,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a06",
+    name: "Ринок сувенірів",
+    slot: "afternoon",
+    kind: "markets",
+    reason: "shopping",
+    m: 1100,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a07",
+    name: "Ресторан «Гуцульщина»",
+    slot: "evening",
+    kind: "restaurants",
+    reason: "dinner",
+    m: 800,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a08",
+    name: "Чани «Купіль»",
+    slot: "evening",
+    kind: "chany",
+    reason: "relax",
+    m: 4200,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a09",
+    name: "Бар «Нічний Прут»",
+    slot: "evening",
+    kind: "bar",
+    reason: "evening_out",
+    m: 300,
+    bar: true,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a10",
+    name: "Музей писанки",
+    slot: "rain",
+    kind: "museums",
+    reason: "indoor",
+    m: 1000,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a11",
+    name: "SPA «Ранок»",
+    slot: "rain",
+    kind: "spa",
+    reason: "indoor",
+    m: 2600,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000a12",
+    name: "Кафе «Під дахом»",
+    slot: "rain",
+    kind: "cafes",
+    reason: "indoor",
+    m: 500,
+  },
+];
+const optionPlace = (o: OptionSeed): PlaceMock & { categoryName: { uk: string } } => ({
+  ...place(o.id, o.name, 48.45, 24.56),
+  categoryName: { uk: o.kind },
+});
+
+/** Варианты, как на сервере: без выбранных, с детьми — без бара, без авто — далеко с «потрібен транспорт». */
+function planOptions(trip: TripMock, chosen: ReadonlySet<string>) {
+  return Array.from({ length: trip.days }, (_, k) => ({
+    dayNo: k + 1,
+    slots: ["morning", "afternoon", "evening", "rain"].map((slot) => ({
+      slot,
+      options: OPTION_SEEDS.filter(
+        (o) => o.slot === slot && !chosen.has(o.id) && !(trip.children > 0 && o.bar),
+      ).map((o) => {
+        const walk = o.m <= 2000;
+        const travel = walk ? "walk" : trip.withCar ? "car" : "transport";
+        return {
+          place: optionPlace(o),
+          kind: o.kind,
+          reason: o.reason,
+          distanceMeters: o.m,
+          travel,
+          travelMinutes: walk
+            ? Math.round(((o.m * 1.3) / 4500) * 60)
+            : Math.round(((o.m * 1.3) / 35000) * 60) || 1,
+          kidsFriendly: o.kind === "museums",
+        };
+      }),
+    })),
+  }));
+}
+
+/** Дни 1…days и пересчитанные варианты. */
+function refresh(plan: PlanMock): PlanMock {
+  const byDay = new Map(plan.plan.map((d) => [d.dayNo, d.items]));
+  plan.plan = Array.from({ length: plan.trip.days }, (_, k) => ({
+    dayNo: k + 1,
+    items: byDay.get(k + 1) ?? [],
+  }));
+  plan.options = planOptions(plan.trip, new Set(plan.plan.flatMap((d) => d.items.map((i) => i.place.id))));
+  return plan;
+}
 
 export function newBlock5State(): Block5State {
   return { staff: false, acceptingNow: true, serviceRequests: [], plans: [] };
@@ -244,28 +403,71 @@ export async function installBlock5Mock(
         r.statusReason = (body.reason as string | undefined) ?? null;
         return json(route, requestDto(r, true));
       }
-      if (path === "/me/plan" && method === "GET") return json(route, { items: state.plans });
+      if (path === "/me/plan" && method === "GET")
+        return json(route, { items: state.plans.map((p) => ({ ...p, options: [] })) });
       if (path === "/me/plan" && method === "POST") {
-        const plan: PlanMock = {
+        const custom = !body.scenarioId;
+        const slotOf = (t: string | null) =>
+          !t ? "afternoon" : Number(t.slice(0, 2)) < 12 ? "morning" : "afternoon";
+        const plan: PlanMock = refresh({
           id: PLAN_ID,
           regionId: REGION_ID,
-          scenarioId: SCENARIO_ID,
-          scenarioVersion: 1,
+          scenarioId: custom ? null : SCENARIO_ID,
+          scenarioVersion: custom ? null : 1,
           scenarioUpdated: false,
-          title: scenarioSummary.title,
-          startDate: null,
-          plan: scenarioPlan().map((d) => ({ ...d, items: d.items.map((i) => ({ ...i, replaced: false })) })),
+          title: custom ? { uk: "Мій план", en: "My plan" } : scenarioSummary.title,
+          startDate: (body.startDate as string | null | undefined) ?? null,
+          trip: {
+            adults: (body.adults as number | undefined) ?? 2,
+            children: (body.children as number | undefined) ?? 0,
+            withCar: (body.withCar as boolean | undefined) ?? true,
+            days: (body.days as number | undefined) ?? 1,
+            base: body.basePlaceId
+              ? { kind: "place", placeId: body.basePlaceId, name: { uk: "Тестовий готель" } }
+              : null,
+          },
+          plan: custom
+            ? []
+            : scenarioPlan().map((d) => ({
+                ...d,
+                items: d.items.map((i) => ({ ...i, replaced: false, slot: slotOf(i.timeHint) })),
+              })),
+          options: [],
           createdAt: "2026-11-02T10:00:00Z",
           updatedAt: "2026-11-02T10:00:00Z",
-        };
+        });
         state.plans = [plan];
         return json(route, plan, 201);
       }
       const planId = /^\/me\/plan\/([^/]+)$/.exec(path)?.[1];
       const plan = state.plans.find((p) => p.id === planId);
       if (!plan) return error(route, 404, "NOT_FOUND");
-      if (method === "GET") return json(route, plan);
+      if (method === "GET") return json(route, refresh(plan));
       if (method === "PATCH") {
+        for (const key of ["adults", "children", "withCar", "days"] as const)
+          if (body[key] !== undefined) (plan.trip as Record<string, unknown>)[key] = body[key];
+        if (body.startDate !== undefined) plan.startDate = body.startDate;
+        if (body.days !== undefined) plan.plan = plan.plan.filter((d) => d.dayNo <= plan.trip.days);
+        const add = body.addItem as { dayNo: number; slot: string; placeId: string } | undefined;
+        if (add) {
+          const seed = OPTION_SEEDS.find((o) => o.id === add.placeId);
+          if (!seed) return error(route, 422, "UNPROCESSABLE", "errors.plan.placeUnavailable");
+          refresh(plan);
+          const day = plan.plan.find((d) => d.dayNo === add.dayNo)!;
+          day.items.push({
+            id: `00000000-0000-4000-8000-0000000b${String(day.items.length + 1).padStart(2, "0")}${add.placeId.slice(-2)}`,
+            position: day.items.length,
+            timeHint: null,
+            durationMin: null,
+            note: null,
+            place: optionPlace(seed),
+            available: true,
+            alternatives: [],
+            distanceFromPreviousMeters: null,
+            replaced: false,
+            slot: add.slot,
+          });
+        }
         const replace = body.replaceItem as { itemId: string; placeId: string } | undefined;
         for (const day of plan.plan) {
           if (body.removeItemId) day.items = day.items.filter((i) => i.id !== body.removeItemId);
@@ -278,7 +480,7 @@ export async function installBlock5Mock(
             item.replaced = true;
           }
         }
-        return json(route, plan);
+        return json(route, refresh(plan));
       }
       return error(route, 404, "NOT_FOUND");
     },
