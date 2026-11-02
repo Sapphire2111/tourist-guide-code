@@ -34,6 +34,8 @@ export const JOBS = {
   deadLetterPurge: "dead-letter.purge-expired",
   /** Ресайз загруженного фото в варианты webp, статус ready (T1-20, ADR-0013). */
   mediaProcessImage: "media.process-image",
+  /** Обезличивание заявок гостиницы старше срока хранения (D-49, ADR-0020; функция БД миграции api 0015). */
+  serviceRequestsAnonymize: "service-requests.anonymize-expired",
 } as const;
 export type JobName = (typeof JOBS)[keyof typeof JOBS];
 
@@ -47,6 +49,7 @@ export interface JobPayloads {
   "dead-letter.purge-expired": Record<string, never>;
   /** Только id: состояние и ключи worker читает из БД (media_assets) — payload не устаревает. */
   "media.process-image": { assetId: string };
+  "service-requests.anonymize-expired": Record<string, never>;
 }
 
 /** Данные задачи в Redis: контекст выполнения + payload. Только JSON-сериализуемые значения. */
@@ -63,6 +66,7 @@ export const JOB_QUEUE: Readonly<Record<JobName, WorkQueueName>> = {
   "analytics.record": QUEUES.analytics,
   "dead-letter.purge-expired": QUEUES.system,
   "media.process-image": QUEUES.media,
+  "service-requests.anonymize-expired": QUEUES.system,
 };
 
 /**
@@ -93,6 +97,9 @@ export const HEARTBEAT_EVERY_MS = 5 * 60_000;
 
 /** Очистка ПДн аудита — раз в час: срок хранения считается в днях, точности до часа достаточно. */
 export const AUDIT_PII_PURGE_EVERY_MS = 60 * 60_000;
+
+/** Обезличивание заявок гостиницы по сроку хранения — раз в час (срок — в днях). */
+export const SERVICE_REQUESTS_ANONYMIZE_EVERY_MS = 60 * 60_000;
 
 /** Очистка dead-letter по сроку — раз в час (как очистка ПДн аудита). */
 export const DEAD_LETTER_PURGE_EVERY_MS = 60 * 60_000;
