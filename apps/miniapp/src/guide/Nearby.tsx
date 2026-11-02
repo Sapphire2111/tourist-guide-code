@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
-import { requestLocation, type LatLng } from "./geo.js";
+import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import { MapSlot } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
 
 export const RADII = [300, 500, 1000] as const;
 export const DEFAULT_RADIUS = 500;
+/** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
+export const DEVICE_MAX_ZOOM = 14;
 
 type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; point: LatLng };
 
@@ -47,8 +49,8 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
           {base?.point ? t("miniapp.nearby.geoOff", { base: base.name }) : t("miniapp.nearby.geoOffNoBase")}
         </p>
       )}
-      {geo.status === "denied" && webApp?.LocationManager?.openSettings && (
-        <Button onClick={() => webApp.LocationManager?.openSettings?.()}>
+      {geo.status === "denied" && canOpenLocationSettings(webApp) && (
+        <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
           {t("miniapp.nearby.openSettings")}
         </Button>
       )}
@@ -105,7 +107,14 @@ function NearbyPlaces({
     <AsyncView state={places} retry={retry}>
       {(list) => (
         <Stack>
-          <MapSlot places={list} center={base} centerLabel={baseLabel} radius={base ? radius : undefined} />
+          <MapSlot
+            places={list}
+            center={base}
+            centerLabel={baseLabel}
+            radius={base ? radius : undefined}
+            // По геолокации места окружают устройство: без базовой точки не приближаем карту до двора туриста.
+            maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
+          />
           {list.length === 0 ? (
             <p data-testid="nearby-empty">{t("miniapp.nearby.empty", { n: radius })}</p>
           ) : (

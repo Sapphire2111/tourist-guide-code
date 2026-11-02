@@ -45,6 +45,12 @@ function fromBrowser(): Promise<LatLng | null> {
   });
 }
 
+/** Можно открыть настройки геолокации бота в Telegram (Bot API 8.0+, как и сам LocationManager). */
+export function canOpenLocationSettings(webApp?: TelegramWebApp): boolean {
+  if (!webApp?.LocationManager?.openSettings) return false;
+  return webApp.isVersionAtLeast ? webApp.isVersionAtLeast("8.0") : false;
+}
+
 /** Координаты устройства или null (отказ, нет поддержки, таймаут). */
 export function requestLocation(webApp?: TelegramWebApp): Promise<LatLng | null> {
   const viaTelegram = webApp ? fromTelegram(webApp) : null;

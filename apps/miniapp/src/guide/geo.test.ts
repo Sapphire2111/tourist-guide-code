@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelegramLocationManager, TelegramWebApp } from "../telegram.js";
-import { requestLocation } from "./geo.js";
+import { canOpenLocationSettings, requestLocation } from "./geo.js";
 import { textNode } from "./PlacesMap.js";
 
 afterEach(() => {
@@ -71,5 +71,13 @@ describe("подписи карты", () => {
     const node = textNode('<img src=x onerror="alert(1)">');
     expect(node.querySelector("img")).toBeNull();
     expect(node.textContent).toBe('<img src=x onerror="alert(1)">');
+  });
+});
+
+describe("настройки геолокации", () => {
+  it("кнопка настроек — только с Bot API 8.0+", () => {
+    expect(canOpenLocationSettings(webAppWith(fakeLocationManager(), "8.0"))).toBe(true);
+    expect(canOpenLocationSettings(webAppWith(fakeLocationManager(), "7.10"))).toBe(false);
+    expect(canOpenLocationSettings(undefined)).toBe(false);
   });
 });

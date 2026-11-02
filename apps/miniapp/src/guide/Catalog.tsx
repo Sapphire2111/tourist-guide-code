@@ -39,6 +39,9 @@ export function Catalog({ section }: { section: CatalogSection }) {
   );
 }
 
+/** Сколько ждать базовую точку перед поиском без неё, мс. */
+export const BASE_WAIT_MS = 4_000;
+
 function CategoryPlaces({ root, subcategories }: { root: Category; subcategories: Category[] }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
@@ -53,10 +56,11 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
   const pendingSubmit = useRef<number | null>(null);
   const [places, retry] = useAsync(
     () =>
-      // Базовая точка ещё грузится — ждём её, чтобы не искать дважды (без точки и с ней).
-      base?.pending
-        ? new Promise<never>(() => undefined)
-        : api.search({ categoryId, q: q || undefined, point }).then((list) => ({ list, submitId })),
+      // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
+      // BASE_WAIT_MS: завис запрос точки — ищем без неё.
+      (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
+        .then(() => api.search({ categoryId, q: q || undefined, point }))
+        .then((list) => ({ list, submitId })),
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng],
   );
   useEffect(() => {

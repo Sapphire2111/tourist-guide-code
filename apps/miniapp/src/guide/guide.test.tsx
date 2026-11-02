@@ -73,7 +73,9 @@ function fakeApi(over: Partial<GuideApi> = {}): GuideApi {
 
 function setup(over: Partial<GuideEnv> = {}) {
   const track = vi.fn();
-  const analytics = { track, flush: vi.fn(async () => undefined) } as Analytics & { track: typeof track };
+  const analytics = { track, flush: vi.fn(async () => undefined), dispose: vi.fn() } as Analytics & {
+    track: typeof track;
+  };
   const env: GuideEnv = {
     api: fakeApi(),
     analytics,
@@ -366,5 +368,45 @@ describe("аналитика: отправка без потерь", () => {
     window.dispatchEvent(new Event("pagehide"));
     await flush();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("правки ревью", () => {
+  it("dispose снимает обработчик pagehide", async () => {
+    const fetch = vi.fn(async () => Response.json({ accepted: 1 }, { status: 202 }));
+    const ctx = {
+      anonymousId: "7d0f3e1a-5b2c-4c8d-9e6f-0a1b2c3d4e5f",
+      regionId: REGION,
+      source: "qr" as const,
+    };
+    const a = createAnalytics(createApiClient({ baseUrl: "http://api.test", fetch }), () => ctx, 60_000);
+    a.track("place_viewed", { placeId: P1 });
+    a.dispose();
+    window.dispatchEvent(new Event("pagehide"));
+    await flush();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("базовая точка не пришла — каталог ищет без неё после ожидания", async () => {
+    vi.useFakeTimers();
+    try {
+      const { env } = setup({ base: { name: "Тестовий готель", point: null, pending: true } });
+      render(
+        <GuideProvider value={env}>
+          <Catalog section="eat" />
+        </GuideProvider>,
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(env.api.search).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+      expect(env.api.search).toHaveBeenCalledWith({ categoryId: EAT, q: undefined, point: null });
+      expect(screen.getAllByTestId("place-item")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

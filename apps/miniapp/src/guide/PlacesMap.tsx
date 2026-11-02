@@ -14,6 +14,8 @@ export type PlacesMapProps = {
   /** Подпись базовой точки. Координаты устройства сюда не передаются (приватность: карта не центрируется на туристе). */
   centerLabel?: string;
   radius?: number;
+  /** Предел приближения при fitBounds (по умолчанию 17). */
+  maxZoom?: number;
 };
 
 const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -26,7 +28,7 @@ export function textNode(text: string): HTMLElement {
   return span;
 }
 
-export default function PlacesMap({ places, center, centerLabel, radius }: PlacesMapProps) {
+export default function PlacesMap({ places, center, centerLabel, radius, maxZoom = 17 }: PlacesMapProps) {
   const { t, locale } = useT();
   const [, navigate] = useRoute();
   const el = useRef<HTMLDivElement>(null);
@@ -54,13 +56,13 @@ export default function PlacesMap({ places, center, centerLabel, radius }: Place
       marker.on("click", () => navigate(`/place/${p.id}`));
       bounds.push([p.location.lat, p.location.lng]);
     }
-    if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 17 });
-    else if (bounds[0]) map.setView(bounds[0], 16);
+    if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom });
+    else if (bounds[0]) map.setView(bounds[0], Math.min(16, maxZoom));
     else map.setView([48.45, 24.55], 12);
     return () => {
       map.remove();
     };
-  }, [places, center, centerLabel, radius, locale, navigate, t]);
+  }, [places, center, centerLabel, radius, maxZoom, locale, navigate, t]);
 
   // Карта дублирует список рядом: маркеры — не единственный путь к месту (клавиатура и чтение с экрана — список).
   return (

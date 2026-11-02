@@ -1,6 +1,6 @@
 // C06 «Картка місця»: фото, бейджи, график, атрибуты, дата проверки; маршрут (OSM), звонок (tel:), сайт, обране.
 // «Доступно зараз» — блок 7; до него всегда «Уточнити доступність» (ТЗ §10.3).
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
@@ -86,6 +86,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
   const { api, analytics, webApp, signedIn, base } = useGuide();
   const distance = useDistance()(place.distanceMeters);
   const name = pickLocalized(place.name, locale);
+  // Заголовок появляется после загрузки — фокус на нём ставит сам экран (смена маршрута его ещё не видит).
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => titleRef.current?.focus(), [place.id]);
   // favorite в карточке: null — сервер не видит сессии.
   const [favorite, setFavorite] = useState<boolean | null>(place.favorite);
   const [busy, setBusy] = useState(false);
@@ -123,7 +126,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             ))}
           </div>
         )}
-        <h1 id="place-title" style={{ margin: 0 }}>
+        <h1 id="place-title" ref={titleRef} tabIndex={-1} style={{ margin: 0 }}>
           {name}
         </h1>
         {distance && <p style={{ margin: 0 }}>{distance}</p>}

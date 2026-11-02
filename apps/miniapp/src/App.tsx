@@ -356,6 +356,8 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, ...
       })),
     [analytics, props.api],
   );
+  // Свой клиент аналитики снимает обработчики страницы при пересоздании и размонтировании.
+  useEffect(() => (analytics ? undefined : () => tracker.dispose()), [analytics, tracker]);
   const venue = venueOf(session);
   const venueName = venue ? pickLocalized(venue.name, effectiveLocale) : null;
   const { point: basePoint, pending: basePending } = useBasePoint(api, context?.qrPoint?.placeId ?? null);

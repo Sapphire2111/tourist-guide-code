@@ -36,6 +36,8 @@ export type Analytics = {
   track<N extends GuideEventName>(event: N, props: Events[N]): void;
   /** Отправить накопленное сразу (тесты, уход со страницы). */
   flush(): Promise<void>;
+  /** Снять обработчики страницы (пересоздание клиента, размонтирование). */
+  dispose(): void;
 };
 
 /** Клиент с пакетированием: события за FLUSH_MS уходят одним запросом. */
@@ -68,11 +70,13 @@ export function createAnalytics(
   };
 
   // Mini App сворачивают или закрывают — отправить накопленное, а не терять до таймера.
+  const onPageHide = () => void flush();
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") void flush();
+  };
   if (typeof window !== "undefined") {
-    window.addEventListener("pagehide", () => void flush());
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") void flush();
-    });
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
   }
 
   return {
@@ -98,8 +102,15 @@ export function createAnalytics(
       else if (!timer) timer = setTimeout(() => void flush(), flushMs);
     },
     flush,
+    dispose() {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (typeof window === "undefined") return;
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    },
   };
 }
 
 /** Заглушка без отправки (браузер без контекста, тесты компонентов). */
-export const noopAnalytics: Analytics = { track() {}, flush: () => Promise.resolve() };
+export const noopAnalytics: Analytics = { track() {}, flush: () => Promise.resolve(), dispose() {} };

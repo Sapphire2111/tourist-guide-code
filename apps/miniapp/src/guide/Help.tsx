@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
-import { requestLocation, type LatLng } from "./geo.js";
+import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import { card, listStyle } from "./parts.js";
 
 const callLink: CSSProperties = {
@@ -69,6 +69,11 @@ export function Help() {
         {geo === "locating" ? t("miniapp.nearby.locating") : t("miniapp.help.shareLocation")}
       </Button>
       {geo === "denied" && <p role="alert">{t("miniapp.help.locationDenied")}</p>}
+      {geo === "denied" && canOpenLocationSettings(webApp) && (
+        <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
+          {t("miniapp.nearby.openSettings")}
+        </Button>
+      )}
       {typeof geo === "object" && (
         <p role="status" data-testid="help-location">
           {t("miniapp.help.locationShown", { lat: geo.lat.toFixed(5), lng: geo.lng.toFixed(5) })}
