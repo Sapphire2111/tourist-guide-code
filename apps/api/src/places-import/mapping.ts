@@ -340,8 +340,30 @@ function refineByName(name: string, byType: string | undefined): string | undefi
   return byType;
 }
 
+/**
+ * Не заведение, а «метка» на карте: название — только название населённого пункта/курорта («БУКОВЕЛЬ ЯРЕМЧЕ»,
+ * «Яремче») или платёжного бренда («Mastercard», «Visa») — такие точки пользователи Google ставят с любым типом.
+ */
+const NOT_A_VENUE =
+  /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|ворохта|bukovel|yaremche|vorokhta|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
+/** Поштомати (без персоналу, их сотни) засоряют карту — берём только відділення й пункти. */
+const PARCEL_LOCKER = /поштомат|parcel ?locker/i;
+/** Дитячі табори (зміни на тиждень, не розвага для туриста) с типом playground. */
+const CAMP = /табір|camp/i;
+
 /** Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. */
 export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name: string): string | undefined {
+  if (NOT_A_VENUE.test(name.trim())) return undefined;
+  const code = categoryByTypesAndName(p, name);
+  if (code === "post" && PARCEL_LOCKER.test(name)) return undefined;
+  if (code === "kids" && CAMP.test(name)) return undefined;
+  return code;
+}
+
+function categoryByTypesAndName(
+  p: Pick<GooglePlace, "primaryType" | "types">,
+  name: string,
+): string | undefined {
   const candidates = [p.primaryType, ...(p.types ?? [])].filter((t): t is string => !!t);
   let byType: string | undefined;
   for (const t of candidates) {

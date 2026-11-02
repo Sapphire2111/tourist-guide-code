@@ -91,6 +91,14 @@ describe("таблица типов → категорий", () => {
     expect(mapCategory({ primaryType: "laundry" }, "Ремонт пральних машин")).toBe("tech-repair");
     expect(mapCategory({ primaryType: "amusement_park" }, "Прокат квадроциклів")).toBe("gear-rental");
     expect(mapCategory({ primaryType: "store" }, "Дитячий магазин одягу")).toBe("stores");
+    // Метки без заведения, поштомати и табори не импортируются.
+    expect(mapCategory({ primaryType: "night_club" }, "Mastercard")).toBeUndefined();
+    expect(mapCategory({ primaryType: "paintball_center" }, "БУКОВЕЛЬ ЯРЕМЧЕ")).toBeUndefined();
+    expect(mapCategory({ primaryType: "playground" }, "Яремче")).toBeUndefined();
+    expect(mapCategory({ primaryType: "playground" }, "Дитячий табір")).toBeUndefined();
+    expect(mapCategory({ primaryType: "hotel" }, "Готель Буковель")).toBe("hotels");
+    expect(mapCategory({}, "Нова Пошта. Поштомат №35404")).toBeUndefined();
+    expect(mapCategory({ primaryType: "post_office" }, "Нова Пошта. Поштове відділення №2")).toBe("post");
     expect(mapCategory({ primaryType: "childrens_camp" }, "Дитячий табір в Карпатах")).toBeUndefined();
     expect(mapCategory({ primaryType: "amusement_park" }, "Roller Coaster Zipline")).toBe("entertainment");
   });
