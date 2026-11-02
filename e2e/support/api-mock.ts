@@ -3,6 +3,7 @@
 // Коды QR — как в seed api (seedQrPoints): demoHotel01 — «Тестовий готель», demoHotelOff1 — деактивирован.
 import type { Page, Route } from "@playwright/test";
 import { installBlock5Mock, newBlock5State, type Block5State } from "./block5-mock.js";
+import { installPartnerMock, newPartnerState, type PartnerMockState } from "./partner-mock.js";
 
 const ANON = "7d0f3e1a-5b2c-4c8d-9e6f-0a1b2c3d4e5f";
 export const REGION_ID = "00000000-0000-4000-8000-0000000000a1";
@@ -187,6 +188,8 @@ export type ApiMockState = Block5State & {
   searches: Record<string, string>[];
   /** Принятые события аналитики (POST /analytics/events). */
   events: { event: string; props: Record<string, unknown>; regionId: string | null; anonymousId?: string }[];
+  /** Кабинет партнёра (блок 6). */
+  partner: PartnerMockState;
 };
 
 /** Состояние мока страницы — для проверок в тесте. */
@@ -203,6 +206,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
     favorites: [],
     searches: [],
     events: [],
+    partner: newPartnerState(),
     ...newBlock5State(),
   };
   apiMockState.set(page, state);
@@ -388,5 +392,6 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
     },
   );
   await installBlock5Mock(page, state, json, cors, TOKEN);
+  await installPartnerMock(page, state.partner, TOKEN);
   return state;
 }
