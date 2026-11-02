@@ -33,7 +33,11 @@ import {
 type WithLocation<T extends { location: unknown }> = Omit<T, "location"> & { location: LonLat | null };
 
 export type LocalityRecord = WithLocation<Locality>;
-/** Коды категорий проживания демо-каталога (D-02): у таких мест в админке есть «Модуль готелю» (блок 5). */
+/**
+ * Коды категорий проживания (D-02): у таких мест в админке есть «Модуль готелю» (блок 5). Тестовый режим —
+ * список захардкожен по демо-seed: корень stay и подкатегории hotels, sadyby (в них же импорт Google раскладывает
+ * hotel/motel/hostel/lodging… и guest_house/cottage/campground…). Позже — признак категории в БД вместо списка.
+ */
 export const STAY_CATEGORY_CODES = ["stay", "hotels", "sadyby"] as const;
 
 export type PlaceRecord = WithLocation<Place>;
