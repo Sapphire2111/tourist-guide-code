@@ -21,7 +21,6 @@ import { fetchContext, getAnonymousId, type Me, type StartupState } from "./sess
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash } from "./design/Chrome.js";
 import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
-import { ICONS } from "./design/Ornament.js";
 import { ResortProvider } from "./design/ResortProvider.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
@@ -138,40 +137,52 @@ function venueOf(session?: Session) {
   return c?.status === "ok" && c.entryType === "hotel" ? c.venue : null;
 }
 
-/** Шапка главной: «Ви відкрили гід: <заклад>» или регион; полная карточка заведения — «Про заклад» (/about). */
-function ContextSummary({ context }: { context: Session["context"] }) {
-  const { t, locale } = useT();
-  const venue = context?.status === "ok" && context.entryType === "hotel" ? context.venue : null;
-  if (venue)
-    return (
-      <p data-testid="venue-summary">
-        {t("miniapp.venue.opened", { name: pickLocalized(venue.name, locale) })}
-      </p>
-    );
-  return <ContextView context={context} />;
+/** Одна строка о регионе: «Ви в Прикарпатті.» (местный падеж по коду региона) или «Ви в регіоні: …». */
+function regionLine(
+  context: Session["context"],
+  t: (key: string, params?: Record<string, string | number>) => string,
+  locale: Locale,
+): string | null {
+  const region = context?.region;
+  if (!region) return null;
+  const key = `miniapp.region.in.${region.code}`;
+  const place = t(key);
+  return place !== key
+    ? t("miniapp.context.in", { place })
+    : t("miniapp.context.region", { region: pickLocalized(region.name, locale) });
 }
 
-/** Приветствие и контекст входа (заведение QR или регион) — под героем. */
+/**
+ * Приветствие и контекст входа в одну строку: «Вітаємо, {name}! Ви в Прикарпатті.» При входе по QR заведения —
+ * приветствие и «Ви відкрили гід: <заклад>» (регион не нужен).
+ */
 function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "session" | "retryContext">) {
-  const { t } = useT();
+  const { t, tDynamic, locale } = useT();
+  const context = session && !session.contextFailed ? session.context : null;
+  const venue = context?.status === "ok" && context.entryType === "hotel" ? context.venue : null;
+  const where = venue ? null : regionLine(context, tDynamic, locale);
+  const hello = user ? t("miniapp.greeting", { name: user.first_name }) : null;
   return (
     <div className="kosiv-welcome">
-      {user && (
-        <p data-testid="tg-user" className="kosiv-welcome-hello">
-          {t("miniapp.greeting", { name: user.first_name })}
+      {(hello || where) && (
+        <p className="kosiv-welcome-hello">
+          {hello && <span data-testid="tg-user">{hello}</span>}
+          {hello && where ? " " : null}
+          {where && <span data-testid="neutral-context">{where}</span>}
         </p>
       )}
       {session ? (
         session.contextFailed ? (
           <ContextUnavailable retry={retryContext} />
-        ) : (
-          <div className="kosiv-context">
-            <span className="kosiv-context-icon">{ICONS.nearby}</span>
-            <ContextSummary context={session.context} />
-          </div>
-        )
+        ) : venue ? (
+          <p data-testid="venue-summary" className="kosiv-welcome-sub">
+            {t("miniapp.venue.opened", { name: pickLocalized(venue.name, locale) })}
+          </p>
+        ) : !context?.region ? (
+          <p className="kosiv-welcome-sub">{t("miniapp.context.noRegion")}</p>
+        ) : null
       ) : (
-        <p data-testid="browser-notice" className="kosiv-context">
+        <p data-testid="browser-notice" className="kosiv-welcome-sub">
           {t("miniapp.browser.notice")}
         </p>
       )}

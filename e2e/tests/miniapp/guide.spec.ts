@@ -19,7 +19,7 @@ test.describe("QR отеля demoHotel01", () => {
     // Сезон — под шестерёнкой, без декоративного героя и свайпера курортов.
     await expect(page.getByTestId("season-hero")).toHaveCount(0);
     await expect(page.getByTestId("resort-swiper")).toHaveCount(0);
-    await page.getByRole("button", { name: "Налаштування" }).click();
+    await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     const sections = page.getByTestId("home-sections").getByRole("link");
     await expect(sections).toHaveText([
