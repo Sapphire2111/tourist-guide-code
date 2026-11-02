@@ -18,7 +18,7 @@ import { QrContextRepository, type ContextRegion, type ResolvedQrPoint } from ".
 import { checkStartParam } from "./start-param.js";
 
 /**
- * Код региона нейтрального контекста (seed: «Тестовий регіон»). Нет такого активного — самый ранний активный регион
+ * Код региона нейтрального контекста (seed: «Прикарпаття»). Нет такого активного — самый ранний активный регион
  * (пилотный регион D-01 появится в блоке 3 — тогда код станет настройкой).
  */
 export const DEFAULT_CONTEXT_REGION_CODE = "test-region";
@@ -48,8 +48,11 @@ export type QrVenue = {
   telegram: string | null;
 };
 
+/** Статус ответа: результат скана QR или default — обычное открытие без QR (GET /context, не скан). */
+export type QrContextStatus = QrScanResult | "default";
+
 export type QrContextResult = {
-  status: QrScanResult;
+  status: QrContextStatus;
   entryType: EntryType;
   region: ContextRegion | null;
   /** Только при ok: неактивная точка не подставляется (S-01, «чужая точка не подставляется»). */
@@ -59,6 +62,10 @@ export type QrContextResult = {
   /** Анонимный id устройства: присланный клиентом или новый — клиент хранит его и шлёт в аналитике. */
   anonymousId: string;
 };
+
+function normalizeAnonymousId(id: string | undefined): string {
+  return id !== undefined && anonymousIdSchema.safeParse(id).success ? id.toLowerCase() : randomUUID();
+}
 
 type Resolution = { status: QrScanResult; point: ResolvedQrPoint | undefined };
 
@@ -98,12 +105,42 @@ export class QrContextService {
     @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
   ) {}
 
+  /**
+   * Обычное открытие без QR (нет start_param): регион по умолчанию. Это не скан — QRScanEvent, касание атрибуции и
+   * qr_scanned не пишутся; EntryContext (default, source direct) — если регион есть.
+   */
+  async resolveDefault(input: Omit<QrContextInput, "startParam">): Promise<QrContextResult> {
+    const anonymousId = normalizeAnonymousId(input.anonymousId);
+    const userId = input.userId ?? null;
+    return withTenant(this.db, SYSTEM_CONTEXT, async () => {
+      const region = await this.repo.findDefaultRegion(DEFAULT_CONTEXT_REGION_CODE);
+      const entry = region
+        ? await this.repo.insertEntryContext({
+            region_id: region.id,
+            qr_point_id: null,
+            place_id: null,
+            entry_type: "default",
+            source: "direct" satisfies AnalyticsSource,
+            qr_scan_event_id: null,
+            user_id: userId,
+            anonymous_id: anonymousId,
+          })
+        : undefined;
+      return {
+        status: "default",
+        entryType: "default",
+        region: region ?? null,
+        point: null,
+        venue: null,
+        entryContextId: entry?.id ?? null,
+        anonymousId,
+      };
+    });
+  }
+
   async resolve(input: QrContextInput): Promise<QrContextResult> {
     const check = checkStartParam(input.startParam);
-    const anonymousId =
-      input.anonymousId !== undefined && anonymousIdSchema.safeParse(input.anonymousId).success
-        ? input.anonymousId.toLowerCase()
-        : randomUUID();
+    const anonymousId = normalizeAnonymousId(input.anonymousId);
     const userId = input.userId ?? null;
 
     // Одна транзакция SYSTEM: поиск по коду кросс-tenant, регион записей — из найденной точки или регион по
@@ -172,7 +209,10 @@ export class QrContextService {
   }
 
   /** qr_scanned (ТЗ §15.1) после фиксации журнала; сбой аналитики не ломает вход — предупреждение в лог. */
-  private async emitScanned(ctx: QrContextResult, qrPointId: string | undefined): Promise<void> {
+  private async emitScanned(
+    ctx: Omit<QrContextResult, "status"> & { status: QrScanResult },
+    qrPointId: string | undefined,
+  ): Promise<void> {
     try {
       await this.analytics.emit({
         eventId: uuidv7(),

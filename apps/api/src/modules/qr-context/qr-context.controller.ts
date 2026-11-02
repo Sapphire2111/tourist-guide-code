@@ -23,6 +23,40 @@ export const QR_CONTEXT_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
 export class QrContextController {
   constructor(@Inject(QrContextService) private readonly service: QrContextService) {}
 
+  @Get()
+  @Header("Cache-Control", "no-store")
+  @RateLimit(QR_CONTEXT_RATE_LIMIT)
+  @ApiOperation({
+    operationId: "getDefaultEntryContext",
+    summary: "Контекст входа без QR — регион по умолчанию",
+    description:
+      "Обычное открытие Mini App без start_param. Без аутентификации; с Bearer-сессией контекст привязывается к " +
+      "пользователю. Всегда 200, status default; region null — в платформе нет активного региона. Это не скан: " +
+      "QRScanEvent, AttributionTouch и qr_scanned не пишутся; при регионе — EntryContext (default, source direct). " +
+      `Rate limit ${QR_CONTEXT_RATE_LIMIT.limit}/мин. Ответ — Cache-Control: no-store; клиент вызывает эндпоинт ` +
+      "один раз за открытие.",
+  })
+  @ApiQuery({
+    name: "anonymousId",
+    required: false,
+    type: String,
+    format: "uuid",
+    description: "Анонимный id устройства (uuid) из прошлого ответа; не uuid — игнорируется, выдаётся новый",
+  })
+  @ApiOkResponse({ type: QrContextDto })
+  @ApiErrors("RATE_LIMITED")
+  async getDefault(
+    @Query("anonymousId") anonymousId: unknown,
+    @Req() req: RbacRequest,
+  ): Promise<QrContextDto> {
+    return toQrContextDto(
+      await this.service.resolveDefault({
+        userId: req.principal?.userId,
+        anonymousId: typeof anonymousId === "string" ? anonymousId : undefined,
+      }),
+    );
+  }
+
   @Get(":start_param")
   // Каждый вызов пишет скан и касание: ответ не должен браться из кеша браузера/прокси (и не должен кешироваться
   // чужой контекст с anonymousId).

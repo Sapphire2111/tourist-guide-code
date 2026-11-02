@@ -1189,6 +1189,63 @@
         "tags": ["analytics"]
       }
     },
+    "/context": {
+      "get": {
+        "description": "Обычное открытие Mini App без start_param. Без аутентификации; с Bearer-сессией контекст привязывается к пользователю. Всегда 200, status default; region null — в платформе нет активного региона. Это не скан: QRScanEvent, AttributionTouch и qr_scanned не пишутся; при регионе — EntryContext (default, source direct). Rate limit 60/мин. Ответ — Cache-Control: no-store; клиент вызывает эндпоинт один раз за открытие.",
+        "operationId": "getDefaultEntryContext",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "anonymousId",
+            "required": false,
+            "in": "query",
+            "description": "Анонимный id устройства (uuid) из прошлого ответа; не uuid — игнорируется, выдаётся новый",
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QrContextDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Контекст входа без QR — регион по умолчанию",
+        "tags": ["context"]
+      }
+    },
     "/context/{start_param}": {
       "get": {
         "description": "Без аутентификации; с Bearer-сессией скан привязывается к пользователю. Всегда 200: неизвестный, деактивированный или не прошедший проверку формата параметр — нейтральный контекст региона (status ≠ ok). Каждый вызов пишет QRScanEvent, AttributionTouch, EntryContext (если есть регион) и событие qr_scanned. Rate limit 60/мин. Ответ — Cache-Control: no-store; клиент вызывает эндпоинт один раз за открытие Mini App (повтор — лишний скан и касание). 400 — только битое percent-encoding пути (запрос не доходит до обработчика).",
@@ -8793,8 +8850,8 @@
       },
       "QrContextStatus": {
         "type": "string",
-        "enum": ["ok", "inactive", "not_found", "invalid"],
-        "description": "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату. Кроме ok — нейтральный контекст региона (экран выбора места C18)."
+        "enum": ["ok", "inactive", "not_found", "invalid", "default"],
+        "description": "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату; default — открытие без QR (GET /context). Кроме ok — нейтральный контекст региона (экран выбора места C18)."
       },
       "EntryType": {
         "type": "string",
@@ -8875,7 +8932,7 @@
         "type": "object",
         "properties": {
           "status": {
-            "description": "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату. Кроме ok — нейтральный контекст региона (экран выбора места C18).",
+            "description": "ok — активная точка; inactive — точка деактивирована; not_found — кода нет; invalid — параметр не по формату; default — открытие без QR (GET /context). Кроме ok — нейтральный контекст региона (экран выбора места C18).",
             "allOf": [{ "$ref": "#/components/schemas/QrContextStatus" }]
           },
           "entryType": {
