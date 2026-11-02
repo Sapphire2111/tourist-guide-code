@@ -12,10 +12,11 @@ import { QR_CODE_MAX_LENGTH, QR_CODE_MIN_LENGTH } from "./start-param.js";
 export const QR_CONTEXT_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
 
 /**
- * QR-контекст входа (блок 2, S-01; ADR-0016). Публичный: Mini App вызывает его сразу после запуска по ссылке
- * startapp, сессия необязательна (есть — скан привязывается к пользователю).
- * @WithoutTenantContext: регион запроса выводится из QR-точки на сервере, а не из назначений принципала (у туриста
- * их нет); сервис сам работает в withTenant(SYSTEM), как аудит.
+ * QR-контекст входа (блок 2, S-01; ADR-0016). Публичный: Mini App вызывает его сразу после запуска — по ссылке
+ * startapp (GET /context/{start_param}) или без неё (GET /context, регион по умолчанию, без скана); сессия
+ * необязательна (есть — скан привязывается к пользователю).
+ * @WithoutTenantContext: регион запроса выводится на сервере (из QR-точки или регион по умолчанию), а не из назначений
+ * принципала (у туриста их нет); сервис сам работает в withTenant(SYSTEM), как аудит.
  */
 @ApiTags("context")
 @WithoutTenantContext()
