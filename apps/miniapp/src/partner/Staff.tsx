@@ -72,18 +72,18 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
         {t("miniapp.guide.loading")}
       </p>
     );
-  const run = async (action: () => Promise<unknown>, done: MessageKey | null) => {
+  const run = async (action: () => Promise<unknown>, done: MessageKey | null, onOk?: () => void) => {
     setBusy(true);
     setMessage(null);
     try {
       await action();
       if (done) setMessage({ text: t(done), alert: false });
+      onOk?.();
     } catch (err) {
       setMessage({ text: errorText(err, "miniapp.partner.staff.error"), alert: true });
     } finally {
       setBusy(false);
       setConfirm(null);
-      setRoles({});
       reload();
     }
   };
@@ -141,6 +141,11 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                                 void run(
                                   () => api.changeRole(orgId, m.assignmentId, roles[m.assignmentId]!),
                                   "miniapp.partner.staff.roleChanged",
+                                  () =>
+                                    setRoles((r) => {
+                                      const { [m.assignmentId]: _saved, ...rest } = r;
+                                      return rest;
+                                    }),
                                 )
                               }
                             >

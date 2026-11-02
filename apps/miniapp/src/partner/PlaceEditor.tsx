@@ -217,7 +217,7 @@ function MainForm({ place, onSaved }: { place: PartnerPlace; onSaved: () => void
           )}
         </p>
       )}
-      <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0 }}>
+      <fieldset disabled={disabled || busy} style={{ border: 0, padding: 0, margin: 0 }}>
         <Stack>
           <Field label={t("miniapp.partner.field.name")}>
             {(id) => (

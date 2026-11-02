@@ -12,13 +12,29 @@ type Draft = { title: string; description: string; startsAt: string; endsAt: str
 const EMPTY: Draft = { title: "", description: "", startsAt: "", endsAt: "" };
 
 /** Часовой пояс дат акций: регион (Косівщина) — «до 10.11 включно» означает конец 10.11 по Києву. */
-export const OFFER_TZ = "Europe/Kyiv";
+// Старое имя зоны: Europe/Kyiv не знают ICU с tzdata < 2022b (WKWebView iOS 15) — RangeError; Europe/Kiev
+// понимают все движки (в новых — синоним).
+export const OFFER_TZ = "Europe/Kiev";
+
+/** Пояс, который понимает этот движок: tz, иначе запасной (в крайнем случае — пояс устройства). */
+export function safeTimeZone(tz: string, fallback = "Europe/Kiev"): string | undefined {
+  for (const zone of [tz, fallback]) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone });
+      return zone;
+    } catch {
+      // неизвестная зона — следующая
+    }
+  }
+  return undefined;
+}
 
 /** Смещение пояса tz относительно UTC в момент instant, мс. */
 function tzOffset(instant: number, tz: string): number {
+  const zone = safeTimeZone(tz);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
+      timeZone: zone,
       hourCycle: "h23",
       year: "numeric",
       month: "2-digit",
@@ -52,12 +68,17 @@ function dayStart(date: string, tz: string, offsetDays = 0): number {
 /** ISO → день в поясе tz для <input type="date"> (YYYY-MM-DD). */
 export function dayOf(iso: string | null, tz = OFFER_TZ): string {
   if (!iso) return "";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(iso));
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: safeTimeZone(tz),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date(iso))
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 /**
@@ -193,7 +214,8 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
     setConfirm(null);
     reload();
   };
-  const date = (iso: string) => new Date(iso).toLocaleDateString(locale, { timeZone: OFFER_TZ });
+  const date = (iso: string) =>
+    new Date(iso).toLocaleDateString(locale, { timeZone: safeTimeZone(OFFER_TZ) });
   return (
     <Stack>
       <h1>{t("miniapp.partner.offers.title")}</h1>
@@ -235,13 +257,18 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
                         )}
                         {o.status === "active" && (
                           <span style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                            <Button disabled={busy} onClick={() => setEditing(o)}>
+                            <Button disabled={busy || confirm === o.id} onClick={() => setEditing(o)}>
                               {t("miniapp.partner.offers.editAction", { title })}
                             </Button>
                             {confirm === o.id ? (
-                              <Button disabled={busy} onClick={() => void archive(o)}>
-                                {t("miniapp.partner.offers.archiveConfirm")}
-                              </Button>
+                              <>
+                                <Button disabled={busy} onClick={() => void archive(o)}>
+                                  {t("miniapp.partner.offers.archiveConfirm")}
+                                </Button>
+                                <Button disabled={busy} onClick={() => setConfirm(null)}>
+                                  {t("miniapp.partner.offers.cancel")}
+                                </Button>
+                              </>
                             ) : (
                               <Button disabled={busy} onClick={() => setConfirm(o.id)}>
                                 {t("miniapp.partner.offers.archive", { title })}

@@ -37,13 +37,15 @@ export function inviteTokenOf(startParam: string | null | undefined): string | u
 }
 
 /**
- * Повтор с тем же ключом идемпотентности имеет смысл: исход неизвестен (сеть, 5xx, 429) или запрос с этим ключом
+ * Повтор с тем же ключом идемпотентности имеет смысл: исход неизвестен (сеть, 5xx, 408, 429 — как isTransient сервера) или запрос с этим ключом
  * ещё выполняется. Иначе (4xx) сервер сохранил ответ — повтор вернёт его же, нужен новый ключ.
  */
 export function keepsIdempotencyKey(err: unknown): boolean {
   if (err instanceof NetworkError) return true;
   if (!(err instanceof ApiCallError)) return false;
-  return err.status >= 500 || err.status === 429 || err.code === "IDEMPOTENCY_IN_PROGRESS";
+  return (
+    err.status >= 500 || err.status === 429 || err.status === 408 || err.code === "IDEMPOTENCY_IN_PROGRESS"
+  );
 }
 
 /** Хранилище отклонило PUT файла (истёкшая или неверная подпись, 4xx/5xx) — не сетевая ошибка. */

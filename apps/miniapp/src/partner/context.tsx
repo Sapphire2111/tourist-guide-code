@@ -24,6 +24,9 @@ export type PartnerEnv = {
   reloadMe: () => void;
   selection: Selection;
   select: (s: Selection) => void;
+  /** Сообщение для кабинета после перехода (например, «Ви вже працюєте…» из P14). */
+  notice: string | null;
+  setNotice: (text: string | null) => void;
 };
 
 const PartnerContext = createContext<PartnerEnv | null>(null);
@@ -45,6 +48,7 @@ export function PartnerProvider({
   );
   const [selection, setSelection] = useState<Selection>({ orgId: null, placeId: null });
   const select = useCallback((s: Selection) => setSelection(s), []);
+  const [notice, setNotice] = useState<string | null>(null);
   const value = useMemo<PartnerEnv>(
     () => ({
       api,
@@ -57,8 +61,10 @@ export function PartnerProvider({
       reloadMe: reload,
       selection,
       select,
+      notice,
+      setNotice,
     }),
-    [api, regionId, enabled, me, reload, selection, select],
+    [api, regionId, enabled, me, reload, selection, select, notice],
   );
   return <PartnerContext.Provider value={value}>{children}</PartnerContext.Provider>;
 }
@@ -124,22 +130,22 @@ export function useKeptAsync<T>(
   const loadRef = useRef(load);
   loadRef.current = load;
   const seq = useRef({ n: 0 });
+  // Последнее состояние — для решения «оставить данные или показать ошибку» без побочных эффектов в updater.
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const run = useCallback((keep: boolean) => {
     const counter = seq.current;
     const id = ++counter.n;
-    if (!keep) setState({ status: "loading" });
+    // Повтор из ошибки (данных нет) — снова загрузка; при данных — обновление на месте.
+    const inPlace = keep && stateRef.current.status === "ready";
+    if (!inPlace) setState({ status: "loading" });
     setRefreshError(null);
     loadRef.current().then(
       (data) => id === counter.n && setState({ status: "ready", data }),
       (error: unknown) => {
         if (id !== counter.n) return;
-        setState((prev) => {
-          if (keep && prev.status === "ready") {
-            setRefreshError(error);
-            return prev;
-          }
-          return { status: "error", error };
-        });
+        if (inPlace) setRefreshError(error);
+        else setState({ status: "error", error });
       },
     );
   }, []);

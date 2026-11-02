@@ -20,7 +20,7 @@ const STATE_KEYS: Record<string, MessageKey> = {
 export function AcceptInvite({ token }: { token: string }) {
   const { t, locale } = useT();
   const [, navigate] = useRoute();
-  const { api, enabled, reloadMe, select } = usePartner();
+  const { api, enabled, reloadMe, select, setNotice } = usePartner();
   const errorText = useErrorText();
   const valid = INVITE_TOKEN_RE.test(token);
   const [preview, retry] = useAsync(
@@ -45,7 +45,11 @@ export function AcceptInvite({ token }: { token: string }) {
       if (err instanceof ConflictError) {
         // Уже принято (возможно, нами в другой вкладке) или уже сотрудник: назначения могли появиться.
         reloadMe();
-        if (err.messageKey === "errors.staffInvite.alreadyMember") navigate("/partner", { replace: true });
+        if (err.messageKey === "errors.staffInvite.alreadyMember") {
+          // Сообщение — на экране кабинета (здесь оно исчезло бы при переходе).
+          setNotice(t("errors.staffInvite.alreadyMember"));
+          navigate("/partner", { replace: true });
+        }
       }
     }
   };

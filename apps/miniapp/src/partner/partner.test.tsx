@@ -6,7 +6,7 @@ import { ApiCallError, ConflictError } from "../host/types.js";
 import { noopPartnerApi, PartnerProvider, resolveSelection } from "./context.js";
 import { PartnerDashboard } from "./Dashboard.js";
 import { AcceptInvite } from "./Invite.js";
-import { dayOf, offerInput, PartnerOffers } from "./Offers.js";
+import { dayOf, offerInput, PartnerOffers, safeTimeZone } from "./Offers.js";
 import { PartnerOnboarding } from "./Onboarding.js";
 import { createApiClient } from "@tg/api-client";
 import { NetworkError } from "../host/types.js";
@@ -626,5 +626,55 @@ describe("исправления ревью", () => {
     });
     expect(await screen.findByTestId("partner-org")).toBeDefined();
     expect(screen.queryByRole("link", { name: "Створити ще одну організацію" })).toBeNull();
+  });
+
+  it("часовой пояс: запасной Europe/Kiev для старых ICU; дни перехода на летнее/зимнее время", () => {
+    expect(safeTimeZone("No/Such_Zone")).toBe("Europe/Kiev");
+    const d = (startsAt: string, endsAt: string) =>
+      offerInput({ title: "x", description: "", startsAt, endsAt });
+    // 29.03.2026: 03:00 → 04:00 (UTC+2 → UTC+3).
+    expect(d("2026-03-29", "2026-03-29")).toMatchObject({
+      startsAt: "2026-03-28T22:00:00.000Z",
+      endsAt: "2026-03-29T20:59:59.000Z",
+    });
+    // 25.10.2026: 04:00 → 03:00 (UTC+3 → UTC+2).
+    expect(d("2026-10-25", "2026-10-25")).toMatchObject({
+      startsAt: "2026-10-24T21:00:00.000Z",
+      endsAt: "2026-10-25T21:59:59.000Z",
+    });
+    expect(dayOf("2026-03-28T22:00:00.000Z")).toBe("2026-03-29");
+    expect(dayOf("2026-03-29T20:59:59.000Z")).toBe("2026-03-29");
+    expect(dayOf("2026-10-24T21:00:00.000Z")).toBe("2026-10-25");
+    expect(dayOf("2026-10-25T21:59:59.000Z")).toBe("2026-10-25");
+    expect(keepsIdempotencyKey(new ApiCallError(408, null))).toBe(true);
+  });
+
+  it("приглашение: уже сотрудник — переход в кабинет с сообщением", async () => {
+    setup(
+      <>
+        <AcceptInvite token={TOKEN} />
+        <PartnerDashboard />
+      </>,
+      {
+        me: () =>
+          Promise.resolve({ organizations: [org({ role: "ORG_STAFF", abilities: abilities(false) })] }),
+        invitePreview: () =>
+          Promise.resolve({
+            organizationName: "ТОВ Смерека",
+            placeNames: [],
+            role: "ORG_STAFF",
+            state: "active",
+            expiresAt: "2026-11-05T00:00:00Z",
+            alreadyMember: false,
+          }),
+        acceptInvite: () => Promise.reject(new ConflictError("errors.staffInvite.alreadyMember")),
+      },
+    );
+    const accept = await screen.findByRole("button", { name: "Прийняти" });
+    await act(async () => {
+      fireEvent.click(accept);
+    });
+    expect(window.location.hash).toBe("#/partner");
+    expect(screen.getByTestId("partner-notice").textContent).toBe("Ви вже працюєте в цьому закладі.");
   });
 });

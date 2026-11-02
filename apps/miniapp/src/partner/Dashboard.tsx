@@ -1,6 +1,6 @@
 // P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07/P09 и заявки отеля
 // (P10, блок 5). Только то, что есть в GET /partner/me — без финансов, рейтинга и метрик.
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { AsyncView, card } from "../guide/parts.js";
@@ -10,7 +10,9 @@ import { ModeSwitch, PlaceStatusInfo, roleKey } from "./parts.js";
 
 export function PartnerDashboard() {
   const { t, locale } = useT();
-  const { me, reloadMe, selection, select } = usePartner();
+  const { me, reloadMe, selection, select, notice, setNotice } = usePartner();
+  // Сообщение с другого экрана — один раз: снимается при уходе из кабинета.
+  useEffect(() => () => setNotice(null), [setNotice]);
   const hostRequests = useFeatureFlag("module.host_requests");
   const orgLabel = useId();
   const placeLabel = useId();
@@ -19,6 +21,11 @@ export function PartnerDashboard() {
   return (
     <Stack>
       <h1>{t("miniapp.partner.title")}</h1>
+      {notice && (
+        <p role="status" data-testid="partner-notice">
+          {notice}
+        </p>
+      )}
       <AsyncView
         state={me}
         retry={reloadMe}
