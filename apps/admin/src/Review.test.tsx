@@ -202,7 +202,7 @@ describe("журнал и даты", () => {
     render(<App api={api} />);
     await flush();
     fireEvent.change(screen.getByLabelText("З дати"), { target: { value: "2026-07-01" } });
-    fireEvent.change(screen.getByLabelText("По дату (включно)"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("До дати (включно)"), { target: { value: "2026-07-01" } });
     fireEvent.click(screen.getByRole("button", { name: "Застосувати" }));
     await flush();
     const last = calls.filter((c) => c.path === "/admin/audit-logs").at(-1)!;

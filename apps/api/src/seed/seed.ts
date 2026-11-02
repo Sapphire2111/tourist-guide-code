@@ -136,7 +136,7 @@ export const SEED_QR_POINTS = [
     venue: {
       venue_name_i18n: { uk: "Тестовий готель", en: "Test hotel" },
       venue_description_i18n: {
-        uk: "Затишний готель у тестовому регіоні: сніданки, парковка, трансфер до підйомників.",
+        uk: "Затишний готель у тестовому регіоні: сніданки, паркування, трансфер до підйомників.",
         en: "A cosy hotel in the test region: breakfast, parking, ski-lift transfer.",
       },
       venue_address_i18n: { uk: "вул. Тестова, 1, Тестове", en: "1 Testova St, Testove" },
