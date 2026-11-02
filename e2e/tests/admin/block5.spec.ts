@@ -127,6 +127,33 @@ test("обычное место (не готель): секций модуля �
   await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);
 });
 
+test("не готель, но персонал остался: список со снятием есть, формы назначения нет", async ({ page }) => {
+  await login(page, "/#/places");
+  const state = adminMockState.get(page)!;
+  const place = state.places.find((p) => (p.name as { uk: string }).uk === "Водоспад Пробій")!;
+  state.staff[place.id as string] = [
+    {
+      id: "u-1",
+      assignmentId: "as-1",
+      userId: "u-1",
+      role: "ORG_STAFF",
+      telegramUserId: "555000111",
+      username: "old_staff",
+      firstName: "Іван",
+      notificationsEnabled: false,
+      grantedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  const staff = page.getByRole("region", { name: "Персонал закладу" });
+  await expect(staff.getByRole("row", { name: /old_staff/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Модуль готелю" })).toHaveCount(0);
+  await expect(staff.getByRole("form", { name: "Призначити співробітника" })).toHaveCount(0);
+  page.once("dialog", (d) => d.accept());
+  await staff.getByRole("button", { name: /^Зняти: .*old_staff/ }).click();
+  await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);
+});
+
 test("сценарии: создание с пунктами по дням и альтернативой, правка, публикация", async ({ page }) => {
   const state = adminMockState.get(page)!;
   await login(page, "/#/scenarios");

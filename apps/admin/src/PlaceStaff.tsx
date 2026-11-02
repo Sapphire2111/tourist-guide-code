@@ -39,7 +39,7 @@ function memberName(m: Member): string {
     .join(" · ");
 }
 
-export function PlaceStaff({ placeId }: { placeId: string }) {
+export function PlaceStaff({ placeId, hostCapable }: { placeId: string; hostCapable: boolean }) {
   const { api } = useAdmin();
   const { t, tDynamic, locale } = useT();
   const [acting, act] = useBusy();
@@ -87,6 +87,8 @@ export function PlaceStaff({ placeId }: { placeId: string }) {
 
   // 403 — нет права назначать персонал: секции нет. Форма назначения — только если список загрузился.
   if (result && !result.ok && result.error.status === 403) return null;
+  // Не готель: секция нужна только пока остались назначенные (категорию сменили) — чтобы их можно было снять.
+  if (!hostCapable && !(result?.ok && result.data.items.length > 0)) return null;
   return (
     <section aria-labelledby="place-staff">
       <Stack gap={2}>
@@ -131,7 +133,7 @@ export function PlaceStaff({ placeId }: { placeId: string }) {
             )
           }
         </Loaded>
-        {result?.ok && (
+        {hostCapable && result?.ok && (
           <Form
             label={t("admin.staff.assign")}
             onSubmit={assign}
