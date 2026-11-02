@@ -5,6 +5,7 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useResort, useResortCaption } from "../design/ResortProvider.js";
 import { ICONS } from "../design/Ornament.js";
+import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
 import { MapSlot } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
@@ -24,7 +25,7 @@ export function PlaceSearch({ initialQuery = "" }: { initialQuery?: string }) {
 export function Catalog({ section }: { section: CatalogSection }) {
   const { t } = useT();
   const { api } = useGuide();
-  const [categories, retry] = useAsync(() => api.categories(), [api]);
+  const [categories, retry] = useAsync(() => loadCategories(api), [api]);
   return (
     <Stack>
       <h1>{t(`miniapp.section.${section}` as MessageKey)}</h1>

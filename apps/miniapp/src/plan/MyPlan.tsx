@@ -299,7 +299,10 @@ function PlanItemRow({ item, edit }: { item: PlanItem; edit?: Edit }) {
     <li style={card} data-testid="plan-item">
       {item.time && <span style={{ fontWeight: 700, marginRight: 8 }}>{item.time}</span>}
       {item.place ? (
-        <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        <Link
+          to={`/place/${encodeURIComponent(item.place.id)}`}
+          style={{ fontSize: "1.2rem", fontWeight: 700 }}
+        >
           {name}
         </Link>
       ) : (
