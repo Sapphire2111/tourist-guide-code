@@ -10,6 +10,7 @@ import {
   RATE_LIMIT_STORE,
   RateLimit,
   RateLimitModule,
+  SkipIpRateLimit,
   type RateLimitModuleOptions,
   type RateLimitStore,
 } from "./index.js";
@@ -24,6 +25,13 @@ class RlTestController {
   @Get("tight")
   @RateLimit({ limit: 2, windowSec: 30 })
   tight(): { ok: true } {
+    return { ok: true };
+  }
+
+  @Get("image")
+  @RateLimit({ limit: 5, windowSec: 60 })
+  @SkipIpRateLimit()
+  image(): { ok: true } {
     return { ok: true };
   }
 }
@@ -81,6 +89,16 @@ describe("rate limit", () => {
     const http = a.getHttpServer();
     await request(http).get("/rl-test/default").expect(200);
     await request(http).get("/rl-test/tight").expect(200);
+    await request(http).get("/rl-test/default").expect(200);
+    await request(http).get("/rl-test/default").expect(429);
+  });
+
+  it("@SkipIpRateLimit: общий IP-лимит не тратится и не мешает, лимит эндпоинта действует", async () => {
+    const a = await createApp({ perIp: { limit: 2, windowSec: 60 } });
+    const http = a.getHttpServer();
+    for (let i = 0; i < 5; i++) await request(http).get("/rl-test/image").expect(200);
+    await request(http).get("/rl-test/image").expect(429);
+    await request(http).get("/rl-test/default").expect(200);
     await request(http).get("/rl-test/default").expect(200);
     await request(http).get("/rl-test/default").expect(429);
   });

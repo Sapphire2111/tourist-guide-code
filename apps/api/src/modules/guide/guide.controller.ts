@@ -28,7 +28,7 @@ import { WithoutTenantContext } from "../../common/tenancy/index.js";
 import type { LonLat } from "../../db/index.js";
 import { RequireAuth } from "../auth/index.js";
 import { EmergencyContactListDto, toEmergencyContactDto } from "../emergency-contacts/index.js";
-import { RateLimit } from "../rate-limit/index.js";
+import { RateLimit, SkipIpRateLimit } from "../rate-limit/index.js";
 import type { RbacRequest } from "../rbac/index.js";
 import {
   FavoriteDto,
@@ -68,6 +68,25 @@ export const SEARCH_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
 export const GOOGLE_PHOTO_RATE_LIMIT = { limit: 120, windowSec: 60 } as const;
 /** Сколько браузер кэширует редирект на файл фото (адрес Google живёт дольше). */
 export const GOOGLE_PHOTO_CACHE_SEC = 6 * 3600;
+
+/**
+ * Лимит обложек на пользователя/IP: лента/карта — десятки карточек за прокрутку, файл маленький и у нас (без запросов
+ * к Google), повторы браузер берёт из кэша или получает 304; байты — из LRU в памяти api (GuideService), БД — только
+ * проверка опубликованности и версии.
+ */
+export const COVER_RATE_LIMIT = { limit: 600, windowSec: 60 } as const;
+
+/**
+ * If-None-Match совпадает с ETag: список через запятую, слабые W/"…" (сравнение слабое, RFC 9110 §13.1.2), «*».
+ */
+export function etagMatches(header: string | string[] | undefined, etag: string): boolean {
+  if (header === undefined) return false;
+  const raw = Array.isArray(header) ? header.join(",") : header;
+  return raw
+    .split(",")
+    .map((t) => t.trim().replace(/^W\//, ""))
+    .some((t) => t === "*" || t === etag);
+}
 
 /** Обложка меняется только вместе с версией v в ссылке — кэш на неделю. */
 export const COVER_CACHE_SEC = 7 * 24 * 3600;
@@ -154,13 +173,16 @@ export class GuidePlacesController {
   }
 
   @Get(":id/cover")
-  @RateLimit(GOOGLE_PHOTO_RATE_LIMIT)
+  @RateLimit(COVER_RATE_LIMIT)
+  // <img> грузится без Bearer: лента обложек не должна съедать общий лимит IP (туристы за одним Wi-Fi).
+  @SkipIpRateLimit()
   @ApiOperation({
     operationId: "getGuidePlaceCover",
     summary: "Обложка места (WebP ~400 px, хранится у нас): списки и карточка",
     description:
-      "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и " +
-      "автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.",
+      'Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag (в т. ч. W/"…" ' +
+      "и список) — 304. Источник, автор и лицензия — в coverPhoto выдачи (подпись обязательна). 404 — места или " +
+      `обложки нет. Rate limit ${COVER_RATE_LIMIT.limit}/мин.`,
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiResponse({ status: 200, description: "image/webp" })
@@ -172,13 +194,14 @@ export class GuidePlacesController {
     @Req() req: RbacRequest & { headers: Record<string, string | string[] | undefined> },
     @Res() res: BinaryResponse,
   ): Promise<void> {
-    const c = await this.guide.cover(q.regionId, id);
+    const ifNoneMatch = req.headers["if-none-match"];
+    const c = await this.guide.cover(q.regionId, id, (v) => etagMatches(ifNoneMatch, `"${v}"`));
     if (!c) throw new ApiError("NOT_FOUND");
     const etag = `"${c.etag}"`;
     res.setHeader("ETag", etag);
     res.setHeader("Cache-Control", `public, max-age=${COVER_CACHE_SEC}`);
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (req.headers["if-none-match"] === etag) {
+    if (!c.bytes) {
       res.status(304);
       res.end();
       return;

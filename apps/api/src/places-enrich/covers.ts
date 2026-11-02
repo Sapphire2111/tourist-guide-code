@@ -36,14 +36,41 @@ export const sharpResize: Resize = async (input) => {
   return { data, width: info.width, height: info.height };
 };
 
+/** Wikimedia временно недоступна (429/5xx/сеть): обложка откладывается до следующего прогона, Google не тратится. */
+export class WikimediaUnavailableError extends Error {
+  override readonly name = "WikimediaUnavailableError";
+  /** 429: Wikimedia просит не нагружать — до конца прогона к ней не обращаться. */
+  constructor(
+    message: string,
+    readonly rateLimited = false,
+  ) {
+    super(message);
+  }
+}
+
 async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)) throw new Error("Не файл Wikimedia");
-  const res = await fetchImpl(url, {
-    headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT },
-    signal: AbortSignal.timeout(20_000),
-  });
+  let res: Response;
+  try {
+    res = await fetchImpl(url, {
+      headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    throw new WikimediaUnavailableError(`Wikimedia: ${err instanceof Error ? err.name : "сеть"}`);
+  }
+  if (res.status === 429 || res.status >= 500) {
+    await res.body?.cancel();
+    throw new WikimediaUnavailableError(`Wikimedia: HTTP ${res.status}`, res.status === 429);
+  }
   if (!res.ok) throw new Error(`Wikimedia: HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    // Обрыв/таймаут при чтении тела — тоже временно.
+    throw new WikimediaUnavailableError(`Wikimedia: ${err instanceof Error ? err.name : "обрыв"}`);
+  }
   if (buf.length > MAX_SOURCE_BYTES) throw new Error("Файл Wikimedia слишком большой");
   return buf;
 }
@@ -53,31 +80,37 @@ export const hasCoverSource = (p: Pick<EnrichedPlace, "google" | "wiki">) =>
   Boolean(p.wiki?.image || p.google?.photos.length);
 
 /**
- * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); предел Google — RequestLimitError
- * (вызывающий прекращает Google-обложки до следующего месяца).
+ * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); постоянная ошибка (4xx, слишком большой
+ * файл, не обработался) — Google (если есть фото), иначе ошибка Wikimedia. Временная (429/5xx/сеть) —
+ * WikimediaUnavailableError: обложка откладывается, Google не тратится. Предел Google — RequestLimitError (вызывающий прекращает Google-обложки
+ * до следующего месяца). googleStopped — Google-обложки уже остановлены пределом: только Wikimedia.
  */
 export async function makeCover(
   p: Pick<EnrichedPlace, "google" | "wiki">,
-  deps: { google: GooglePlacesClient; fetch?: typeof fetch; resize?: Resize },
+  deps: { google: GooglePlacesClient; fetch?: typeof fetch; resize?: Resize; googleStopped?: boolean },
 ): Promise<Cover | null> {
   const resize = deps.resize ?? sharpResize;
   const img = p.wiki?.image;
-  if (img) {
-    const r = await resize(await download(img.url, deps.fetch ?? fetch));
-    return {
-      bytes: r.data,
-      mime: "image/webp",
-      width: r.width,
-      height: r.height,
-      authors: img.author ? [{ name: img.author, uri: img.sourceUrl, photoUri: null }] : [],
-      license: img.license,
-      sourceUrl: img.sourceUrl,
-      source: "wikimedia",
-      photoName: img.url,
-    };
-  }
   const photo = p.google?.photos[0];
-  if (!photo) return null;
+  if (img) {
+    try {
+      const r = await resize(await download(img.url, deps.fetch ?? fetch));
+      return {
+        bytes: r.data,
+        mime: "image/webp",
+        width: r.width,
+        height: r.height,
+        authors: img.author ? [{ name: img.author, uri: img.sourceUrl, photoUri: null }] : [],
+        license: img.license,
+        sourceUrl: img.sourceUrl,
+        source: "wikimedia",
+        photoName: img.url,
+      };
+    } catch (err) {
+      if (err instanceof WikimediaUnavailableError || !photo || deps.googleStopped) throw err;
+    }
+  }
+  if (!photo || deps.googleStopped) return null;
   const uri = await deps.google.photoUri(photo.name, COVER_WIDTH);
   if (!uri) return null;
   const r = await resize(await deps.google.photoBytes(photo.name, uri));
@@ -149,6 +182,8 @@ export type CoverStats = {
   failed: number;
   /** Google-обложки отложены пределом (следующий месяц). */
   deferred: number;
+  /** Wikimedia временно недоступна (429/5xx/сеть) — отложены до следующего прогона. */
+  wikiUnavailable: number;
 };
 
 /** Обложки для мест без неё; запись — только с db (иначе — подсчёт). */
@@ -173,8 +208,11 @@ export async function runCovers(
     google: 0,
     failed: 0,
     deferred: 0,
+    wikiUnavailable: 0,
   };
   let googleStopped = false;
+  // После 429 от Wikimedia — к ней больше не обращаться до конца прогона.
+  let wikiStopped = false;
   for (const p of places) {
     if (!hasCoverSource(p)) continue;
     if (deps.existing.has(p.googlePlaceId)) {
@@ -183,12 +221,16 @@ export async function runCovers(
     }
     stats.needed++;
     if (!deps.write || !deps.db || !deps.regionId) continue;
+    if (p.wiki?.image && wikiStopped) {
+      stats.wikiUnavailable++;
+      continue;
+    }
     if (!p.wiki?.image && googleStopped) {
       stats.deferred++;
       continue;
     }
     try {
-      const c = await makeCover(p, deps);
+      const c = await makeCover(p, { ...deps, googleStopped });
       if (!c) {
         stats.failed++;
         continue;
@@ -199,6 +241,12 @@ export async function runCovers(
         else stats.google++;
       }
     } catch (err) {
+      if (err instanceof WikimediaUnavailableError) {
+        deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message} — отложена до следующего прогона`);
+        if (err.rateLimited) wikiStopped = true;
+        stats.wikiUnavailable++;
+        continue;
+      }
       if (err instanceof RequestLimitError) {
         deps.log?.(err.message);
         googleStopped = true;
