@@ -568,8 +568,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         id,
         version,
         status,
-        items: ((b.items as Obj[]) ?? []).map((it, i) => ({
-          id: uuid(),
+        items: ((b.items as Record<string, unknown>[]) ?? []).map((it, i) => ({
           position: i,
           placeName: state.places.find((p) => p.id === it.placeId)?.name ?? null,
           placeStatus: "published",
@@ -578,6 +577,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           note: null,
           alternatives: [],
           ...it,
+          id: uuid(),
         })),
       });
       if (path === "/admin/scenarios" && method === "GET") {

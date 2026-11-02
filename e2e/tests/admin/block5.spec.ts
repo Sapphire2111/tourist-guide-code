@@ -140,7 +140,7 @@ test("сценарии: создание с пунктами по дням и а
 
   await form.getByLabel(/^Місце 2\.1/).selectOption({ label: "Водоспад Пробій" });
   await form.getByRole("button", { name: "Зберегти" }).click();
-  await expect(form.getByRole("status")).toHaveText("Збережено.");
+  await expect(page.getByRole("region", { name: /Статус: Чернетка/ })).toBeVisible();
   await expect(page).toHaveURL(/#\/scenarios\/[0-9a-f-]+$/);
   expect(state.scenarioWrites[0]).toMatchObject({
     code: "day-in-yaremche",
@@ -154,8 +154,9 @@ test("сценарии: создание с пунктами по дням и а
   });
 
   // Правка: убрать пункт второго дня и опубликовать.
-  await form.getByRole("button", { name: "Прибрати пункт 2.1" }).click();
-  await form.getByRole("button", { name: "Зберегти" }).click();
+  const edit = page.getByRole("form", { name: "Редагування" });
+  await edit.getByRole("button", { name: "Прибрати пункт 2.1" }).click();
+  await edit.getByRole("button", { name: "Зберегти" }).click();
   await expect(page.getByRole("region", { name: /Статус: Чернетка/ })).toContainText("Версія 2");
   await page
     .getByRole("region", { name: /Статус: Чернетка/ })
