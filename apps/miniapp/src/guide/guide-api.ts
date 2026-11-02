@@ -29,6 +29,7 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     id: dto.id,
     name: dto.name,
     categoryId: dto.categoryId,
+    address: dto.address ?? null,
     location: dto.location ? { lat: dto.location.lat, lng: dto.location.lon } : null,
     distanceMeters: dto.distanceMeters,
     cover: photoOf(dto.cover),

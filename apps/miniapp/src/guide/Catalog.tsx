@@ -3,23 +3,23 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
+import { useResort, useResortCaption } from "../design/ResortProvider.js";
+import { ICONS } from "../design/Ornament.js";
 import { useAsync, useGuide } from "./context.js";
 import { MapSlot } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import type { CatalogSection, Category } from "./types.js";
 
-const chip = (active: boolean) => ({
-  font: "inherit",
-  // Крупный жирный текст: активный чип — цвет фона на link_color (AA только как large text).
-  fontSize: "1.2rem",
-  fontWeight: 700,
-  padding: "6px 12px",
-  borderRadius: 999,
-  border: "1px solid var(--color-link)",
-  background: active ? "var(--color-link)" : "transparent",
-  color: active ? "var(--color-bg)" : "var(--color-text)",
-  cursor: "pointer",
-});
+/** Поиск мест по всему региону или курорту (#/search?q=…): быстрые запросы сезона, «Усі місця». */
+export function PlaceSearch({ initialQuery = "" }: { initialQuery?: string }) {
+  const { t } = useT();
+  return (
+    <Stack>
+      <h1>{t("miniapp.search.title")}</h1>
+      <CategoryPlaces root={null} subcategories={[]} initialQuery={initialQuery} />
+    </Stack>
+  );
+}
 
 export function Catalog({ section }: { section: CatalogSection }) {
   const { t } = useT();
@@ -42,14 +42,29 @@ export function Catalog({ section }: { section: CatalogSection }) {
 /** Сколько ждать базовую точку перед поиском без неё, мс. */
 export const BASE_WAIT_MS = 4_000;
 
-function CategoryPlaces({ root, subcategories }: { root: Category; subcategories: Category[] }) {
+function CategoryPlaces({
+  root,
+  subcategories,
+  initialQuery = "",
+}: {
+  /** null — поиск без категории (весь каталог). */
+  root: Category | null;
+  subcategories: Category[];
+  initialQuery?: string;
+}) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const [categoryId, setCategoryId] = useState(root.id);
-  const [draft, setDraft] = useState("");
-  const [q, setQ] = useState("");
+  const { resort } = useResort();
+  const resortCaption = useResortCaption();
+  const rootId = root?.id;
+  const [categoryId, setCategoryId] = useState(rootId);
+  const [draft, setDraft] = useState(initialQuery);
+  const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
   const [view, setView] = useState<"list" | "map">("list");
-  const point = base?.point ?? null;
+  // Курорт свайпера — места в радиусе от его центра; «Усе Прикарпаття» — как раньше (от базовой точки QR).
+  const area = resort.area;
+  const point = area ? area.center : (base?.point ?? null);
+  const radius = area?.radius;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -58,10 +73,10 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
     () =>
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
-      (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() => api.search({ categoryId, q: q || undefined, point }))
+      (!area && base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
+        .then(() => api.search({ categoryId, q: q || undefined, point, ...(radius ? { radius } : {}) }))
         .then((list) => ({ list, submitId })),
-    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng],
+    [api, categoryId, q, submitId, area ? false : base?.pending, point?.lat, point?.lng, radius],
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -69,7 +84,9 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
     if (q) analytics.track("search_used", { categoryId, resultCount: places.data.list.length });
   }, [analytics, categoryId, q, places]);
 
-  useEffect(() => analytics.track("category_opened", { categoryId }), [analytics, categoryId]);
+  useEffect(() => {
+    if (categoryId) analytics.track("category_opened", { categoryId });
+  }, [analytics, categoryId]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -82,14 +99,14 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
 
   return (
     <Stack>
-      {subcategories.length > 0 && (
+      {subcategories.length > 0 && root && (
         <div role="group" aria-label={t("miniapp.catalog.subcategories")}>
           <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {[root, ...subcategories].map((c) => (
               <button
                 key={c.id}
                 type="button"
-                style={chip(c.id === categoryId)}
+                className="kosiv-toggle"
                 aria-pressed={c.id === categoryId}
                 onClick={() => setCategoryId(c.id)}
               >
@@ -99,7 +116,7 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
           </span>
         </div>
       )}
-      <form role="search" onSubmit={submit} style={{ display: "flex", gap: 8 }}>
+      <form role="search" onSubmit={submit} style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
         <label htmlFor="catalog-q" style={{ position: "absolute", left: -9999 }}>
           {t("miniapp.catalog.searchLabel")}
         </label>
@@ -109,16 +126,7 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
           value={draft}
           placeholder={t("miniapp.catalog.searchLabel")}
           onChange={(e) => setDraft(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            font: "inherit",
-            padding: "8px 12px",
-            borderRadius: "var(--radius)",
-            border: "1px solid var(--color-hint)",
-            background: "var(--color-bg)",
-            color: "var(--color-text)",
-          }}
+          style={{ flex: 1, minWidth: 0, borderRadius: 9999, paddingLeft: 18 }}
         />
         <Button type="submit">{t("miniapp.catalog.searchButton")}</Button>
       </form>
@@ -127,7 +135,7 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
           <button
             key={v}
             type="button"
-            style={chip(view === v)}
+            className="kosiv-toggle"
             aria-pressed={view === v}
             onClick={() => setView(v)}
           >
@@ -136,7 +144,12 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
         ))}
       </div>
       {/* Постоянная live-область: читалки объявляют изменение числа результатов. */}
-      <p role="status" data-testid="catalog-count">
+      {resortCaption && (
+        <p className="kosiv-muted" data-testid="resort-caption">
+          {resortCaption}
+        </p>
+      )}
+      <p role="status" data-testid="catalog-count" className="kosiv-muted" style={{ fontSize: "0.875rem" }}>
         {places.status === "ready" && places.data.list.length > 0
           ? t("miniapp.catalog.results", { count: places.data.list.length })
           : ""}
@@ -144,14 +157,15 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
       <AsyncView state={places} retry={retry}>
         {({ list }) =>
           list.length === 0 ? (
-            <div>
+            <div className="kosiv-card kosiv-empty">
+              {ICONS.search}
               <p data-testid="catalog-empty">{t("miniapp.catalog.empty")}</p>
-              {(q || categoryId !== root.id) && (
+              {(q || categoryId !== rootId) && (
                 <Button
                   onClick={() => {
                     setDraft("");
                     setQ("");
-                    setCategoryId(root.id);
+                    setCategoryId(rootId);
                   }}
                 >
                   {t("miniapp.catalog.reset")}
@@ -160,7 +174,14 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
             </div>
           ) : (
             <Stack>
-              {view === "map" && <MapSlot places={list} center={point} centerLabel={base?.name} />}
+              {view === "map" && (
+                <MapSlot
+                  places={list}
+                  center={point}
+                  centerLabel={area ? t(resort.name) : base?.name}
+                  radius={radius}
+                />
+              )}
               <PlaceList places={list} />
             </Stack>
           )
