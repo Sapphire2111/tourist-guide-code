@@ -2,10 +2,11 @@
 // POST …/accept → кабинет (P13/P01). PIN кассира не задаём (D-52 отложено).
 import { useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
+import { Button, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
 import { NotFoundError } from "../guide/types.js";
 import { useErrorText } from "../host/errors.js";
+import { ConflictError } from "../host/types.js";
 import { usePartner } from "./context.js";
 import { INVITE_TOKEN_RE } from "./partner-api.js";
 import { Live, roleKey, type Message } from "./parts.js";
@@ -41,6 +42,11 @@ export function AcceptInvite({ token }: { token: string }) {
     } catch (err) {
       setMessage({ text: errorText(err, "miniapp.partner.invite.error"), alert: true });
       setBusy(false);
+      if (err instanceof ConflictError) {
+        // Уже принято (возможно, нами в другой вкладке) или уже сотрудник: назначения могли появиться.
+        reloadMe();
+        if (err.messageKey === "errors.staffInvite.alreadyMember") navigate("/partner", { replace: true });
+      }
     }
   };
   return (
@@ -91,7 +97,16 @@ export function AcceptInvite({ token }: { token: string }) {
           <Live message={message} testId="invite-message" />
         </div>
       )}
-      <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
+      {/* replace: «Назад» из кабинета не возвращает на использованное приглашение */}
+      <a
+        href="#/partner"
+        onClick={(e) => {
+          e.preventDefault();
+          navigate("/partner", { replace: true });
+        }}
+      >
+        {t("miniapp.partner.toDashboard")}
+      </a>
     </Stack>
   );
 }

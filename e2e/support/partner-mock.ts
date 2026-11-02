@@ -38,6 +38,8 @@ type PlaceState = {
   weekly: { dayOfWeek: number; opensAt: string; closesAt: string }[];
   media: string[];
   moderation: Record<string, unknown> | null;
+  /** Растёт при каждом изменении (как updated_at в БД). */
+  version: number;
 };
 
 export type PartnerMockState = {
@@ -121,7 +123,7 @@ const placeDto = (p: PlaceState) => ({
   mediaPreview: Object.fromEntries(p.media.map((id) => [id, `https://cdn.example/${id}-w320.jpg`])),
   missingFields: missing(p),
   moderation: p.moderation,
-  updatedAt: `2026-11-02T00:00:0${p.media.length + p.weekly.length}Z`,
+  updatedAt: new Date(Date.UTC(2026, 10, 2) + p.version * 1000).toISOString(),
 });
 
 export async function installPartnerMock(page: Page, state: PartnerMockState, token: string): Promise<void> {
@@ -197,6 +199,7 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
           weekly: [],
           media: [],
           moderation: null,
+          version: 0,
         };
         state.places.push(place);
         return json(route, { organization: {}, place: placeDto(place) }, 201);
@@ -226,6 +229,7 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
           weekly: [],
           media: [],
           moderation: null,
+          version: 0,
         });
         return json(
           route,
@@ -246,10 +250,12 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
           if (place.role !== "ORG_OWNER" && (b.name || b.address))
             return error(route, 403, "FORBIDDEN", "errors.forbidden");
           Object.assign(place, b);
+          place.version += 1;
           return json(route, placeDto(place));
         }
         if (sub === "/schedule" && method === "PUT") {
           place.weekly = (body() as { weekly: PlaceState["weekly"] }).weekly;
+          place.version += 1;
           return route.fulfill({ status: 204, headers: cors });
         }
         if (sub === "/media/uploads" && method === "POST") {
@@ -272,6 +278,7 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
         const confirm = /^\/media\/([^/]+)\/confirm$/.exec(sub);
         if (confirm && method === "POST") {
           place.media.push(confirm[1]!);
+          place.version += 1;
           return json(route, {}, 201);
         }
         if (sub === "/submit" && method === "POST") {

@@ -1,8 +1,16 @@
 // Окружение кабинета партнёра: API, регион входа, назначения пользователя (GET /partner/me) и выбранные
 // организация/заведение (P13). /partner/me грузится только с сессией и при включённом module.partner_cabinet.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Async } from "../guide/context.js";
-import { useLiveAsync } from "../host/context.js";
 import type { PartnerApi, PartnerMe, PartnerOrganization, PartnerPlaceSummary } from "./partner-api.js";
 
 export type Selection = { orgId: string | null; placeId: string | null };
@@ -31,7 +39,7 @@ export function PartnerProvider({
   enabled: boolean;
   children?: ReactNode;
 }) {
-  const [me, reload] = useLiveAsync<PartnerMe | null>(
+  const [me, reload] = useKeptAsync<PartnerMe | null>(
     () => (enabled ? api.me() : Promise.resolve(null)),
     [api, enabled],
   );
@@ -91,10 +99,58 @@ export function noopPartnerApi(): PartnerApi {
   return new Proxy({} as PartnerApi, { get: () => fail });
 }
 
-/** Перечитать /partner/me при монтировании экрана (статус модерации мог смениться). */
+/**
+ * Перечитать /partner/me при открытии экрана (статус модерации мог смениться). Первая загрузка провайдера ещё
+ * идёт — второй запрос не нужен.
+ */
 export function useRefreshMe() {
-  const { reloadMe, enabled } = usePartner();
+  const { reloadMe, enabled, me } = usePartner();
+  const loadedAtMount = useRef(me.status === "ready");
   useEffect(() => {
-    if (enabled) reloadMe();
+    if (enabled && loadedAtMount.current) reloadMe();
   }, [enabled, reloadMe]);
+}
+
+/**
+ * Загрузка с обновлением «на месте» (как useLiveAsync блока 5), но неудачное перечитывание не стирает данные:
+ * состояние остаётся ready, ошибка — в refreshError (показать рядом). Смена deps — заново с загрузкой.
+ */
+export function useKeptAsync<T>(
+  load: () => Promise<T>,
+  deps: readonly unknown[],
+): [Async<T>, () => void, unknown] {
+  const [state, setState] = useState<Async<T>>({ status: "loading" });
+  const [refreshError, setRefreshError] = useState<unknown>(null);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const seq = useRef({ n: 0 });
+  const run = useCallback((keep: boolean) => {
+    const counter = seq.current;
+    const id = ++counter.n;
+    if (!keep) setState({ status: "loading" });
+    setRefreshError(null);
+    loadRef.current().then(
+      (data) => id === counter.n && setState({ status: "ready", data }),
+      (error: unknown) => {
+        if (id !== counter.n) return;
+        setState((prev) => {
+          if (keep && prev.status === "ready") {
+            setRefreshError(error);
+            return prev;
+          }
+          return { status: "error", error };
+        });
+      },
+    );
+  }, []);
+  useEffect(() => {
+    const counter = seq.current;
+    run(false);
+    return () => {
+      counter.n++;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  const reload = useCallback(() => run(true), [run]);
+  return [state, reload, refreshError];
 }

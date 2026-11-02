@@ -45,12 +45,19 @@ test("онбординг → редактор → отправка на моде
 
   await page.getByLabel("Адреса").fill("Косів, вул. Ринкова, 1");
   await page.getByLabel("Телефон").fill("+380501112233");
-  await page.getByRole("button", { name: "Зберегти", exact: true }).click();
-  await expect(page.getByTestId("missing-fields")).toHaveText("Для модерації заповніть: Графік роботи, Фото");
-
+  // Сохранение графика (updatedAt меняется) не теряет несохранённые правки основной формы.
   await page.getByRole("button", { name: "Додати інтервал" }).click();
   await page.getByRole("button", { name: "Зберегти графік" }).click();
+  await expect(page.getByTestId("schedule-message")).toHaveText("Графік збережено.");
+  await expect(page.getByTestId("missing-fields")).toHaveText(
+    "Для модерації заповніть: Адреса, Телефон, Фото",
+  );
+  await expect(page.getByLabel("Адреса")).toHaveValue("Косів, вул. Ринкова, 1");
+  await expect(page.getByLabel("Телефон")).toHaveValue("+380501112233");
+  await page.getByRole("button", { name: "Зберегти", exact: true }).click();
   await expect(page.getByTestId("missing-fields")).toHaveText("Для модерації заповніть: Фото");
+  await expect(page.getByTestId("schedule-rows").getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByTestId("schedule-message")).toHaveText("Графік збережено.");
 
   await page.getByLabel("Опис фото (для незрячих)").fill("Фасад садиби");
   await page

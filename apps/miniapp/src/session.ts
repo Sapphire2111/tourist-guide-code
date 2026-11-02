@@ -163,7 +163,7 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
     const rawStartParam = auth.data.startParam ?? getStartParam(webApp);
     // Приглашение сотрудника — не QR-точка: контекст без start_param, экран P14 по токену.
     const invite = inviteTokenOf(rawStartParam);
-    const startParam = invite ? undefined : rawStartParam;
+    const startParam = invite !== undefined ? undefined : rawStartParam;
     const context = await fetchContext(api, startParam || undefined);
     const me = await api.GET("/me");
     if (!me.data) return { status: "error", messageKey: errorKey(me.response.status) };
@@ -173,7 +173,7 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
       context,
       ...(context ? {} : { contextFailed: startParam ? { startParam } : {} }),
       me: me.data,
-      ...(invite ? { invite } : {}),
+      ...(invite !== undefined ? { invite } : {}),
     };
   } catch {
     return { status: "error", messageKey: "miniapp.start.error" };

@@ -6,9 +6,15 @@ import { ApiCallError, ConflictError } from "../host/types.js";
 import { noopPartnerApi, PartnerProvider, resolveSelection } from "./context.js";
 import { PartnerDashboard } from "./Dashboard.js";
 import { AcceptInvite } from "./Invite.js";
-import { offerInput } from "./Offers.js";
+import { dayOf, offerInput, PartnerOffers } from "./Offers.js";
+import { PartnerOnboarding } from "./Onboarding.js";
+import { createApiClient } from "@tg/api-client";
+import { NetworkError } from "../host/types.js";
 import {
+  createPartnerApi,
   inviteTokenOf,
+  keepsIdempotencyKey,
+  UploadRejectedError,
   type PartnerApi,
   type PartnerOrganization,
   type PartnerPlace,
@@ -126,7 +132,7 @@ describe("правила кабинета", () => {
   it("токен приглашения из start_param inv_<токен>", () => {
     expect(inviteTokenOf(`inv_${TOKEN}`)).toBe(TOKEN);
     expect(inviteTokenOf(TOKEN)).toBeUndefined();
-    expect(inviteTokenOf("inv_short")).toBeUndefined();
+    expect(inviteTokenOf("inv_short")).toBe("short");
     expect(inviteTokenOf("demoHotel01")).toBeUndefined();
     expect(inviteTokenOf(undefined)).toBeUndefined();
   });
@@ -170,9 +176,19 @@ describe("правила кабинета", () => {
     expect(offerInput({ title: " Знижка ", description: "", startsAt: "2026-11-10", endsAt: "" })).toEqual({
       title: { uk: "Знижка" },
       description: null,
-      startsAt: "2026-11-10T00:00:00.000Z",
+      // Начало дня по Києву (UTC+2 у листопаді).
+      startsAt: "2026-11-09T22:00:00.000Z",
       endsAt: null,
     });
+    // «До 10.11 включно» по Києву — 23:59:59 за київським часом; влітку UTC+3.
+    expect(offerInput({ title: "x", description: "", startsAt: "", endsAt: "2026-11-10" })?.endsAt).toBe(
+      "2026-11-10T21:59:59.000Z",
+    );
+    expect(offerInput({ title: "x", description: "", startsAt: "2026-07-01", endsAt: "" })?.startsAt).toBe(
+      "2026-06-30T21:00:00.000Z",
+    );
+    expect(dayOf("2026-11-10T21:59:59.000Z")).toBe("2026-11-10");
+    expect(dayOf("2026-11-09T22:00:00.000Z")).toBe("2026-11-10");
     expect(
       offerInput({ title: "x", description: "", startsAt: "2026-11-10", endsAt: "2026-11-10" }),
     ).not.toBeNull();
@@ -367,9 +383,248 @@ describe("P09 и P14", () => {
           alreadyMember: false,
         }),
     });
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Запрошення втратило чинність. Попросіть нове.",
-    );
+    expect(await screen.findByText("Запрошення втратило чинність. Попросіть нове.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Прийняти" })).toBeNull();
+  });
+});
+
+describe("исправления ревью", () => {
+  it("онбординг: после 4xx — новый ключ идемпотентности, после сети — тот же; правка формы — новый", async () => {
+    const keys: string[] = [];
+    const errors: unknown[] = [
+      new ApiCallError(422, "errors.partner.categoryNotInTemplate", "UNPROCESSABLE"),
+      new NetworkError(),
+    ];
+    const onboard = vi.fn((_: unknown, key: string) => {
+      keys.push(key);
+      const err = errors.shift();
+      return err ? Promise.reject(err) : Promise.resolve(place());
+    });
+    setup(<PartnerOnboarding />, {
+      me: () => Promise.resolve({ organizations: [] }),
+      templates: () =>
+        Promise.resolve([
+          {
+            id: "t1",
+            code: "hotel",
+            name: { uk: "Готель / садиба" },
+            description: null,
+            requiredFields: [],
+            modules: [],
+            categories: [{ id: CAT, code: "hotels", name: { uk: "Готелі" } }],
+          },
+        ]),
+      onboard,
+    });
+    fireEvent.click(await screen.findByLabelText("Готель / садиба"));
+    fireEvent.change(screen.getByLabelText("Назва закладу"), { target: { value: "Смерека" } });
+    const create = () =>
+      act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Створити заклад" }));
+      });
+    await create();
+    await create();
+    await create();
+    expect(keys[1]).not.toBe(keys[0]); // 422 сохранён сервером — новый ключ
+    expect(keys[2]).toBe(keys[1]); // сеть — исход неизвестен, тот же ключ
+    expect(keepsIdempotencyKey(new ConflictError(null, "IDEMPOTENCY_IN_PROGRESS"))).toBe(true);
+    expect(keepsIdempotencyKey(new ApiCallError(503, null))).toBe(true);
+    expect(keepsIdempotencyKey(new ApiCallError(400, null))).toBe(false);
+  });
+
+  it("редактор: сохранение графика (новый updatedAt) не теряет несохранённую правку основной формы", async () => {
+    let version = 0;
+    const loadPlace = vi.fn(() => Promise.resolve(place({ updatedAt: `2026-11-02T00:00:0${version}Z` })));
+    const putSchedule = vi.fn(() => {
+      version += 1;
+      return Promise.resolve();
+    });
+    const updatePlace = vi.fn(() => {
+      version += 1;
+      return Promise.resolve(
+        place({ description: { uk: "Опис" }, updatedAt: `2026-11-02T00:00:0${version}Z` }),
+      );
+    });
+    setup(<PlaceEditor id={PLACE} />, { place: loadPlace, putSchedule, updatePlace });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Опис" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Зберегти графік" }));
+    });
+    expect(loadPlace).toHaveBeenCalledTimes(2);
+    expect((screen.getByLabelText("Опис") as HTMLTextAreaElement).value).toBe("Опис");
+    expect(screen.getByTestId("schedule-message").textContent).toBe("Графік збережено.");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Зберегти$/ }));
+    });
+    expect(updatePlace).toHaveBeenCalledWith(PLACE, { description: { uk: "Опис" } });
+    expect(screen.getByTestId("schedule-message").textContent).toBe("Графік збережено.");
+    expect(screen.getByTestId("editor-message").textContent).toBe("Зміни збережено.");
+  });
+
+  it("редактор: пустое название — сообщение, без запроса", async () => {
+    const updatePlace = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place()), updatePlace });
+    fireEvent.change(await screen.findByLabelText("Назва"), { target: { value: " " } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Зберегти$/ }));
+    });
+    expect(updatePlace).not.toHaveBeenCalled();
+    expect(screen.getByTestId("editor-message").textContent).toBe("Назва обов’язкова.");
+  });
+
+  describe("uploadPhoto", () => {
+    const fakeClient = (confirmStatus: number) =>
+      createApiClient({
+        baseUrl: "http://api.test",
+        fetch: async (req: Request) => {
+          const path = new URL(req.url).pathname;
+          if (path.endsWith("/media/uploads"))
+            return Response.json(
+              {
+                asset: { id: "00000000-0000-4000-8000-00000000e001" },
+                upload: {
+                  url: "https://upload.test/x",
+                  method: "PUT",
+                  headers: { "x-sig": "1" },
+                  expiresAt: "2099-01-01T00:00:00Z",
+                },
+              },
+              { status: 201 },
+            );
+          if (path.endsWith("/confirm"))
+            return confirmStatus < 300
+              ? Response.json({}, { status: confirmStatus })
+              : Response.json(
+                  { error: { code: "UNPROCESSABLE", messageKey: "errors.place.mediaInvalid" } },
+                  { status: confirmStatus },
+                );
+          return Response.json({}, { status: 404 });
+        },
+      });
+    const file = new File(["x"], "a.jpg", { type: "image/jpeg" });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("PUT по подписанной ссылке с заголовками, затем confirm", async () => {
+      const put = vi.fn(async () => new Response(null, { status: 200 }));
+      vi.stubGlobal("fetch", put);
+      await createPartnerApi(fakeClient(201)).uploadPhoto(PLACE, file, "Фасад");
+      expect(put).toHaveBeenCalledWith(
+        "https://upload.test/x",
+        expect.objectContaining({ method: "PUT", headers: { "x-sig": "1" } }),
+      );
+    });
+
+    it("PUT отклонён (403 — истёкшая подпись) — UploadRejectedError, не сетевая", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status: 403 })),
+      );
+      await expect(createPartnerApi(fakeClient(201)).uploadPhoto(PLACE, file, "")).rejects.toBeInstanceOf(
+        UploadRejectedError,
+      );
+    });
+
+    it("confirm 422 — ошибка с messageKey сервера", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status: 200 })),
+      );
+      await expect(createPartnerApi(fakeClient(422)).uploadPhoto(PLACE, file, "")).rejects.toMatchObject({
+        status: 422,
+        messageKey: "errors.place.mediaInvalid",
+      });
+    });
+  });
+
+  it("P07: создание с границами дня по Києву, правка, архив с подтверждением", async () => {
+    const offer = {
+      id: "o1",
+      placeId: PLACE,
+      title: { uk: "Знижка 10%" },
+      description: null,
+      startsAt: null,
+      endsAt: "2026-11-10T21:59:59.000Z",
+      status: "active" as const,
+      createdAt: "2026-11-02T00:00:00Z",
+      updatedAt: "2026-11-02T00:00:00Z",
+    };
+    const createOffer = vi.fn(() => Promise.resolve(offer));
+    const updateOffer = vi.fn(() => Promise.resolve(offer));
+    const archiveOffer = vi.fn(() => Promise.resolve({ ...offer, status: "archived" as const }));
+    setup(<PartnerOffers placeId={PLACE} />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      offers: () => Promise.resolve([offer]),
+      createOffer,
+      updateOffer,
+      archiveOffer,
+    });
+    // Показ «до» — день по Києву, не следующий.
+    expect((await screen.findByTestId("offer-item")).textContent).toContain("до 10.11.2026");
+    fireEvent.change(screen.getByLabelText("Назва акції"), { target: { value: "Чан у подарунок" } });
+    fireEvent.change(screen.getByLabelText("Кінець (необов’язково)"), { target: { value: "2026-11-10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Створити акцію" }));
+    });
+    expect(createOffer).toHaveBeenCalledWith(PLACE, {
+      title: { uk: "Чан у подарунок" },
+      description: null,
+      startsAt: null,
+      endsAt: "2026-11-10T21:59:59.000Z",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Змінити: Знижка 10%" }));
+    expect((screen.getByLabelText("Кінець (необов’язково)") as HTMLInputElement).value).toBe("2026-11-10");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Зберегти акцію" }));
+    });
+    expect(updateOffer).toHaveBeenCalledWith(
+      PLACE,
+      "o1",
+      expect.objectContaining({ endsAt: "2026-11-10T21:59:59.000Z" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "В архів: Знижка 10%" }));
+    expect(archiveOffer).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Так, в архів" }));
+    });
+    expect(archiveOffer).toHaveBeenCalledWith(PLACE, "o1");
+  });
+
+  it("P09: роль меняется только кнопкой «Змінити роль»", async () => {
+    const changeRole = vi.fn(() => Promise.resolve());
+    setup(<PartnerStaff orgId={ORG} />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      staff: () =>
+        Promise.resolve({
+          members: [
+            {
+              assignmentId: "a9",
+              userId: "u9",
+              displayName: "Олена",
+              username: null,
+              role: "ORG_STAFF",
+              grantedAt: "2026-11-01T00:00:00Z",
+              isMe: false,
+            },
+          ],
+          invites: [],
+        }),
+      changeRole,
+    });
+    fireEvent.change(await screen.findByLabelText("Роль: Олена"), { target: { value: "ORG_MANAGER" } });
+    expect(changeRole).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Змінити роль" }));
+    });
+    expect(changeRole).toHaveBeenCalledWith(ORG, "a9", "ORG_MANAGER");
+  });
+
+  it("дашборд: «Створити ще одну організацію» — только владельцу", async () => {
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org({ role: "ORG_STAFF", abilities: abilities(false) })] }),
+    });
+    expect(await screen.findByTestId("partner-org")).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Створити ще одну організацію" })).toBeNull();
   });
 });

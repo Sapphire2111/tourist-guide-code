@@ -10,12 +10,16 @@ export const statusKey = (s: PlaceStatus) => `miniapp.partner.status.${s}` as Me
 export const roleKey = (r: PartnerRole) => `miniapp.partner.role.${r}` as MessageKey;
 export const fieldKey = (f: PartnerField) => `miniapp.partner.field.${f}` as MessageKey;
 
-/** Живая область сообщений (status / alert) — всегда в DOM, чтобы читалка объявляла изменения. */
+/**
+ * Живые области сообщений: отдельные узлы status и alert всегда в DOM (читалка объявляет изменения, смена роли
+ * узла не теряет объявление). testId — на обёртке.
+ */
 export function Live({ message, testId }: { message: Message; testId: string }) {
   return (
-    <p role={message?.alert ? "alert" : "status"} data-testid={testId}>
-      {message?.text ?? ""}
-    </p>
+    <div data-testid={testId}>
+      <p role="status">{message && !message.alert ? message.text : ""}</p>
+      <p role="alert">{message?.alert ? message.text : ""}</p>
+    </div>
   );
 }
 
@@ -45,14 +49,22 @@ export function PlaceStatusInfo({
 }
 
 /** P13: режим турист / партнёр в одном Mini App (D-50). */
-export function ModeSwitch({ current }: { current: "tourist" | "partner" }) {
+export function ModeSwitch({
+  current,
+  inProfile = false,
+}: {
+  current: "tourist" | "partner";
+  /** В профиле текущий режим — не текущая страница: aria-current="true". */
+  inProfile?: boolean;
+}) {
+  const mark = inProfile ? ("true" as const) : ("page" as const);
   const { t } = useT();
   return (
     <nav aria-label={t("miniapp.partner.mode")} data-testid="mode-switch" style={{ display: "flex", gap: 8 }}>
-      <Link to="/" className="kosiv-chip" aria-current={current === "tourist" ? "page" : undefined}>
+      <Link to="/" className="kosiv-chip" aria-current={current === "tourist" ? mark : undefined}>
         {t("miniapp.partner.mode.tourist")}
       </Link>
-      <Link to="/partner" className="kosiv-chip" aria-current={current === "partner" ? "page" : undefined}>
+      <Link to="/partner" className="kosiv-chip" aria-current={current === "partner" ? mark : undefined}>
         {t("miniapp.partner.mode.partner")}
       </Link>
     </nav>

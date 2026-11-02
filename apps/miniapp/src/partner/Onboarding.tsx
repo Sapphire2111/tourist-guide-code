@@ -1,12 +1,13 @@
 // P12 «Стати партнером» (S-05): шаблон (GET /partner/templates) → категория и название → POST /partner/onboarding
 // → редактор P06 нового черновика. Статус модерации и отправка — в P06.
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { useErrorText } from "../host/errors.js";
 import { usePartner } from "./context.js";
+import { keepsIdempotencyKey } from "./partner-api.js";
 import { Live, newKey, type Message } from "./parts.js";
 
 export function PartnerOnboarding() {
@@ -25,7 +26,11 @@ export function PartnerOnboarding() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   // Один ключ на попытку создания: повтор после сбоя сети не создаст второе заведение.
+  // Сервер хранит ответ по ключу (и 4xx): после окончательной ошибки или правки формы — новый ключ.
   const key = useRef(newKey());
+  useEffect(() => {
+    key.current = newKey();
+  }, [code, categoryId, name, orgName]);
   const ids = { category: useId(), name: useId(), org: useId() };
   if (!enabled) return <p role="alert">{t("miniapp.partner.needsLogin")}</p>;
 
@@ -61,6 +66,7 @@ export function PartnerOnboarding() {
               reloadMe();
               navigate(`/partner/place/${place.id}`);
             } catch (err) {
+              if (!keepsIdempotencyKey(err)) key.current = newKey();
               setMessage({ text: errorText(err, "miniapp.partner.onboarding.error"), alert: true });
             } finally {
               setBusy(false);

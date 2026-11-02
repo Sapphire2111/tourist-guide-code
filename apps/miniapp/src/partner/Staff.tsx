@@ -4,10 +4,9 @@ import { useId, useState } from "react";
 import type { MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
-import { useLiveAsync } from "../host/context.js";
 import { useErrorText } from "../host/errors.js";
 import { formatDateTime } from "../host/format.js";
-import { usePartner, usePartnerOrgs } from "./context.js";
+import { useKeptAsync, usePartner, usePartnerOrgs } from "./context.js";
 import type { StaffInviteCreated, StaffInviteRole } from "./partner-api.js";
 import { Live, roleKey, type Message } from "./parts.js";
 
@@ -48,7 +47,7 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
   const errorText = useErrorText();
   const org = orgs.find((o) => o.id === orgId) ?? null;
   const allowed = org?.abilities.manageStaff === true;
-  const [list, reload] = useLiveAsync(
+  const [list, reload, refreshError] = useKeptAsync(
     () => (enabled && allowed ? api.staff(orgId) : Promise.resolve({ members: [], invites: [] })),
     [api, orgId, enabled, allowed],
   );
@@ -56,9 +55,17 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
   const [created, setCreated] = useState<StaffInviteCreated | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Выбранная, ещё не применённая роль сотрудника (assignmentId → роль). */
+  const [roles, setRoles] = useState<Record<string, StaffInviteRole>>({});
   const [message, setMessage] = useState<Message>(null);
   const roleGroup = useId();
   if (!enabled) return <p role="alert">{t("miniapp.partner.needsLogin")}</p>;
+  if (me.status === "error")
+    return (
+      <p role="alert" data-testid="staff-me-error">
+        {t("miniapp.partner.loadError")}
+      </p>
+    );
   if (me.status === "loading")
     return (
       <p role="status" className="kosiv-muted">
@@ -76,6 +83,7 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
     } finally {
       setBusy(false);
       setConfirm(null);
+      setRoles({});
       reload();
     }
   };
@@ -90,6 +98,7 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
         <>
           {org && <p>{org.name}</p>}
           <Live message={message} testId="staff-message" />
+          {refreshError !== null && <p role="alert">{t("miniapp.partner.refreshError")}</p>}
           <AsyncView state={list} retry={reload} errorText={t("miniapp.partner.loadError")}>
             {({ members, invites }) => (
               <>
@@ -110,18 +119,13 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                             <label>
                               {t("miniapp.partner.staff.roleOf", { name })}
                               <select
-                                value={m.role}
+                                value={roles[m.assignmentId] ?? m.role}
                                 disabled={busy}
                                 onChange={(e) =>
-                                  void run(
-                                    () =>
-                                      api.changeRole(
-                                        orgId,
-                                        m.assignmentId,
-                                        e.target.value as StaffInviteRole,
-                                      ),
-                                    "miniapp.partner.staff.roleChanged",
-                                  )
+                                  setRoles((r) => ({
+                                    ...r,
+                                    [m.assignmentId]: e.target.value as StaffInviteRole,
+                                  }))
                                 }
                               >
                                 {INVITE_ROLES.map((r) => (
@@ -131,6 +135,17 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                                 ))}
                               </select>
                             </label>
+                            <Button
+                              disabled={busy || (roles[m.assignmentId] ?? m.role) === m.role}
+                              onClick={() =>
+                                void run(
+                                  () => api.changeRole(orgId, m.assignmentId, roles[m.assignmentId]!),
+                                  "miniapp.partner.staff.roleChanged",
+                                )
+                              }
+                            >
+                              {t("miniapp.partner.staff.changeRole")}
+                            </Button>
                             {confirm === m.assignmentId ? (
                               <Button
                                 disabled={busy}
@@ -144,7 +159,7 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                                 {t("miniapp.partner.staff.deactivateConfirm")}
                               </Button>
                             ) : (
-                              <Button onClick={() => setConfirm(m.assignmentId)}>
+                              <Button disabled={busy} onClick={() => setConfirm(m.assignmentId)}>
                                 {t("miniapp.partner.staff.deactivate", { name })}
                               </Button>
                             )}

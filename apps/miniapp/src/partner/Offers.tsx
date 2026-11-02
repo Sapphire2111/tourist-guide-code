@@ -3,22 +3,70 @@ import { useId, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
-import { useLiveAsync } from "../host/context.js";
 import { useErrorText } from "../host/errors.js";
-import { orgOfPlace, usePartnerOrgs, usePartner } from "./context.js";
+import { orgOfPlace, useKeptAsync, usePartnerOrgs, usePartner } from "./context.js";
 import type { Offer, OfferInput } from "./partner-api.js";
 import { Live, type Message } from "./parts.js";
 
 type Draft = { title: string; description: string; startsAt: string; endsAt: string };
 const EMPTY: Draft = { title: "", description: "", startsAt: "", endsAt: "" };
 
-/** ISO → значение <input type="date"> (YYYY-MM-DD). */
-const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+/** Часовой пояс дат акций: регион (Косівщина) — «до 10.11 включно» означает конец 10.11 по Києву. */
+export const OFFER_TZ = "Europe/Kyiv";
 
-/** Форма → тело запроса: даты — начало дня начала и конец дня окончания (UTC). null — период неверный. */
-export function offerInput(d: Draft): OfferInput | null {
-  const startsAt = d.startsAt ? `${d.startsAt}T00:00:00.000Z` : null;
-  const endsAt = d.endsAt ? `${d.endsAt}T23:59:59.000Z` : null;
+/** Смещение пояса tz относительно UTC в момент instant, мс. */
+function tzOffset(instant: number, tz: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(new Date(instant))
+      .map((p) => [p.type, p.value]),
+  );
+  const local = Date.UTC(
+    +parts.year!,
+    +parts.month! - 1,
+    +parts.day!,
+    +parts.hour!,
+    +parts.minute!,
+    +parts.second!,
+  );
+  return local - Math.floor(instant / 1000) * 1000;
+}
+
+/** Начало дня YYYY-MM-DD в поясе tz (UTC, мс); offsetDays — сдвиг на дни. */
+function dayStart(date: string, tz: string, offsetDays = 0): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const guess = Date.UTC(y!, m! - 1, d! + offsetDays);
+  const first = guess - tzOffset(guess, tz);
+  return guess - tzOffset(first, tz);
+}
+
+/** ISO → день в поясе tz для <input type="date"> (YYYY-MM-DD). */
+export function dayOf(iso: string | null, tz = OFFER_TZ): string {
+  if (!iso) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+/**
+ * Форма → тело запроса: начало дня начала и конец дня окончания (23:59:59) по поясу региона. null — конец не
+ * позже начала.
+ */
+export function offerInput(d: Draft, tz = OFFER_TZ): OfferInput | null {
+  const startsAt = d.startsAt ? new Date(dayStart(d.startsAt, tz)).toISOString() : null;
+  const endsAt = d.endsAt ? new Date(dayStart(d.endsAt, tz, 1) - 1000).toISOString() : null;
   if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) return null;
   return {
     title: { uk: d.title.trim() },
@@ -45,8 +93,8 @@ function OfferForm({
       ? {
           title: editing.title.uk,
           description: editing.description?.uk ?? "",
-          startsAt: day(editing.startsAt),
-          endsAt: day(editing.endsAt),
+          startsAt: dayOf(editing.startsAt),
+          endsAt: dayOf(editing.endsAt),
         }
       : EMPTY,
   );
@@ -122,25 +170,30 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
   const orgs = usePartnerOrgs();
   const errorText = useErrorText();
   const org = orgOfPlace(orgs, placeId);
-  const [list, reload] = useLiveAsync(
+  const [list, reload, refreshError] = useKeptAsync(
     () => (enabled ? api.offers(placeId) : Promise.resolve([])),
     [api, placeId, enabled],
   );
   const [editing, setEditing] = useState<Offer | null>(null);
   const [message, setMessage] = useState<Message>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   if (!enabled) return <p role="alert">{t("miniapp.partner.needsLogin")}</p>;
   const forbidden = org !== null && !org.abilities.manageOffers;
   const archive = async (o: Offer) => {
     setMessage(null);
+    setBusy(true);
     try {
       await api.archiveOffer(placeId, o.id);
       setMessage({ text: t("miniapp.partner.offers.archived"), alert: false });
     } catch (err) {
       setMessage({ text: errorText(err, "miniapp.partner.offers.error"), alert: true });
     }
+    setBusy(false);
+    setConfirm(null);
     reload();
   };
-  const date = (iso: string) => new Date(iso).toLocaleDateString(locale);
+  const date = (iso: string) => new Date(iso).toLocaleDateString(locale, { timeZone: OFFER_TZ });
   return (
     <Stack>
       <h1>{t("miniapp.partner.offers.title")}</h1>
@@ -150,6 +203,7 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
       ) : (
         <>
           <Live message={message} testId="offers-message" />
+          {refreshError !== null && <p role="alert">{t("miniapp.partner.refreshError")}</p>}
           <AsyncView
             state={list}
             retry={reload}
@@ -181,12 +235,18 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
                         )}
                         {o.status === "active" && (
                           <span style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                            <Button onClick={() => setEditing(o)}>
+                            <Button disabled={busy} onClick={() => setEditing(o)}>
                               {t("miniapp.partner.offers.editAction", { title })}
                             </Button>
-                            <Button onClick={() => void archive(o)}>
-                              {t("miniapp.partner.offers.archive", { title })}
-                            </Button>
+                            {confirm === o.id ? (
+                              <Button disabled={busy} onClick={() => void archive(o)}>
+                                {t("miniapp.partner.offers.archiveConfirm")}
+                              </Button>
+                            ) : (
+                              <Button disabled={busy} onClick={() => setConfirm(o.id)}>
+                                {t("miniapp.partner.offers.archive", { title })}
+                              </Button>
+                            )}
                           </span>
                         )}
                       </li>

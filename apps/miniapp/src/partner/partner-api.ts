@@ -2,7 +2,7 @@
 // назначения ORG_* на сервере. Ошибки — как у блока 5 (ok из host-api): 404/401/409 — свои классы.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import { ok } from "../host/host-api.js";
-import { NetworkError } from "../host/types.js";
+import { ApiCallError, NetworkError } from "../host/types.js";
 
 export type PartnerMe = ApiSchemas["PartnerMeDto"];
 export type PartnerOrganization = ApiSchemas["PartnerOrganizationDto"];
@@ -27,11 +27,30 @@ export const INVITE_PREFIX = "inv_";
 /** Токен приглашения: base64url 32 байт (INVITE_TOKEN_RE сервера). */
 export const INVITE_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
-/** Токен из start_param `inv_<токен>`; иначе undefined. */
+/**
+ * Токен из start_param `inv_<…>` (любой с префиксом — приглашение, не QR: в GET /context не уходит; неверный
+ * токен P14 покажет как «не знайдено»); иначе undefined.
+ */
 export function inviteTokenOf(startParam: string | null | undefined): string | undefined {
   if (!startParam?.startsWith(INVITE_PREFIX)) return undefined;
-  const token = startParam.slice(INVITE_PREFIX.length);
-  return INVITE_TOKEN_RE.test(token) ? token : undefined;
+  return startParam.slice(INVITE_PREFIX.length);
+}
+
+/**
+ * Повтор с тем же ключом идемпотентности имеет смысл: исход неизвестен (сеть, 5xx, 429) или запрос с этим ключом
+ * ещё выполняется. Иначе (4xx) сервер сохранил ответ — повтор вернёт его же, нужен новый ключ.
+ */
+export function keepsIdempotencyKey(err: unknown): boolean {
+  if (err instanceof NetworkError) return true;
+  if (!(err instanceof ApiCallError)) return false;
+  return err.status >= 500 || err.status === 429 || err.code === "IDEMPOTENCY_IN_PROGRESS";
+}
+
+/** Хранилище отклонило PUT файла (истёкшая или неверная подпись, 4xx/5xx) — не сетевая ошибка. */
+export class UploadRejectedError extends Error {
+  constructor(public readonly status: number) {
+    super("upload_rejected");
+  }
 }
 
 export type PartnerApi = {
@@ -93,7 +112,7 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
       } catch {
         throw new NetworkError();
       }
-      if (!put.ok) throw new NetworkError();
+      if (!put.ok) throw new UploadRejectedError(put.status);
       await empty(
         api.POST("/partner/places/{id}/media/{assetId}/confirm", {
           params: { path: { id, assetId: asset.id } },

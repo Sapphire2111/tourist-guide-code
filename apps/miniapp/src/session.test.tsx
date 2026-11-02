@@ -76,7 +76,8 @@ function fakeApi(routes: Record<string, Handler>) {
     const handler =
       routes[key] ??
       Object.entries(routes).find(([k]) => key.startsWith(k.replace(/\*$/, "")) && k.endsWith("*"))?.[1];
-    if (url.pathname === "/feature-flags") return Response.json({ regionId: null, items: [] });
+    if (url.pathname === "/feature-flags")
+      return routes["GET /feature-flags"]?.(req) ?? Response.json({ regionId: null, items: [] });
     if (url.pathname === "/health") return Response.json({ status: "ok" });
     return handler ? handler(req) : Response.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
   });
@@ -225,6 +226,52 @@ describe("поток старта", () => {
     expect(state).toMatchObject({ status: "ready", invite: token });
     const paths = calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"));
     expect(paths).toEqual(["/context"]);
+  });
+
+  it("приглашение: сначала согласия (C01), затем P14 /partner/invite без токена в адресе", async () => {
+    const token = "C".repeat(43);
+    let accepted = false;
+    const { api, calls } = fakeApi({
+      "GET /feature-flags": () =>
+        Response.json({ regionId: null, items: [{ key: "module.partner_cabinet", enabled: true }] }),
+      "POST /auth/telegram": login(`inv_${token}`),
+      "GET /context": () =>
+        Response.json({
+          ...hotelContext,
+          status: "default",
+          entryType: "default",
+          qrPoint: null,
+          venue: null,
+        }),
+      "GET /me": () => Response.json(meWith(accepted)),
+      "GET /partner/me": () => Response.json({ organizations: [] }),
+      [`GET /partner/invites/${token}`]: () =>
+        Response.json({
+          organizationName: "ТОВ Смерека",
+          placeNames: [],
+          role: "ORG_STAFF",
+          state: "active",
+          expiresAt: "2026-11-05T00:00:00Z",
+          alreadyMember: false,
+        }),
+    });
+    const app = webApp({ initData: `query_id=x&start_param=inv_${token}&hash=y`, initDataUnsafe: {} });
+    const startup = createStartup(api, app);
+    render(<App api={api} role="guest" webApp={app} startup={startup} />);
+    await startup();
+    await flush();
+    await flush();
+    expect(window.location.hash).toBe("#/partner/invite");
+    expect(screen.getByTestId("partner-consents")).toBeDefined();
+    expect(screen.queryByTestId("invite-preview")).toBeNull();
+    expect(calls.some((r) => new URL(r.url).pathname.startsWith("/partner/invites/"))).toBe(false);
+    // Согласия приняты (как после формы C01) — показывается приглашение.
+    accepted = true;
+    cleanup();
+    const startup2 = createStartup(api, app);
+    render(<App api={api} role="guest" webApp={app} startup={startup2} />);
+    await startup2();
+    expect((await screen.findByTestId("invite-preview")).textContent).toContain("ТОВ Смерека");
   });
 
   it("без start_param сбой /context — «Повторити» снова вызывает GET /context", async () => {

@@ -108,7 +108,10 @@ export function PartnerDashboard() {
               {org?.abilities.manageStaff && (
                 <Link to={`/partner/org/${org.id}/staff`}>{t("miniapp.partner.staffLink")}</Link>
               )}
-              <Link to="/partner/new">{t("miniapp.partner.addPlace")}</Link>
+              {/* Онбординг создаёт новую организацию — только тем, кто уже владелец (не кассиру/менеджеру). */}
+              {organizations.some((o) => o.role === "ORG_OWNER") && (
+                <Link to="/partner/new">{t("miniapp.partner.addPlace")}</Link>
+              )}
             </>
           );
         }}

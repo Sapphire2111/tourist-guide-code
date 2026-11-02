@@ -278,24 +278,19 @@ function useFocusHeading(path: string) {
   }, [path]);
 }
 
-const PARTNER_PATH_RE = /^\/partner\/(place|org|invite)\/([^/]+)(\/offers|\/staff)?$/;
+const PARTNER_PATH_RE = /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff)?$/;
 
-/** Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»). */
-function partnerScreen(path: string): ReactNode {
+/**
+ * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
+ * Приглашение (P14) — /partner/invite, токен только в памяти (session.invite), не в адресе.
+ */
+function partnerScreen(path: string, invite: string | undefined): ReactNode {
   if (path === "/partner") return <PartnerDashboard />;
   if (path === "/partner/new") return <PartnerOnboarding />;
+  if (path === "/partner/invite") return <AcceptInvite token={invite ?? ""} />;
   const m = PARTNER_PATH_RE.exec(path);
   if (!m) return null;
   const [, kind, raw, sub] = m;
-  if (kind === "invite" && !sub) {
-    let token = "";
-    try {
-      token = decodeURIComponent(raw!);
-    } catch {
-      // битый токен — экран «не найдено»
-    }
-    return <AcceptInvite key={token} token={token} />;
-  }
   const id = uuidOf(raw!);
   if (!id) return null;
   if (kind === "place" && !sub) return <PlaceEditor key={id} id={id} />;
@@ -312,7 +307,7 @@ function PartnerEntry() {
     <div className="kosiv-card kosiv-panel" data-testid="partner-entry">
       <h2>{t("miniapp.partner.title")}</h2>
       {orgs.length ? (
-        <ModeSwitch current="tourist" />
+        <ModeSwitch current="tourist" inProfile />
       ) : (
         <Link to="/partner/new" className="kosiv-cta">
           {t("miniapp.partner.become")}
@@ -327,9 +322,9 @@ function useInviteRedirect(invite: string | undefined, enabled: boolean) {
   const [, navigate] = useRoute();
   const done = useRef(false);
   useEffect(() => {
-    if (!invite || !enabled || done.current) return;
+    if (invite === undefined || !enabled || done.current) return;
     done.current = true;
-    navigate(`/partner/invite/${encodeURIComponent(invite)}`, { replace: true });
+    navigate("/partner/invite", { replace: true });
   }, [invite, enabled, navigate]);
 }
 
@@ -466,13 +461,22 @@ function Routes(props: RoutesProps) {
     );
   }
   // Кабинет партнёра (модуль блока 6) при выключенном флаге — как несуществующий путь (T1-22).
-  const partner = partnerCabinet ? partnerScreen(path) : null;
+  const partner = partnerCabinet ? partnerScreen(path, session?.invite) : null;
   if (partner && !session)
     return (
       <Screen title={t("miniapp.partner.title")} webApp={webApp}>
         <p role="alert">
           {t(role === "partner" ? "miniapp.partner.needsLogin" : "miniapp.partner.forbidden")}
         </p>
+      </Screen>
+    );
+  // Онбординг партнёра и приглашение — только после обязательных согласий (C01); P14 — после формы.
+  if (partner && !hasRequiredConsents(session!.me))
+    return (
+      <Screen title={t("miniapp.partner.title")} webApp={webApp}>
+        <div className="kosiv-card kosiv-panel" data-testid="partner-consents">
+          <Onboarding api={api} webApp={webApp} onDone={onMe} />
+        </div>
       </Screen>
     );
   if (partner) return <Screen webApp={webApp}>{partner}</Screen>;

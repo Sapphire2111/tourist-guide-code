@@ -6,11 +6,16 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { card, listStyle } from "../guide/parts.js";
 import { NotFoundError } from "../guide/types.js";
-import { useLiveAsync } from "../host/context.js";
 import { useErrorText } from "../host/errors.js";
 import { ApiCallError } from "../host/types.js";
-import { usePartner } from "./context.js";
-import type { PartnerField, PartnerPlace, PlacePatch, Schedule } from "./partner-api.js";
+import { useKeptAsync, usePartner } from "./context.js";
+import {
+  UploadRejectedError,
+  type PartnerField,
+  type PartnerPlace,
+  type PlacePatch,
+  type Schedule,
+} from "./partner-api.js";
 import { fieldKey, Live, PlaceStatusInfo, type Message } from "./parts.js";
 
 const SUBMITTABLE = new Set(["draft", "changes_requested", "rejected"]);
@@ -47,14 +52,19 @@ const str = (v: string) => (v.trim() ? v.trim() : null);
 
 /**
  * Изменённые поля формы → тело PATCH. Поля личности — только если их разрешено менять (identity).
- * "bad_location" — координаты заданы не обе или не числами.
+ * "empty_name" — название стёрто (обязательно); "bad_location" — координаты заданы не обе или не числами.
  */
-export function patchOf(place: PartnerPlace, form: Form, identity: boolean): PlacePatch | "bad_location" {
+export function patchOf(
+  place: PartnerPlace,
+  form: Form,
+  identity: boolean,
+): PlacePatch | "bad_location" | "empty_name" {
   const before = formOf(place);
   const patch: PlacePatch = {};
   const changed = (k: keyof Form) => form[k].trim() !== before[k].trim();
   if (identity) {
-    if (changed("name") && form.name.trim()) patch.name = { uk: form.name.trim() };
+    if (!form.name.trim()) return "empty_name";
+    if (changed("name")) patch.name = { uk: form.name.trim() };
     if (changed("categoryId") && form.categoryId) patch.categoryId = form.categoryId;
     if (changed("address")) patch.address = text(form.address);
     if (changed("lat") || changed("lon")) {
@@ -169,6 +179,10 @@ function MainForm({ place, onSaved }: { place: PartnerPlace; onSaved: () => void
     setForm((f) => ({ ...f, [k]: e.target.value }));
   const save = async () => {
     const patch = patchOf(place, form, identity);
+    if (patch === "empty_name") {
+      setMessage({ text: t("miniapp.partner.editor.nameRequired"), alert: true });
+      return;
+    }
     if (patch === "bad_location") {
       setMessage({ text: t("miniapp.partner.editor.badLocation"), alert: true });
       return;
@@ -180,7 +194,8 @@ function MainForm({ place, onSaved }: { place: PartnerPlace; onSaved: () => void
     setBusy(true);
     setMessage(null);
     try {
-      await api.updatePlace(place.id, patch);
+      // Форма — из ответа сервера (только своя: правки других форм не трогаем).
+      setForm(formOf(await api.updatePlace(place.id, patch)));
       setMessage({ text: t("miniapp.partner.editor.saved"), alert: false });
       onSaved();
     } catch (err) {
@@ -414,7 +429,13 @@ function Photos({ place, onChanged }: { place: PartnerPlace; onChanged: () => vo
       setInputKey((k) => k + 1);
       onChanged();
     } catch (err) {
-      setMessage({ text: errorText(err, "miniapp.partner.photos.error"), alert: true });
+      setMessage({
+        text:
+          err instanceof UploadRejectedError
+            ? t("miniapp.partner.photos.uploadRejected")
+            : errorText(err, "miniapp.partner.photos.error"),
+        alert: true,
+      });
     } finally {
       setBusy(false);
     }
@@ -427,7 +448,7 @@ function Photos({ place, onChanged }: { place: PartnerPlace; onChanged: () => vo
       setMessage({ text: t("miniapp.partner.photos.deleted"), alert: false });
       onChanged();
     } catch (err) {
-      setMessage({ text: errorText(err, "miniapp.partner.staff.error"), alert: true });
+      setMessage({ text: errorText(err, "miniapp.partner.photos.deleteError"), alert: true });
     } finally {
       setBusy(false);
     }
@@ -490,7 +511,7 @@ function Photos({ place, onChanged }: { place: PartnerPlace; onChanged: () => vo
 export function PlaceEditor({ id }: { id: string }) {
   const { t, locale } = useT();
   const { api, enabled } = usePartner();
-  const [state, reload] = useLiveAsync(
+  const [state, reload, refreshError] = useKeptAsync(
     () => (enabled ? api.place(id) : Promise.reject(new NotFoundError())),
     [api, id, enabled],
   );
@@ -522,15 +543,20 @@ export function PlaceEditor({ id }: { id: string }) {
     <Stack>
       <h1>{pickLocalized(place.name, locale)}</h1>
       <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
+      {refreshError !== null && (
+        <p role="alert" data-testid="editor-refresh-error">
+          {t("miniapp.partner.refreshError")}
+        </p>
+      )}
       <SubmitPanel place={place} onDone={reload} />
       {!place.abilities.editPlace ? (
         <p role="alert">{t("miniapp.partner.editor.forbidden")}</p>
       ) : (
         <>
           {!place.editable && <p data-testid="editor-readonly">{t("miniapp.partner.editor.readonly")}</p>}
-          {/* key — форма заново из ответа после сохранения (updatedAt) */}
-          <MainForm key={`main-${place.updatedAt}`} place={place} onSaved={reload} />
-          <ScheduleForm key={`schedule-${place.updatedAt}`} place={place} onSaved={reload} />
+          {/* Без key: формы не перемонтируются после чужого сохранения (несохранённые правки остаются). */}
+          <MainForm place={place} onSaved={reload} />
+          <ScheduleForm place={place} onSaved={reload} />
           <Photos place={place} onChanged={reload} />
         </>
       )}
