@@ -30,6 +30,8 @@ export function useRadiusLabel(): (m: number) => string {
       : t("miniapp.place.distanceKm", { n: String(Math.round(m / 100) / 10).replace(".", ",") });
 }
 
+type NearbyResult = { list: PlaceSummary[]; radius: number };
+
 type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; point: LatLng };
 
 export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
@@ -136,34 +138,38 @@ function NearbyPlaces({
 }) {
   const { t } = useT();
   const { api } = useGuide();
-  const radiusLabel = useRadiusLabel()(radius);
+  const label = useRadiusLabel();
   const [fresh, retry] = useAsync(
-    () => api.search({ point, radius, limit: NEARBY_LIMIT }),
+    () => api.search({ point, radius, limit: NEARBY_LIMIT }).then((list) => ({ list, radius })),
     [api, point.lat, point.lng, radius],
   );
   // Смена радиуса: прежний список и карта остаются до ответа (карта не пересоздаётся, тайлы не грузятся заново).
-  const last = useRef<Async<PlaceSummary[]>>(fresh);
+  const last = useRef<Async<NearbyResult>>(fresh);
   if (fresh.status !== "loading") last.current = fresh;
-  const places = fresh.status === "loading" && last.current.status === "ready" ? last.current : fresh;
+  const shown = fresh.status === "loading" && last.current.status === "ready" ? last.current : fresh;
   return (
-    <AsyncView state={places} retry={retry}>
-      {(list) => (
+    <AsyncView state={shown} retry={retry}>
+      {({ list, radius: loaded }) => (
         <Stack>
-          {fresh.status === "loading" && (
-            <p role="status" className="kosiv-muted">
-              {t("miniapp.guide.loading")}
-            </p>
-          )}
+          {/* Круг, пустой текст и подписи — по радиусу загруженных данных, не по ползунку. */}
           <MapSlot
             places={list}
             center={base}
             centerLabel={baseLabel}
-            radius={base ? radius : undefined}
+            radius={base ? loaded : undefined}
             // По геолокации места окружают устройство: без базовой точки не приближаем карту до двора туриста.
             maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
           />
+          {/* Статус обновления — под картой, в строке фиксированной высоты: карта не сдвигается. */}
+          <p role="status" className="kosiv-muted kosiv-status-line" data-testid="nearby-status">
+            {fresh.status === "loading"
+              ? t("miniapp.guide.loading")
+              : list.length >= NEARBY_LIMIT
+                ? t("miniapp.nearby.limited", { n: NEARBY_LIMIT })
+                : ""}
+          </p>
           {list.length === 0 ? (
-            <p data-testid="nearby-empty">{t("miniapp.nearby.emptyRadius", { r: radiusLabel })}</p>
+            <p data-testid="nearby-empty">{t("miniapp.nearby.emptyRadius", { r: label(loaded) })}</p>
           ) : (
             <PlaceList places={list} />
           )}

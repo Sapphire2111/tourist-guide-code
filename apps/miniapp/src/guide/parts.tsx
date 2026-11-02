@@ -104,7 +104,8 @@ export function PlaceSummaryCard({
   const { t, locale } = useT();
   const raw = useDistance()(place.distanceMeters);
   // Что это за место («Кафе», «Пам'ятка») — название категории из справочника.
-  const category = useCategoryIndex(useMaybeGuide()?.api).byId.get(place.categoryId);
+  const guide = useMaybeGuide();
+  const category = useCategoryIndex(guide?.api).byId.get(place.categoryId);
   const d = raw && distanceFrom ? t("miniapp.place.distanceFrom", { d: raw, from: distanceFrom }) : raw;
   return (
     <Tag className={`kosiv-card kosiv-place${layout === "row" ? " kosiv-row" : ""}`} data-testid={testId}>
@@ -113,9 +114,10 @@ export function PlaceSummaryCard({
         <Link to={`/place/${place.id}`} className="kosiv-place-title">
           {pickLocalized(place.name, locale)}
         </Link>
-        {category && (
+        {guide && (
+          // Строка зарезервирована до прихода справочника — карточка не прыгает.
           <span className="kosiv-place-cat" data-testid="place-category">
-            {pickLocalized(category.name, locale)}
+            {category ? pickLocalized(category.name, locale) : ""}
           </span>
         )}
         {place.address && <span className="kosiv-place-addr">{pickLocalized(place.address, locale)}</span>}

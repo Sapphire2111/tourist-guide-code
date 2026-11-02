@@ -1,6 +1,6 @@
 // Ленивая карта с запасным состоянием: не загрузилась (сеть, ошибка модуля) — «Карту не вдалося завантажити»,
 // список рядом остаётся (C05 «ошибка карты»).
-import { Component, lazy, Suspense, type ComponentType, type ReactNode } from "react";
+import { Component, lazy, Suspense, useState, type ComponentType, type ReactNode } from "react";
 import { useT } from "@tg/ui";
 import { TILE_PROVIDER } from "./map-tiles.js";
 import type { PlacesMapProps } from "./PlacesMap.js";
@@ -8,6 +8,7 @@ import type { PlacesMapProps } from "./PlacesMap.js";
 type MapModule = { default: ComponentType<PlacesMapProps> };
 
 let mapModule: Promise<MapModule> | null = null;
+let lazyFailed = false;
 
 /**
  * Заранее (экран с картой открылся, места ещё грузятся): модуль Leaflet и соединение с сервером тайлов —
@@ -24,13 +25,23 @@ export function preloadMap(): Promise<MapModule> {
     }
     mapModule = import("./PlacesMap.js").catch((e: unknown) => {
       mapModule = null;
+      lazyFailed = true;
       throw e;
     });
   }
   return mapModule;
 }
 
-const PlacesMap = lazy(preloadMap);
+// React.lazy запоминает отказ навсегда: после сбоя загрузки следующий экран с картой берёт новый lazy —
+// настоящий повтор (сеть вернулась — карта появится), а не вечное «не вдалося».
+let lazyMap: ComponentType<PlacesMapProps> | null = null;
+function currentLazyMap(): ComponentType<PlacesMapProps> {
+  if (!lazyMap || lazyFailed) {
+    lazyFailed = false;
+    lazyMap = lazy(preloadMap);
+  }
+  return lazyMap;
+}
 
 class MapBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -44,6 +55,7 @@ class MapBoundary extends Component<{ fallback: ReactNode; children: ReactNode }
 
 export function MapSlot(props: PlacesMapProps) {
   const { t } = useT();
+  const [PlacesMap] = useState(currentLazyMap);
   return (
     <MapBoundary fallback={<p role="alert">{t("miniapp.map.error")}</p>}>
       <Suspense fallback={<p role="status">{t("miniapp.guide.loading")}</p>}>

@@ -71,7 +71,7 @@ export function popupNode(
   link.textContent = openText;
   link.addEventListener("click", (e) => {
     e.preventDefault();
-    navigate(`/place/${id}`);
+    navigate(`/place/${encodeURIComponent(id)}`);
   });
   box.append(title, cat, link);
   return box;
@@ -113,12 +113,18 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
     };
   }, []);
 
-  // Маркеры — при смене мест, базы, радиуса или справочника категорий.
+  // Справочник категорий — через ref: подписи читают актуальный при открытии, маркеры не пересоздаются.
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const markersRef = useRef<{ marker: L.CircleMarker; place: PlaceSummary }[]>([]);
+
+  // Маркеры и границы — только при смене мест, базы или радиуса.
   useEffect(() => {
     const map = mapRef.current;
     const layer = layerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
+    markersRef.current = [];
     const bounds: L.LatLngExpression[] = [];
     if (center) {
       L.circleMarker([center.lat, center.lng], {
@@ -136,9 +142,8 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
     for (const p of places) {
       if (!p.location) continue;
       const name = pickLocalized(p.name, locale);
-      const cat = index.byId.get(p.categoryId);
-      const group = markerGroup(index.sectionOf(p.categoryId));
-      const catName = cat ? pickLocalized(cat.name, locale) : t(groupLabel(group));
+      const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
+      // Подпись — только по нажатию (popup): tooltip на тач-экране дублировал бы её.
       const marker = L.circleMarker([p.location.lat, p.location.lng], {
         radius: 8,
         color: "#ffffff",
@@ -146,16 +151,33 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
         fillColor: MARKER_COLORS[group],
         fillOpacity: 0.95,
       })
-        .bindTooltip(textNode(name))
-        .bindPopup(() => popupNode(name, catName, p.id, t("miniapp.map.open"), navigate))
+        .bindPopup(() => {
+          const idx = indexRef.current;
+          const cat = idx.byId.get(p.categoryId);
+          const g = markerGroup(idx.sectionOf(p.categoryId));
+          const catName = cat ? pickLocalized(cat.name, locale) : t(groupLabel(g));
+          return popupNode(name, catName, p.id, t("miniapp.map.open"), navigate);
+        })
         .addTo(layer);
       marker.getElement()?.setAttribute("data-group", group);
+      markersRef.current.push({ marker, place: p });
       bounds.push([p.location.lat, p.location.lng]);
     }
     if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom });
     else if (bounds[0]) map.setView(bounds[0], Math.min(16, maxZoom));
     else map.setView([48.45, 24.55], 12);
-  }, [places, center, centerLabel, radius, maxZoom, locale, navigate, t, index]);
+    // t/navigate/locale стабильны в пределах экрана; index — через ref (ниже — перекраска).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [places, center, centerLabel, radius, maxZoom]);
+
+  // Пришёл справочник категорий — перекраска без пересоздания маркеров и без закрытия открытой подписи.
+  useEffect(() => {
+    for (const { marker, place } of markersRef.current) {
+      const group = markerGroup(index.sectionOf(place.categoryId));
+      marker.setStyle({ fillColor: MARKER_COLORS[group] });
+      marker.getElement()?.setAttribute("data-group", group);
+    }
+  }, [index]);
 
   const groups = [
     ...new Set(places.filter((p) => p.location).map((p) => markerGroup(index.sectionOf(p.categoryId)))),

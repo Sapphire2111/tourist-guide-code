@@ -150,10 +150,10 @@ test.describe("QR отеля demoHotel01", () => {
     );
     await page.goto("/#/nearby");
     const marker = page.locator(".leaflet-overlay-pane path.leaflet-interactive").last();
-    await marker.hover({ force: true });
-    const tooltip = page.locator(".leaflet-tooltip");
-    await expect(tooltip).toHaveText(evil);
-    await expect(tooltip.locator("img")).toHaveCount(0);
+    await marker.click({ force: true });
+    const popup = page.locator(".kosiv-map-popup");
+    await expect(popup.locator("strong")).toHaveText(evil);
+    await expect(popup.locator("img")).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   });
 

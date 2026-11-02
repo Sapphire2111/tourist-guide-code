@@ -23,7 +23,6 @@ import { AppTop, Splash } from "./design/Chrome.js";
 import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
 import { ICONS } from "./design/Ornament.js";
 import { ResortProvider } from "./design/ResortProvider.js";
-import { hasResorts } from "./design/resorts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
@@ -431,7 +430,7 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
  * Шапка, содержимое экрана и нижняя навигация. Появление экрана — анимацией того же узла (Web Animations), без
  * пересоздания дерева: фокус на h1, BackButton и состояние экранов при смене пути сохраняются.
  */
-function Shell({ routes, profile, resorts }: { routes: ReactNode; profile: boolean; resorts: boolean }) {
+function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
   const [path] = useRoute();
   const content = useRef<HTMLDivElement>(null);
   const first = useRef(true);
@@ -448,7 +447,7 @@ function Shell({ routes, profile, resorts }: { routes: ReactNode; profile: boole
   }, [path]);
   return (
     <>
-      <AppTop path={path} profile={profile} resorts={resorts} />
+      <AppTop path={path} profile={profile} />
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>
@@ -548,7 +547,6 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
                   <HostProvider value={host}>
                     <Shell
                       profile={Boolean(session && hasRequiredConsents(session.me))}
-                      resorts={hasResorts(context?.region?.code)}
                       routes={<Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />}
                     />
                   </HostProvider>

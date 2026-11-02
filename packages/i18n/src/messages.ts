@@ -270,7 +270,7 @@ export const uk = {
   "miniapp.nearby.geoOffNoBase":
     "Геолокацію вимкнено, а базову точку не визначено. Дозвольте доступ до геолокації або відкрийте гід за QR-кодом.",
   "miniapp.nearby.noBase": "Щоб показати місця поруч, дозвольте доступ до геолокації.",
-  "miniapp.nearby.empty": "У радіусі {n} м нічого не знайдено. Збільште радіус.",
+  "miniapp.nearby.limited": "Показано {n} найближчих.",
   "miniapp.nearby.emptyRadius": "У радіусі {r} нічого не знайдено. Збільште радіус.",
   "miniapp.map.legend": "Позначення на карті",
   "miniapp.map.other": "Інше",
@@ -1144,7 +1144,7 @@ export const en: Messages = {
   "miniapp.nearby.geoOffNoBase":
     "Location is off and no base point is set. Allow location access or open the guide via a QR code.",
   "miniapp.nearby.noBase": "Allow location access to see places nearby.",
-  "miniapp.nearby.empty": "Nothing found within {n} m. Increase the radius.",
+  "miniapp.nearby.limited": "Showing the {n} nearest.",
   "miniapp.nearby.emptyRadius": "Nothing found within {r}. Increase the radius.",
   "miniapp.map.legend": "Map key",
   "miniapp.map.other": "Other",
