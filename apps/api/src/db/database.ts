@@ -51,6 +51,11 @@ export function onIdleClientError(err: Error): void {
   console.error("PostgreSQL: ошибка простаивающего соединения пула:", err.message);
 }
 
+/** Логирует обрыв соединения пула (в т. ч. выданного под запрос/транзакцию) вместо падения процесса. */
+export function onActiveClientError(err: Error): void {
+  console.error("PostgreSQL: обрыв соединения пула:", err.message);
+}
+
 /**
  * Kysely поверх pg.Pool с TenantGuardPlugin (фильтр region_id, ADR-005). Соединения открываются лениво —
  * при первом запросе. Закрыть: `await db.destroy()` (закрывает и пул).
@@ -61,10 +66,22 @@ export function createDatabase({
   tenancy,
   defaultTenant,
 }: DatabaseOptions): Db {
-  const pool = new pg.Pool({ connectionString, max: maxConnections, application_name: "tg-api" });
+  // keepAlive и таймаут подключения: Neon может «тихо» потерять сокет или долго просыпаться — без них запрос/connect
+  // висят до TCP-таймаута ОС (минуты), а очередь пула растёт.
+  const pool = new pg.Pool({
+    connectionString,
+    max: maxConnections,
+    application_name: "tg-api",
+    keepAlive: true,
+    connectionTimeoutMillis: 10_000,
+  });
   // Ошибка простаивающего соединения (рестарт/обрыв БД) приходит событием пула; без обработчика
   // Node завершает процесс. Пул сам выбрасывает сломанное соединение и потом откроет новое.
   pool.on("error", onIdleClientError);
+  // Обрыв занятого соединения (Neon/рестарт БД посреди запроса) pool.on("error") не ловит — событие идёт на сам
+  // client, и без слушателя процесс падает (uncaughtException). Запрос и так получит ошибку, а pg-pool при release
+  // выбросит сломанное соединение.
+  pool.on("connect", (client) => client.on("error", onActiveClientError));
   return new Kysely<Database>({
     dialect: tenantGuardedDialect(new PostgresDialect({ pool })),
     plugins: [new TenantGuardPlugin({ tables: tenancy, defaultTenant })],

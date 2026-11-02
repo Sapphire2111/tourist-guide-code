@@ -5,6 +5,8 @@ import { migrationDatabaseUrl } from "./env.js";
 import { runMigrations } from "./migrate.js";
 
 const client = new pg.Client({ connectionString: migrationDatabaseUrl(), application_name: "tg-migrate" });
+// Обрыв соединения посреди миграции — в catch/finally (ошибку получит текущий запрос), а не uncaughtException.
+client.on("error", (err) => console.error("PostgreSQL: обрыв соединения миграций:", err.message));
 try {
   await client.connect();
   const applied = await runMigrations(client);
