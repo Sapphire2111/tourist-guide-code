@@ -110,21 +110,41 @@ export type UserPlan = {
 
 export type PlanChange = { replace: { itemId: string; placeId: string } } | { remove: string };
 
-/** Ошибка api с messageKey сервера (409 конфликт, 422 и т.п.). */
+/** Ошибка api: код и messageKey из конверта ошибки сервера; details — например, текущий статус при 409. */
 export class ApiCallError extends Error {
   constructor(
     public readonly status: number,
     public readonly messageKey: string | null,
+    public readonly code: string | null = null,
+    public readonly details: Record<string, unknown> | null = null,
   ) {
     super(`HTTP ${status}`);
   }
 }
 
-/** Конфликт (409): недопустимый переход статуса или дубль активной заявки. */
+/** Конфликт (409): недопустимый переход статуса, дубль активной заявки или IDEMPOTENCY_IN_PROGRESS. */
 export class ConflictError extends ApiCallError {
-  constructor(messageKey: string | null = null) {
-    super(409, messageKey);
+  constructor(
+    messageKey: string | null = null,
+    code: string | null = "CONFLICT",
+    details: Record<string, unknown> | null = null,
+  ) {
+    super(409, messageKey, code, details);
   }
+}
+
+/** Ответа нет (сеть) — исход запроса неизвестен; повтор — с тем же Idempotency-Key. */
+export class NetworkError extends Error {
+  constructor() {
+    super("network");
+  }
+}
+
+/** Исход записи неизвестен: сеть, 5xx, 429. */
+export function isAmbiguous(err: unknown): boolean {
+  return (
+    err instanceof NetworkError || (err instanceof ApiCallError && (err.status >= 500 || err.status === 429))
+  );
 }
 
 export type HostApi = {

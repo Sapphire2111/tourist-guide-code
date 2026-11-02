@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
@@ -32,7 +32,7 @@ import { PlaceCard } from "./guide/PlaceCard.js";
 import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
 import { About } from "./host/About.js";
-import { HostProvider, useHost, type HostEnv } from "./host/context.js";
+import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/context.js";
 import { createHostApi } from "./host/host-api.js";
 import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
@@ -159,7 +159,7 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
         <p data-testid="browser-notice">{t("miniapp.browser.notice")}</p>
       )}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      {staff && (
+      {staff === "yes" && (
         <Link to="/staff" data-testid="staff-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
           {t("miniapp.staff.open")}
         </Link>
@@ -246,6 +246,8 @@ function Routes(props: RoutesProps) {
   const [path] = useRoute();
   useFocusHeading(path);
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
+  // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
+  const hostRequests = useFeatureFlag("module.host_requests");
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
   if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))
@@ -293,19 +295,21 @@ function Routes(props: RoutesProps) {
         <About header={<ContextView context={session!.context} webApp={webApp} />} />
       </Screen>
     );
-  if (path === "/requests")
+  if (hostRequests && path === "/requests")
     return (
       <Screen webApp={webApp}>
-        <MyRequests />
+        <RequireRegion>
+          <MyRequests />
+        </RequireRegion>
       </Screen>
     );
-  if (path === "/staff")
+  if (hostRequests && path === "/staff")
     return (
       <Screen webApp={webApp}>
         <StaffRequests />
       </Screen>
     );
-  if (path === "/plan" || path === "/plan/saved")
+  if (hostRequests && (path === "/plan" || path === "/plan/saved"))
     return (
       <Screen webApp={webApp}>
         <RequireRegion>
@@ -313,7 +317,7 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
-  const planRoute = /^\/plan\/(scenario|saved)\/([^/]+)$/.exec(path);
+  const planRoute = hostRequests && /^\/plan\/(scenario|saved)\/([^/]+)$/.exec(path);
   if (planRoute) {
     const id = uuidOf(planRoute[2]!);
     return (
@@ -434,26 +438,38 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
   );
   const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
   // Режим персонала (D-50): есть места, где пользователь — ORG_STAFF/ORG_OWNER (GET /staff/places).
-  const [staff, setStaff] = useState(false);
+  // Только при включённом module.host_requests; ошибка — состояние «error» с повтором (без «нет доступа»).
+  const hostRequests = flags?.["module.host_requests"] === true;
+  const [staffCheck, setStaffCheck] = useState<{ key: string; role: StaffRole }>({
+    key: "",
+    role: "loading",
+  });
+  const [staffAttempt, setStaffAttempt] = useState(0);
+  const staffKey = `${signedIn}:${hostRequests}:${staffAttempt}`;
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !hostRequests) return;
     let alive = true;
     hApi.isStaff().then(
-      (v) => alive && setStaff(v),
-      () => undefined,
+      (v) => alive && setStaffCheck({ key: staffKey, role: v ? "yes" : "no" }),
+      () => alive && setStaffCheck({ key: staffKey, role: "error" }),
     );
     return () => {
       alive = false;
     };
-  }, [hApi, signedIn]);
+  }, [hApi, signedIn, hostRequests, staffKey]);
+  const staff: StaffRole =
+    !signedIn || !hostRequests ? "no" : staffCheck.key === staffKey ? staffCheck.role : "loading";
+  const retryStaff = useCallback(() => setStaffAttempt((n) => n + 1), []);
   const host = useMemo<HostEnv>(
     () => ({
       api: hApi,
       hotelPlaceId: venue ? (context?.qrPoint?.placeId ?? null) : null,
       entryContextId: context?.entryContextId ?? null,
       staff,
+      retryStaff,
+      timeZone: context?.region?.timezone ?? null,
     }),
-    [hApi, venue, context, staff],
+    [hApi, venue, context, staff, retryStaff],
   );
   return (
     <I18nProvider locale={effectiveLocale}>

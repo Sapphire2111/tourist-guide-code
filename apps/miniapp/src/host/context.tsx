@@ -1,5 +1,6 @@
 // Окружение экранов блока 5: доступ к API заявок/планов, контекст отеля из QR, роль персонала.
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import type { Async } from "../guide/context.js";
 import type { HostApi } from "./types.js";
 
 export type HostEnv = {
@@ -7,9 +8,15 @@ export type HostEnv = {
   /** Заведение из QR отеля (placeId точки), иначе null — «Про заклад» недоступен. */
   hotelPlaceId: string | null;
   entryContextId: string | null;
-  /** Роль ORG_STAFF (D-50): режим персонала. */
-  staff: boolean;
+  /** Режим персонала (D-50): роль ещё загружается, есть/нет, ошибка проверки. */
+  staff: StaffRole;
+  /** Повторить проверку роли персонала после ошибки. */
+  retryStaff: () => void;
+  /** Часовой пояс региона (IANA) — время «буде оброблено з …»; null — устройства. */
+  timeZone: string | null;
 };
+
+export type StaffRole = "loading" | "yes" | "no" | "error";
 
 const HostContext = createContext<HostEnv | null>(null);
 
@@ -40,4 +47,34 @@ export function noopHostApi(): HostApi {
     savePlan: fail,
     updatePlan: fail,
   };
+}
+
+/**
+ * Загрузка с обновлением «на месте»: смена deps — состояние загрузки; reload() — данные остаются на экране
+ * (список не размонтируется, фокус и прокрутка сохраняются), пока не придёт новый ответ.
+ */
+export function useLiveAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): [Async<T>, () => void] {
+  const [state, setState] = useState<Async<T>>({ status: "loading" });
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const seq = useRef({ n: 0 });
+  const run = useCallback((keep: boolean) => {
+    const counter = seq.current;
+    const id = ++counter.n;
+    if (!keep) setState({ status: "loading" });
+    loadRef.current().then(
+      (data) => id === counter.n && setState({ status: "ready", data }),
+      (error: unknown) => id === counter.n && setState({ status: "error", error }),
+    );
+  }, []);
+  useEffect(() => {
+    const counter = seq.current;
+    run(false);
+    return () => {
+      counter.n++;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  const reload = useCallback(() => run(true), [run]);
+  return [state, reload];
 }

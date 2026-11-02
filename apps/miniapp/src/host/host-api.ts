@@ -5,6 +5,7 @@ import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import {
   ApiCallError,
   ConflictError,
+  NetworkError,
   type HostApi,
   type PlanDay,
   type PlanPlace,
@@ -76,14 +77,23 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
 
 /** Ответ api: data при 2xx; 404/401/409 — свои ошибки; прочее — ApiCallError с messageKey сервера. */
 async function ok<T>(p: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
-  const res = await p;
+  let res: Awaited<typeof p>;
+  try {
+    res = await p;
+  } catch {
+    throw new NetworkError();
+  }
   const status = res.response.status;
   if (res.response.ok && res.data !== undefined) return res.data;
   if (status === 404) throw new NotFoundError();
   if (status === 401) throw new UnauthorizedError();
-  const key = (res.error as { error?: { messageKey?: string } } | undefined)?.error?.messageKey ?? null;
-  if (status === 409) throw new ConflictError(key);
-  throw new ApiCallError(status, key);
+  const env = (
+    res.error as { error?: { code?: string; messageKey?: string; details?: Record<string, unknown> } }
+  )?.error;
+  const key = env?.messageKey ?? null;
+  const code = env?.code ?? null;
+  if (status === 409) throw new ConflictError(key, code, env?.details ?? null);
+  throw new ApiCallError(status, key, code, env?.details ?? null);
 }
 
 export function createHostApi(api: ApiClient, regionId: string | null): HostApi {

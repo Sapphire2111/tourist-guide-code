@@ -3,10 +3,11 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
-import { useAsync, useGuide } from "../guide/context.js";
+import { useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { UnauthorizedError } from "../guide/types.js";
-import { useHost } from "./context.js";
+import { useHost, useLiveAsync } from "./context.js";
+import { useErrorText } from "./errors.js";
 import { formatDateTime } from "./format.js";
 import {
   ConflictError,
@@ -15,6 +16,9 @@ import {
   type ServiceRequest,
   type StaffTransition,
 } from "./types.js";
+
+/** Как REASON_MAX в UpdateServiceRequestStatusDto сервера. */
+const REASON_MAX = 500;
 
 const statusKey = (s: RequestStatus) => `miniapp.requestStatus.${s}` as MessageKey;
 
@@ -31,6 +35,7 @@ type Message = { text: string; alert: boolean } | null;
 
 function RequestInfo({ r }: { r: ServiceRequest }) {
   const { t, locale } = useT();
+  const { timeZone } = useHost();
   return (
     <>
       <strong style={{ display: "block", fontSize: "1.1rem" }}>{pickLocalized(r.service, locale)}</strong>
@@ -55,11 +60,11 @@ function RequestInfo({ r }: { r: ServiceRequest }) {
       )}
       {r.processFrom && r.status === "new" && (
         <span style={{ display: "block" }} data-testid="request-deferred">
-          {t("miniapp.requests.deferred", { from: formatDateTime(r.processFrom, locale) })}
+          {t("miniapp.requests.deferred", { from: formatDateTime(r.processFrom, locale, timeZone) })}
         </span>
       )}
       <small style={{ display: "block" }}>
-        {t("miniapp.requests.created", { date: formatDateTime(r.createdAt, locale) })}
+        {t("miniapp.requests.created", { date: formatDateTime(r.createdAt, locale, timeZone) })}
       </small>
     </>
   );
@@ -88,7 +93,11 @@ export function MyRequests() {
   const { t } = useT();
   const { signedIn } = useGuide();
   const { api } = useHost();
-  const [list, retry] = useAsync(() => (signedIn ? api.myRequests() : Promise.resolve([])), [api, signedIn]);
+  const errorText = useErrorText();
+  const [list, retry] = useLiveAsync(
+    () => (signedIn ? api.myRequests() : Promise.resolve([])),
+    [api, signedIn],
+  );
   const [message, setMessage] = useState<Message>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const cancel = async (r: ServiceRequest) => {
@@ -99,7 +108,10 @@ export function MyRequests() {
       setMessage({ text: t("miniapp.requests.cancelled"), alert: false });
     } catch (err) {
       setMessage({
-        text: t(err instanceof ConflictError ? "miniapp.staff.conflict" : "miniapp.requests.cancelError"),
+        text:
+          err instanceof ConflictError
+            ? t("miniapp.requests.cancelConflict")
+            : errorText(err, "miniapp.requests.cancelError"),
         alert: true,
       });
     } finally {
@@ -177,7 +189,7 @@ function StaffActions({
           style={{ ...input, width: "100%", boxSizing: "border-box" }}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          maxLength={200}
+          maxLength={REASON_MAX}
           aria-required="true"
         />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -205,15 +217,34 @@ function StaffActions({
 
 export function StaffRequests() {
   const { t } = useT();
-  const { api, staff } = useHost();
+  const { api, staff, retryStaff } = useHost();
+  const errorText = useErrorText();
   const [filter, setFilter] = useState<RequestStatus | "">("");
-  const [list, retry] = useAsync(
-    () => (staff ? api.staffRequests(filter || null) : Promise.resolve([])),
+  const [list, retry] = useLiveAsync(
+    () => (staff === "yes" ? api.staffRequests(filter || null) : Promise.resolve([])),
     [api, staff, filter],
   );
   const [message, setMessage] = useState<Message>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  if (!staff)
+  // Роль ещё проверяется — не показываем «нет доступа» раньше ответа.
+  if (staff === "loading")
+    return (
+      <Stack>
+        <h1>{t("miniapp.staff.title")}</h1>
+        <p role="status">{t("miniapp.guide.loading")}</p>
+      </Stack>
+    );
+  if (staff === "error")
+    return (
+      <Stack>
+        <h1>{t("miniapp.staff.title")}</h1>
+        <p role="alert" data-testid="staff-role-error">
+          {t("miniapp.staff.roleError")}
+        </p>
+        <Button onClick={retryStaff}>{t("miniapp.guide.retry")}</Button>
+      </Stack>
+    );
+  if (staff === "no")
     return (
       <Stack>
         <h1>{t("miniapp.staff.title")}</h1>
@@ -230,7 +261,8 @@ export function StaffRequests() {
       setMessage({ text: t("miniapp.staff.changed", { status: t(statusKey(to)) }), alert: false });
     } catch (err) {
       setMessage({
-        text: t(err instanceof ConflictError ? "miniapp.staff.conflict" : "miniapp.staff.error"),
+        text:
+          err instanceof ConflictError ? t("miniapp.staff.conflict") : errorText(err, "miniapp.staff.error"),
         alert: true,
       });
     } finally {

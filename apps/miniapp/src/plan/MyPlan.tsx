@@ -7,6 +7,7 @@ import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "../host/context.js";
+import { useErrorText } from "../host/errors.js";
 import type {
   PlanChange,
   PlanDay,
@@ -128,6 +129,7 @@ function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
   const { signedIn } = useGuide();
   const { api } = useHost();
   const [, navigate] = useRoute();
+  const errorText = useErrorText();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Message>(null);
   const save = async () => {
@@ -136,8 +138,8 @@ function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
     try {
       const plan = await api.savePlan(scenario.id);
       navigate(`/plan/saved/${plan.id}`, { replace: true });
-    } catch {
-      setStatus({ text: t("miniapp.plan.saveError"), alert: true });
+    } catch (err) {
+      setStatus({ text: errorText(err, "miniapp.plan.saveError"), alert: true });
       setBusy(false);
     }
   };
@@ -200,6 +202,7 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
   const { t, locale } = useT();
   const { api } = useHost();
   const [plan, setPlan] = useState(initial);
+  const errorText = useErrorText();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Message>(null);
   const apply = async (change: PlanChange, done: string) => {
@@ -208,8 +211,8 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
     try {
       setPlan(await api.updatePlan(plan.id, change));
       setStatus({ text: done, alert: false });
-    } catch {
-      setStatus({ text: t("miniapp.plan.changeError"), alert: true });
+    } catch (err) {
+      setStatus({ text: errorText(err, "miniapp.plan.changeError"), alert: true });
     } finally {
       setBusy(false);
     }

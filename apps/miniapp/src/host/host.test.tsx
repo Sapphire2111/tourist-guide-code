@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createApiClient } from "@tg/api-client";
-import { I18nProvider } from "@tg/ui";
+import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
 import { MyPlan, SavedPlanScreen, ScenarioScreen } from "../plan/MyPlan.js";
@@ -11,7 +11,9 @@ import { HostProvider, noopHostApi, type HostEnv } from "./context.js";
 import { createHostApi } from "./host-api.js";
 import { MyRequests, StaffRequests } from "./Requests.js";
 import {
+  ApiCallError,
   ConflictError,
+  NetworkError,
   type HostApi,
   type HostModule,
   type PlanDay,
@@ -57,21 +59,31 @@ const request = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
   ...over,
 });
 
-function setup(ui: ReactNode, api: Partial<HostApi>, env: Partial<HostEnv> = {}, signedIn = true) {
+function setup(
+  ui: ReactNode,
+  api: Partial<HostApi>,
+  env: Partial<HostEnv> = {},
+  signedIn = true,
+  flags: Record<string, boolean> = { "module.host_requests": true },
+) {
   const host: HostEnv = {
     api: { ...noopHostApi(), ...api },
     hotelPlaceId: PLACE,
     entryContextId: null,
-    staff: false,
+    staff: "no",
+    retryStaff: () => undefined,
+    timeZone: "Europe/Kyiv",
     ...env,
   };
   return render(
     <I18nProvider locale="uk">
-      <GuideProvider
-        value={{ api: noopGuideApi(), analytics: noopAnalytics, base: null, regionId: "r", signedIn }}
-      >
-        <HostProvider value={host}>{ui}</HostProvider>
-      </GuideProvider>
+      <FeatureFlagsProvider flags={flags}>
+        <GuideProvider
+          value={{ api: noopGuideApi(), analytics: noopAnalytics, base: null, regionId: "r", signedIn }}
+        >
+          <HostProvider value={host}>{ui}</HostProvider>
+        </GuideProvider>
+      </FeatureFlagsProvider>
     </I18nProvider>,
   );
 }
@@ -121,6 +133,73 @@ describe("C03 Про заклад", () => {
   });
 });
 
+describe("C03: идемпотентность и флаг", () => {
+  it("после сетевой ошибки поля заблокированы, повтор — тем же ключом; правка — новый ключ", async () => {
+    const keys: string[] = [];
+    const createRequest = vi
+      .fn<HostApi["createRequest"]>(async (r) => {
+        keys.push(r.idempotencyKey);
+        return request();
+      })
+      .mockImplementationOnce(async (r) => {
+        keys.push(r.idempotencyKey);
+        throw new NetworkError();
+      })
+      .mockImplementationOnce(async (r) => {
+        keys.push(r.idempotencyKey);
+        throw new ConflictError("errors.idempotencyInProgress", "IDEMPOTENCY_IN_PROGRESS");
+      });
+    setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module(), createRequest });
+    fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
+    fireEvent.change(screen.getByLabelText("Номер кімнати"), { target: { value: "12" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    expect(text("request-error")).toContain("дубля не буде");
+    expect((screen.getByLabelText("Номер кімнати") as HTMLInputElement).readOnly).toBe(true);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Повторити" })));
+    expect(text("request-error")).toContain("Заявка ще обробляється");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Повторити" })));
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys).size).toBe(1);
+    expect(screen.getByTestId("request-sent")).toBeTruthy();
+  });
+
+  it("правка полей меняет ключ; KEY_REUSED — понятное сообщение; серверный messageKey", async () => {
+    const keys: string[] = [];
+    const createRequest = vi
+      .fn<HostApi["createRequest"]>()
+      .mockImplementationOnce(async (r) => {
+        keys.push(r.idempotencyKey);
+        throw new NetworkError();
+      })
+      .mockImplementationOnce(async (r) => {
+        keys.push(r.idempotencyKey);
+        throw new ApiCallError(422, "errors.idempotencyKeyReused", "IDEMPOTENCY_KEY_REUSED");
+      })
+      .mockImplementationOnce(async (r) => {
+        keys.push(r.idempotencyKey);
+        throw new ApiCallError(422, "errors.serviceRequests.serviceUnavailable", "UNPROCESSABLE");
+      });
+    setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module(), createRequest });
+    fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
+    fireEvent.change(screen.getByLabelText("Номер кімнати"), { target: { value: "12" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    fireEvent.click(screen.getByRole("button", { name: "Змінити заявку" }));
+    fireEvent.change(screen.getByLabelText("Номер кімнати"), { target: { value: "14" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    expect(text("request-error")).toContain("Дані заявки змінилися");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    expect(text("request-error")).toBe("Ця послуга зараз недоступна. Зверніться на рецепцію.");
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it("флаг module.host_requests выключен — услуг и «Мої заявки» нет", async () => {
+    setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module() }, {}, true, {});
+    expect(await screen.findByRole("heading", { name: "Правила" })).toBeTruthy();
+    expect(screen.queryByTestId("services")).toBeNull();
+    expect(screen.queryByTestId("my-requests-link")).toBeNull();
+  });
+});
+
 describe("заявки", () => {
   it("гость видит статус, пометку «вказано гостем», может отменить", async () => {
     const cancelRequest = vi.fn(async () => request({ status: "cancelled_by_guest" }));
@@ -141,7 +220,7 @@ describe("заявки", () => {
       .mockResolvedValueOnce(request({ status: "accepted" }))
       .mockRejectedValueOnce(new ConflictError())
       .mockResolvedValueOnce(request({ status: "rejected" }));
-    setup(<StaffRequests />, { staffRequests, setStatus }, { staff: true });
+    setup(<StaffRequests />, { staffRequests, setStatus }, { staff: "yes" });
     expect(await screen.findByTestId("request-overdue")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Прийняти" })));
     expect(setStatus).toHaveBeenCalledWith("r1", "accepted", null);
@@ -157,6 +236,26 @@ describe("заявки", () => {
     expect(setStatus).toHaveBeenLastCalledWith("r1", "rejected", "Немає вільного персоналу");
     fireEvent.change(screen.getByTestId("staff-filter"), { target: { value: "done" } });
     expect(staffRequests).toHaveBeenLastCalledWith("done");
+  });
+
+  it("роль персонала проверяется — без «нет доступа»; ошибка — повтор", () => {
+    const retryStaff = vi.fn();
+    setup(<StaffRequests />, {}, { staff: "loading" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
+    setup(<StaffRequests />, {}, { staff: "error", retryStaff });
+    fireEvent.click(screen.getByRole("button", { name: "Спробувати ще раз" }));
+    expect(retryStaff).toHaveBeenCalled();
+  });
+
+  it("гость: 409 при отмене — свой текст", async () => {
+    setup(<MyRequests />, {
+      myRequests: async () => [request()],
+      cancelRequest: async () => Promise.reject(new ConflictError()),
+    });
+    const cancel = await screen.findByRole("button", { name: "Скасувати заявку" });
+    await act(async () => fireEvent.click(cancel));
+    expect(text("requests-message")).toContain("скасувати не можна");
   });
 
   it("без роли персонала — нет доступа", () => {

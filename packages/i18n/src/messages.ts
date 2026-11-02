@@ -98,6 +98,16 @@ export const uk = {
   "miniapp.about.wifiPassword": "Пароль: {password}",
   "miniapp.about.copyPassword": "Копіювати пароль",
   "miniapp.about.copied": "Пароль скопійовано",
+  "miniapp.about.copyFailed": "Не вдалося скопіювати — виділіть пароль і скопіюйте вручну.",
+  "miniapp.request.uncertain":
+    "Не вдалося підтвердити, що заявку отримано. Натисніть «Повторити» — дубля не буде.",
+  "miniapp.request.processing": "Заявка ще обробляється. Зачекайте кілька секунд і натисніть «Повторити».",
+  "miniapp.request.keyReused": "Дані заявки змінилися. Перевірте їх і надішліть ще раз.",
+  "miniapp.request.retry": "Повторити",
+  "miniapp.request.edit": "Змінити заявку",
+  "miniapp.requests.cancelConflict":
+    "Заявку вже взято в роботу або закрито — скасувати не можна. Статус оновлено.",
+  "miniapp.staff.roleError": "Не вдалося перевірити доступ персоналу.",
   "miniapp.about.contacts": "Контакти рецепції",
   "miniapp.about.call": "Подзвонити",
   "miniapp.about.intake": "Заявки приймаються з {from} до {to}",
@@ -694,6 +704,16 @@ export const en: Messages = {
   "miniapp.about.wifiPassword": "Password: {password}",
   "miniapp.about.copyPassword": "Copy password",
   "miniapp.about.copied": "Password copied",
+  "miniapp.about.copyFailed": "Could not copy — select the password and copy it manually.",
+  "miniapp.request.uncertain":
+    "Could not confirm the request was received. Press «Retry» — no duplicate will be created.",
+  "miniapp.request.processing": "The request is still being processed. Wait a few seconds and press «Retry».",
+  "miniapp.request.keyReused": "The request data has changed. Check it and send again.",
+  "miniapp.request.retry": "Retry",
+  "miniapp.request.edit": "Edit request",
+  "miniapp.requests.cancelConflict":
+    "The request is already in progress or closed and can't be cancelled. Status updated.",
+  "miniapp.staff.roleError": "Could not check staff access.",
   "miniapp.about.contacts": "Reception contacts",
   "miniapp.about.call": "Call",
   "miniapp.about.intake": "Requests are accepted from {from} to {to}",

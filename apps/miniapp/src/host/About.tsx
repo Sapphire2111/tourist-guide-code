@@ -3,14 +3,25 @@
 // Вне часов приёма заявка принимается с пометкой «буде оброблено з …» (D-55, вариант Б).
 import { useId, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { uuidv7 } from "../guide/analytics.js";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError } from "../guide/types.js";
 import { useHost } from "./context.js";
+import { isMessageKey, useErrorText } from "./errors.js";
 import { formatTime } from "./format.js";
-import { ConflictError, type HostModule, type HostService, type ServiceRequest } from "./types.js";
+import {
+  ApiCallError,
+  isAmbiguous,
+  type HostModule,
+  type HostService,
+  type ServiceRequest,
+} from "./types.js";
+
+/** Длины полей — как в CreateServiceRequestDto сервера. */
+export const ROOM_LABEL_MAX = 20;
+export const COMMENT_MAX = 500;
 
 const field: CSSProperties = {
   display: "block",
@@ -29,6 +40,7 @@ const field: CSSProperties = {
 export function About({ header }: { header: ReactNode }) {
   const { t } = useT();
   const { api, hotelPlaceId, entryContextId } = useHost();
+  const requests = useFeatureFlag("module.host_requests");
   const [mod, retry] = useAsync(
     () => (hotelPlaceId ? api.hostModule(hotelPlaceId, entryContextId) : Promise.reject(new NotFoundError())),
     [api, hotelPlaceId, entryContextId],
@@ -44,9 +56,11 @@ export function About({ header }: { header: ReactNode }) {
           {(m) => <AboutView module={m} />}
         </AsyncView>
       )}
-      <Link to="/requests" data-testid="my-requests-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
-        {t("miniapp.about.myRequests")}
-      </Link>
+      {requests && (
+        <Link to="/requests" data-testid="my-requests-link" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+          {t("miniapp.about.myRequests")}
+        </Link>
+      )}
     </Stack>
   );
 }
@@ -68,13 +82,15 @@ function Intake({ module: m }: { module: HostModule }) {
 
 function Wifi({ wifi }: { wifi: NonNullable<HostModule["wifi"]> }) {
   const { t } = useT();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"ok" | "failed" | null>(null);
   const copy = async () => {
     try {
+      // В части WebView Telegram clipboard недоступен — тогда просим скопировать вручную.
+      if (!navigator.clipboard) throw new Error("no clipboard");
       await navigator.clipboard.writeText(wifi.password ?? "");
-      setCopied(true);
+      setCopied("ok");
     } catch {
-      setCopied(false);
+      setCopied("failed");
     }
   };
   return (
@@ -87,7 +103,10 @@ function Wifi({ wifi }: { wifi: NonNullable<HostModule["wifi"]> }) {
         <>
           <p>{t("miniapp.about.wifiPassword", { password: wifi.password })}</p>
           <Button onClick={() => void copy()}>{t("miniapp.about.copyPassword")}</Button>
-          <span role="status">{copied ? ` ${t("miniapp.about.copied")}` : ""}</span>
+          <span role="status" data-testid="copy-status">
+            {copied === "ok" ? ` ${t("miniapp.about.copied")}` : ""}
+            {copied === "failed" ? ` ${t("miniapp.about.copyFailed")}` : ""}
+          </span>
         </>
       )}
     </section>
@@ -96,6 +115,8 @@ function Wifi({ wifi }: { wifi: NonNullable<HostModule["wifi"]> }) {
 
 function AboutView({ module: m }: { module: HostModule }) {
   const { t, locale } = useT();
+  const { timeZone } = useHost();
+  const requests = useFeatureFlag("module.host_requests");
   const [service, setService] = useState<HostService | null>(null);
   const [sent, setSent] = useState<ServiceRequest | null>(null);
   const empty = m.sections.length === 0 && !m.wifi && !m.phone && m.services.length === 0;
@@ -125,11 +146,11 @@ function AboutView({ module: m }: { module: HostModule }) {
       {sent && (
         <p role="status" data-testid="request-sent">
           {sent.processFrom
-            ? t("miniapp.request.sentDeferred", { from: formatTime(sent.processFrom, locale) })
+            ? t("miniapp.request.sentDeferred", { from: formatTime(sent.processFrom, locale, timeZone) })
             : t("miniapp.request.sent")}
         </p>
       )}
-      {m.services.length > 0 && (
+      {requests && m.services.length > 0 && (
         <section aria-labelledby="services-title">
           <h2 id="services-title" style={{ fontSize: "1.1rem" }}>
             {t("miniapp.about.services")}
@@ -173,6 +194,11 @@ function AboutView({ module: m }: { module: HostModule }) {
   );
 }
 
+/**
+ * Форма заявки. Idempotency-Key: один на «тело» заявки — правка полей даёт новый ключ. После неоднозначной ошибки
+ * (сеть, 5xx, 429) исход неизвестен: поля блокируются, «Повторити» шлёт тот же ключ (сервер не создаст дубль);
+ * «Змінити заявку» снимает блокировку, и следующая отправка пойдёт с новым ключом.
+ */
 function RequestForm({
   module: m,
   service,
@@ -185,12 +211,15 @@ function RequestForm({
   onSent: (r: ServiceRequest) => void;
 }) {
   const { t, locale } = useT();
+  const errorText = useErrorText();
   const { api, entryContextId } = useHost();
   const qrRoom = m.room?.source === "qr" ? m.room.value : null;
   const { signedIn } = useGuide();
   const [room, setRoom] = useState("");
   const [comment, setComment] = useState("");
-  const [idempotencyKey] = useState(() => uuidv7());
+  const [idempotencyKey, setIdempotencyKey] = useState(() => uuidv7());
+  /** Отправка с этим ключом могла дойти — поля заморожены до повтора или явной правки. */
+  const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roomId = useId();
@@ -207,6 +236,15 @@ function RequestForm({
         <Button onClick={onCancel}>{t("miniapp.request.cancel")}</Button>
       </div>
     );
+  const edit = (set: (v: string) => void) => (v: string) => {
+    set(v);
+    setIdempotencyKey(uuidv7());
+  };
+  const unlock = () => {
+    setLocked(false);
+    setError(null);
+    setIdempotencyKey(uuidv7());
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const roomLabel = room.trim();
@@ -226,10 +264,30 @@ function RequestForm({
         idempotencyKey,
       });
       onSent(created);
+      return;
     } catch (err) {
-      setError(t(err instanceof ConflictError ? "miniapp.request.duplicate" : "miniapp.request.error"));
-      setBusy(false);
+      const code = err instanceof ApiCallError ? err.code : null;
+      if (code === "IDEMPOTENCY_IN_PROGRESS") {
+        setLocked(true);
+        setError(t("miniapp.request.processing"));
+      } else if (code === "IDEMPOTENCY_KEY_REUSED") {
+        setLocked(false);
+        setIdempotencyKey(uuidv7());
+        setError(t("miniapp.request.keyReused"));
+      } else if (isAmbiguous(err)) {
+        setLocked(true);
+        setError(t("miniapp.request.uncertain"));
+      } else {
+        setLocked(false);
+        const known = err instanceof ApiCallError && isMessageKey(err.messageKey);
+        setError(
+          !known && err instanceof ApiCallError && err.status === 409
+            ? t("miniapp.request.duplicate")
+            : errorText(err, "miniapp.request.error"),
+        );
+      }
     }
+    setBusy(false);
   };
   return (
     <form style={card} onSubmit={(e) => void submit(e)} data-testid="request-form" aria-label={title}>
@@ -243,8 +301,9 @@ function RequestForm({
             id={roomId}
             style={field}
             value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            maxLength={16}
+            onChange={(e) => edit(setRoom)(e.target.value)}
+            readOnly={locked}
+            maxLength={ROOM_LABEL_MAX}
             aria-required="true"
             aria-describedby={hintId}
             autoComplete="off"
@@ -258,8 +317,9 @@ function RequestForm({
           id={commentId}
           style={field}
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          maxLength={500}
+          onChange={(e) => edit(setComment)(e.target.value)}
+          readOnly={locked}
+          maxLength={COMMENT_MAX}
           rows={3}
         />
       </p>
@@ -270,8 +330,17 @@ function RequestForm({
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Button type="submit" disabled={busy}>
-          {busy ? t("miniapp.request.sending") : t("miniapp.request.submit")}
+          {busy
+            ? t("miniapp.request.sending")
+            : locked
+              ? t("miniapp.request.retry")
+              : t("miniapp.request.submit")}
         </Button>
+        {locked && (
+          <Button onClick={unlock} disabled={busy}>
+            {t("miniapp.request.edit")}
+          </Button>
+        )}
         <Button onClick={onCancel} disabled={busy}>
           {t("miniapp.request.cancel")}
         </Button>

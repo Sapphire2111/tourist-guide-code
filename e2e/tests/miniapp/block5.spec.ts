@@ -40,7 +40,9 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Замовити: Прибирання номера" }).click();
     await page.getByLabel("Номер кімнати").fill("204");
     await page.getByRole("button", { name: "Надіслати заявку" }).click();
-    await expect(page.getByTestId("request-error")).toHaveText("Така заявка вже є і ще в роботі.");
+    await expect(page.getByTestId("request-error")).toHaveText(
+      "Така заявка вже є — дочекайтеся її виконання.",
+    );
     await page.getByRole("button", { name: "Скасувати", exact: true }).click();
 
     await page.getByTestId("my-requests-link").click();
@@ -101,6 +103,27 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("staff-link")).toHaveCount(0);
     await page.goto("/#/staff");
     await expect(page.getByTestId("staff-forbidden")).toBeVisible();
+  });
+
+  test("флаг module.host_requests выключен: нет «Мій план», заявок и режима персонала", async ({ page }) => {
+    apiMockState.get(page)!.staff = true;
+    await page.route("**/feature-flags*", (route) =>
+      route.fulfill({ json: { items: [{ key: "module.host_requests", enabled: false }] } }),
+    );
+    await page.goto("/");
+    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Основна навігація" });
+    await expect(nav.getByRole("link", { name: "Обране" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Мій план" })).toHaveCount(0);
+    await expect(page.getByTestId("staff-link")).toHaveCount(0);
+    await page.getByTestId("home-sections").getByRole("link", { name: "Про заклад" }).click();
+    await expect(page.getByRole("heading", { name: "Правила проживання" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Замовити/ })).toHaveCount(0);
+    await expect(page.getByTestId("my-requests-link")).toHaveCount(0);
+    for (const path of ["/#/plan", "/#/requests", "/#/staff"]) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1, name: "Сторінку не знайдено" })).toBeVisible();
+    }
   });
 
   test("Мій план: сценарий → зберегти → замена пункта → картка місця; a11y", async ({ page }) => {

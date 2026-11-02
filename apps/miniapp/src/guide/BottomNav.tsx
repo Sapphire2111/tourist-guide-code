@@ -1,6 +1,6 @@
 // Нижняя навигация (C02): Головна | Мій план | Обране | Халепа? | Профіль. «Бонуси» — блок 9.
 import type { CSSProperties } from "react";
-import { Link, useRoute, useT } from "@tg/ui";
+import { Link, useFeatureFlag, useRoute, useT } from "@tg/ui";
 
 /** Высота панели без safe area — столько же отступа снизу резервирует оболочка. */
 export const BOTTOM_NAV_HEIGHT = 64;
@@ -42,10 +42,11 @@ const ITEMS = [
 export function BottomNav({ profile }: { profile: boolean }) {
   const { t } = useT();
   const [path] = useRoute();
+  const plan = useFeatureFlag("module.host_requests");
   const active = (to: string) => path === to || (to !== "/" && path.startsWith(`${to}/`));
   return (
     <nav aria-label={t("miniapp.nav.label")} style={bar} data-testid="bottom-nav">
-      {ITEMS.filter((i) => profile || i.to !== "/profile").map((i) => (
+      {ITEMS.filter((i) => (profile || i.to !== "/profile") && (plan || i.to !== "/plan")).map((i) => (
         <Link
           key={i.to}
           to={i.to}

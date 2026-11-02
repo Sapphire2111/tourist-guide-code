@@ -1,16 +1,24 @@
-// Время/дата для экранов блока 5 (локаль интерфейса; часовой пояс — устройства).
-export function formatTime(iso: string, locale: string): string {
+// Время/дата для экранов блока 5: локаль интерфейса, часовой пояс региона (IANA из контекста входа);
+// без пояса или при неизвестном поясе — пояс устройства.
+function format(
+  iso: string,
+  locale: string,
+  timeZone: string | null,
+  opts: Intl.DateTimeFormatOptions,
+): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
   try {
-    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+    return new Intl.DateTimeFormat(locale, { ...opts, ...(timeZone ? { timeZone } : {}) }).format(date);
   } catch {
-    return iso;
+    return new Intl.DateTimeFormat(locale, opts).format(date);
   }
 }
 
-export function formatDateTime(iso: string, locale: string): string {
-  try {
-    return new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
+export function formatTime(iso: string, locale: string, timeZone: string | null = null): string {
+  return format(iso, locale, timeZone, { hour: "2-digit", minute: "2-digit" });
+}
+
+export function formatDateTime(iso: string, locale: string, timeZone: string | null = null): string {
+  return format(iso, locale, timeZone, { dateStyle: "short", timeStyle: "short" });
 }
