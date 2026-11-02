@@ -397,6 +397,7 @@ export const uk = {
   "errors.place.scheduleInvalid": "Графік роботи має помилки: перевірте інтервали та винятки.",
   "errors.place.mediaInvalid": "Це фото не можна прив'язати до місця.",
   "errors.place.badgeState": "Позначка «Ми рекомендуємо» вже в цьому стані.",
+  "errors.favorites.limitReached": "В обраному вже максимум місць — приберіть якесь, щоб додати нове.",
 } as const;
 
 export type MessageKey = keyof typeof uk;
@@ -479,4 +480,5 @@ export const en: Messages = {
   "miniapp.locale.uk": "Українська",
   "miniapp.locale.en": "English",
   "errors.notFound": "Nothing found.",
+  "errors.favorites.limitReached": "Your favorites list is full — remove a place to add a new one.",
 };

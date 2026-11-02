@@ -34,6 +34,8 @@ export class MediaModule {
     const driver = options.storageInstance?.driver.driver ?? env.STORAGE_DRIVER;
     return {
       module: MediaModule,
+      // Глобальный: MediaService (ссылки на варианты фото) нужен публичному каталогу (блок 4) без второго forRoot.
+      global: true,
       imports: [RbacModule],
       controllers: [MediaController, ...(driver === "local" ? [LocalStorageController] : [])],
       providers: [

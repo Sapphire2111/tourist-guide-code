@@ -747,6 +747,124 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/categories": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Категории региона для туриста (главная C02, разделы C04): активные, с числом мест
+     * @description Без аутентификации. 404 — региона нет или он не активен.
+     */
+    get: operations["listGuideCategories"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/places/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Поиск мест: «Що поруч» (lat/lng + радиус), категория, текст q
+     * @description Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). Rate limit 60/мин. 404 — региона нет или он не активен.
+     */
+    get: operations["searchPlaces"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/places/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Картка місця (C05): фото, атрибуты, график, «Відкрито зараз», контакты, точка для маршрута
+     * @description Без аутентификации; с Bearer-сессией — признак favorite. Неопубликованное (черновик, приостановленное, архив) или чужого региона — 404. lat/lng — для distanceMeters.
+     */
+    get: operations["getGuidePlace"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/favorites": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Избранные места туриста в регионе */
+    get: operations["listFavorites"];
+    put?: never;
+    /**
+     * Добавить место в избранное (повтор — без изменений, тот же ответ)
+     * @description 404 — места нет в регионе или оно не опубликовано. 409 errors.favorites.limitReached — в избранном региона уже 200 мест.
+     */
+    post: operations["addFavorite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/favorites/{placeId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Убрать место из избранного (уже нет — тоже 204) */
+    delete: operations["removeFavorite"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/emergency-contacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Экстренные контакты региона туриста («Халепа?»), только активные, по порядку
+     * @description Без аутентификации. 404 — региона нет или он не активен.
+     */
+    get: operations["listGuideEmergencyContacts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/feature-flags": {
     parameters: {
       query?: never;
@@ -1741,6 +1859,169 @@ export interface components {
     BadgeHistoryDto: {
       items: components["schemas"]["BadgeEventDto"][];
     };
+    GuideCategoryDto: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * Format: uuid
+       * @description Раздел; null — корневой
+       */
+      parentId: string | null;
+      /** @example where-to-eat */
+      code: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      /**
+       * @description Имя иконки packages/ui
+       * @example utensils
+       */
+      icon: string | null;
+      /** @description Кнопка главной C02 (только у корневых) */
+      homeSection: components["schemas"]["HomeSection"] | null;
+      sortOrder: number;
+      /** @description Опубликованных мест (у раздела — вместе с подкатегориями) */
+      placeCount: number;
+    };
+    GuideCategoryListDto: {
+      /** @description Активные категории региона, плоско (parentId), по sortOrder; подкатегории выключенного раздела не входят */
+      items: components["schemas"]["GuideCategoryDto"][];
+    };
+    /**
+     * @description Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null
+     * @enum {string}
+     */
+    AdLabel: "advertising" | "partner";
+    MediaLinkDto: {
+      /** @description Вариант (w320, w800, w1600) или original — документ */
+      name: string;
+      url: string;
+      width: number | null;
+      height: number | null;
+      /**
+       * Format: date-time
+       * @description Срок подписанной ссылки; null — постоянный публичный адрес
+       */
+      expiresAt: string | null;
+    };
+    PlacePhotoDto: {
+      /** Format: uuid */
+      mediaAssetId: string;
+      /** @description Alt text (у опубликованного места есть) */
+      alt: components["schemas"]["LocalizedTextDto"] | null;
+      width: number | null;
+      height: number | null;
+      isCover: boolean;
+      /** @description Варианты по ширине; выбирать по размеру экрана */
+      variants: components["schemas"]["MediaLinkDto"][];
+    };
+    PlaceSummaryDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      categoryId: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      address: components["schemas"]["LocalizedTextDto"] | null;
+      /** @description Точка на карте и для маршрута */
+      location: components["schemas"]["LonLatDto"];
+      /** @description Расстояние от lat/lng запроса, м (PostGIS, сфероид WGS 84); null — точка не передана */
+      distanceMeters: number | null;
+      /** @description «Ми рекомендуємо» — только редакционный бейдж (D-32), реклама его не даёт */
+      recommended: boolean;
+      /** @description Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null */
+      adLabel: components["schemas"]["AdLabel"] | null;
+      /** @description «Відкрито зараз» по графику в таймзоне региона; null — график неизвестен */
+      openNow: boolean | null;
+      /** @example +380501234567 */
+      phone: string | null;
+      /** @description Обложка (или первое готовое фото) */
+      cover: components["schemas"]["PlacePhotoDto"] | null;
+    };
+    PlaceSearchResultDto: {
+      /** @description Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет */
+      items: components["schemas"]["PlaceSummaryDto"][];
+      /** @description offset следующей страницы; null — конец */
+      nextOffset: number | null;
+      /** @description Применённый радиус, м; null — без точки */
+      radiusMeters: number | null;
+    };
+    GuideCategoryRefDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      parentId: string | null;
+      name: components["schemas"]["LocalizedTextDto"];
+      icon: string | null;
+    };
+    GuideTagDto: {
+      /** Format: uuid */
+      id: string;
+      code: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      group: components["schemas"]["TagGroup"];
+    };
+    PlaceCardDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      categoryId: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      address: components["schemas"]["LocalizedTextDto"] | null;
+      /** @description Точка на карте и для маршрута */
+      location: components["schemas"]["LonLatDto"];
+      /** @description Расстояние от lat/lng запроса, м (PostGIS, сфероид WGS 84); null — точка не передана */
+      distanceMeters: number | null;
+      /** @description «Ми рекомендуємо» — только редакционный бейдж (D-32), реклама его не даёт */
+      recommended: boolean;
+      /** @description Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null */
+      adLabel: components["schemas"]["AdLabel"] | null;
+      /** @description «Відкрито зараз» по графику в таймзоне региона; null — график неизвестен */
+      openNow: boolean | null;
+      /** @example +380501234567 */
+      phone: string | null;
+      /** @description Обложка (или первое готовое фото) */
+      cover: components["schemas"]["PlacePhotoDto"] | null;
+      /** Format: uuid */
+      regionId: string;
+      category: components["schemas"]["GuideCategoryRefDto"];
+      description: components["schemas"]["LocalizedTextDto"] | null;
+      /** @example https://example.com */
+      website: string | null;
+      /** @description Имя в Telegram без @ */
+      telegram: string | null;
+      /**
+       * Format: date-time
+       * @description «Дата перевірки інформації» (ТЗ §4.4)
+       */
+      verifiedAt: string | null;
+      /** @description Готовые фото по порядку (обложка первой) */
+      photos: components["schemas"]["PlacePhotoDto"][];
+      /** @description Активные теги места */
+      tags: components["schemas"]["GuideTagDto"][];
+      /** @description Недельный график и исключения с вчерашней даты (местное время региона) */
+      schedule: components["schemas"]["ScheduleDto"];
+      /**
+       * @description До скольки открыто (HH:MM местного времени), если openNow = true
+       * @example 22:00
+       */
+      openUntil: string | null;
+      /** @description В избранном; null — без сессии */
+      favorite: boolean | null;
+    };
+    FavoriteListDto: {
+      /** @description Избранные опубликованные места региона, новые сверху (до 200); снятые с публикации не входят */
+      items: components["schemas"]["PlaceSummaryDto"][];
+    };
+    AddFavoriteDto: {
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+    };
+    FavoriteDto: {
+      /** Format: uuid */
+      placeId: string;
+      /** Format: date-time */
+      createdAt: string;
+    };
     /** @enum {string} */
     FeatureFlagKey:
       | "release.r1"
@@ -1843,18 +2124,6 @@ export interface components {
     };
     /** @enum {string} */
     MediaStatus: "pending" | "uploaded" | "processing" | "ready" | "rejected";
-    MediaLinkDto: {
-      /** @description Вариант (w320, w800, w1600) или original — документ */
-      name: string;
-      url: string;
-      width: number | null;
-      height: number | null;
-      /**
-       * Format: date-time
-       * @description Срок подписанной ссылки; null — постоянный публичный адрес
-       */
-      expiresAt: string | null;
-    };
     MediaAssetDto: {
       /** Format: uuid */
       id: string;
@@ -7486,6 +7755,556 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listGuideCategories: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GuideCategoryListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  searchPlaces: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+        /** @description Широта */
+        lat?: number;
+        /** @description Долгота (вместе с lat) */
+        lng?: number;
+        /** @description Радиус, м — только с lat/lng («Що поруч») */
+        radius?: number;
+        /** @description Категория (из GET /categories); раздел включает свои подкатегории */
+        category?: string;
+        /** @description Текст: название (uk, en) или адрес; без координат — поиск по всему региону */
+        q?: string;
+        /** @description «Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений) */
+        available_now?: boolean;
+        limit?: number;
+        /** @description Сдвиг страницы: nextOffset из прошлого ответа */
+        offset?: number;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceSearchResultDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getGuidePlace: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+        /** @description Широта */
+        lat?: number;
+        /** @description Долгота (вместе с lat) */
+        lng?: number;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceCardDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listFavorites: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FavoriteListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  addFavorite: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddFavoriteDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FavoriteDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  removeFavorite: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        placeId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Убрано */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listGuideEmergencyContacts: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EmergencyContactListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

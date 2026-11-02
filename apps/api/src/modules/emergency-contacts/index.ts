@@ -7,6 +7,7 @@ export {
   AdminEmergencyContactDto,
   EMERGENCY_PHONE_RE,
   EmergencyContactDto,
+  EmergencyContactListDto,
   toAdminEmergencyContactDto,
   toEmergencyContactDto,
 } from "./emergency-contacts.dto.js";

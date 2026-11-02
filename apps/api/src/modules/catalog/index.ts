@@ -1,4 +1,5 @@
 // Публичный интерфейс контекста catalog (блок 3, ADR-0017).
+export { LonLatDto, ScheduleDto, toScheduleDto } from "./catalog.dto.js";
 export { CatalogModule } from "./catalog.module.js";
 export {
   CatalogRepository,
