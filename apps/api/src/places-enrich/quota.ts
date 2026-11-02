@@ -11,9 +11,18 @@ export type GoogleSku = "place_details" | "place_photos";
 /** Бесплатный месячный объём Google на SKU (прейскурант с 03.2025). */
 export const GOOGLE_FREE_MONTHLY = 1000;
 
-const dayOf = (now: Date) => now.toISOString().slice(0, 10);
-/** Строка месяца: первое число месяца (UTC), вид `<sku>_month`. */
-const monthOf = (now: Date) => `${now.toISOString().slice(0, 7)}-01`;
+/** Google сбрасывает бесплатный объём и суточные квоты по тихоокеанскому времени — сутки и месяц считаются в нём. */
+export const GOOGLE_QUOTA_TZ = "America/Los_Angeles";
+const pacificDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: GOOGLE_QUOTA_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** Дата YYYY-MM-DD по America/Los_Angeles. */
+export const dayOf = (now: Date) => pacificDate.format(now);
+/** Строка месяца: первое число месяца (America/Los_Angeles), вид `<sku>_month`. */
+export const monthOf = (now: Date) => `${dayOf(now).slice(0, 7)}-01`;
 
 export type QuotaLimits = { daily?: number; monthly: number };
 

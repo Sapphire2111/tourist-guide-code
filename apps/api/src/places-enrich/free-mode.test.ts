@@ -5,13 +5,15 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { recordingDb } from "../../test/support/recording-db.js";
 import { usageDb } from "../../test/support/usage-db.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import type { GooglePlace, MappedPlace } from "../places-import/mapping.js";
-import { runCovers, type Resize } from "./covers.js";
+import { makeCover, runCovers, type Resize } from "./covers.js";
 import { fromSearch } from "./details.js";
 import { DEFAULT_SKIP_DETAILS, enrich, prioritized } from "./enrich.js";
-import { GoogleQuota } from "./quota.js";
+import { dayOf, GoogleQuota, monthOf } from "./quota.js";
+import { writeEnrichment } from "./writer.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "tg-free-"));
 const MONTH = "2026-11-01";
@@ -56,9 +58,21 @@ describe("GoogleQuota — месячный предел по SKU", () => {
     expect(await nov.take("place_photos", { monthly: 2 })).toBe(true);
     expect(usage.get(`${MONTH}|place_details_month`)).toBe(2);
     expect(usage.get(`${MONTH}|place_photos_month`)).toBe(1);
-    const dec = new GoogleQuota(db, at("2026-12-01T00:00:01Z"));
+    // 01.12 00:00 UTC — в Лос-Анджелесе ещё 30.11: месяц Google тот же.
+    const lateNov = new GoogleQuota(db, at("2026-12-01T00:00:01Z"));
+    expect(await lateNov.take("place_details", { monthly: 2 })).toBe(false);
+    const dec = new GoogleQuota(db, at("2026-12-01T08:00:01Z"));
     expect(await dec.take("place_details", { monthly: 2 })).toBe(true);
     expect(usage.get("2026-12-01|place_details_month")).toBe(1);
+  });
+
+  it("сутки и месяц — по America/Los_Angeles (сброс бесплатного объёма Google)", () => {
+    expect(dayOf(new Date("2026-11-16T07:59:59Z"))).toBe("2026-11-15");
+    expect(dayOf(new Date("2026-11-16T08:00:00Z"))).toBe("2026-11-16");
+    // Летнее время: UTC−7.
+    expect(dayOf(new Date("2026-07-01T06:59:59Z"))).toBe("2026-06-30");
+    expect(monthOf(new Date("2026-07-01T06:59:59Z"))).toBe("2026-06-01");
+    expect(monthOf(new Date("2026-07-01T07:00:00Z"))).toBe("2026-07-01");
   });
 
   it("суточный исчерпан — месячный запрос возвращается; предел 0 и ошибка БД — отказ", async () => {
@@ -154,6 +168,64 @@ describe("бесплатный режим enrich", () => {
     // Пройденные — из кэша ответов; запрос только для непройденного.
     expect(dec.google.requests.details).toBe(1);
     expect(dec.stats).toMatchObject({ details: 3, detailsDeferred: 0 });
+  });
+
+  it("без GOOGLE_MAPS_API_KEY фото не из кэша пропускаются с предупреждением — прогон не падает", async () => {
+    const log = vi.fn();
+    const google = new GooglePlacesClient({ apiKey: undefined, cacheDir: await tmp(), maxRequests: 0 });
+    const r = await enrich([place("a"), place("b")], google, undefined, {
+      details: false,
+      rawById: new Map([
+        ["a", raw("a")],
+        ["b", raw("b")],
+      ]),
+      log,
+    });
+    expect(r.places.map((p) => p.google?.photos)).toEqual([[], []]);
+    expect(r.places[0]!.googleFromImport).toBe(true);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]![0]).toContain("GOOGLE_MAPS_API_KEY");
+  });
+
+  it("--from-import-cache: запись не затирает богатые поля Google и не снимает текст ИИ", async () => {
+    const rich = {
+      ...fromSearch(raw("a"), null),
+      priceLevel: 2,
+      mapsUri: "https://maps.google.com/?cid=1",
+      amenities: ["beer" as const],
+      reviews: [
+        { rating: 5, text: "Смачно", relativeTime: null, publishTime: null, uri: null, author: null },
+      ],
+    };
+    const { db, queries } = recordingDb({}, (q) => {
+      if (q.sql.startsWith('select "id", "google_place_id"')) return [{ id: "p-a", google_place_id: "a" }];
+      if (q.sql.startsWith('select "place_id", "google"')) return [{ place_id: "p-a", google: rich }];
+      return [];
+    });
+    const poor = fromSearch({ rating: 4.7, userRatingCount: 130 }, null);
+    await writeEnrichment(
+      db,
+      "0190f5c2-7d3e-7000-8000-00000000000a",
+      [
+        {
+          ...place("a"),
+          address: null,
+          google: poor,
+          googleFromImport: true,
+          wiki: undefined,
+          ai: { hash: "c".repeat(32), result: null },
+        },
+      ],
+      new Date(),
+    );
+    const upsert = queries.find((q) => q.sql.startsWith('insert into "place_enrichments"'))!;
+    const written = upsert.parameters.find(
+      (v): v is Record<string, unknown> => typeof v === "object" && v !== null && "rating" in v,
+    )!;
+    expect(written).toMatchObject({ rating: 4.7, priceLevel: 2, amenities: ["beer"], typeLabel: "Ресторан" });
+    expect((written.reviews as unknown[]).length).toBe(1);
+    // Текст ИИ не снимается.
+    expect(queries.some((q) => q.sql.startsWith('update "place_enrichments"'))).toBe(false);
   });
 
   it("приоритет: рестораны/отели/природа и т. п. первыми, внутри — по числу оценок Google", () => {
@@ -264,6 +336,46 @@ describe("обложки", () => {
     // Подпись автора сохраняется вместе с файлом.
     expect(JSON.stringify(coverRows)).toContain("MSha");
     expect(JSON.stringify(coverRows)).toContain("Олена");
+  });
+
+  it("Wikimedia не скачалась — Google-обложка; Google нет — ошибка", async () => {
+    const fetchImpl = vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes("/media?")
+          ? json({ photoUri: "https://lh3.googleusercontent.com/x" })
+          : url.includes("wikimedia")
+            ? new Response("", { status: 503 })
+            : new Response(Buffer.from("img"), { status: 200 }),
+      ),
+    ) as unknown as typeof fetch;
+    const google = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: await tmp(),
+      maxRequests: 100,
+      fetch: fetchImpl,
+    });
+    const wiki = {
+      lang: "uk",
+      title: "Пробій",
+      url: "https://uk.wikipedia.org/wiki/Пробій",
+      extract: "…",
+      image: {
+        url: "https://upload.wikimedia.org/p.jpg",
+        width: 1200,
+        height: 900,
+        author: "MSha",
+        license: "CC BY-SA 3.0",
+        licenseUrl: null,
+        sourceUrl: "https://commons.wikimedia.org/wiki/File:P.jpg",
+      },
+    };
+    const photos = [{ name: "places/a/photos/p1", width: 800, height: 600, authors: [] }];
+    const g = { ...fromSearch(raw("a"), null), photos };
+    const c = await makeCover({ google: g, wiki }, { google, fetch: fetchImpl, resize });
+    expect(c?.source).toBe("google");
+    await expect(makeCover({ google: null, wiki }, { google, fetch: fetchImpl, resize })).rejects.toThrow(
+      /Wikimedia: HTTP 503/,
+    );
   });
 
   it("без записи (план/dry-run) — только подсчёт, без запросов", async () => {

@@ -3,6 +3,7 @@
 import type { PlaceEnrichmentGoogle, PlaceEnrichmentWiki } from "../db/index.js";
 import {
   MonthlyLimitError,
+  NoApiKeyError,
   RequestLimitError,
   type GooglePlacesClient,
 } from "../places-import/google-client.js";
@@ -24,6 +25,11 @@ export type EnrichedPlace = {
   address: string | null;
   /** null — Details не получены (лимит, план, Google не знает места). */
   google: PlaceEnrichmentGoogle | null;
+  /**
+   * google собран из кэша импорта (--from-import-cache), без Details: беднее сохранённого — запись не затирает им
+   * непустые поля и не снимает текст ИИ.
+   */
+  googleFromImport?: boolean;
   /** undefined — Вікіпедія не искалась (не пам'ятка или лимит); null — искали, уверенного совпадения нет. */
   wiki: PlaceEnrichmentWiki | null | undefined;
 };
@@ -112,6 +118,7 @@ export async function enrich(
   opts: EnrichOptions = {},
 ): Promise<{ places: EnrichedPlace[]; stats: EnrichStats }> {
   const log = opts.log ?? (() => {});
+  let warnedNoKey = false;
   const stats: EnrichStats = {
     places: 0,
     details: 0,
@@ -179,10 +186,15 @@ export async function enrich(
         try {
           photos = await google.placePhotos(p.googlePlaceId);
         } catch (err) {
-          if (!(err instanceof RequestLimitError)) throw err;
+          if (err instanceof NoApiKeyError) {
+            // Без ключа фото не из кэша не получить — шаг пропускается, прогон идёт дальше.
+            if (!warnedNoKey) log("Нет GOOGLE_MAPS_API_KEY: фото мест не из кэша пропущены.");
+            warnedNoKey = true;
+          } else if (!(err instanceof RequestLimitError)) throw err;
         }
       }
       g = fromSearch(fromImport, photos);
+      item.googleFromImport = true;
       stats.fromImport++;
     }
     if (g) {

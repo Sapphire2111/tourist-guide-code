@@ -44,9 +44,15 @@ function fakeService() {
     ),
     removeFavorite: vi.fn(() => Promise.resolve()),
     emergencyContacts: vi.fn(() => Promise.resolve([])),
-    cover: vi.fn((_r: string, id: string) =>
+    cover: vi.fn((_r: string, id: string, notModified?: (etag: string) => boolean) =>
       Promise.resolve(
-        id === PLACE ? { bytes: Buffer.from("RIFFwebp"), mime: "image/webp", etag: "abc123" } : undefined,
+        id === PLACE
+          ? {
+              bytes: notModified?.("abc123") ? null : Buffer.from("RIFFwebp"),
+              mime: "image/webp",
+              etag: "abc123",
+            }
+          : undefined,
       ),
     ),
     googlePhoto: vi.fn((_r: string, id: string, index: number) =>
@@ -216,6 +222,9 @@ describe("GET /places/{id}/cover", () => {
       .get(`/places/${PLACE}/cover?regionId=${REGION}`)
       .set("If-None-Match", '"abc123"')
       .expect(304);
+    for (const h of ['W/"abc123"', '"old", W/"abc123"', "*"])
+      await http().get(`/places/${PLACE}/cover?regionId=${REGION}`).set("If-None-Match", h).expect(304);
+    await http().get(`/places/${PLACE}/cover?regionId=${REGION}`).set("If-None-Match", '"old"').expect(200);
     const missing = await http()
       .get(`/places/0190f5c2-7d3e-7000-8000-0000000000b2/cover?regionId=${REGION}`)
       .expect(404);

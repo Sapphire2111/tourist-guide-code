@@ -369,14 +369,23 @@ export class GuideService {
     return `${base}/places/${placeId}/cover?regionId=${regionId}&v=${etag}`;
   }
 
-  /** Обложка места (байты) для GET /places/{id}/cover; undefined — места или обложки нет. */
+  /**
+   * Обложка места для GET /places/{id}/cover; undefined — места или обложки нет. notModified(etag) — у клиента та же
+   * версия (If-None-Match): байты из БД не читаются, bytes — null.
+   */
   async cover(
     regionId: string,
     id: string,
-  ): Promise<{ bytes: Buffer; mime: string; etag: string } | undefined> {
+    notModified: (etag: string) => boolean = () => false,
+  ): Promise<{ bytes: Buffer | null; mime: string; etag: string } | undefined> {
     return this.inRegion(regionId, async () => {
       if (!(await this.repo.findPublished(id, undefined))) return undefined;
+      const v = await this.repo.coverVersion(id);
+      if (!v) return undefined;
+      const etag = coverEtag(v.photo_name, v.fetched_at);
+      if (notModified(etag)) return { bytes: null, mime: v.mime, etag };
       const c = await this.repo.coverBytes(id);
+      // Обложку заменили между запросами — версия по прочитанной строке.
       return c ? { bytes: c.bytes, mime: c.mime, etag: coverEtag(c.photo_name, c.fetched_at) } : undefined;
     });
   }

@@ -8,7 +8,7 @@ import type { EmergencyContactsRepository } from "../emergency-contacts/index.js
 import type { MediaService } from "../media/index.js";
 import type { RegionsRepository } from "../regions/index.js";
 import type { GuideRepository } from "./guide.repository.js";
-import { GuideService, isAutoDescription } from "./guide.service.js";
+import { coverEtag, GuideService, isAutoDescription } from "./guide.service.js";
 import { GooglePhotosService } from "./google-photos.js";
 
 const NAME = "places/ChIJ-YqOVmolN0cRIY6uqQPGF4k/photos/AbC_1";
@@ -274,6 +274,34 @@ describe("обложка у нас в выдаче", () => {
       authors: [{ name: "Олена" }],
     });
     expect((await guide(undefined, photos().svc).place(REGION, PLACE, {}))?.coverPhoto).toBeNull();
+  });
+});
+
+describe("GET /cover в сервисе", () => {
+  it("версия совпала (If-None-Match) — байты из БД не читаются; иначе — файл", async () => {
+    const svc = guide(undefined, photos().svc);
+    const repo = (svc as unknown as { repo: Partial<GuideRepository> }).repo;
+    const fetchedAt = new Date("2026-11-03T00:00:00Z");
+    repo.coverVersion = () =>
+      Promise.resolve({ mime: "image/webp", photo_name: NAME, fetched_at: fetchedAt });
+    const coverBytes = vi.fn(() =>
+      Promise.resolve({
+        bytes: Buffer.from("webp"),
+        mime: "image/webp",
+        photo_name: NAME,
+        fetched_at: fetchedAt,
+      }),
+    );
+    repo.coverBytes = coverBytes;
+    const etag = coverEtag(NAME, fetchedAt);
+    expect(await svc.cover(REGION, PLACE, (v) => v === etag)).toEqual({
+      bytes: null,
+      mime: "image/webp",
+      etag,
+    });
+    expect(coverBytes).not.toHaveBeenCalled();
+    expect((await svc.cover(REGION, PLACE))?.bytes?.toString()).toBe("webp");
+    expect(coverBytes).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,7 +1,9 @@
 // Запись обогащения в place_enrichments: в tenant-контексте региона (TenantGuardPlugin + RLS), как пишет api.
 // Upsert по (region_id, place_id); место ищется по google_place_id. Пустые данные не затирают собранные ранее:
 // google/wiki пишутся, только если в этом прогоне получены (undefined/null из-за лимита — колонка не трогается).
-import { regionContext, withTenant, type Db } from "../db/index.js";
+// google из кэша импорта (--from-import-cache) беднее Details: сливается с сохранённым поле за полем (пустое не
+// заменяет непустое), текст ИИ им не снимается и не заменяет сохранённый.
+import { regionContext, withTenant, type Db, type PlaceEnrichmentGoogle } from "../db/index.js";
 import type { PlaceEnrichmentsTable } from "../db/schema.js";
 import type { Insertable } from "kysely";
 import type { AiResult } from "./ai.js";
@@ -24,6 +26,19 @@ export type EnrichWriteStats = {
   aiCleared: number;
 };
 
+const isEmpty = (v: unknown) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
+
+/** Слияние данных Google: поле нового — если непустое, иначе сохранённое. */
+export function mergeGoogle(
+  saved: PlaceEnrichmentGoogle | null | undefined,
+  fresh: PlaceEnrichmentGoogle,
+): PlaceEnrichmentGoogle {
+  if (!saved) return fresh;
+  const out = { ...saved } as Record<string, unknown>;
+  for (const [k, v] of Object.entries(fresh)) if (!isEmpty(v)) out[k] = v;
+  return out as PlaceEnrichmentGoogle;
+}
+
 export async function writeEnrichment(
   db: Db,
   regionId: string,
@@ -37,6 +52,18 @@ export async function writeEnrichment(
       .where("source", "=", "google")
       .execute();
     const idOf = new Map(rows.map((r) => [r.google_place_id!, r.id]));
+    const importIds = items.flatMap((it) =>
+      it.googleFromImport && idOf.has(it.googlePlaceId) ? [idOf.get(it.googlePlaceId)!] : [],
+    );
+    const saved = new Map<string, PlaceEnrichmentGoogle | null>();
+    if (importIds.length) {
+      const prev = await trx
+        .selectFrom("place_enrichments")
+        .select(["place_id", "google"])
+        .where("place_id", "in", importIds)
+        .execute();
+      for (const r of prev) saved.set(r.place_id, r.google);
+    }
     const stats: EnrichWriteStats = { written: 0, notInDb: 0, aiWritten: 0, aiCleared: 0 };
     for (const it of items) {
       const placeId = idOf.get(it.googlePlaceId);
@@ -47,18 +74,21 @@ export async function writeEnrichment(
       const values: Insertable<PlaceEnrichmentsTable> = { region_id: regionId, place_id: placeId };
       const update: Record<string, unknown> = {};
       if (it.google) {
-        values.google = it.google;
+        const google = it.googleFromImport ? mergeGoogle(saved.get(placeId), it.google) : it.google;
+        values.google = google;
         values.google_fetched_at = now;
-        update.google = it.google;
+        update.google = google;
         update.google_fetched_at = now;
       }
+      // Из кэша импорта: текст ИИ — только туда, где его нет; снимать сохранённый нельзя (факты беднее).
+      const aiOnlyIfEmpty = Boolean(it.googleFromImport);
       if (it.wiki !== undefined) {
         values.wiki = it.wiki;
         values.wiki_fetched_at = now;
         update.wiki = it.wiki;
         update.wiki_fetched_at = now;
       }
-      if (it.ai?.result && it.ai.hash) {
+      if (it.ai?.result && it.ai.hash && !aiOnlyIfEmpty) {
         const text = it.ai.result.text;
         values.ai_summary_uk = text;
         values.ai_model = text ? it.ai.result.model : null;
@@ -80,7 +110,23 @@ export async function writeEnrichment(
           .execute();
         stats.written++;
       }
-      if (it.ai && !(it.ai.result && it.ai.hash)) {
+      if (aiOnlyIfEmpty) {
+        const text = it.ai?.result?.text;
+        if (it.ai?.result && it.ai.hash && text) {
+          const set = await trx
+            .updateTable("place_enrichments")
+            .set({
+              ai_summary_uk: text,
+              ai_model: it.ai.result.model,
+              ai_generated_at: it.ai.result.generatedAt,
+              ai_input_hash: it.ai.hash,
+            })
+            .where("place_id", "=", placeId)
+            .where("ai_summary_uk", "is", null)
+            .executeTakeFirst();
+          if (Number(set.numUpdatedRows)) stats.aiWritten++;
+        }
+      } else if (it.ai && !(it.ai.result && it.ai.hash)) {
         // Текст для прежних фактов не выдаётся за актуальный.
         const hash = it.ai.hash;
         const cleared = await trx

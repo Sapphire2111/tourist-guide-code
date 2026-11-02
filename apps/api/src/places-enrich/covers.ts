@@ -53,31 +53,36 @@ export const hasCoverSource = (p: Pick<EnrichedPlace, "google" | "wiki">) =>
   Boolean(p.wiki?.image || p.google?.photos.length);
 
 /**
- * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); предел Google — RequestLimitError
- * (вызывающий прекращает Google-обложки до следующего месяца).
+ * Обложка места или null (нет источника). Wikimedia — первой (бесплатно); не скачалась/не обработалась — Google
+ * (если есть фото), иначе ошибка Wikimedia. Предел Google — RequestLimitError (вызывающий прекращает Google-обложки
+ * до следующего месяца). googleStopped — Google-обложки уже остановлены пределом: только Wikimedia.
  */
 export async function makeCover(
   p: Pick<EnrichedPlace, "google" | "wiki">,
-  deps: { google: GooglePlacesClient; fetch?: typeof fetch; resize?: Resize },
+  deps: { google: GooglePlacesClient; fetch?: typeof fetch; resize?: Resize; googleStopped?: boolean },
 ): Promise<Cover | null> {
   const resize = deps.resize ?? sharpResize;
   const img = p.wiki?.image;
-  if (img) {
-    const r = await resize(await download(img.url, deps.fetch ?? fetch));
-    return {
-      bytes: r.data,
-      mime: "image/webp",
-      width: r.width,
-      height: r.height,
-      authors: img.author ? [{ name: img.author, uri: img.sourceUrl, photoUri: null }] : [],
-      license: img.license,
-      sourceUrl: img.sourceUrl,
-      source: "wikimedia",
-      photoName: img.url,
-    };
-  }
   const photo = p.google?.photos[0];
-  if (!photo) return null;
+  if (img) {
+    try {
+      const r = await resize(await download(img.url, deps.fetch ?? fetch));
+      return {
+        bytes: r.data,
+        mime: "image/webp",
+        width: r.width,
+        height: r.height,
+        authors: img.author ? [{ name: img.author, uri: img.sourceUrl, photoUri: null }] : [],
+        license: img.license,
+        sourceUrl: img.sourceUrl,
+        source: "wikimedia",
+        photoName: img.url,
+      };
+    } catch (err) {
+      if (!photo || deps.googleStopped) throw err;
+    }
+  }
+  if (!photo || deps.googleStopped) return null;
   const uri = await deps.google.photoUri(photo.name, COVER_WIDTH);
   if (!uri) return null;
   const r = await resize(await deps.google.photoBytes(photo.name, uri));
@@ -188,7 +193,7 @@ export async function runCovers(
       continue;
     }
     try {
-      const c = await makeCover(p, deps);
+      const c = await makeCover(p, { ...deps, googleStopped });
       if (!c) {
         stats.failed++;
         continue;

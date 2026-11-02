@@ -259,6 +259,15 @@ export class GuideRepository {
       .execute();
   }
 
+  /** Версия обложки без байтов (GET /places/{id}/cover: ETag и 304 без чтения файла). */
+  coverVersion(placeId: string) {
+    return this.q
+      .selectFrom("place_cover_photos")
+      .select(["mime", "photo_name", "fetched_at"])
+      .where("place_id", "=", placeId)
+      .executeTakeFirst();
+  }
+
   /** Байты обложки (GET /places/{id}/cover). */
   coverBytes(placeId: string) {
     return this.q
