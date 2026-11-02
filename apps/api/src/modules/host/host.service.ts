@@ -486,13 +486,14 @@ export class HostService {
 
   /**
    * Контекст входа по QR этого отеля (репозиторий: точка hotel этого места, активна, не старше срока). Контекст,
-   * привязанный к другому пользователю, чем пользователь запроса, не используется (чужой пароль Wi-Fi и номер).
+   * привязанный к пользователю, не используется ни другим пользователем, ни запросом без сессии (чужой пароль
+   * Wi-Fi и номер); анонимный контекст (user_id NULL) — используется.
    */
   private async entryOf(entryContextId: string | undefined, placeId: string, userId: string | undefined) {
     if (!entryContextId) return undefined;
     const entry = await this.repo.entryRoom(entryContextId, placeId);
     if (!entry) return undefined;
-    if (userId && entry.user_id && entry.user_id !== userId) return undefined;
+    if (entry.user_id && entry.user_id !== userId) return undefined;
     return entry;
   }
 
@@ -527,16 +528,19 @@ export class HostService {
       actor_user_id: t.userId,
       reason: t.reason,
     });
-    await this.audit.record(currentDb(this.db), {
-      ...t.meta,
-      action: HOST_AUDIT.status,
-      entityType: SERVICE_REQUEST_ENTITY,
-      entityId: row.id,
-      oldValues: { status: row.status },
-      newValues: { status: to, by: t.actorType },
-      reason: t.reason,
-      regionId: row.region_id,
-    });
+    // AuditLog только дописывается и не обезличивается по сроку заявки (D-49): в него не идут свободный текст
+    // (причина — только в истории заявки) и действия гостя (автор-гость — ПДн; история есть в service_request_events).
+    if (t.actorType === "staff")
+      await this.audit.record(currentDb(this.db), {
+        ...t.meta,
+        action: HOST_AUDIT.status,
+        entityType: SERVICE_REQUEST_ENTITY,
+        entityId: row.id,
+        oldValues: { status: row.status },
+        newValues: { status: to, by: t.actorType },
+        reason: null,
+        regionId: row.region_id,
+      });
     return updated;
   }
 

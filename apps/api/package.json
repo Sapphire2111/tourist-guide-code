@@ -20,7 +20,8 @@
     "openapi": "tsc -p tsconfig.build.json && node dist/scripts/openapi.js",
     "db:migrate": "tsc -p tsconfig.build.json && node dist/db/migrate-cli.js",
     "db:seed": "tsc -p tsconfig.build.json && node dist/seed/seed-cli.js",
-    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/admin-create.js"
+    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/admin-create.js",
+    "places:import-google": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-import-google.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.8",

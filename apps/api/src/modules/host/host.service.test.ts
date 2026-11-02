@@ -235,6 +235,8 @@ describe("HostService.staffUpdate", () => {
         action: "service_request.status",
         entityId: REQ,
         oldValues: { status: "new" },
+        newValues: { status: "accepted", by: "staff" },
+        reason: null,
         roleAssignmentId: staffGrant(PLACE).id,
       }),
     );
@@ -275,6 +277,8 @@ describe("HostService.cancel (гость)", () => {
     expect(ok.repo.insertEvent).toHaveBeenCalledWith(
       expect.objectContaining({ to_status: "cancelled_by_guest", actor_type: "guest" }),
     );
+    // Действие гостя — только в истории заявки, не в AuditLog (D-49).
+    expect(ok.audit.record).not.toHaveBeenCalled();
   });
 });
 
@@ -287,7 +291,7 @@ describe("HostService.guestModule", () => {
     expect(plain.acceptingNow).toBe(true);
     const viaQr = await setup({
       entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: GUEST })),
-    }).service.guestModule(REGION, PLACE, ENTRY);
+    }).service.guestModule(REGION, PLACE, ENTRY, GUEST);
     expect(viaQr.wifi?.password).toBe("secret");
     expect(viaQr.room).toEqual({ label: "204", source: "qr" });
   });
@@ -310,6 +314,29 @@ describe("правки по проверке", () => {
       label: "204",
       source: "qr",
     });
+  });
+
+  it("без сессии чужой (с user_id) контекст не даёт Wi-Fi и комнату; анонимный (user_id NULL) — даёт", async () => {
+    const bound = await setup({
+      entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: GUEST })),
+    }).service.guestModule(REGION, PLACE, ENTRY);
+    expect(bound.wifi?.password).toBeNull();
+    expect(bound.room).toBeNull();
+    const anon = await setup({
+      entryRoom: vi.fn(() => Promise.resolve({ room_label: "204", user_id: null })),
+    }).service.guestModule(REGION, PLACE, ENTRY);
+    expect(anon.wifi?.password).toBe("secret");
+    expect(anon.room).toEqual({ label: "204", source: "qr" });
+  });
+
+  it("причина отказа сотрудника не пишется в AuditLog (свободный текст — только в истории)", async () => {
+    const { service, repo, audit } = setup({}, [staffGrant(PLACE)]);
+    await service.staffUpdate(STAFF, REQ, { status: "rejected", reason: "Иван Петров, 204" }, meta);
+    expect(repo.insertEvent).toHaveBeenCalledWith(expect.objectContaining({ reason: "Иван Петров, 204" }));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: null, newValues: { status: "rejected", by: "staff" } }),
+    );
   });
 
   it("дубль — по ключу уникального индекса (гость, место, услуга), без номера комнаты", async () => {
