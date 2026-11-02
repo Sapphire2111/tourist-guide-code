@@ -30,6 +30,8 @@ export type AdminMockState = {
   media: Record<string, Obj & { polls: number }>;
   /** Тела PUT /auth/session/region. */
   regionChoices: unknown[];
+  /** Роль без прав на модуль готелю и персонал (модератор каталога): 403 на эти разделы. */
+  noHostAccess: boolean;
   /** Модули готелю: placeId → тело (нет записи — не настраивался). */
   hostModules: Record<string, Obj>;
   /** Тела PUT /admin/places/{id}/host-module. */
@@ -179,6 +181,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
     placeMedia: {},
     media: {},
     regionChoices: [],
+    noHostAccess: false,
     hostModules: {},
     hostPuts: [],
     staff: {},
@@ -441,6 +444,9 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           return json(route, sorted());
         }
         if (sub === "badge/history") return json(route, { items: [] });
+
+        if (state.noHostAccess && (sub === "host-module" || sub?.startsWith("staff")))
+          return error(route, 403, "FORBIDDEN", "errors.forbidden");
 
         // Модуль готелю (блок 5): пока не сохранён — значения по умолчанию (configured=false).
         if (sub === "host-module" && method === "GET")

@@ -105,6 +105,15 @@ test("персонал: назначить по username и по Telegram id, д
   await form.getByRole("button", { name: "Призначити співробітника" }).click();
   await expect(staff.getByRole("row", { name: /123456789/ })).toContainText("Власник");
 
+  const dialogs: string[] = [];
+  page.once("dialog", (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
+  await staff.getByRole("button", { name: /^Зняти: .*@hotel_staff/ }).click();
+  await expect(staff.getByRole("row", { name: /@hotel_staff/ })).toBeVisible();
+  expect(dialogs[0]).toContain("Зняти співробітника");
+  page.once("dialog", (d) => void d.accept());
   await staff.getByRole("button", { name: /^Зняти: .*@hotel_staff/ }).click();
   await expect(staff.getByRole("row", { name: /@hotel_staff/ })).toHaveCount(0);
   await expect(staff.getByRole("row", { name: /123456789/ })).toBeVisible();
@@ -193,4 +202,27 @@ test("сценарии: публикация пустого сценария —
   await row.getByRole("button", { name: /^Опублікувати/ }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(row).toContainText("Чернетка");
+});
+
+test("модератор без прав на модуль и персонал: секций и красных ошибок нет", async ({ page }) => {
+  adminMockState.get(page)!.noHostAccess = true;
+  await login(page, "/#/places");
+  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Графік роботи" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Модуль готелю" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("сценарии: уменьшение числа дней предупреждает об удалении пунктов; пустое число дней — ошибка", async ({
+  page,
+}) => {
+  await login(page, "/#/scenarios/new");
+  const form = page.getByRole("form", { name: "Новий сценарій" });
+  await form.getByLabel(/Днів/).fill("2");
+  await form.getByRole("button", { name: "Додати пункт: День 2" }).click();
+  await form.getByLabel(/Днів/).fill("1");
+  await expect(form.getByText(/Пунктів, що вийдуть за межі днів/)).toContainText("1");
+  await form.getByLabel(/Днів/).fill("");
+  await expect(form.getByText("Кількість днів — ціле число від 1 до 5.")).toBeVisible();
 });

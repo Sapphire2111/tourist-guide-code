@@ -557,6 +557,7 @@ export const uk = {
   "admin.staff.notifications": "Сповіщення бота",
   "admin.staff.granted": "Призначено",
   "admin.staff.revoke": "Зняти",
+  "admin.staff.revokeConfirm": "Зняти співробітника {name}?",
   "admin.staff.empty": "Персоналу ще не призначено.",
   "admin.staff.valueInvalid": "Вкажіть коректний Telegram id (число) або username (5–32 символи).",
   "admin.scenario.new": "Новий сценарій",
@@ -593,7 +594,6 @@ export const uk = {
   "admin.scenario.alternatives": "Альтернативи",
   "admin.scenario.addAlternative": "Додати альтернативу",
   "admin.scenario.removeAlternative": "Прибрати альтернативу",
-  "admin.scenario.noAlternative": "Оберіть місце",
   "admin.scenario.adLabel": "Позначка реклами",
   "admin.scenario.adLabel.none": "Без реклами",
   "admin.scenario.adLabel.advertising": "Реклама",
@@ -602,7 +602,9 @@ export const uk = {
   "admin.scenario.placeRequired": "У кожному пункті оберіть місце.",
   "admin.scenario.itemCount": "Пунктів",
   "admin.scenario.version": "Версія",
-  "admin.scenario.unavailable": "місце недоступне",
+  "admin.scenario.daysInvalid": "Кількість днів — ціле число від 1 до 5.",
+  "admin.scenario.daysDrop": "Пунктів, що вийдуть за межі днів і будуть видалені під час збереження: {n}.",
+  "admin.scenario.placeUnknown": "(місце {id}…)",
 } as const;
 
 export type MessageKey = keyof typeof uk;

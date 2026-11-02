@@ -333,6 +333,8 @@ export function PlaceHostModule({ placeId }: { placeId: string }) {
     () => call(api.GET("/admin/places/{id}/host-module", { params: { path: { id: placeId } } })),
     [placeId],
   );
+  // Нет права на модуль (например, модератор каталога) — секцию не показываем, без красных ошибок.
+  if (result && !result.ok && result.error.status === 403) return null;
   return (
     <section aria-labelledby="place-host">
       <Stack gap={2}>

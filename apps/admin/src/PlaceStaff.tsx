@@ -72,6 +72,7 @@ export function PlaceStaff({ placeId }: { placeId: string }) {
   };
 
   const revoke = async (m: Member) => {
+    if (!window.confirm(t("admin.staff.revokeConfirm", { name: memberName(m) }))) return;
     setNotice(null);
     const res = await call(
       api.DELETE("/admin/places/{id}/staff/{assignmentId}", {
@@ -84,6 +85,8 @@ export function PlaceStaff({ placeId }: { placeId: string }) {
     reload();
   };
 
+  // 403 — нет права назначать персонал: секции нет. Форма назначения — только если список загрузился.
+  if (result && !result.ok && result.error.status === 403) return null;
   return (
     <section aria-labelledby="place-staff">
       <Stack gap={2}>
@@ -128,30 +131,32 @@ export function PlaceStaff({ placeId }: { placeId: string }) {
             )
           }
         </Loaded>
-        <Form
-          label={t("admin.staff.assign")}
-          onSubmit={assign}
-          submitLabel={t("admin.staff.assign")}
-          error={error}
-        >
-          <SelectField
-            label={t("admin.staff.by")}
-            value={by}
-            options={[
-              { value: "id", label: t("admin.staff.byId") },
-              { value: "username", label: t("admin.staff.byUsername") },
-            ]}
-            onChange={(v) => setBy(v as "id" | "username")}
-          />
-          <Field label={t("admin.staff.value")} value={value} required onChange={setValue} />
-          <SelectField
-            label={t("admin.staff.role")}
-            value={role}
-            options={ROLES.map((r) => ({ value: r, label: tDynamic(`admin.staff.role.${r}`) }))}
-            onChange={(v) => setRole(v as Role)}
-          />
-          {local && <p role="alert">{local}</p>}
-        </Form>
+        {result?.ok && (
+          <Form
+            label={t("admin.staff.assign")}
+            onSubmit={assign}
+            submitLabel={t("admin.staff.assign")}
+            error={error}
+          >
+            <SelectField
+              label={t("admin.staff.by")}
+              value={by}
+              options={[
+                { value: "id", label: t("admin.staff.byId") },
+                { value: "username", label: t("admin.staff.byUsername") },
+              ]}
+              onChange={(v) => setBy(v as "id" | "username")}
+            />
+            <Field label={t("admin.staff.value")} value={value} required onChange={setValue} />
+            <SelectField
+              label={t("admin.staff.role")}
+              value={role}
+              options={ROLES.map((r) => ({ value: r, label: tDynamic(`admin.staff.role.${r}`) }))}
+              onChange={(v) => setRole(v as Role)}
+            />
+            {local && <p role="alert">{local}</p>}
+          </Form>
+        )}
         <Notice text={notice} />
       </Stack>
     </section>

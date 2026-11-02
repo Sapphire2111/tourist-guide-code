@@ -140,6 +140,7 @@ function useAllPlaces() {
   const { api } = useAdmin();
   const l = useLocalized();
   const [places, setPlaces] = useState<{ value: string; label: string }[]>([]);
+  const [error, setError] = useState<ApiError | null>(null);
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -149,7 +150,10 @@ function useAllPlaces() {
         const res: Result<{ items: ApiSchemas["PlaceDto"][]; nextCursor: string | null }> = await call(
           api.GET("/admin/places", { params: { query: cursor ? { cursor } : {} } }),
         );
-        if (!res.ok) break;
+        if (!res.ok) {
+          if (alive) setError(res.error);
+          break;
+        }
         all.push(...res.data.items);
         cursor = res.data.nextCursor;
         if (!cursor) break;
@@ -161,7 +165,7 @@ function useAllPlaces() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
-  return places;
+  return { places, error };
 }
 
 const STATUS_ACTIONS: Record<
@@ -290,13 +294,18 @@ function PlaceSelect({
   required?: boolean;
 }) {
   const { t } = useT();
+  // Выбранное место, которого нет в загруженном списке, не теряем.
+  const options =
+    value && !places.some((p) => p.value === value)
+      ? [...places, { value, label: t("admin.scenario.placeUnknown", { id: value.slice(0, 8) }) }]
+      : places;
   return (
     <SelectField
       label={label}
       value={value}
       required={required}
       empty={t("admin.choose")}
-      options={places}
+      options={options}
       onChange={onChange}
     />
   );
@@ -306,7 +315,7 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
   const { api } = useAdmin();
   const { t, tDynamic } = useT();
   const [, navigate] = useRoute();
-  const places = useAllPlaces();
+  const { places: loadedPlaces, error: placesError } = useAllPlaces();
   const [current, setCurrent] = useState(scenario);
   const [form, setForm] = useState(() => (scenario ? toForm(scenario) : emptyForm()));
   const [error, setError] = useState<ApiError | null>(null);
@@ -316,7 +325,10 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
   const patch = (p: Partial<ScenarioForm>) => setForm((f) => ({ ...f, ...p }));
   const setItem = (idx: number, p: Partial<ItemForm>) =>
     patch({ items: form.items.map((x, j) => (j === idx ? { ...x, ...p } : x)) });
-  const days = Math.min(5, Math.max(1, Number(form.days) || 1));
+  const daysNum = Number(form.days);
+  const daysValid = form.days.trim() !== "" && Number.isInteger(daysNum) && daysNum >= 1 && daysNum <= 5;
+  const days = daysValid ? daysNum : 1;
+  const dropped = daysValid ? form.items.filter((i) => i.dayNo > daysNum).length : 0;
 
   const save = async () => {
     setNotice(null);
@@ -383,6 +395,16 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
             required
             onChange={(v) => patch({ days: v })}
           />
+          {!daysValid && (
+            <p role="note" style={{ margin: 0 }}>
+              {t("admin.scenario.daysInvalid")}
+            </p>
+          )}
+          {dropped > 0 && (
+            <p role="note" style={{ margin: 0 }}>
+              {t("admin.scenario.daysDrop", { n: dropped })}
+            </p>
+          )}
           <SelectField
             label={t("admin.scenario.adLabel")}
             value={form.adLabel}
@@ -443,7 +465,7 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
                           <PlaceSelect
                             label={`${t("admin.scenario.place")} ${n}`}
                             value={x.placeId}
-                            places={places}
+                            places={loadedPlaces}
                             onChange={(placeId) => setItem(idx, { placeId })}
                           />
                           <Field
@@ -475,7 +497,7 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
                                 <PlaceSelect
                                   label={`${t("admin.scenario.alternatives")} ${n}.${k + 1}`}
                                   value={alt}
-                                  places={places}
+                                  places={loadedPlaces}
                                   onChange={(v) =>
                                     setItem(idx, {
                                       alternatives: x.alternatives.map((a, m) => (m === k ? v : a)),
@@ -540,6 +562,7 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
             </fieldset>
           );
         })}
+        <ErrorBox error={placesError} />
         {local && <p role="alert">{local}</p>}
         <Notice text={notice} />
       </Form>
