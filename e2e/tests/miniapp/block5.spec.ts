@@ -163,7 +163,10 @@ test.describe("QR отеля demoHotel01", () => {
       "Піцерія «Реклама»",
     );
 
-    await page.getByRole("checkbox", { name: "Тестовий готель" }).uncheck();
+    // Нижняя навигация липкая — галочку сперва в центр экрана.
+    const hotel = page.getByRole("checkbox", { name: "Тестовий готель" });
+    await hotel.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await hotel.uncheck();
     await expect(page.getByTestId("plan-item")).toHaveCount(1);
 
     await page.getByRole("link", { name: "До списку" }).click();

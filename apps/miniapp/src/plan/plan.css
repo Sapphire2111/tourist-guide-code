@@ -119,6 +119,8 @@
   background: var(--app-pill-bg, #eef);
 }
 .plan-check {
+  /* Галочка в фокусе/при прокрутке не прячется под липкой шапкой и нижней навигацией. */
+  scroll-margin: 150px 0 120px;
   flex: none;
   width: 24px;
   height: 24px;
