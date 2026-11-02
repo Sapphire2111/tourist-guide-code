@@ -106,6 +106,12 @@ describe("HTTP планировщика", () => {
     await http().post("/me/plan").send({ regionId: REGION, adults: 0 }).expect(400);
     await http().post("/me/plan").send({ regionId: REGION, days: 15 }).expect(400);
     await http().post("/me/plan").send({ regionId: REGION, withCar: "так" }).expect(400);
+    // null в параметрах — 400 (а не NOT NULL в БД → 500).
+    for (const field of ["adults", "children", "withCar", "days"])
+      await http()
+        .patch(`/me/plan/${PLAN}`)
+        .send({ regionId: REGION, [field]: null })
+        .expect(400);
     const add = { regionId: REGION, addItem: { dayNo: 2, slot: "rain", placeId: P(3) } };
     await http().patch(`/me/plan/${PLAN}`).send(add).expect(200);
     expect(service.updatePlan).toHaveBeenLastCalledWith(USER, PLAN, expect.objectContaining(add));
@@ -379,6 +385,62 @@ describe("PlannerService: параметри поїздки і варіанти 
       PLAN,
       expect.objectContaining({ items: [], days: 1, with_car: true, adults: 4 }),
     );
+  });
+
+  it("создание: база из QR снята с публикации — план без базы (не 422); лимит пунктов — 422", async () => {
+    const createPlan = vi.fn((row: Record<string, unknown>) =>
+      Promise.resolve(customRow(row as Partial<UserPlan>)),
+    );
+    const { service } = plannerService({ createPlan, countPlans: vi.fn(() => Promise.resolve(0)) });
+    await service.createPlan(USER, { regionId: REGION, basePlaceId: P(13) });
+    expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ base_place_id: null }));
+    const full = customRow({
+      items: Array.from({ length: 10 }, (_, k) => ({
+        id: P(700 + k),
+        dayNo: 1,
+        position: k,
+        placeId: P(200 + k),
+        timeHint: null,
+        durationMin: null,
+        note: null,
+        alternatives: [],
+        replacedPlaceId: null,
+        slot: "morning" as const,
+      })),
+    });
+    const limited = plannerService({ findPlan: vi.fn(() => Promise.resolve(full)) });
+    await expect(
+      limited.service.updatePlan(USER, PLAN, {
+        regionId: REGION,
+        addItem: { dayNo: 1, slot: "morning", placeId: P(10) },
+      }),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE", messageKey: "errors.plan.itemsLimit" });
+  });
+
+  it("сценарий со смешанным временем: порядок пунктов сохраняется, часть дня без времени — от предыдущего", async () => {
+    const mixed = [
+      item({ id: P(601), position: 0, place_id: P(10), time_hint: "18:00:00" }),
+      item({ id: P(602), position: 1, place_id: P(11), time_hint: null }),
+      item({ id: P(603), position: 2, place_id: P(10), time_hint: "09:00:00" }),
+    ];
+    const { service } = plannerService({ items: vi.fn(() => Promise.resolve(mixed)) });
+    const s = await service.scenario(REGION, SCEN);
+    expect(s.plan[0]!.items.map((i) => [i.id, i.slot])).toEqual([
+      [P(601), "evening"],
+      [P(602), "evening"],
+      [P(603), "evening"],
+    ]);
+  });
+
+  it("каталог региона кэшируется: два запроса плана — один запрос каталога", async () => {
+    const row = customRow();
+    const { service, repo } = plannerService({
+      findPlan: vi.fn(() => Promise.resolve(row)),
+      catalogPlaces: vi.fn(() => Promise.resolve(catalog)),
+    });
+    await service.plan(REGION, USER, PLAN);
+    await service.plan(REGION, USER, PLAN);
+    expect(repo.catalogPlaces).toHaveBeenCalledTimes(1);
   });
 
   it("базовая точка — опубликованное место: отсчёт от него, в ответе — его название", async () => {

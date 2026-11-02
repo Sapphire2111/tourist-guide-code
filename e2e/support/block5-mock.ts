@@ -237,6 +237,7 @@ const scenarioPlan = (): { dayNo: number; items: ItemMock[] }[] => [
         id: "00000000-0000-4000-8000-000000000711",
         position: 1,
         timeHint: "09:00",
+        slot: "morning",
         durationMin: 60,
         note: { uk: "Сніданок" },
         place: place(CAFE, "Кав'ярня «Смерека»", 48.4512, 24.5612),
@@ -248,6 +249,7 @@ const scenarioPlan = (): { dayNo: number; items: ItemMock[] }[] => [
         id: "00000000-0000-4000-8000-000000000712",
         position: 2,
         timeHint: "12:00",
+        slot: "afternoon",
         durationMin: null,
         note: null,
         place: place(HOTEL_PLACE, "Тестовий готель", 48.45, 24.56),
@@ -407,8 +409,6 @@ export async function installBlock5Mock(
         return json(route, { items: state.plans.map((p) => ({ ...p, options: [] })) });
       if (path === "/me/plan" && method === "POST") {
         const custom = !body.scenarioId;
-        const slotOf = (t: string | null) =>
-          !t ? "afternoon" : Number(t.slice(0, 2)) < 12 ? "morning" : "afternoon";
         const plan: PlanMock = refresh({
           id: PLAN_ID,
           regionId: REGION_ID,
@@ -430,7 +430,7 @@ export async function installBlock5Mock(
             ? []
             : scenarioPlan().map((d) => ({
                 ...d,
-                items: d.items.map((i) => ({ ...i, replaced: false, slot: slotOf(i.timeHint) })),
+                items: d.items.map((i) => ({ ...i, replaced: false })),
               })),
           options: [],
           createdAt: "2026-11-02T10:00:00Z",

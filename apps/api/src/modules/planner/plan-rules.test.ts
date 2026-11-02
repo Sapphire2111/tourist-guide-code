@@ -3,6 +3,8 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioItem, UserPlanItemRecord } from "../../db/index.js";
 import {
+  PLAN_ITEMS_MAX,
+  PLAN_ITEMS_PER_SLOT_MAX,
   addItem,
   planItemsFromScenario,
   removeItem,
@@ -101,6 +103,23 @@ describe("addItem / trimDays", () => {
     expect(addItem(next, { dayNo: 1, slot: "morning", placeId: P(20) })).toBe("already_in_plan");
     expect(addItem(next, { dayNo: 1, slot: "rain", placeId: P(20) })).not.toBe("already_in_plan");
     expect(addItem(next, { dayNo: 2, slot: "morning", placeId: P(20) })).not.toBe("already_in_plan");
+  });
+
+  it("лимиты: в части дня — PLAN_ITEMS_PER_SLOT_MAX, в плане — PLAN_ITEMS_MAX", () => {
+    let items: UserPlanItemRecord[] = [];
+    for (let n = 0; n < PLAN_ITEMS_PER_SLOT_MAX; n++) {
+      const r = addItem(items, { dayNo: 1, slot: "morning", placeId: P(100 + n) });
+      if (typeof r === "string") throw new Error(r);
+      items = r;
+    }
+    expect(addItem(items, { dayNo: 1, slot: "morning", placeId: P(999) })).toBe("items_limit");
+    expect(addItem(items, { dayNo: 1, slot: "evening", placeId: P(999) })).not.toBe("items_limit");
+    const many = Array.from({ length: PLAN_ITEMS_MAX }, (_, k) => ({
+      ...items[0]!,
+      dayNo: (k % 14) + 1,
+      slot: undefined,
+    }));
+    expect(addItem(many, { dayNo: 1, slot: "evening", placeId: P(999) })).toBe("items_limit");
   });
 
   it("меньше дней — пункты лишних дней убираются; иначе тот же массив", () => {

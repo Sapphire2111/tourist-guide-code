@@ -55,16 +55,9 @@ function daysOf(days: { dayNo: number; items: ItemDto[] }[]): PlanDay[] {
         note: i.note,
         alternatives: i.alternatives.map(placeOf),
         distanceMeters: i.distanceFromPreviousMeters,
-        slot: "slot" in i ? i.slot : slotOfTime(i.timeHint),
+        slot: i.slot,
       })),
   }));
-}
-
-/** Часть дня пункта сценария — по времени, как на сервере (plan-options.ts slotOf). */
-function slotOfTime(time: string | null): "morning" | "afternoon" | "evening" {
-  if (!time) return "afternoon";
-  const h = Number(time.slice(0, 2));
-  return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
 }
 
 const scenarioOf = (s: ApiSchemas["ScenarioSummaryDto"]): ScenarioSummary => ({

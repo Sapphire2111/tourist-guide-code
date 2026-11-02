@@ -27,7 +27,12 @@ export type PlanEditError =
   | "not_alternative"
   | "already_in_plan"
   | "place_unavailable"
-  | "day_out_of_range";
+  | "day_out_of_range"
+  | "items_limit";
+
+/** Пунктов в одной части дня и во всём плане — не больше (защита от разрастания jsonb items). */
+export const PLAN_ITEMS_PER_SLOT_MAX = 10;
+export const PLAN_ITEMS_MAX = 150;
 
 /**
  * «Замінити»: место пункта меняется на альтернативу из его набора; прежнее место становится альтернативой (можно
@@ -77,6 +82,9 @@ export function addItem(
   const rain = add.slot === "rain";
   if (items.some((i) => i.dayNo === add.dayNo && i.placeId === placeId && (i.slot === "rain") === rain))
     return "already_in_plan";
+  if (items.length >= PLAN_ITEMS_MAX) return "items_limit";
+  if (items.filter((i) => i.dayNo === add.dayNo && i.slot === add.slot).length >= PLAN_ITEMS_PER_SLOT_MAX)
+    return "items_limit";
   const position = Math.max(-1, ...items.filter((i) => i.dayNo === add.dayNo).map((i) => i.position)) + 1;
   return [
     ...items,

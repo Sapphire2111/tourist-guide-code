@@ -96,14 +96,16 @@ export const TRAVEL_MODES = ["walk", "car", "transport"] as const satisfies read
 /** Параметры поездки (0019), любые из полей; при создании по умолчанию — 2 дорослих, 0 дітей, з авто. */
 export class PlanTripInputDto extends PlannerRegionQueryDto {
   @ApiPropertyOptional({ type: "integer", minimum: 1, maximum: PLAN_PEOPLE_MAX, description: "Дорослих" })
-  @IsOptional()
+  // null — 400, а не «поле не задано» (иначе NOT NULL в БД → 500).
+  @ValidateIf((o: PlanTripInputDto) => o.adults !== undefined)
   @IsInt()
   @Min(1)
   @Max(PLAN_PEOPLE_MAX)
   adults?: number;
 
   @ApiPropertyOptional({ type: "integer", minimum: 0, maximum: PLAN_PEOPLE_MAX, description: "Дітей" })
-  @IsOptional()
+  // null — 400, а не «поле не задано» (иначе NOT NULL в БД → 500).
+  @ValidateIf((o: PlanTripInputDto) => o.children !== undefined)
   @IsInt()
   @Min(0)
   @Max(PLAN_PEOPLE_MAX)
@@ -113,7 +115,8 @@ export class PlanTripInputDto extends PlannerRegionQueryDto {
     type: Boolean,
     description: "З авто; без авто — варіанти пішки, далі — «потрібен транспорт»",
   })
-  @IsOptional()
+  // null — 400, а не «поле не задано» (иначе NOT NULL в БД → 500).
+  @ValidateIf((o: PlanTripInputDto) => o.withCar !== undefined)
   @IsBoolean()
   withCar?: boolean;
 
@@ -123,7 +126,8 @@ export class PlanTripInputDto extends PlannerRegionQueryDto {
     maximum: PLAN_DAYS_MAX,
     description: "Днів у плані; менше — пункти зайвих днів прибираються",
   })
-  @IsOptional()
+  // null — 400, а не «поле не задано» (иначе NOT NULL в БД → 500).
+  @ValidateIf((o: PlanTripInputDto) => o.days !== undefined)
   @IsInt()
   @Min(1)
   @Max(PLAN_DAYS_MAX)
@@ -246,6 +250,15 @@ export class ScenarioItemDto {
     description: "Расстояние от предыдущего пункта дня по прямой, м",
   })
   distanceFromPreviousMeters!: number | null;
+
+  @ApiProperty({
+    enum: PLAN_SLOTS,
+    enumName: "PlanSlot",
+    description:
+      "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у " +
+      "предыдущего пункта); rain — «якщо дощ»",
+  })
+  slot!: PlanSlot;
 }
 
 export class ScenarioDayDto {
@@ -283,14 +296,6 @@ export class ScenarioDto extends ScenarioSummaryDto {
 
 export class UserPlanItemDto extends ScenarioItemDto {
   @ApiProperty({ type: Boolean, description: "Пункт заменён пользователем" }) replaced!: boolean;
-
-  @ApiProperty({
-    enum: PLAN_SLOTS,
-    enumName: "PlanSlot",
-    description:
-      "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»",
-  })
-  slot!: PlanSlot;
 }
 
 export class UserPlanDayDto {
@@ -327,9 +332,11 @@ export class PlanOptionDto {
   @ApiProperty({
     enum: TRAVEL_MODES,
     enumName: "PlanTravel",
-    description: "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт",
+    nullable: true,
+    description:
+      "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати",
   })
-  travel!: Travel;
+  travel!: Travel | null;
 
   @ApiProperty({ type: "integer", nullable: true, description: "Оцінка в дорозі, хв" })
   travelMinutes!: number | null;

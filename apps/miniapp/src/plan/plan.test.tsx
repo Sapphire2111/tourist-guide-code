@@ -9,7 +9,7 @@ import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
 import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
 import { createHostApi } from "../host/host-api.js";
-import type { HostApi, PlanOption, UserPlan } from "../host/types.js";
+import { ConflictError, type HostApi, type PlanOption, type UserPlan } from "../host/types.js";
 import { MyPlan, NewPlanScreen, SavedPlanScreen } from "./MyPlan.js";
 
 afterEach(() => {
@@ -175,7 +175,7 @@ describe("Мій план: варіанти на вибір", () => {
     // План Б свёрнут: кнопка-заголовок.
     const toggle = within(rain).getByRole("button", { name: "Якщо дощ — план Б" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(within(rain).queryByText("Під дахом — підійде в дощ")).toBeNull();
+    expect(within(rain).getByText("Під дахом — підійде в дощ").closest("[hidden]")).toBeTruthy();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(within(rain).getByText("Під дахом — підійде в дощ")).toBeTruthy();
@@ -220,6 +220,58 @@ describe("Мій план: варіанти на вибір", () => {
   });
 });
 
+describe("Мій план: галочки — відкат, блокування, фокус", () => {
+  it("409: галочка возвращается, текст errors.plan.*, план перечитан", async () => {
+    let fail: (e: unknown) => void = () => undefined;
+    const updatePlan = vi.fn<HostApi["updatePlan"]>(() => new Promise((_, reject) => (fail = reject)));
+    const reloaded = plan({ title: { uk: "Перечитаний план" } });
+    const planFn = vi.fn<HostApi["plan"]>().mockResolvedValueOnce(plan()).mockResolvedValueOnce(reloaded);
+    setup(<SavedPlanScreen id={PLAN} />, { plan: planFn, updatePlan });
+    const box = await screen.findByRole("checkbox", { name: "Водоспад Пробій" });
+    fireEvent.click(box);
+    // Пока идёт запрос: галочка поставлена сразу, остальные — aria-disabled, клики игнорируются.
+    expect(box).toHaveProperty("checked", true);
+    const other = screen.getByRole("checkbox", { name: "Колиба «Гражда»" });
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    expect(other).toHaveProperty("disabled", false);
+    fireEvent.click(other);
+    expect(updatePlan).toHaveBeenCalledTimes(1);
+    await act(async () => fail(new ConflictError("errors.plan.alreadyInPlan")));
+    expect(screen.getByTestId("plan-status").textContent).toBe("Це місце вже є в плані на цей день.");
+    expect(planFn).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("heading", { level: 1, name: "Перечитаний план" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Водоспад Пробій" })).toHaveProperty("checked", false);
+  });
+
+  it("после ответа фокус — на галочку того же места в списке выбранного", async () => {
+    const chosen = plan({
+      schedule: [
+        {
+          day: 1,
+          items: [
+            {
+              id: "i1",
+              time: null,
+              place: { id: "a1", name: { uk: "Водоспад Пробій" } },
+              note: null,
+              alternatives: [],
+              distanceMeters: null,
+              slot: "afternoon",
+            },
+          ],
+        },
+      ],
+    });
+    chosen.options[0]!.slots[1]!.options.shift();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan(), updatePlan: async () => chosen });
+    const box = await screen.findByRole("checkbox", { name: "Водоспад Пробій" });
+    box.focus();
+    await act(async () => fireEvent.click(box));
+    const now = within(screen.getByTestId("plan-slot-afternoon")).getAllByTestId("plan-item")[0]!;
+    expect(document.activeElement).toBe(within(now).getByRole("checkbox"));
+  });
+});
+
 describe("Мій план: згорнуті дні", () => {
   it("открыт первый день; остальные свёрнуты с «Обрано: N»; в части дня — 3 варианта и «Ще варіанти»", async () => {
     const two = plan({
@@ -234,14 +286,14 @@ describe("Мій план: згорнуті дні", () => {
     expect(b1!.getAttribute("aria-expanded")).toBe("true");
     expect(b2!.getAttribute("aria-expanded")).toBe("false");
     expect(within(day2!).getByTestId("day-chosen").textContent).toBe("Обрано: 0");
-    expect(within(day2!).queryByTestId("plan-slot-morning")).toBeNull();
+    expect(within(day2!).getByTestId("plan-slot-morning").closest("[hidden]")).toBeTruthy();
     const afternoon = within(day1!).getByTestId("plan-slot-afternoon");
     const more = within(afternoon).getByText("Ще варіанти: 1").closest("details")!;
     expect(more.open).toBe(false);
     expect(within(afternoon).getAllByTestId("plan-option")).toHaveLength(4);
     fireEvent.click(b2!);
     expect(b2!.getAttribute("aria-expanded")).toBe("true");
-    expect(within(day2!).getByTestId("plan-slot-morning")).toBeTruthy();
+    expect(within(day2!).getByTestId("plan-slot-morning").closest("[hidden]")).toBeNull();
   });
 });
 

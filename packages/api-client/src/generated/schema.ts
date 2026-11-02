@@ -3212,6 +3212,11 @@ export interface components {
       address: components["schemas"]["LocalizedTextDto"] | null;
       location: components["schemas"]["LonLatDto"];
     };
+    /**
+     * @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»
+     * @enum {string}
+     */
+    PlanSlot: "morning" | "afternoon" | "evening" | "rain";
     ScenarioItemDto: {
       /** Format: uuid */
       id: string;
@@ -3227,6 +3232,8 @@ export interface components {
       alternatives: components["schemas"]["PlanPlaceDto"][];
       /** @description Расстояние от предыдущего пункта дня по прямой, м */
       distanceFromPreviousMeters: number | null;
+      /** @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ» */
+      slot: components["schemas"]["PlanSlot"];
     };
     ScenarioDayDto: {
       dayNo: number;
@@ -3267,11 +3274,6 @@ export interface components {
       /** @description Від чого рахується відстань, якщо в день ще нічого не вибрано */
       base: components["schemas"]["PlanBaseDto"] | null;
     };
-    /**
-     * @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»
-     * @enum {string}
-     */
-    PlanSlot: "morning" | "afternoon" | "evening" | "rain";
     UserPlanItemDto: {
       /** Format: uuid */
       id: string;
@@ -3287,10 +3289,10 @@ export interface components {
       alternatives: components["schemas"]["PlanPlaceDto"][];
       /** @description Расстояние от предыдущего пункта дня по прямой, м */
       distanceFromPreviousMeters: number | null;
+      /** @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ» */
+      slot: components["schemas"]["PlanSlot"];
       /** @description Пункт заменён пользователем */
       replaced: boolean;
-      /** @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ» */
-      slot: components["schemas"]["PlanSlot"];
     };
     UserPlanDayDto: {
       dayNo: number;
@@ -3324,7 +3326,7 @@ export interface components {
       | "shopping"
       | "indoor";
     /**
-     * @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт
+     * @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати
      * @enum {string}
      */
     PlanTravel: "walk" | "car" | "transport";
@@ -3339,8 +3341,8 @@ export interface components {
       reason: components["schemas"]["PlanOptionReason"];
       /** @description По прямой от предыдущего пункта дня или базовой точки, м */
       distanceMeters: number | null;
-      /** @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт */
-      travel: components["schemas"]["PlanTravel"];
+      /** @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати */
+      travel: components["schemas"]["PlanTravel"] | null;
       /** @description Оцінка в дорозі, хв */
       travelMinutes: number | null;
       /** @description У місця є тег «З дітьми» */

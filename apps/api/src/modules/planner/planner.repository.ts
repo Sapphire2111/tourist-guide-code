@@ -121,11 +121,16 @@ export class PlannerRepository {
     );
   }
 
-  /** Каталог региона для вариантов: как у гида — опубликовано, точка есть, категория активна; теги — коды. */
-  async catalogPlaces(): Promise<CatalogPlaceRow[]> {
-    const rows = (await this.q
+  /**
+   * Каталог региона для вариантов: как у гида — опубликовано, точка есть, категория активна; теги (активные) — коды,
+   * одним запросом (LEFT JOIN + array_agg). Не больше limit мест (по id).
+   */
+  catalogPlaces(limit: number): Promise<CatalogPlaceRow[]> {
+    return this.q
       .selectFrom("places")
       .innerJoin("categories", "categories.id", "places.category_id")
+      .leftJoin("place_tags", "place_tags.place_id", "places.id")
+      .leftJoin("tags", (j) => j.onRef("tags.id", "=", "place_tags.tag_id").on("tags.active", "=", true))
       .select([
         "places.id",
         "places.category_id",
@@ -136,27 +141,14 @@ export class PlannerRepository {
         "places.recommended",
       ])
       .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
+      .select(sql<string[]>`array_remove(array_agg(tags.code ORDER BY tags.code), NULL)`.as("tags"))
       .where("places.status", "=", "published")
       .where("places.location", "is not", null)
       .where("categories.active", "=", true)
+      .groupBy(["places.id", "categories.id"])
       .orderBy("places.id")
-      .limit(5000)
-      .execute()) as Omit<CatalogPlaceRow, "tags">[];
-    if (rows.length === 0) return [];
-    const tags = await this.q
-      .selectFrom("place_tags")
-      .innerJoin("tags", "tags.id", "place_tags.tag_id")
-      .select(["place_tags.place_id", "tags.code"])
-      .where("tags.active", "=", true)
-      .where(
-        "place_tags.place_id",
-        "in",
-        rows.map((r) => r.id),
-      )
-      .execute();
-    const byPlace = new Map<string, string[]>();
-    for (const t of tags) byPlace.set(t.place_id, [...(byPlace.get(t.place_id) ?? []), t.code]);
-    return rows.map((r) => ({ ...r, tags: byPlace.get(r.id) ?? [] }));
+      .limit(limit)
+      .execute() as Promise<CatalogPlaceRow[]>;
   }
 
   /** Запасная точка отсчёта без базы и пунктов — первый активный населённый пункт региона (порядок админки). */

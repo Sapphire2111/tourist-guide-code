@@ -122,8 +122,8 @@ export type PlanOption = {
   kind: string;
   reason: PlanOptionReason;
   distanceMeters: number | null;
-  /** walk — пішки, car — на авто, transport — без авто далеко. */
-  travel: "walk" | "car" | "transport";
+  /** walk — пішки, car — на авто, transport — без авто далеко; null — не від чого рахувати. */
+  travel: "walk" | "car" | "transport" | null;
   travelMinutes: number | null;
   kidsFriendly: boolean;
 };

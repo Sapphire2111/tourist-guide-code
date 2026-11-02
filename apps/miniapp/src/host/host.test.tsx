@@ -350,7 +350,9 @@ describe("C09 Мій план", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: "Недоступно. Замініть пункт." })),
     );
     expect(updatePlan).toHaveBeenLastCalledWith(plan().id, { remove: "i2" });
-    expect(screen.getAllByText("Ще нічого не обрано — позначте варіанти нижче.")).toHaveLength(3);
+    expect(screen.getAllByText("Ще нічого не обрано — позначте варіанти нижче.")).toHaveLength(4);
+    // План Б свёрнут: его тело в DOM, но скрыто.
+    expect(screen.getByTestId("plan-slot-rain").querySelector("[hidden]")).toBeTruthy();
   });
 });
 

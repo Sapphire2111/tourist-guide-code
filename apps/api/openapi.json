@@ -13196,6 +13196,11 @@
         },
         "required": ["id", "categoryId", "name", "address", "location"]
       },
+      "PlanSlot": {
+        "type": "string",
+        "enum": ["morning", "afternoon", "evening", "rain"],
+        "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»"
+      },
       "ScenarioItemDto": {
         "type": "object",
         "properties": {
@@ -13224,6 +13229,10 @@
             "type": "integer",
             "nullable": true,
             "description": "Расстояние от предыдущего пункта дня по прямой, м"
+          },
+          "slot": {
+            "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»",
+            "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }]
           }
         },
         "required": [
@@ -13235,7 +13244,8 @@
           "place",
           "available",
           "alternatives",
-          "distanceFromPreviousMeters"
+          "distanceFromPreviousMeters",
+          "slot"
         ]
       },
       "ScenarioDayDto": {
@@ -13314,11 +13324,6 @@
         },
         "required": ["adults", "children", "withCar", "days", "base"]
       },
-      "PlanSlot": {
-        "type": "string",
-        "enum": ["morning", "afternoon", "evening", "rain"],
-        "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»"
-      },
       "UserPlanItemDto": {
         "type": "object",
         "properties": {
@@ -13348,11 +13353,11 @@
             "nullable": true,
             "description": "Расстояние от предыдущего пункта дня по прямой, м"
           },
-          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" },
           "slot": {
-            "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»",
+            "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»",
             "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }]
-          }
+          },
+          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" }
         },
         "required": [
           "id",
@@ -13364,8 +13369,8 @@
           "available",
           "alternatives",
           "distanceFromPreviousMeters",
-          "replaced",
-          "slot"
+          "slot",
+          "replaced"
         ]
       },
       "UserPlanDayDto": {
@@ -13415,7 +13420,7 @@
       "PlanTravel": {
         "type": "string",
         "enum": ["walk", "car", "transport"],
-        "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт"
+        "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати"
       },
       "PlanOptionDto": {
         "type": "object",
@@ -13436,7 +13441,8 @@
             "description": "По прямой от предыдущего пункта дня или базовой точки, м"
           },
           "travel": {
-            "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт",
+            "nullable": true,
+            "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати",
             "allOf": [{ "$ref": "#/components/schemas/PlanTravel" }]
           },
           "travelMinutes": { "type": "integer", "nullable": true, "description": "Оцінка в дорозі, хв" },

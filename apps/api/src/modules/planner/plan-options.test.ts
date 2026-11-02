@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { LonLat } from "../../db/index.js";
 import {
+  itemSlots,
   adultsOnly,
   CAR_MAX_M,
   OPTIONS_PER_SLOT,
@@ -140,7 +141,31 @@ describe("slotOptions", () => {
 
   it("без точки отсчёта — без расстояния", () => {
     const [o] = slotOptions("morning", null, [place(1, "cafes", 100)], noCar, new Set());
-    expect(o).toMatchObject({ distanceMeters: null, travelMinutes: null, travel: "transport" });
+    // Без авто и без точки — не утверждаем ни «пішки», ни «потрібен транспорт».
+    expect(o).toMatchObject({ distanceMeters: null, travelMinutes: null, travel: null });
+  });
+});
+
+describe("itemSlots", () => {
+  it("без времени — часть дня предыдущего по позиции; не убывает — порядок сценария не меняется", () => {
+    const slots = itemSlots([
+      { id: "a", dayNo: 1, position: 0, timeHint: null },
+      { id: "b", dayNo: 1, position: 1, timeHint: "09:00" },
+      { id: "c", dayNo: 1, position: 2, timeHint: "18:00" },
+      { id: "d", dayNo: 1, position: 3, timeHint: null },
+      { id: "e", dayNo: 1, position: 4, timeHint: "11:00" },
+      { id: "f", dayNo: 2, position: 0, timeHint: null },
+      { id: "g", dayNo: 1, position: 5, timeHint: null, slot: "rain" },
+    ]);
+    expect(Object.fromEntries(slots)).toEqual({
+      a: "morning",
+      b: "morning",
+      c: "evening",
+      d: "evening",
+      e: "evening",
+      f: "afternoon",
+      g: "rain",
+    });
   });
 });
 

@@ -52,7 +52,8 @@ export type PlanOption = {
   reason: OptionReason;
   /** По прямой от предыдущего пункта дня или базовой точки; null — не от чего считать. */
   distanceMeters: number | null;
-  travel: Travel;
+  /** null — без точки отсчёта: как добираться, не утверждаем. */
+  travel: Travel | null;
   /** Оценка в пути, мин; null — без расстояния. */
   travelMinutes: number | null;
   kidsFriendly: boolean;
@@ -167,25 +168,34 @@ function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
   return SLOT_CATEGORIES.rain.includes(p.category);
 }
 
-type Scored = { p: CatalogPlace; d: number | null };
+/** Место с признаками, посчитанными один раз (вид, «не для детей»). */
+type Prepared = CatalogPlace & { kind: PlaceKind; adultsOnly: boolean };
+const prepare = (p: CatalogPlace | Prepared): Prepared =>
+  "kind" in p ? p : { ...p, kind: placeKind(p), adultsOnly: adultsOnly(p) };
+
+type Scored = { p: Prepared; d: number | null };
 
 /**
  * Варианты одной части дня: подходящие категории, без уже выбранных мест; разнообразие — по кругу по категориям
  * (в каждой — сначала с тегом «З дітьми», если есть дети, затем рекомендованные, затем ближайшие). Без машины —
- * сначала пешая доступность, при нехватке — ближайшие дальше с travel = transport.
+ * сначала пешая доступность, при нехватке — ближайшие дальше с travel = transport; без точки отсчёта travel = null.
  */
 export function slotOptions(
   slot: PlanSlot,
   from: LonLat | null,
-  places: readonly CatalogPlace[],
+  places: readonly (CatalogPlace | Prepared)[],
   trip: TripParams,
   exclude: ReadonlySet<string>,
 ): PlanOption[] {
   const kids = trip.children > 0;
-  const pool: Scored[] = places
-    .filter((p) => !exclude.has(p.id) && fitsSlot(p, slot) && !(kids && adultsOnly(p)))
-    .map((p) => ({ p, d: from ? sphericalMeters(from, p.location) : null }))
-    .filter((s) => s.d === null || s.d <= CAR_MAX_M);
+  const pool: Scored[] = [];
+  for (const raw of places) {
+    if (exclude.has(raw.id) || !fitsSlot(raw, slot)) continue;
+    const p = prepare(raw);
+    if (kids && p.adultsOnly) continue;
+    const d = from ? sphericalMeters(from, p.location) : null;
+    if (d === null || d <= CAR_MAX_M) pool.push({ p, d });
+  }
   const better = (a: Scored, b: Scored) =>
     (kids ? Number(b.p.tags.includes("kids")) - Number(a.p.tags.includes("kids")) : 0) ||
     Number(b.p.recommended) - Number(a.p.recommended) ||
@@ -198,7 +208,9 @@ export function slotOptions(
     const byCat = new Map<string, Scored[]>();
     for (const s of candidates) {
       const cat = order.includes(s.p.category) ? s.p.category : "_other";
-      byCat.set(cat, [...(byCat.get(cat) ?? []), s]);
+      const list = byCat.get(cat);
+      if (list) list.push(s);
+      else byCat.set(cat, [s]);
     }
     for (const list of byCat.values()) list.sort(better);
     const cats = [...order, "_other"].filter((c) => byCat.has(c));
@@ -218,33 +230,32 @@ export function slotOptions(
     return out;
   };
 
-  let chosen: { s: Scored; travel: Travel }[];
-  if (trip.withCar || from === null) {
-    chosen = pick(pool, OPTIONS_PER_SLOT).map((s) => ({
-      s,
-      travel: s.d !== null && s.d <= WALK_MAX_M ? "walk" : "car",
-    }));
-    if (!trip.withCar) chosen = chosen.map((c) => ({ ...c, travel: "transport" }));
+  const chosen: { s: Scored; travel: Travel | null }[] = [];
+  if (from === null) {
+    // Не от чего считать: ни «пішки», ни «потрібен транспорт» не утверждаем.
+    for (const s of pick(pool, OPTIONS_PER_SLOT)) chosen.push({ s, travel: null });
+  } else if (trip.withCar) {
+    for (const s of pick(pool, OPTIONS_PER_SLOT))
+      chosen.push({ s, travel: s.d! <= WALK_MAX_M ? "walk" : "car" });
   } else {
     const walk = pick(
       pool.filter((s) => s.d! <= WALK_MAX_M),
       OPTIONS_PER_SLOT,
     );
-    chosen = walk.map((s) => ({ s, travel: "walk" as Travel }));
+    for (const s of walk) chosen.push({ s, travel: "walk" });
     if (walk.length < MIN_OPTIONS) {
       const far = pool.filter((s) => s.d! > WALK_MAX_M).sort((a, b) => a.d! - b.d!);
-      chosen.push(
-        ...far.slice(0, MIN_OPTIONS - walk.length).map((s) => ({ s, travel: "transport" as Travel })),
-      );
+      for (const s of far.slice(0, MIN_OPTIONS - walk.length)) chosen.push({ s, travel: "transport" });
     }
   }
   return chosen.map(({ s, travel }) => ({
     placeId: s.p.id,
-    kind: placeKind(s.p),
+    kind: s.p.kind,
     reason: reasonOf(slot, s.p.category),
     distanceMeters: s.d,
     travel,
-    travelMinutes: s.d === null ? null : travelMinutes(s.d, travel === "walk" ? "walk" : "car"),
+    travelMinutes:
+      s.d === null || travel === null ? null : travelMinutes(s.d, travel === "walk" ? "walk" : "car"),
     kidsFriendly: s.p.tags.includes("kids"),
   }));
 }
@@ -261,6 +272,7 @@ export function planOptions(input: {
   trip: TripParams;
   base: LonLat | null;
 }): DayOptions[] {
+  const places = input.places.map(prepare);
   const inPlan = new Set(input.items.map((i) => i.placeId));
   const offered = new Set(inPlan);
   const out: DayOptions[] = [];
@@ -272,11 +284,51 @@ export function planOptions(input: {
     for (const slot of SLOT_ORDER) {
       const before = slot === "rain" ? [] : day.filter((i) => slotRank(i.slot) < slotRank(slot));
       const from = before.at(-1)?.location ?? input.base ?? day[0]?.location ?? null;
-      const options = slotOptions(slot, from, input.places, input.trip, slot === "rain" ? inPlan : offered);
+      const options = slotOptions(slot, from, places, input.trip, slot === "rain" ? inPlan : offered);
       if (slot !== "rain") for (const o of options) offered.add(o.placeId);
       slots.push({ slot, options });
     }
     out.push({ dayNo, slots });
+  }
+  return out;
+}
+
+/** Пункт для части дня: выбранная часть (slot) или время. */
+export type SlotSource = {
+  id: string;
+  dayNo: number;
+  position: number;
+  timeHint: string | null;
+  slot?: PlanSlot | undefined;
+};
+
+/**
+ * Части дня всех пунктов без перестановки пунктов сценария: явный slot — как есть; иначе по времени, а без времени —
+ * от предыдущего по позиции (первый без времени — от ближайшего следующего со временем, иначе «день»). Часть дня
+ * пунктов без явного slot не убывает по позиции — сортировка по части дня не меняет порядок сценария.
+ */
+export function itemSlots(items: readonly SlotSource[]): Map<string, PlanSlot> {
+  const out = new Map<string, PlanSlot>();
+  const days = new Map<number, SlotSource[]>();
+  for (const i of items) {
+    if (i.slot) out.set(i.id, i.slot);
+    else days.set(i.dayNo, [...(days.get(i.dayNo) ?? []), i]);
+  }
+  for (const list of days.values()) {
+    list.sort((a, b) => a.position - b.position);
+    let cur: PlanSlot | null = null;
+    list.forEach((i, k) => {
+      const own = i.timeHint ? slotOf({ timeHint: i.timeHint }) : null;
+      let slot: PlanSlot =
+        own ??
+        cur ??
+        (list.slice(k + 1).find((n) => n.timeHint)
+          ? slotOf({ timeHint: list.slice(k + 1).find((n) => n.timeHint)!.timeHint })
+          : "afternoon");
+      if (cur && slotRank(cur) > slotRank(slot)) slot = cur;
+      cur = slot;
+      out.set(i.id, slot);
+    });
   }
   return out;
 }

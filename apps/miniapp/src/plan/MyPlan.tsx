@@ -3,7 +3,7 @@
 // вечір, «якщо дощ») список с галочками: отмеченное — в плане, ниже — 3–5 вариантов из каталога (что это, чому
 // підходить, скільки йти/їхати); галочка — PATCH addItem, снятая — removeItemId. «Скласти свій план» — план без
 // сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24).
-import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
@@ -12,6 +12,7 @@ import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "../host/context.js";
 import { isMessageKey, useErrorText } from "../host/errors.js";
 import {
+  ApiCallError,
   PLAN_SLOTS,
   type PlanChange,
   type PlanDay,
@@ -464,7 +465,8 @@ function Live({ message, testId }: { message: Message; testId: string }) {
 
 type Edit = {
   busy: boolean;
-  apply: (change: PlanChange, done: string) => void;
+  /** focusPlace — после ответа фокус на галочку этого места (строка перерисовывается в другом списке). */
+  apply: (change: PlanChange, done: string, focusPlace?: string) => void;
 };
 
 /** Дата дня плана: «пн, 10.11» (локальная дата без часового пояса). */
@@ -488,21 +490,34 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
   const [busy, setBusy] = useState(false);
   const [editTrip, setEditTrip] = useState(false);
   const [status, setStatus] = useState<Message>(null);
-  const apply = async (change: PlanChange, done: string) => {
+  const [focusPlace, setFocusPlace] = useState<string | null>(null);
+  const daysRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusPlace) return;
+    [...(daysRef.current?.querySelectorAll<HTMLInputElement>("input[data-place-id]") ?? [])]
+      .find((el) => el.dataset.placeId === focusPlace)
+      ?.focus();
+    setFocusPlace(null);
+  }, [plan, focusPlace]);
+  const apply = async (change: PlanChange, done: string, focus?: string) => {
     setBusy(true);
     setStatus(null);
     try {
       setPlan(await api.updatePlan(plan.id, change));
       setStatus({ text: done, alert: false });
+      if (focus) setFocusPlace(focus);
       return true;
     } catch (err) {
       setStatus({ text: errorText(err, "miniapp.plan.changeError"), alert: true });
+      // Конфликт или отказ (уже в плане, место снято, лимит) — показанный план устарел: перечитываем.
+      if (err instanceof ApiCallError && (err.status === 409 || err.status === 422))
+        await api.plan(plan.id).then(setPlan, () => undefined);
       return false;
     } finally {
       setBusy(false);
     }
   };
-  const edit: Edit = { busy, apply: (c, done) => void apply(c, done) };
+  const edit: Edit = { busy, apply: (c, done, focus) => void apply(c, done, focus) };
   const { trip } = plan;
   return (
     <Stack>
@@ -548,16 +563,18 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
         )}
       </section>
       <Live message={status} testId="plan-status" />
-      {plan.schedule.map((d) => (
-        <DaySection
-          key={d.day}
-          day={d}
-          date={dayDate(plan.startDate, d.day, locale)}
-          initiallyOpen={d.day === openDay(plan.startDate, plan.schedule.length)}
-          options={plan.options.find((o) => o.day === d.day)?.slots ?? []}
-          edit={edit}
-        />
-      ))}
+      <div ref={daysRef} className="plan-days">
+        {plan.schedule.map((d) => (
+          <DaySection
+            key={d.day}
+            day={d}
+            date={dayDate(plan.startDate, d.day, locale)}
+            initiallyOpen={d.day === openDay(plan.startDate, plan.schedule.length)}
+            options={plan.options.find((o) => o.day === d.day)?.slots ?? []}
+            edit={edit}
+          />
+        ))}
+      </div>
     </Stack>
   );
 }
@@ -631,20 +648,18 @@ function DaySection({
           </span>
         </Disclosure>
       </h2>
-      {open && (
-        <div id={bodyId} className="plan-day-body">
-          {PLAN_SLOTS.map((slot) => (
-            <SlotSection
-              key={slot}
-              day={day.day}
-              slot={slot}
-              items={day.items.filter((i) => i.slot === slot)}
-              options={options.find((s) => s.slot === slot)?.options ?? []}
-              edit={edit}
-            />
-          ))}
-        </div>
-      )}
+      <div id={bodyId} className="plan-day-body" hidden={!open}>
+        {PLAN_SLOTS.map((slot) => (
+          <SlotSection
+            key={slot}
+            day={day.day}
+            slot={slot}
+            items={day.items.filter((i) => i.slot === slot)}
+            options={options.find((s) => s.slot === slot)?.options ?? []}
+            edit={edit}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -725,18 +740,17 @@ function SlotSection({
           t(`miniapp.plan.slot.${slot}` as MessageKey)
         )}
       </h3>
-      {open && (
-        <div id={`${headingId}-body`} className="plan-slot-body">
-          {body}
-        </div>
-      )}
+      <div id={`${headingId}-body`} className="plan-slot-body" hidden={!open}>
+        {body}
+      </div>
     </section>
   );
 }
 
 function Choice({
   checked,
-  disabled,
+  busy,
+  placeId,
   label,
   onChange,
   children,
@@ -744,7 +758,9 @@ function Choice({
   labelTestId,
 }: {
   checked: boolean;
-  disabled: boolean;
+  /** Идёт запрос: галочка не блокируется (фокус не теряется), но изменения игнорируются (aria-disabled). */
+  busy: boolean;
+  placeId: string | null;
   label: string;
   onChange: () => void;
   children?: ReactNode;
@@ -755,8 +771,8 @@ function Choice({
   // Галочка меняется сразу (пока идёт PATCH); ответ сервера — источник истины, ошибка — галочка как была.
   const [pending, setPending] = useState(false);
   useEffect(() => {
-    if (!disabled) setPending(false);
-  }, [disabled]);
+    if (!busy) setPending(false);
+  }, [busy]);
   const shown = pending ? !checked : checked;
   return (
     <li className="plan-choice" data-checked={shown} data-testid={testId}>
@@ -765,9 +781,11 @@ function Choice({
         type="checkbox"
         className="plan-check"
         checked={shown}
-        disabled={disabled}
+        aria-disabled={busy}
+        data-place-id={placeId ?? undefined}
         aria-describedby={`${id}-d`}
         onChange={() => {
+          if (busy) return;
           setPending(true);
           onChange();
         }}
@@ -794,8 +812,7 @@ function useKindLabel(): (o: PlanOption) => string {
 }
 
 function travelText(o: PlanOption, t: (k: MessageKey, p?: Record<string, string | number>) => string) {
-  if (o.travelMinutes === null)
-    return o.travel === "transport" ? t("miniapp.plan.travel.transportUnknown") : null;
+  if (o.travel === null || o.travelMinutes === null) return null;
   return t(`miniapp.plan.travel.${o.travel}` as MessageKey, { min: o.travelMinutes });
 }
 
@@ -819,11 +836,16 @@ function OptionRow({
   return (
     <Choice
       checked={false}
-      disabled={edit.busy}
+      busy={edit.busy}
+      placeId={option.place.id}
       label={name}
       testId="plan-option"
       onChange={() =>
-        edit.apply({ add: { day, slot, placeId: option.place.id } }, t("miniapp.plan.added", { name }))
+        edit.apply(
+          { add: { day, slot, placeId: option.place.id } },
+          t("miniapp.plan.added", { name }),
+          option.place.id,
+        )
       }
     >
       <span className="kosiv-chip" data-tone="accent" data-testid="option-kind">
@@ -870,11 +892,12 @@ function ChosenRow({ item, edit }: { item: PlanItem; edit: Edit }) {
   return (
     <Choice
       checked
-      disabled={edit.busy}
+      busy={edit.busy}
+      placeId={item.place?.id ?? null}
       label={name}
       testId="plan-item"
       labelTestId={item.place ? undefined : "plan-item-unavailable"}
-      onChange={() => edit.apply({ remove: item.id }, t("miniapp.plan.removed", { name }))}
+      onChange={() => edit.apply({ remove: item.id }, t("miniapp.plan.removed", { name }), item.place?.id)}
     >
       {item.time && <span className="kosiv-chip">{item.time}</span>}
       {d && <span className="plan-reason">{t("miniapp.plan.distance", { n: d })}</span>}

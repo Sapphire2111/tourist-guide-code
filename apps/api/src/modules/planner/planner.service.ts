@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { ApiError, toLocalized } from "../../common/http/index.js";
 import {
   currentDb,
@@ -39,7 +39,7 @@ import type {
   UserPlanListDto,
 } from "./planner.dto.js";
 import { USER_PLANS_MAX } from "./planner.dto.js";
-import { planOptions, slotOf, slotRank, type CatalogPlace } from "./plan-options.js";
+import { itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
 import {
   addItem,
   planItemsFromScenario,
@@ -58,6 +58,10 @@ import {
 
 /** Название своего плана (без сценария-основы). */
 const CUSTOM_PLAN_TITLE: LocalizedText = { uk: "Мій план", en: "My plan" };
+/** Каталог региона для вариантов кэшируется на процесс: правки админки видны не позже чем через минуту. */
+const CATALOG_TTL_MS = 60_000;
+/** Предел выборки каталога (repo.catalogPlaces): достигнут — в лог, варианты из первых по id. */
+export const CATALOG_LIMIT = 5000;
 
 export const SCENARIO_ENTITY = "scenario";
 export const SCENARIO_AUDIT = {
@@ -90,6 +94,9 @@ const hhmm = (t: string | null) => (t === null ? null : t.slice(0, 5));
  */
 @Injectable()
 export class PlannerService {
+  private readonly logger = new Logger(PlannerService.name);
+  private readonly catalogCache = new Map<string, { at: number; rows: CatalogPlaceRow[] }>();
+
   constructor(
     @InjectDb() private readonly db: Db,
     @Inject(PlannerRepository) private readonly repo: PlannerRepository,
@@ -138,10 +145,10 @@ export class PlannerService {
   }
 
   async plan(regionId: string, userId: string, id: string): Promise<UserPlanDto> {
-    return this.inRegion(regionId, async () => {
+    return this.inRegion(regionId, async (region) => {
       const row = await this.repo.findPlan(userId, id);
       if (!row) throw new ApiError("NOT_FOUND");
-      return (await this.planDtos([row], true))[0]!;
+      return (await this.planDtos([row], await this.catalog(region.id)))[0]!;
     });
   }
 
@@ -150,7 +157,7 @@ export class PlannerService {
    * планов в регионе — не больше USER_PLANS_MAX (409).
    */
   async createPlan(userId: string, input: CreateUserPlanDto): Promise<UserPlanDto> {
-    return this.inRegion(input.regionId, async () => {
+    return this.inRegion(input.regionId, async (region) => {
       const s = input.scenarioId ? await this.repo.findScenario(input.scenarioId) : null;
       if (s !== null && s?.status !== "published") throw new ApiError("NOT_FOUND");
       // Гонка двух одновременных POST может дать USER_PLANS_MAX + 1 план — принято: лимит защищает от разрастания,
@@ -160,7 +167,8 @@ export class PlannerService {
           messageKey: "errors.plan.limitReached",
           details: { reason: "plans_limit", limit: USER_PLANS_MAX },
         });
-      const trip = await this.tripWrite(input);
+      // База из QR могла устареть (место снято с публикации) — план всё равно создаётся, без базы.
+      const trip = await this.tripWrite(input, false);
       const days = trip.days ?? s?.days ?? 1;
       const items = s ? trimDays(planItemsFromScenario(await this.repo.items([s.id])), days) : [];
       const row = await this.repo.createPlan({
@@ -173,16 +181,18 @@ export class PlannerService {
         ...trip,
         days,
       });
-      return (await this.planDtos([row], true))[0]!;
+      return (await this.planDtos([row], await this.catalog(region.id)))[0]!;
     });
   }
 
   async updatePlan(userId: string, id: string, input: UpdateUserPlanDto): Promise<UserPlanDto> {
-    return this.inRegion(input.regionId, async () => {
+    return this.inRegion(input.regionId, async (region) => {
+      // Каталог — до блокировки строки плана (FOR UPDATE держится до конца транзакции).
+      const catalog = await this.catalog(region.id);
       const row = await this.repo.findPlan(userId, id, true);
       if (!row) throw new ApiError("NOT_FOUND");
       let items: UserPlanItemRecord[] = row.items;
-      const trip = await this.tripWrite(input);
+      const trip = await this.tripWrite(input, true);
       if (trip.days !== undefined && trip.days !== null) items = trimDays(items, trip.days);
       if (input.addItem) {
         const days = trip.days ?? planDays(row);
@@ -204,7 +214,7 @@ export class PlannerService {
         items: items === row.items ? undefined : items,
         ...trip,
       });
-      return (await this.planDtos([updated ?? row], true))[0]!;
+      return (await this.planDtos([updated ?? row], catalog))[0]!;
     });
   }
 
@@ -372,19 +382,20 @@ export class PlannerService {
       return p?.status === "published" && p.location ? toPlace(p) : null;
     };
     const days = new Map<number, (ScenarioItemDto & { source: T })[]>();
-    // Порядок дня — части дня (ранок → вечір, затем «якщо дощ»), внутри — позиция; расстояние — от предыдущего
-    // пункта дня, у запасного плана «якщо дощ» — между его пунктами.
-    const order = (i: T) => slotRank(slotOf(i));
+    // Порядок дня — части дня (ранок → вечір, затем «якщо дощ»), внутри — позиция; у пунктов сценария часть дня не
+    // убывает по позиции (itemSlots), их порядок не меняется. Расстояние — от предыдущего пункта дня, у запасного
+    // плана «якщо дощ» — между его пунктами.
+    const slots = itemSlots(items);
+    const slot = (i: { id: string }) => slots.get(i.id) ?? "afternoon";
     for (const i of [...items].sort(
-      (a, b) => a.dayNo - b.dayNo || order(a) - order(b) || a.position - b.position,
+      (a, b) => a.dayNo - b.dayNo || slotRank(slot(a)) - slotRank(slot(b)) || a.position - b.position,
     )) {
       const list = days.get(i.dayNo) ?? [];
       const place = visible(i.placeId);
-      const rain = slotOf(i) === "rain";
-      const prev = [...list]
-        .reverse()
-        .find((x) => x.place !== null && (slotOf(x.source) === "rain") === rain);
+      const rain = slot(i) === "rain";
+      const prev = [...list].reverse().find((x) => x.place !== null && (x.slot === "rain") === rain);
       list.push({
+        slot: slot(i),
         id: i.id,
         position: i.position,
         timeHint: i.timeHint,
@@ -406,17 +417,22 @@ export class PlannerService {
   }
 
   /** Планы для ответа; withOptions — с вариантами на выбор (один план: GET по id, POST, PATCH). */
-  private async planDtos(rows: readonly UserPlan[], withOptions = false): Promise<UserPlanDto[]> {
+  private async planDtos(
+    rows: readonly UserPlan[],
+    catalog: readonly CatalogPlaceRow[] | null = null,
+  ): Promise<UserPlanDto[]> {
+    const withOptions = catalog !== null;
     const versions = await this.repo.scenarioVersions(
       rows.flatMap((r) => (r.scenario_id ? [r.scenario_id] : [])),
     );
-    const catalog = withOptions ? await this.repo.catalogPlaces() : [];
+    // Базовые места всех планов — одним запросом.
+    const bases = await this.placeMap(rows.flatMap((r) => (r.base_place_id ? [r.base_place_id] : [])));
     const out: UserPlanDto[] = [];
     for (const r of rows) {
       const view = new Map((await this.view(r.items)).map((d) => [d.dayNo, d.items]));
       const n = planDays(r);
       const days = Array.from({ length: n }, (_, k) => ({ dayNo: k + 1, items: view.get(k + 1) ?? [] }));
-      const { trip, baseAt } = await this.trip(r, withOptions);
+      const { trip, baseAt } = await this.trip(r, bases, withOptions);
       out.push({
         id: r.id,
         regionId: r.region_id,
@@ -434,10 +450,9 @@ export class PlannerService {
           items: d.items.map(({ source, ...dto }) => ({
             ...dto,
             replaced: source.replacedPlaceId !== null,
-            slot: slotOf(source),
           })),
         })),
-        options: withOptions ? optionsDto(days, catalog, trip, baseAt) : [],
+        options: catalog ? optionsDto(days, catalog, trip, baseAt) : [],
         createdAt: r.created_at.toISOString(),
         updatedAt: r.updated_at.toISOString(),
       });
@@ -445,32 +460,42 @@ export class PlannerService {
     return out;
   }
 
-  /** Параметры поездки из запроса → запись; базовая точка — только опубликованное место региона (иначе 422). */
-  private async tripWrite(input: CreateUserPlanDto | UpdateUserPlanDto): Promise<PlanTripWrite> {
-    if (input.basePlaceId) {
-      const base = await this.placeMap([input.basePlaceId]);
-      if (base.get(input.basePlaceId.toLowerCase())?.status !== "published")
-        throw planError("place_unavailable");
+  /**
+   * Параметры поездки из запроса → запись. Базовая точка — только опубликованное место региона: при правке (strict)
+   * иначе 422, при создании — база просто не ставится.
+   */
+  private async tripWrite(
+    input: CreateUserPlanDto | UpdateUserPlanDto,
+    strict: boolean,
+  ): Promise<PlanTripWrite> {
+    let basePlaceId = input.basePlaceId;
+    if (basePlaceId) {
+      const base = await this.placeMap([basePlaceId]);
+      if (base.get(basePlaceId.toLowerCase())?.status !== "published") {
+        if (strict) throw planError("place_unavailable");
+        basePlaceId = null;
+      }
     }
     return {
       adults: input.adults,
       children: input.children,
       with_car: input.withCar,
       days: input.days,
-      base_place_id: input.basePlaceId === undefined ? undefined : (input.basePlaceId?.toLowerCase() ?? null),
+      base_place_id: basePlaceId === undefined ? undefined : (basePlaceId?.toLowerCase() ?? null),
     };
   }
 
   /** Параметры для ответа и точка отсчёта вариантов: базовое место, иначе (для вариантов) первый населённый пункт. */
   private async trip(
     r: UserPlan,
+    bases: ReadonlyMap<string, PlanPlaceRow>,
     withFallback: boolean,
   ): Promise<{ trip: PlanTripDto; baseAt: LonLat | null }> {
     const base: { trip: Omit<PlanTripDto, "base"> } = {
       trip: { adults: r.adults, children: r.children, withCar: r.with_car, days: planDays(r) },
     };
     if (r.base_place_id) {
-      const p = (await this.placeMap([r.base_place_id])).get(r.base_place_id);
+      const p = bases.get(r.base_place_id);
       if (p?.status === "published" && p.location)
         return {
           trip: { ...base.trip, base: { kind: "place", placeId: p.id, name: p.name_i18n } },
@@ -486,6 +511,19 @@ export class PlannerService {
         };
     }
     return { trip: { ...base.trip, base: null }, baseAt: null };
+  }
+
+  /** Каталог региона для вариантов: кэш на CATALOG_TTL_MS; предел выборки — предупреждение в лог. */
+  private async catalog(regionId: string): Promise<CatalogPlaceRow[]> {
+    const hit = this.catalogCache.get(regionId);
+    if (hit && Date.now() - hit.at < CATALOG_TTL_MS) return hit.rows;
+    const rows = await this.repo.catalogPlaces(CATALOG_LIMIT);
+    if (rows.length >= CATALOG_LIMIT)
+      this.logger.warn(
+        `Каталог региона ${regionId}: достигнут предел ${CATALOG_LIMIT} мест для вариантов «Мій план»`,
+      );
+    this.catalogCache.set(regionId, { at: Date.now(), rows });
+    return rows;
   }
 
   private async inRegion<T>(regionId: string, fn: (region: Region) => Promise<T>): Promise<T> {
@@ -547,7 +585,7 @@ function optionsDto(
   const chosen = days.flatMap((d) =>
     d.items.map((i) => ({
       dayNo: d.dayNo,
-      slot: slotOf(i.source),
+      slot: i.slot,
       placeId: i.source.placeId,
       location: i.place?.location ?? null,
     })),
@@ -683,6 +721,8 @@ function planError(reason: PlanEditError): ApiError {
         messageKey: "errors.plan.placeUnavailable",
         details: { reason },
       });
+    case "items_limit":
+      return new ApiError("UNPROCESSABLE", { messageKey: "errors.plan.itemsLimit", details: { reason } });
     case "day_out_of_range":
       return new ApiError("UNPROCESSABLE", { messageKey: "errors.plan.dayOutOfRange", details: { reason } });
     default:
