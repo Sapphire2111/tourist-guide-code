@@ -30,6 +30,16 @@ export type AdminMockState = {
   media: Record<string, Obj & { polls: number }>;
   /** Тела PUT /auth/session/region. */
   regionChoices: unknown[];
+  /** Модули готелю: placeId → тело (нет записи — не настраивался). */
+  hostModules: Record<string, Obj>;
+  /** Тела PUT /admin/places/{id}/host-module. */
+  hostPuts: unknown[];
+  /** Персонал мест: placeId → назначения. */
+  staff: Record<string, Obj[]>;
+  /** Сценарии региона (с пунктами). */
+  scenarios: Obj[];
+  /** Тела PUT/POST /admin/scenarios. */
+  scenarioWrites: unknown[];
 };
 
 export const adminMockState = new WeakMap<Page, AdminMockState>();
@@ -169,6 +179,11 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
     placeMedia: {},
     media: {},
     regionChoices: [],
+    hostModules: {},
+    hostPuts: [],
+    staff: {},
+    scenarios: [],
+    scenarioWrites: [],
   };
   adminMockState.set(page, state);
 
@@ -426,6 +441,67 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           return json(route, sorted());
         }
         if (sub === "badge/history") return json(route, { items: [] });
+
+        // Модуль готелю (блок 5): пока не сохранён — значения по умолчанию (configured=false).
+        if (sub === "host-module" && method === "GET")
+          return json(
+            route,
+            state.hostModules[place.id as string] ?? {
+              placeId: place.id,
+              regionId: REGION_ID,
+              configured: false,
+              enabled: false,
+              wifiSsid: null,
+              wifiPassword: null,
+              receptionPhone: null,
+              hours: null,
+              sections: [],
+              services: [],
+              updatedAt: null,
+            },
+          );
+        if (sub === "host-module" && method === "PUT") {
+          state.hostPuts.push(body);
+          const saved = {
+            placeId: place.id,
+            regionId: REGION_ID,
+            configured: true,
+            ...body,
+            updatedAt: NOW,
+          };
+          state.hostModules[place.id as string] = saved as unknown as Obj;
+          return json(route, saved);
+        }
+
+        // Персонал места: назначение по Telegram id/username, снятие.
+        const staffList = (state.staff[place.id as string] ??= []);
+        if (sub === "staff" && method === "GET") return json(route, { items: staffList });
+        if (sub === "staff" && method === "POST") {
+          const key = String(body.telegramUserId ?? body.username);
+          if (key === "404404") return error(route, 404, "NOT_FOUND", "errors.staff.userNotFound");
+          if (staffList.some((m) => m.telegramUserId === key || m.username === key))
+            return error(route, 409, "CONFLICT", "errors.staff.alreadyAssigned");
+          const member = {
+            id: uuid(),
+            assignmentId: uuid(),
+            userId: uuid(),
+            role: body.role ?? "ORG_STAFF",
+            telegramUserId: body.telegramUserId ?? "777000111",
+            username: body.username ?? null,
+            firstName: "Олена",
+            notificationsEnabled: false,
+            grantedAt: NOW,
+          };
+          staffList.push(member);
+          return json(route, member, 201);
+        }
+        const staffItem = /^staff\/([^/]+)$/.exec(sub ?? "");
+        if (staffItem && method === "DELETE") {
+          const i = staffList.findIndex((m) => m.assignmentId === staffItem[1]);
+          if (i < 0) return error(route, 404, "NOT_FOUND", "errors.notFound");
+          staffList.splice(i, 1);
+          return json(route, null, 204);
+        }
       }
 
       // QR.
@@ -469,6 +545,73 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           });
         }
         return json(route, qr);
+      }
+
+      // Сценарии «Мій план».
+      const scenarioSummary = (sc: Obj) => {
+        const { items, ...rest } = sc;
+        return { ...rest, itemCount: (items as unknown[]).length };
+      };
+      const scenarioFrom = (
+        id: string,
+        version: number,
+        status: string,
+        b: Record<string, unknown>,
+      ): Obj => ({
+        regionId: REGION_ID,
+        description: null,
+        tags: [],
+        adLabel: null,
+        sortOrder: 0,
+        updatedAt: NOW,
+        ...b,
+        id,
+        version,
+        status,
+        items: ((b.items as Obj[]) ?? []).map((it, i) => ({
+          id: uuid(),
+          position: i,
+          placeName: state.places.find((p) => p.id === it.placeId)?.name ?? null,
+          placeStatus: "published",
+          timeHint: null,
+          durationMin: null,
+          note: null,
+          alternatives: [],
+          ...it,
+        })),
+      });
+      if (path === "/admin/scenarios" && method === "GET") {
+        const status = query.get("status");
+        return json(
+          route,
+          list(state.scenarios.filter((x) => !status || x.status === status).map(scenarioSummary)),
+        );
+      }
+      if (path === "/admin/scenarios" && method === "POST") {
+        state.scenarioWrites.push(body);
+        if (state.scenarios.some((x) => x.code === body.code))
+          return error(route, 409, "CONFLICT", "errors.scenario.codeTaken");
+        const sc = scenarioFrom(uuid(), 1, "draft", body);
+        state.scenarios.push(sc);
+        return json(route, sc, 201);
+      }
+      const scenarioMatch = /^\/admin\/scenarios\/([^/]+)(\/status)?$/.exec(path);
+      if (scenarioMatch) {
+        const sc = state.scenarios.find((x) => x.id === scenarioMatch[1]);
+        if (!sc) return error(route, 404, "NOT_FOUND", "errors.notFound");
+        if (scenarioMatch[2] && method === "PATCH") {
+          if (body.status === "published" && (sc.items as unknown[]).length === 0)
+            return error(route, 422, "UNPROCESSABLE", "errors.unprocessable", { reason: "scenario_empty" });
+          sc.status = body.status;
+          return json(route, scenarioSummary(sc));
+        }
+        if (method === "PUT") {
+          state.scenarioWrites.push(body);
+          const next = scenarioFrom(sc.id, Number(sc.version) + 1, String(sc.status), body);
+          Object.assign(sc, next);
+          return json(route, sc);
+        }
+        return json(route, sc);
       }
 
       if (path === "/admin/audit-logs")
