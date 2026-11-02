@@ -12,7 +12,7 @@ test("черга: заявка «на модерації» → картка з �
   await page.getByRole("link", { name: "Кафе Говерла" }).click();
   await expect(page.getByRole("heading", { level: 2, name: "Кафе Говерла" })).toBeVisible();
   await expect(page.getByText("Організація: ФОП Іваненко")).toBeVisible();
-  await expect(page.getByText("Шаблон: cafe")).toBeVisible();
+  await expect(page.getByText("Шаблон: Кафе")).toBeVisible();
   await expect(page.getByText("Олена · @olena_cafe")).toBeVisible();
 });
 
@@ -132,4 +132,55 @@ test("картка місця на модерації: посилання вед
 test("список місць: фільтр за статусом «На модерації»", async ({ page }) => {
   await login(page, "/#/places");
   await expect(page.getByLabel("Статус").locator("option", { hasText: "На модерації" })).toHaveCount(1);
+});
+
+test("можливі дублікати: заметний блок зі ссылкою на місце, відстанню й джерелом", async ({ page }) => {
+  const state = adminMockState.get(page)!;
+  state.moderationDuplicates.push({
+    id: "00000000-0000-4000-8000-000000000777",
+    name: { uk: "Кафе Говерла (Google)" },
+    status: "published",
+    source: "google",
+    distanceMeters: 42.4,
+  });
+  await login(page, `/#/moderation/${CASE_ID}`);
+  const block = page.getByRole("region", { name: "Можливі дублікати" });
+  await expect(block.getByRole("link", { name: "Кафе Говерла (Google)" })).toHaveAttribute(
+    "href",
+    /#\/places\/00000000-0000-4000-8000-000000000777/,
+  );
+  await expect(block).toContainText("імпорт Google");
+  await expect(block).toContainText("42 м");
+});
+
+test("заявка своєї організації: позначка в черзі, форм рішення немає, пояснення є", async ({ page }) => {
+  const state = adminMockState.get(page)!;
+  state.moderationCases[0]!.ownOrganization = true;
+  await login(page, "/#/moderation");
+  await expect(page.getByText("· Ваша організація")).toBeVisible();
+  await page.getByRole("link", { name: "Кафе Говерла" }).click();
+  await expect(page.getByRole("note").filter({ hasText: "Ваша організація" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Схвалити" })).toHaveCount(0);
+});
+
+test("шаблон — назва, рішення — з іменем того, хто вирішив", async ({ page }) => {
+  await login(page, `/#/moderation/${CASE_ID}`);
+  await expect(page.getByText("Шаблон: Кафе")).toBeVisible();
+  const form = page.getByRole("form", { name: "Відхилити" });
+  await form.getByLabel("Причина відмови (побачить партнер)").fill("Дубль");
+  await form.getByRole("button", { name: "Відхилити" }).click();
+  await expect(page.getByText(/admin@example\.com/)).toBeVisible();
+});
+
+test("публікація партнерського місця з каталогу: зрозуміла відмова", async ({ page }) => {
+  const state = adminMockState.get(page)!;
+  state.places.push({
+    ...state.places[0]!,
+    id: "00000000-0000-4000-8000-000000000888",
+    status: "draft",
+    partnerOwned: true,
+  });
+  await login(page, "/#/places/00000000-0000-4000-8000-000000000888");
+  await page.getByRole("button", { name: "Опублікувати" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Заклад партнера публікується лише через модерацію.");
 });

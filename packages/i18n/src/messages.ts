@@ -783,6 +783,13 @@ export const uk = {
   "admin.moderation.noAlt": "без alt-тексту",
   "admin.moderation.cover": "обкладинка",
   "admin.place.moderationCase": "Відкрити заявку на модерацію",
+  "admin.moderation.ownBadge": "Ваша організація",
+  "admin.moderation.duplicates": "Можливі дублікати",
+  "admin.moderation.duplicatesHint":
+    "У регіоні вже є схожі місця поруч або з подібною назвою — перевірте, перш ніж схвалювати.",
+  "admin.moderation.sourceGoogle": "імпорт Google",
+  "admin.moderation.sourceManual": "додано вручну",
+  "admin.moderation.distance": "{m} м",
 } as const;
 
 export type MessageKey = keyof typeof uk;

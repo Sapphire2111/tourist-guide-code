@@ -48,6 +48,8 @@ export type AdminMockState = {
   moderationDecisions: { id: string; decision: string; body: unknown }[];
   /** Роль без права place.moderate: 403 на модерацию. */
   noModeration: boolean;
+  /** Возможные дубли в карточке заявки. */
+  moderationDuplicates: Obj[];
 };
 
 export const adminMockState = new WeakMap<Page, AdminMockState>();
@@ -223,6 +225,9 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         organizationId: "00000000-0000-4000-8000-000000000903",
         organizationName: "ФОП Іваненко",
         templateCode: "cafe",
+        templateName: { uk: "Кафе" },
+        decidedByName: null,
+        ownOrganization: false,
         status: "open",
         decision: null,
         comment: null,
@@ -236,6 +241,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
     ],
     moderationDecisions: [],
     noModeration: false,
+    moderationDuplicates: [],
   };
   adminMockState.set(page, state);
 
@@ -434,6 +440,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (sub === "publish-check") return json(route, { problems: publishProblems(place) });
         if (sub === "publish") {
           state.publishCalls += 1;
+          if (place.partnerOwned) return error(route, 409, "CONFLICT", "errors.place.moderationRequired");
           const problems = publishProblems(place);
           if (problems.length)
             return error(route, 422, "UNPROCESSABLE", "errors.place.notPublishable", {
@@ -587,10 +594,9 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
                 exceptions: [],
               },
               media: [{ mediaAssetId: "m1", isCover: true, alt: { uk: "Фасад кафе" } }],
-              mediaPreview: {
-                m1: "https://example.test/m1.jpg",
-              },
             },
+            snapshotMediaPreview: { m1: "https://example.test/m1.jpg" },
+            possibleDuplicates: state.moderationDuplicates,
             partnerNote: null,
             owners: [{ userId: found.submittedBy, displayName: "Олена", username: "olena_cafe" }],
             history: [],
@@ -610,6 +616,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
             comment: (body.reason ?? body.comment ?? null) as string | null,
             verificationMethod: body.verificationMethod ?? null,
             decidedAt: NOW,
+            decidedByName: "admin@example.com",
           });
           return json(route, found);
         }

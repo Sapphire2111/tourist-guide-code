@@ -118,9 +118,10 @@ function QueueScreen() {
                   <tr key={c.id}>
                     <Td>
                       <Link to={`/moderation/${c.id}`}>{l(c.placeName)}</Link>
+                      {c.ownOrganization && <strong> · {t("admin.moderation.ownBadge")}</strong>}
                     </Td>
                     <Td>{c.organizationName}</Td>
-                    <Td>{c.templateCode ?? "—"}</Td>
+                    <Td>{c.templateName ? l(c.templateName) : (c.templateCode ?? "—")}</Td>
                     <Td>{formatDate(c.submittedAt, locale)}</Td>
                     <Td>
                       <Status c={c} />
@@ -157,7 +158,13 @@ export function safeImageUrl(url: unknown): string | null {
 }
 
 /** Снимок карточки читабельно: поля, точка со ссылкой на карту, график, фото; полный JSON — под спойлером. */
-export function SnapshotView({ snap }: { snap: Record<string, unknown> }) {
+export function SnapshotView({
+  snap,
+  previews = {},
+}: {
+  snap: Record<string, unknown>;
+  previews?: Record<string, string>;
+}) {
   const { t, tDynamic } = useT();
   const l = useLocalized();
   const text = (v: unknown): string => {
@@ -179,7 +186,6 @@ export function SnapshotView({ snap }: { snap: Record<string, unknown> }) {
   const weekly = asArray<Interval>(schedule.weekly);
   const exceptions = asArray<Exception>(schedule.exceptions);
   const media = asArray<SnapMedia>(snap.media);
-  const previews = isRecord(snap.mediaPreview) ? snap.mediaPreview : {};
   return (
     <Stack gap={2}>
       <dl style={{ margin: 0 }}>
@@ -256,6 +262,34 @@ export function SnapshotView({ snap }: { snap: Record<string, unknown> }) {
   );
 }
 
+/** Возможные дубли заявки: места региона рядом или с похожим названием — со ссылкой в каталог. */
+function Duplicates({ items }: { items: Detail["possibleDuplicates"] }) {
+  const { t, tDynamic } = useT();
+  const l = useLocalized();
+  if (items.length === 0) return null;
+  return (
+    <section aria-labelledby="mod-dups" style={{ border: "2px solid #b26a00", borderRadius: 6, padding: 8 }}>
+      <Stack gap={1}>
+        <h3 id="mod-dups" style={{ margin: 0 }}>
+          {t("admin.moderation.duplicates")}
+        </h3>
+        <p style={{ margin: 0 }}>{t("admin.moderation.duplicatesHint")}</p>
+        <ul style={{ margin: 0 }}>
+          {items.map((d) => (
+            <li key={d.id}>
+              <Link to={`/places/${d.id}`}>{l(d.name)}</Link> · {tDynamic(`admin.placeStatus.${d.status}`)} ·{" "}
+              {t(d.source === "google" ? "admin.moderation.sourceGoogle" : "admin.moderation.sourceManual")}
+              {d.distanceMeters === null
+                ? ""
+                : ` · ${t("admin.moderation.distance", { m: Math.round(d.distanceMeters) })}`}
+            </li>
+          ))}
+        </ul>
+      </Stack>
+    </section>
+  );
+}
+
 type Outcome = { notice: string | null; error: ApiError | null };
 
 function CaseScreen({ id }: { id: string }) {
@@ -304,6 +338,12 @@ function CaseCard({
   return (
     <Stack gap={3}>
       <h2 style={{ margin: 0 }}>{l(c.placeName)}</h2>
+      {c.ownOrganization && (
+        <p role="note" style={{ margin: 0, fontWeight: 600 }}>
+          {t("admin.moderation.ownBadge")}: {t("admin.moderation.ownOrganization")}
+        </p>
+      )}
+      <Duplicates items={c.possibleDuplicates} />
       <section aria-labelledby="mod-info">
         <Stack gap={1}>
           <h3 id="mod-info" style={{ margin: 0 }}>
@@ -313,7 +353,7 @@ function CaseCard({
             {t("admin.field.status")}: <Status c={c} />
           </p>
           <p style={{ margin: 0 }}>
-            {t("admin.moderation.template")}: {c.templateCode ?? "—"}
+            {t("admin.moderation.template")}: {c.templateName ? l(c.templateName) : (c.templateCode ?? "—")}
           </p>
           <p style={{ margin: 0 }}>
             {t("admin.moderation.organization")}: {c.organizationName}
@@ -327,7 +367,7 @@ function CaseCard({
               {t("admin.moderation.partnerNote")}: {c.partnerNote}
             </p>
           )}
-          <SnapshotView snap={snap} />
+          <SnapshotView snap={snap} previews={c.snapshotMediaPreview} />
           <Link to={`/places/${c.placeId}`}>{t("admin.moderation.openPlace")}</Link>
         </Stack>
       </section>
@@ -394,6 +434,7 @@ function CaseCard({
             </h3>
             <p style={{ margin: 0 }}>
               <Status c={c} />
+              {c.decidedByName ? ` · ${c.decidedByName}` : ""}
               {c.decidedAt ? ` · ${formatDate(c.decidedAt, locale)}` : ""}
             </p>
             {c.verificationMethod && (
@@ -409,7 +450,7 @@ function CaseCard({
             )}
           </Stack>
         </section>
-      ) : (
+      ) : c.ownOrganization ? null : (
         <Decisions c={c} reload={reload} onOutcome={onOutcome} />
       )}
     </Stack>

@@ -33,6 +33,9 @@ const CASE = {
   organizationId: "00000000-0000-4000-8000-000000000903",
   organizationName: "ФОП Іваненко",
   templateCode: "cafe",
+  templateName: { uk: "Кафе" },
+  decidedByName: null,
+  ownOrganization: false,
   status: "open",
   decision: null,
   comment: null,
@@ -50,6 +53,8 @@ const DETAIL = {
   owners: [{ userId: CASE.submittedBy, displayName: "Олена", username: "olena_cafe" }],
   history: [],
   publishProblems: [],
+  possibleDuplicates: [],
+  snapshotMediaPreview: {},
 };
 const envelope = (code: string, messageKey: string, details?: unknown) => ({
   error: { code, messageKey, ...(details ? { details } : {}), correlationId: "x" },
@@ -239,5 +244,37 @@ describe("правки по проверке", () => {
     expect(safeImageUrl("https://cdn.test/a.jpg")).toBe("https://cdn.test/a.jpg");
     expect(safeImageUrl("javascript:alert(1)")).toBeNull();
     expect(safeImageUrl(undefined)).toBeNull();
+  });
+});
+
+describe("поля 6A", () => {
+  it("дубли, шаблон по названию и пометка своей организации; форм решения нет", async () => {
+    const { api } = fakeApi((m, p) =>
+      m === "GET" && p === `/admin/moderation/cases/${CASE_ID}`
+        ? [
+            200,
+            {
+              ...DETAIL,
+              ownOrganization: true,
+              possibleDuplicates: [
+                {
+                  id: "00000000-0000-4000-8000-000000000999",
+                  name: { uk: "Кафе Говерла (Google)" },
+                  status: "published",
+                  source: "google",
+                  distanceMeters: 30,
+                },
+              ],
+            },
+          ]
+        : undefined,
+    );
+    await open(api, `#/moderation/${CASE_ID}`);
+    expect(screen.getByRole("heading", { name: "Можливі дублікати" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Кафе Говерла (Google)" }).getAttribute("href")).toBe(
+      "#/places/00000000-0000-4000-8000-000000000999",
+    );
+    expect(screen.getByText("Шаблон: Кафе")).toBeDefined();
+    expect(screen.queryByRole("form", { name: "Схвалити" })).toBeNull();
   });
 });
