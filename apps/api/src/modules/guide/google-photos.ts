@@ -26,7 +26,7 @@ export type GooglePhotosConfig = {
   fetch?: typeof fetch;
 };
 
-export const GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT = 1000;
+export const GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT = 300;
 export const GOOGLE_PHOTO_TTL_HOURS_DEFAULT = 72;
 const MEMORY_MAX = 5000;
 const TIMEOUT_MS = 8000;

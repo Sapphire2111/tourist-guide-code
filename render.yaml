@@ -73,7 +73,7 @@ services:
       - key: GOOGLE_MAPS_API_KEY
         sync: false
       - key: GOOGLE_PHOTO_DAILY_LIMIT
-        value: "1000"
+        value: "300"
       - key: TRUST_PROXY_HOPS
         # Цепочка на Render: клиент → Cloudflare → балансировщик Render → локальный прокси (::1); проверено 02.11.2026.
         value: "3"
