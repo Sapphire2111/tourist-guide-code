@@ -1,9 +1,19 @@
 // Общие элементы экранов гида: состояния загрузки/ошибки, бейджи, список мест.
 import type { CSSProperties, ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Link, useT } from "@tg/ui";
 import type { Async } from "./context.js";
 import type { PlaceSummary } from "./types.js";
+
+/** Список без маркеров с отступом между пунктами (li — прямые потомки ul). */
+export const listStyle: CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space)",
+};
 
 export const card: CSSProperties = {
   background: "var(--color-surface)",
@@ -59,24 +69,22 @@ export function PlaceList({ places, testId = "place-list" }: { places: PlaceSumm
   const { locale } = useT();
   const distance = useDistance();
   return (
-    <ul data-testid={testId} style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      <Stack gap={1}>
-        {places.map((p) => {
-          const d = distance(p.distanceMeters);
-          return (
-            <li key={p.id} style={card} data-testid="place-item">
-              <Link
-                to={`/place/${p.id}`}
-                style={{ fontSize: "1.2rem", fontWeight: 700, display: "block", marginBottom: 4 }}
-              >
-                {pickLocalized(p.name, locale)}
-              </Link>
-              {d && <span>{d} </span>}
-              <PlaceBadges place={p} />
-            </li>
-          );
-        })}
-      </Stack>
+    <ul data-testid={testId} style={listStyle}>
+      {places.map((p) => {
+        const d = distance(p.distanceMeters);
+        return (
+          <li key={p.id} style={card} data-testid="place-item">
+            <Link
+              to={`/place/${p.id}`}
+              style={{ fontSize: "1.2rem", fontWeight: 700, display: "block", marginBottom: 4 }}
+            >
+              {pickLocalized(p.name, locale)}
+            </Link>
+            {d && <span>{d} </span>}
+            <PlaceBadges place={p} />
+          </li>
+        );
+      })}
     </ul>
   );
 }

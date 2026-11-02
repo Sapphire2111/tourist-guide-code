@@ -5,7 +5,7 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { requestLocation, type LatLng } from "./geo.js";
-import { card } from "./parts.js";
+import { card, listStyle } from "./parts.js";
 
 const callLink: CSSProperties = {
   display: "block",
@@ -37,27 +37,25 @@ export function Help() {
         (contacts.data.length === 0 ? (
           <p data-testid="help-empty">{t("miniapp.help.empty")}</p>
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }} data-testid="help-contacts">
-            <Stack gap={1}>
-              {contacts.data.map((c) => {
-                const name = pickLocalized(c.name, locale);
-                return (
-                  <li key={c.id} style={card}>
-                    <p style={{ margin: "0 0 6px" }}>{t(`miniapp.help.kind.${c.kind}` as MessageKey)}</p>
-                    <a
-                      href={`tel:${c.phone}`}
-                      style={callLink}
-                      aria-label={t("miniapp.help.call", { name, phone: c.phone })}
-                    >
-                      {name}: {c.phone}
-                    </a>
-                    {c.description && (
-                      <p style={{ margin: "6px 0 0" }}>{pickLocalized(c.description, locale)}</p>
-                    )}
-                  </li>
-                );
-              })}
-            </Stack>
+          <ul style={listStyle} data-testid="help-contacts">
+            {contacts.data.map((c) => {
+              const name = pickLocalized(c.name, locale);
+              return (
+                <li key={c.id} style={card}>
+                  <p style={{ margin: "0 0 6px" }}>{t(`miniapp.help.kind.${c.kind}` as MessageKey)}</p>
+                  <a
+                    href={`tel:${c.phone}`}
+                    style={callLink}
+                    aria-label={t("miniapp.help.call", { name, phone: c.phone })}
+                  >
+                    {name}: {c.phone}
+                  </a>
+                  {c.description && (
+                    <p style={{ margin: "6px 0 0" }}>{pickLocalized(c.description, locale)}</p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ))}
       <Button

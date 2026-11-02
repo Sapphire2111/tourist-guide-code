@@ -47,21 +47,23 @@ function CategoryPlaces({ root, subcategories }: { root: Category; subcategories
   const [q, setQ] = useState("");
   const [view, setView] = useState<"list" | "map">("list");
   const point = base?.point ?? null;
+  // search_used — по ответу на поиск с текстом (сам текст не отправляется: ПДн-риск).
   const [places, retry] = useAsync(
-    () => api.search({ categoryId, q: q || undefined, point }),
+    () =>
+      api.search({ categoryId, q: q || undefined, point }).then((list) => {
+        if (q) analytics.track("search_used", { categoryId, resultCount: list.length });
+        return list;
+      }),
     [api, categoryId, q, point?.lat, point?.lng],
   );
 
   useEffect(() => analytics.track("category_opened", { categoryId }), [analytics, categoryId]);
-  // search_used — после ответа на поиск с текстом (сам текст не отправляется: ПДн-риск).
-  useEffect(() => {
-    if (q && places.status === "ready")
-      analytics.track("search_used", { categoryId, resultCount: places.data.length });
-  }, [analytics, categoryId, q, places]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    setQ(draft.trim());
+    // api принимает запрос от 2 символов; короче — показываем весь раздел.
+    const text = draft.trim();
+    setQ(text.length >= 2 ? text : "");
   };
 
   return (

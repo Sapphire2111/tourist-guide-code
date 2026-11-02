@@ -19,6 +19,14 @@ export const test = base.extend<{ telegram: TelegramWebAppOptions | null }>({
         body: JSON.stringify({ items: [{ key: "module.partner_cabinet", enabled: true }] }),
       }),
     );
+    // Плитки OSM и фото мест — без сети: прозрачный PNG 1×1.
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await page.route(/tile.openstreetmap.org|cdn.example/, (route) =>
+      route.fulfill({ status: 200, contentType: "image/png", body: png }),
+    );
     // Вход, профиль и контекст QR — мок api (support/api-mock.ts) с состоянием на тест.
     await installApiMock(page);
     if (telegram) await installTelegramWebApp(page, telegram);

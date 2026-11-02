@@ -28,7 +28,12 @@ export function contextFor(code: string) {
       status: "ok",
       entryType: "hotel",
       region: REGION,
-      qrPoint: { id: "00000000-0000-4000-8000-0000000000b1", type: "hotel", placeId: null, campaign: null },
+      qrPoint: {
+        id: "00000000-0000-4000-8000-0000000000b1",
+        type: "hotel",
+        placeId: HOTEL_PLACE,
+        campaign: null,
+      },
       venue: {
         name: { uk: "Тестовий готель", en: "Test hotel" },
         description: { uk: "Готель для перевірки входу за QR." },
@@ -44,6 +49,127 @@ export function contextFor(code: string) {
   return neutral(/^(?!\d+$)[A-Za-z0-9_-]{10,64}$/.test(code) ? "not_found" : "invalid");
 }
 
+// --- Каталог гида (блок 4): категории, места, «Халепа?», избранное ---
+export const HOTEL_PLACE = "00000000-0000-4000-8000-000000000201";
+export const CAFE_PLACE = "00000000-0000-4000-8000-000000000202";
+export const AD_PLACE = "00000000-0000-4000-8000-000000000203";
+const EAT = "00000000-0000-4000-8000-000000000101";
+const CAFES = "00000000-0000-4000-8000-000000000102";
+const SHOP = "00000000-0000-4000-8000-000000000103";
+
+const categories = [
+  {
+    id: EAT,
+    parentId: null,
+    code: "eat",
+    name: { uk: "Де поїсти" },
+    icon: null,
+    homeSection: "eat",
+    sortOrder: 1,
+    placeCount: 2,
+  },
+  {
+    id: CAFES,
+    parentId: EAT,
+    code: "cafes",
+    name: { uk: "Кав'ярні" },
+    icon: null,
+    homeSection: null,
+    sortOrder: 1,
+    placeCount: 1,
+  },
+  {
+    id: SHOP,
+    parentId: null,
+    code: "shop",
+    name: { uk: "Де купити" },
+    icon: null,
+    homeSection: "shop",
+    sortOrder: 2,
+    placeCount: 0,
+  },
+];
+
+const summary = (id: string, name: string, lat: number, lon: number, over: Record<string, unknown> = {}) => ({
+  id,
+  categoryId: CAFES,
+  name: { uk: name },
+  address: { uk: "м. Тестове" },
+  location: { lon, lat },
+  distanceMeters: null as number | null,
+  recommended: false,
+  adLabel: null as string | null,
+  openNow: true as boolean | null,
+  phone: "+380501112233",
+  cover: null,
+  ...over,
+});
+
+const places = [
+  summary(HOTEL_PLACE, "Тестовий готель", 48.45, 24.56, { categoryId: EAT, openNow: null }),
+  summary(CAFE_PLACE, "Кав'ярня «Смерека»", 48.4512, 24.5612, { recommended: true }),
+  summary(AD_PLACE, "Піцерія «Реклама»", 48.4535, 24.5635, { adLabel: "advertising", openNow: false }),
+];
+
+function distance(a: { lat: number; lon: number }, lat: number, lng: number): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const h =
+    Math.sin(rad(lat - a.lat) / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(lat)) * Math.sin(rad(lng - a.lon) / 2) ** 2;
+  return Math.round(2 * 6_371_000 * Math.asin(Math.sqrt(h)));
+}
+
+const card = (p: (typeof places)[number], favorite: boolean | null) => ({
+  ...p,
+  regionId: REGION.id,
+  category: { id: p.categoryId, parentId: null, name: { uk: "Кав'ярні" }, icon: null },
+  description: { uk: "Опис місця для перевірки картки." },
+  website: "https://place.example",
+  telegram: null,
+  verifiedAt: "2026-10-01T00:00:00Z",
+  photos: [
+    {
+      mediaAssetId: p.id,
+      alt: { uk: `Фото: ${p.name.uk}` },
+      width: 800,
+      height: 450,
+      isCover: true,
+      variants: [
+        { name: "w800", url: "https://cdn.example/photo-w800.jpg", width: 800, height: 450, expiresAt: null },
+      ],
+    },
+  ],
+  tags: [
+    { id: "00000000-0000-4000-8000-000000000301", code: "wifi", name: { uk: "Wi-Fi" }, group: "amenity" },
+  ],
+  schedule: {
+    timezone: "Europe/Kyiv",
+    weekly: [1, 2, 3, 4, 5].map((d) => ({ dayOfWeek: d, opensAt: "09:00", closesAt: "21:00" })),
+    exceptions: [],
+  },
+  openUntil: p.openNow ? "21:00" : null,
+  favorite,
+});
+
+export const EMERGENCY = [
+  {
+    id: "00000000-0000-4000-8000-000000000401",
+    kind: "police",
+    name: { uk: "Поліція" },
+    phone: "102",
+    description: null,
+    sortOrder: 1,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000402",
+    kind: "mountain_rescue",
+    name: { uk: "Гірська рятувальна служба" },
+    phone: "+380342000000",
+    description: { uk: "Цілодобово" },
+    sortOrder: 2,
+  },
+];
+
 export type ApiMockState = {
   language: string;
   displayName: string | null;
@@ -53,6 +179,12 @@ export type ApiMockState = {
   privacyRequests: { id: string; kind: string; status: string; createdAt: string }[];
   /** Сколько раз вызван GET /context (должен быть один за открытие). */
   contextCalls: number;
+  /** Избранное (placeId). */
+  favorites: string[];
+  /** Запросы поиска мест (query). */
+  searches: Record<string, string>[];
+  /** Принятые события аналитики (POST /analytics/events). */
+  events: { event: string; props: Record<string, unknown>; regionId: string | null; anonymousId?: string }[];
 };
 
 /** Состояние мока страницы — для проверок в тесте. */
@@ -66,6 +198,9 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
     messaging: {},
     privacyRequests: [],
     contextCalls: 0,
+    favorites: [],
+    searches: [],
+    events: [],
   };
   apiMockState.set(page, state);
   const TOKEN = "e2e-session-token";
@@ -95,7 +230,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
   // api на другом origin, чем страница: CORS-заголовки, как у настоящего api (Bearer → preflight).
   const cors = {
     "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "access-control-allow-headers": "authorization, content-type",
   };
   const json = (route: Route, body: unknown, status = 200) =>
@@ -173,6 +308,72 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
           state.privacyRequests.push(request);
         }
         return json(route, request, 201);
+      }
+      return json(route, { error: { code: "NOT_FOUND" } }, 404);
+    },
+  );
+  // Каталог гида: только с regionId региона из контекста (как RegionQueryDto на сервере).
+  await page.route(
+    (url) =>
+      /^\/(categories|places\/.+|favorites(\/.+)?|emergency-contacts|analytics\/events)$/.test(url.pathname),
+    async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      const path = url.pathname;
+      const method = req.method();
+      if (method === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (path === "/analytics/events") {
+        const body = req.postDataJSON() as { events: ApiMockState["events"] };
+        state.events.push(...body.events);
+        return json(route, { accepted: body.events.length }, 202);
+      }
+      const query = Object.fromEntries(url.searchParams);
+      const regionId =
+        method === "POST" ? (req.postDataJSON() as { regionId?: string }).regionId : query.regionId;
+      if (regionId !== REGION.id) return json(route, { error: { code: "NOT_FOUND" } }, 404);
+      if (path === "/categories") return json(route, { items: categories });
+      if (path === "/emergency-contacts") return json(route, { items: EMERGENCY });
+      if (path === "/places/search") {
+        state.searches.push(query);
+        const lat = query.lat ? Number(query.lat) : undefined;
+        const lng = query.lng ? Number(query.lng) : undefined;
+        const radius = Number(query.radius ?? 500);
+        const inCategory = (p: (typeof places)[number]) =>
+          !query.category ||
+          p.categoryId === query.category ||
+          categories.some((c) => c.id === p.categoryId && c.parentId === query.category);
+        const items = places
+          .filter((p) => p.id !== HOTEL_PLACE)
+          .filter(inCategory)
+          .filter((p) => !query.q || p.name.uk.toLowerCase().includes(query.q.toLowerCase()))
+          .map((p) => ({
+            ...p,
+            distanceMeters: lat !== undefined && lng !== undefined ? distance(p.location, lat, lng) : null,
+          }))
+          .filter((p) => p.distanceMeters === null || p.distanceMeters <= radius)
+          .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
+        return json(route, { items, nextOffset: null, radiusMeters: lat !== undefined ? radius : null });
+      }
+      const signedIn = req.headers()["authorization"] === `Bearer ${TOKEN}`;
+      const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
+      if (placeId) {
+        const p = places.find((x) => x.id === placeId);
+        if (!p) return json(route, { error: { code: "NOT_FOUND" } }, 404);
+        return json(route, card(p, signedIn ? state.favorites.includes(p.id) : null));
+      }
+      if (!signedIn)
+        return json(route, { error: { code: "UNAUTHENTICATED", messageKey: "errors.unauthenticated" } }, 401);
+      if (path === "/favorites" && method === "GET")
+        return json(route, { items: places.filter((p) => state.favorites.includes(p.id)) });
+      if (path === "/favorites" && method === "POST") {
+        const { placeId: id } = req.postDataJSON() as { placeId: string };
+        if (!state.favorites.includes(id)) state.favorites.unshift(id);
+        return json(route, { placeId: id, createdAt: "2026-11-02T00:00:00Z" }, 201);
+      }
+      const removed = /^\/favorites\/([^/]+)$/.exec(path)?.[1];
+      if (removed && method === "DELETE") {
+        state.favorites = state.favorites.filter((f) => f !== removed);
+        return route.fulfill({ status: 204, headers: cors });
       }
       return json(route, { error: { code: "NOT_FOUND" } }, 404);
     },
