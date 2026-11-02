@@ -1,1 +1,9 @@
-{ "extends": ["//"], "tags": ["app", "frontend"] }
+{
+  "extends": ["//"],
+  "tags": ["app", "frontend"],
+  "tasks": {
+    "build": {
+      "env": ["VITE_*"]
+    }
+  }
+}
