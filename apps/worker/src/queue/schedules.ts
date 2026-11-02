@@ -8,6 +8,7 @@ import {
   systemContext,
   AUDIT_PII_PURGE_EVERY_MS,
   DEAD_LETTER_PURGE_EVERY_MS,
+  SERVICE_REQUESTS_ANONYMIZE_EVERY_MS,
   HEARTBEAT_EVERY_MS,
   JOB_QUEUE,
   JOBS,
@@ -52,6 +53,17 @@ export const AUDIT_PII_PURGE_SCHEDULE = {
   every: AUDIT_PII_PURGE_EVERY_MS,
   data: { context: systemContext(null), payload: {} },
 } as const satisfies Schedule<typeof JOBS.auditPurgePii>;
+
+/**
+ * Обезличивание заявок гостиницы по сроку хранения (D-49, ADR-0020). Как очистка ПДн аудита — только при
+ * DATABASE_URL; кросс-tenant: функция БД сама выставляет app.actor.
+ */
+export const SERVICE_REQUESTS_ANONYMIZE_SCHEDULE = {
+  id: `${STATIC_SCHEDULE_PREFIX}service-requests.anonymize-expired`,
+  name: JOBS.serviceRequestsAnonymize,
+  every: SERVICE_REQUESTS_ANONYMIZE_EVERY_MS,
+  data: { context: systemContext(null), payload: {} },
+} as const satisfies Schedule<typeof JOBS.serviceRequestsAnonymize>;
 
 /**
  * Очистка dead-letter по сроку хранения (T1-25, D-73). Не входит в SCHEDULES: обработчику нужна очередь dead-letter

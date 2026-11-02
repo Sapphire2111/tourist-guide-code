@@ -3,7 +3,12 @@ import { Test } from "@nestjs/testing";
 import { parseEnv } from "@tg/server-config";
 import { AppModule } from "./app.module.js";
 import { workerEnvSchema } from "./config.js";
-import { AUDIT_PII_PURGE_SCHEDULE, DEAD_LETTER_PURGE_SCHEDULE, SCHEDULES } from "./queue/schedules.js";
+import {
+  AUDIT_PII_PURGE_SCHEDULE,
+  DEAD_LETTER_PURGE_SCHEDULE,
+  SCHEDULES,
+  SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
+} from "./queue/schedules.js";
 import { QueueService, type WorkerDbFactory, type QueueRuntimeFactory } from "./queue/queue.service.js";
 import type { QueueRuntime } from "./queue/runtime.js";
 
@@ -58,6 +63,7 @@ describe("AppModule", () => {
       purger: { purgeExpired: vi.fn() },
       analytics: { record: vi.fn() },
       media: { claim: vi.fn(), complete: vi.fn(), reject: vi.fn() },
+      serviceRequests: { anonymizeExpired: vi.fn() },
       close: closeDb,
     });
     const withDb = parseEnv("worker", workerEnvSchema, {
@@ -68,10 +74,15 @@ describe("AppModule", () => {
       imports: [AppModule.register(withDb, factory, purgerFactory)],
     }).compile();
     await moduleRef.init();
-    expect(purgerFactory).toHaveBeenCalledExactlyOnceWith("postgres://u:p@localhost:4302/db");
+    expect(purgerFactory).toHaveBeenCalledExactlyOnceWith("postgres://u:p@localhost:4302/db", 90);
     expect(factory).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        schedules: [...SCHEDULES, DEAD_LETTER_PURGE_SCHEDULE, AUDIT_PII_PURGE_SCHEDULE],
+        schedules: [
+          ...SCHEDULES,
+          DEAD_LETTER_PURGE_SCHEDULE,
+          AUDIT_PII_PURGE_SCHEDULE,
+          SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
+        ],
       }),
     );
     await moduleRef.close();

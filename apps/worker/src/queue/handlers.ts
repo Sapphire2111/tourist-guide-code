@@ -59,6 +59,12 @@ export interface AnalyticsWriter {
   record(row: AnalyticsEventRow): Promise<boolean>;
 }
 
+/** Обезличивание заявок гостиницы старше срока хранения (функция БД service_requests_anonymize_expired, 0015). */
+export interface ServiceRequestsAnonymizer {
+  /** Обезличивает закрытые заявки старше срока; возвращает их число. */
+  anonymizeExpired(): Promise<number>;
+}
+
 /** Очистка dead-letter от записей с истёкшим сроком хранения (dead-letter.ts, DEAD_LETTER_RETENTION_MS). */
 export interface DeadLetterPurger {
   /** Удаляет истёкшие записи; возвращает их число. */
@@ -97,6 +103,7 @@ export interface HandlerDeps {
   readonly analytics?: AnalyticsWriter;
   readonly deadLetter?: DeadLetterPurger;
   readonly media?: MediaDeps;
+  readonly serviceRequests?: ServiceRequestsAnonymizer;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -140,6 +147,13 @@ export function createHandlers(deps: HandlerDeps = {}): JobHandlers {
       const at = new Date().toISOString();
       logger.log(`heartbeat ${jobId} at ${at}`);
       return { at };
+    },
+    "service-requests.anonymize-expired": async (_payload, { logger }) => {
+      if (!deps.serviceRequests)
+        throw new UnrecoverableError("Обезличивание заявок: у воркера нет подключения к БД (DATABASE_URL)");
+      const anonymized = await deps.serviceRequests.anonymizeExpired();
+      logger.log(`Заявки гостиницы: обезличено по сроку хранения — ${anonymized}`);
+      return { anonymized };
     },
     "audit.purge-expired-pii": async (_payload, { logger }) => {
       if (!deps.auditPii)
