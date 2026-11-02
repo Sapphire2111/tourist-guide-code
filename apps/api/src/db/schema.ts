@@ -535,7 +535,10 @@ export type PromotionAdLabel = (typeof PROMOTION_AD_LABELS)[number];
 export const PROMOTION_STATUSES = ["draft", "scheduled", "active", "paused", "ended", "cancelled"] as const;
 export type PromotionStatus = (typeof PROMOTION_STATUSES)[number];
 
-/** Платное размещение — только сущность: выдача и показ выключены до D-63 (ни один эндпоинт её не читает). */
+/**
+ * Платное размещение — только сущность: эндпоинтов создания и продажи нет до D-63. Публичный каталог (блок 4,
+ * ADR-0019) только читает действующее размещение ради метки adLabel (порядок и бейдж не меняет).
+ */
 export interface PromotionsTable {
   id: UuidPk;
   region_id: ColumnType<string, string | undefined, never>;
