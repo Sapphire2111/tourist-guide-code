@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "./App.js";
 import { createAdminApi, setToken } from "./api.js";
-import { reasonBody } from "./Moderation.js";
+import { mapUrl, reasonBody, safeImageUrl } from "./Moderation.js";
 
 const REGION_ID = "00000000-0000-4000-8000-0000000000a1";
 const CASE_ID = "00000000-0000-4000-8000-000000000901";
@@ -171,5 +171,73 @@ describe("модерація", () => {
     fireEvent.submit(form);
     await flush();
     expect(screen.getByText(/уже|вже розглянув інший модератор/)).toBeDefined();
+  });
+});
+
+describe("правки по проверке", () => {
+  it("успех: сообщение остаётся после перехода заявки в decided", async () => {
+    let decided = false;
+    const { api } = fakeApi((m, p) => {
+      if (m === "POST" && p.endsWith("/approve")) {
+        decided = true;
+        return [200, { ...CASE, status: "decided", decision: "approve" }];
+      }
+      if (decided && p === `/admin/moderation/cases/${CASE_ID}`)
+        return [200, { ...DETAIL, status: "decided", decision: "approve", verificationMethod: "document" }];
+      return undefined;
+    });
+    await open(api, `#/moderation/${CASE_ID}`);
+    const form = screen.getByRole("form", { name: "Схвалити" });
+    fireEvent.change(within(form).getByLabelText(/^Спосіб підтвердження/), { target: { value: "document" } });
+    fireEvent.submit(form);
+    await flush();
+    await flush();
+    expect(screen.queryByRole("form", { name: "Схвалити" })).toBeNull();
+    expect(screen.getByText("Заклад схвалено й опубліковано.")).toBeDefined();
+  });
+
+  it("409 «не на модерации» — свой текст, не «вже розглянув»", async () => {
+    const { api } = fakeApi((m, p) =>
+      m === "POST" && p.endsWith("/reject")
+        ? [409, envelope("CONFLICT", "errors.moderation.notPending", { reason: "place_not_pending" })]
+        : undefined,
+    );
+    await open(api, `#/moderation/${CASE_ID}`);
+    const form = screen.getByRole("form", { name: "Відхилити" });
+    fireEvent.change(within(form).getByLabelText(/^Причина відмови/), { target: { value: "Дубль" } });
+    fireEvent.submit(form);
+    await flush();
+    expect(screen.getAllByRole("alert").some((a) => a.textContent?.includes("уже не очікує модерації"))).toBe(
+      true,
+    );
+    expect(screen.queryByText(/вже розглянув інший модератор/)).toBeNull();
+  });
+
+  it("двойная отправка формы решения — один POST", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { api, calls } = fakeApi((m, p) =>
+      m === "POST" && p.endsWith("/reject")
+        ? (gate.then(() => [200, { ...CASE, status: "decided" }] as [number, unknown]) as never)
+        : undefined,
+    );
+    await open(api, `#/moderation/${CASE_ID}`);
+    const form = screen.getByRole("form", { name: "Відхилити" });
+    fireEvent.change(within(form).getByLabelText(/^Причина відмови/), { target: { value: "Дубль" } });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await flush();
+    release();
+    await flush();
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("mapUrl и safeImageUrl", () => {
+    expect(mapUrl({ lat: 48.45, lon: 24.55 })).toContain("mlat=48.45&mlon=24.55");
+    expect(mapUrl(null)).toBeNull();
+    expect(mapUrl({ lat: "x", lon: 1 })).toBeNull();
+    expect(safeImageUrl("https://cdn.test/a.jpg")).toBe("https://cdn.test/a.jpg");
+    expect(safeImageUrl("javascript:alert(1)")).toBeNull();
+    expect(safeImageUrl(undefined)).toBeNull();
   });
 });

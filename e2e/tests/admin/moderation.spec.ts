@@ -94,3 +94,42 @@ test("рішення вже ухвалив інший модератор: 409 �
   await expect(page.getByRole("heading", { level: 3, name: "Рішення ухвалено" })).toBeVisible();
   await expect(page.getByText("Коментар: Дубль")).toBeVisible();
 });
+
+test("картка заявки: точка з посиланням на мапу, графік і фото читабельно", async ({ page }) => {
+  await login(page, `/#/moderation/${CASE_ID}`);
+  await expect(page.getByRole("link", { name: /48\.45, 24\.55/ })).toHaveAttribute(
+    "href",
+    /openstreetmap\.org\/\?mlat=48\.45&mlon=24\.55/,
+  );
+  await expect(page.getByText("Пн: 09:00–18:00")).toBeVisible();
+  await expect(page.getByText("обкладинка · Фасад кафе")).toBeVisible();
+});
+
+test("після схвалення повідомлення про успіх лишається видимим", async ({ page }) => {
+  await login(page, `/#/moderation/${CASE_ID}`);
+  const form = page.getByRole("form", { name: "Схвалити" });
+  await form.getByLabel("Спосіб підтвердження права на заклад").selectOption({ label: "Документ" });
+  await form.getByRole("button", { name: "Схвалити" }).click();
+  await expect(page.getByRole("heading", { level: 3, name: "Рішення ухвалено" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Заклад схвалено й опубліковано." })).toBeVisible();
+});
+
+test("картка місця на модерації: посилання веде на конкретну заявку", async ({ page }) => {
+  const state = adminMockState.get(page)!;
+  const placeId = state.moderationCases[0]!.placeId as string;
+  state.places.push({
+    ...state.places[0]!,
+    id: placeId,
+    status: "pending_moderation",
+    name: { uk: "Кафе Говерла" },
+  });
+  await login(page, `/#/places/${placeId}`);
+  await page.getByRole("link", { name: "Відкрити заявку на модерацію" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Кафе Говерла" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Схвалити" })).toBeVisible();
+});
+
+test("список місць: фільтр за статусом «На модерації»", async ({ page }) => {
+  await login(page, "/#/places");
+  await expect(page.getByLabel("Статус").locator("option", { hasText: "На модерації" })).toHaveCount(1);
+});

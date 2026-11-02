@@ -565,7 +565,12 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (state.noModeration) return error(route, 403, "FORBIDDEN", "errors.forbidden");
         if (path === "/admin/moderation/cases" && method === "GET") {
           const status = query.get("status") ?? "open";
-          return json(route, { items: state.moderationCases.filter((c) => c.status === status) });
+          const placeId = query.get("placeId");
+          return json(route, {
+            items: state.moderationCases.filter(
+              (c) => c.status === status && (!placeId || c.placeId === placeId),
+            ),
+          });
         }
         const m = /^\/admin\/moderation\/cases\/([^/]+)(?:\/(approve|reject|return))?$/.exec(path);
         const found = m && state.moderationCases.find((c) => c.id === m[1]);
@@ -573,7 +578,19 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (!m[2] && method === "GET")
           return json(route, {
             ...found,
-            placeSnapshot: { name: found.placeName, address: { uk: "вул. Гірська, 1" } },
+            placeSnapshot: {
+              name: found.placeName,
+              address: { uk: "вул. Гірська, 1" },
+              location: { lat: 48.45, lon: 24.55 },
+              schedule: {
+                weekly: [{ dayOfWeek: 1, opensAt: "09:00", closesAt: "18:00" }],
+                exceptions: [],
+              },
+              media: [{ mediaAssetId: "m1", isCover: true, alt: { uk: "Фасад кафе" } }],
+              mediaPreview: {
+                m1: "https://example.test/m1.jpg",
+              },
+            },
             partnerNote: null,
             owners: [{ userId: found.submittedBy, displayName: "Олена", username: "olena_cafe" }],
             history: [],

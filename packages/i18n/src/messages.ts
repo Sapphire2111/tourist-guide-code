@@ -768,6 +768,18 @@ export const uk = {
   "admin.moderation.alreadyDecided": "Цю заявку вже розглянув інший модератор — дані оновлено.",
   "admin.moderation.forbidden": "Немає права модерувати заявки цього регіону.",
   "admin.moderation.ownOrganization": "Не можна розглядати заявку організації, з якою ви пов'язані.",
+  "admin.moderation.phone": "Телефон",
+  "admin.moderation.website": "Сайт",
+  "admin.moderation.telegram": "Telegram",
+  "admin.moderation.location": "Точка на мапі",
+  "admin.moderation.openMap": "відкрити мапу",
+  "admin.moderation.closedDay": "зачинено",
+  "admin.moderation.photos": "Фото",
+  "admin.moderation.photosEmpty": "Фото немає.",
+  "admin.moderation.noPreview": "Немає превʼю",
+  "admin.moderation.noAlt": "без alt-тексту",
+  "admin.moderation.cover": "обкладинка",
+  "admin.place.moderationCase": "Відкрити заявку на модерацію",
 } as const;
 
 export type MessageKey = keyof typeof uk;

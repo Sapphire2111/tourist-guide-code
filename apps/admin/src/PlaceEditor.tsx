@@ -368,7 +368,7 @@ function Editor({ place }: { place?: Place }) {
       {current && MODERATION_STATUSES.includes(current.status) && (
         <p role="note" style={{ margin: 0 }}>
           {t("admin.place.moderationNote", { status: tDynamic(`admin.placeStatus.${current.status}`) })}{" "}
-          <Link to="/moderation">{t("admin.place.moderationLink")}</Link>
+          <ModerationLink placeId={current.id} />
         </p>
       )}
       <Form
@@ -392,6 +392,26 @@ function Editor({ place }: { place?: Place }) {
         </>
       )}
     </Stack>
+  );
+}
+
+/** Ссылка на последнюю заявку места (открытая, иначе решённая); нет доступа или заявок — на очередь. */
+function ModerationLink({ placeId }: { placeId: string }) {
+  const { api } = useAdmin();
+  const { t } = useT();
+  const [found] = useLoad(async () => {
+    for (const status of ["open", "decided"] as const) {
+      const res = await call(api.GET("/admin/moderation/cases", { params: { query: { status, placeId } } }));
+      if (!res.ok) return res;
+      if (res.data.items.length > 0) return res;
+    }
+    return { ok: true as const, data: { items: [] } };
+  }, [placeId]);
+  const first = found?.ok ? found.data.items[0] : undefined;
+  return first ? (
+    <Link to={`/moderation/${first.id}`}>{t("admin.place.moderationCase")}</Link>
+  ) : (
+    <Link to="/moderation">{t("admin.place.moderationLink")}</Link>
   );
 }
 

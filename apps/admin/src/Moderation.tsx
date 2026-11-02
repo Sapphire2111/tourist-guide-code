@@ -9,6 +9,7 @@ import {
   Form,
   Loaded,
   Notice,
+  useBusy,
   row,
   SelectField,
   SmallButton,
@@ -39,12 +40,16 @@ export function reasonBody(reason: string): { reason: string } | null {
 export function ModerationError({ error }: { error: ApiError | null }) {
   const { t } = useT();
   if (!error) return null;
-  if (error.status === 409)
+  if (error.status === 409) {
+    // «Вже розглянуто» — своє пояснення; інші конфлікти (місце не на модерації) — текст із конверта.
+    const decided = error.messageKey === "errors.moderation.alreadyDecided";
+    if (!decided && error.messageKey !== "errors.conflict") return <ErrorBox error={error} />;
     return (
       <p role="alert" style={{ color: "#b3261e", margin: 0 }}>
-        {t("admin.moderation.alreadyDecided")}
+        {decided ? t("admin.moderation.alreadyDecided") : t("errors.conflict")}
       </p>
     );
+  }
   if (error.status === 403)
     return (
       <p role="alert" style={{ color: "#b3261e", margin: 0 }}>
@@ -131,12 +136,127 @@ function QueueScreen() {
   );
 }
 
-/** Поле снимка карточки: мультиязычный текст → строка на языке интерфейса, число/строка — как есть. */
-function snapshotText(v: unknown, pick: (x: { uk: string; en?: string }) => string): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "object" && "uk" in v) return pick(v as { uk: string; en?: string });
-  return typeof v === "object" ? JSON.stringify(v) : String(v);
+type Interval = { dayOfWeek: number; opensAt: string; closesAt: string };
+type Exception = { date: string; closed: boolean; opensAt: string | null; closesAt: string | null };
+type SnapMedia = { mediaAssetId: string; isCover?: boolean; alt?: { uk?: string } | null };
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/** Ссылка на карту точки (OpenStreetMap); нет корректных координат — null. */
+export function mapUrl(location: unknown): string | null {
+  if (!isRecord(location)) return null;
+  const { lat, lon } = location;
+  if (typeof lat !== "number" || typeof lon !== "number") return null;
+  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
 }
+
+/** Превью допускаем только по http(s): снимок — данные партнёра. */
+export function safeImageUrl(url: unknown): string | null {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
+/** Снимок карточки читабельно: поля, точка со ссылкой на карту, график, фото; полный JSON — под спойлером. */
+export function SnapshotView({ snap }: { snap: Record<string, unknown> }) {
+  const { t, tDynamic } = useT();
+  const l = useLocalized();
+  const text = (v: unknown): string => {
+    if (v === null || v === undefined || v === "") return "—";
+    if (isRecord(v) && "uk" in v) return l(v as { uk: string; en?: string });
+    return isRecord(v) ? JSON.stringify(v) : String(v);
+  };
+  const fields: [string, unknown][] = [
+    ["admin.field.name", snap.name],
+    ["admin.field.description", snap.description],
+    ["admin.field.address", snap.address],
+    ["admin.moderation.phone", snap.phone],
+    ["admin.moderation.website", snap.website],
+    ["admin.moderation.telegram", snap.telegram],
+  ];
+  const map = mapUrl(snap.location);
+  const loc = isRecord(snap.location) ? (snap.location as { lat?: number; lon?: number }) : null;
+  const schedule = isRecord(snap.schedule) ? snap.schedule : {};
+  const weekly = asArray<Interval>(schedule.weekly);
+  const exceptions = asArray<Exception>(schedule.exceptions);
+  const media = asArray<SnapMedia>(snap.media);
+  const previews = isRecord(snap.mediaPreview) ? snap.mediaPreview : {};
+  return (
+    <Stack gap={2}>
+      <dl style={{ margin: 0 }}>
+        {fields.map(([key, v]) => (
+          <div key={key}>
+            <dt style={{ fontWeight: 600 }}>{tDynamic(key)}</dt>
+            <dd style={{ margin: 0 }}>{text(v)}</dd>
+          </div>
+        ))}
+        <div>
+          <dt style={{ fontWeight: 600 }}>{t("admin.moderation.location")}</dt>
+          <dd style={{ margin: 0 }}>
+            {map && loc ? (
+              <a href={map} target="_blank" rel="noopener noreferrer">
+                {loc.lat}, {loc.lon} · {t("admin.moderation.openMap")}
+              </a>
+            ) : (
+              "—"
+            )}
+          </dd>
+        </div>
+      </dl>
+      <div>
+        <p style={{ margin: 0, fontWeight: 600 }}>{t("admin.schedule")}</p>
+        {weekly.length === 0 && exceptions.length === 0 ? (
+          <p style={{ margin: 0 }}>{t("admin.schedule.closed")}</p>
+        ) : (
+          <ul style={{ margin: 0 }}>
+            {weekly.map((w) => (
+              <li key={`${w.dayOfWeek}-${w.opensAt}`}>
+                {tDynamic(`miniapp.weekday.${w.dayOfWeek}`)}: {w.opensAt}–{w.closesAt}
+              </li>
+            ))}
+            {exceptions.map((e) => (
+              <li key={e.date}>
+                {e.date}:{" "}
+                {e.closed ? t("admin.moderation.closedDay") : `${e.opensAt ?? ""}–${e.closesAt ?? ""}`}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div>
+        <p style={{ margin: 0, fontWeight: 600 }}>{t("admin.moderation.photos")}</p>
+        {media.length === 0 ? (
+          <p style={{ margin: 0 }}>{t("admin.moderation.photosEmpty")}</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {media.map((m) => {
+              const src = safeImageUrl(previews[m.mediaAssetId]);
+              const alt = m.alt?.uk ?? "";
+              return (
+                <figure key={m.mediaAssetId} style={{ margin: 0, maxWidth: 160 }}>
+                  {src ? (
+                    <img src={src} alt={alt} width={160} style={{ maxWidth: "100%", height: "auto" }} />
+                  ) : (
+                    <span>{t("admin.moderation.noPreview")}</span>
+                  )}
+                  <figcaption style={{ fontSize: 12 }}>
+                    {m.isCover ? `${t("admin.moderation.cover")} · ` : ""}
+                    {alt || t("admin.moderation.noAlt")}
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <details>
+        <summary>{t("admin.moderation.snapshot")}</summary>
+        <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>{JSON.stringify(snap, null, 2)}</pre>
+      </details>
+    </Stack>
+  );
+}
+
+type Outcome = { notice: string | null; error: ApiError | null };
 
 function CaseScreen({ id }: { id: string }) {
   const { api } = useAdmin();
@@ -145,6 +265,8 @@ function CaseScreen({ id }: { id: string }) {
     () => call(api.GET("/admin/moderation/cases/{id}", { params: { path: { id } } })),
     [id],
   );
+  // Итог решения живёт здесь: после решения заявка становится decided, форма уходит, а сообщение остаётся.
+  const [outcome, setOutcome] = useState<Outcome>({ notice: null, error: null });
   return (
     <Stack gap={3}>
       <p style={{ margin: 0 }}>
@@ -153,21 +275,32 @@ function CaseScreen({ id }: { id: string }) {
       {result && !result.ok && result.error.status === 403 ? (
         <p role="alert">{t("admin.moderation.forbidden")}</p>
       ) : (
-        <Loaded result={result}>{(c) => <CaseCard c={c} reload={reload} />}</Loaded>
+        <Loaded result={result}>
+          {(c) => (
+            <>
+              <Notice text={outcome.notice} />
+              <ModerationError error={outcome.error} />
+              <CaseCard c={c} reload={reload} onOutcome={setOutcome} />
+            </>
+          )}
+        </Loaded>
       )}
     </Stack>
   );
 }
 
-function CaseCard({ c, reload }: { c: Detail; reload: () => void }) {
+function CaseCard({
+  c,
+  reload,
+  onOutcome,
+}: {
+  c: Detail;
+  reload: () => void;
+  onOutcome: (o: Outcome) => void;
+}) {
   const { t, tDynamic, locale } = useT();
   const l = useLocalized();
   const snap = c.placeSnapshot;
-  const fields: [string, unknown][] = [
-    ["admin.field.name", snap.name],
-    ["admin.field.description", snap.description],
-    ["admin.field.address", snap.address],
-  ];
   return (
     <Stack gap={3}>
       <h2 style={{ margin: 0 }}>{l(c.placeName)}</h2>
@@ -194,20 +327,7 @@ function CaseCard({ c, reload }: { c: Detail; reload: () => void }) {
               {t("admin.moderation.partnerNote")}: {c.partnerNote}
             </p>
           )}
-          <dl style={{ margin: 0 }}>
-            {fields.map(([key, v]) => (
-              <div key={key}>
-                <dt style={{ fontWeight: 600 }}>{tDynamic(key)}</dt>
-                <dd style={{ margin: 0 }}>{snapshotText(v, l)}</dd>
-              </div>
-            ))}
-          </dl>
-          <details>
-            <summary>{t("admin.moderation.snapshot")}</summary>
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
-              {JSON.stringify(snap, null, 2)}
-            </pre>
-          </details>
+          <SnapshotView snap={snap} />
           <Link to={`/places/${c.placeId}`}>{t("admin.moderation.openPlace")}</Link>
         </Stack>
       </section>
@@ -290,37 +410,40 @@ function CaseCard({ c, reload }: { c: Detail; reload: () => void }) {
           </Stack>
         </section>
       ) : (
-        <Decisions c={c} reload={reload} />
+        <Decisions c={c} reload={reload} onOutcome={onOutcome} />
       )}
     </Stack>
   );
 }
 
-function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
+function Decisions({
+  c,
+  reload,
+  onOutcome,
+}: {
+  c: Detail;
+  reload: () => void;
+  onOutcome: (o: Outcome) => void;
+}) {
   const { api } = useAdmin();
   const { t, tDynamic } = useT();
   const [method, setMethod] = useState<Method | "">("");
   const [comment, setComment] = useState("");
   const [returnReason, setReturnReason] = useState("");
   const [rejectReason, setRejectReason] = useState("");
-  const [error, setError] = useState<ApiError | null>(null);
   const [local, setLocal] = useState<{ form: string; text: string } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Одно решение за раз на все три формы (двойной клик, Enter, соседняя форма).
+  const [busy, act] = useBusy();
   const path = { params: { path: { id: c.id } } };
 
   // 409 «уже решено» — перечитываем заявку: экран покажет решение другого модератора.
   const done = (ok: boolean, err: ApiError | null, message: string) => {
-    if (ok) {
-      setError(null);
-      setNotice(message);
-      return reload();
-    }
-    setError(err);
-    if (err?.status === 409) reload();
+    if (ok) onOutcome({ notice: message, error: null });
+    else onOutcome({ notice: null, error: err });
+    if (ok || err?.status === 409) reload();
   };
 
   const approve = async () => {
-    setNotice(null);
     if (!method) return setLocal({ form: "approve", text: t("admin.moderation.methodRequired") });
     setLocal(null);
     const body = { verificationMethod: method, ...(comment.trim() && { comment: comment.trim() }) };
@@ -328,7 +451,6 @@ function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
     done(res.ok, res.ok ? null : res.error, t("admin.moderation.approved"));
   };
   const decide = (kind: "return" | "reject", reason: string) => async () => {
-    setNotice(null);
     const body = reasonBody(reason);
     if (!body) return setLocal({ form: kind, text: t("admin.moderation.reasonRequired") });
     setLocal(null);
@@ -360,11 +482,11 @@ function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
             </ul>
           </div>
         )}
-        <ModerationError error={error} />
         <Form
           label={t("admin.moderation.approve")}
           submitLabel={t("admin.moderation.approve")}
-          onSubmit={approve}
+          busy={busy}
+          onSubmit={() => act(approve)}
         >
           <SelectField
             label={t("admin.moderation.verification")}
@@ -388,7 +510,8 @@ function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
         <Form
           label={t("admin.moderation.return")}
           submitLabel={t("admin.moderation.return")}
-          onSubmit={decide("return", returnReason)}
+          busy={busy}
+          onSubmit={() => act(decide("return", returnReason))}
         >
           <Field
             label={t("admin.moderation.returnReason")}
@@ -402,7 +525,8 @@ function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
         <Form
           label={t("admin.moderation.reject")}
           submitLabel={t("admin.moderation.reject")}
-          onSubmit={decide("reject", rejectReason)}
+          busy={busy}
+          onSubmit={() => act(decide("reject", rejectReason))}
         >
           <Field
             label={t("admin.moderation.rejectReason")}
@@ -413,7 +537,6 @@ function Decisions({ c, reload }: { c: Detail; reload: () => void }) {
           />
           {local?.form === "reject" && <p role="alert">{local.text}</p>}
         </Form>
-        <Notice text={notice} />
         <div>
           <SmallButton type="button" onClick={reload}>
             {t("admin.moderation.refresh")}
