@@ -4,6 +4,7 @@
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import type { MessageKey } from "@tg/i18n";
 import type { TelegramWebApp } from "./telegram.js";
+import { inviteTokenOf } from "./partner/partner-api.js";
 
 export type QrContext = ApiSchemas["QrContextDto"];
 export type Me = ApiSchemas["MeDto"];
@@ -96,6 +97,8 @@ export type StartupState =
        */
       contextFailed?: { startParam?: string };
       me: Me;
+      /** Открытие по приглашению сотрудника (start_param inv_<токен>, P14): токен; контекст — регион по умолчанию. */
+      invite?: string;
     };
 
 /**
@@ -157,7 +160,10 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
     });
     if (!auth.data) return { status: "error", messageKey: errorKey(auth.response.status) };
     setToken(auth.data.token);
-    const startParam = auth.data.startParam ?? getStartParam(webApp);
+    const rawStartParam = auth.data.startParam ?? getStartParam(webApp);
+    // Приглашение сотрудника — не QR-точка: контекст без start_param, экран P14 по токену.
+    const invite = inviteTokenOf(rawStartParam);
+    const startParam = invite !== undefined ? undefined : rawStartParam;
     const context = await fetchContext(api, startParam || undefined);
     const me = await api.GET("/me");
     if (!me.data) return { status: "error", messageKey: errorKey(me.response.status) };
@@ -167,6 +173,7 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
       context,
       ...(context ? {} : { contextFailed: startParam ? { startParam } : {} }),
       me: me.data,
+      ...(invite !== undefined ? { invite } : {}),
     };
   } catch {
     return { status: "error", messageKey: "miniapp.start.error" };
