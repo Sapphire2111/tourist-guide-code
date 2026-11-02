@@ -1132,8 +1132,8 @@ export interface paths {
     get: operations["listMyPlans"];
     put?: never;
     /**
-     * «Зберегти план»: копия опубликованного сценария (UserPlan со ссылкой на версию основы)
-     * @description 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум.
+     * «Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки
+     * @description 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.
      */
     post: operations["createMyPlan"];
     delete?: never;
@@ -1158,8 +1158,8 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * Правка плана: дата начала, «Замінити» пункт альтернативой, удалить пункт
-     * @description 404 errors.plan.itemNotFound — пункта нет; 422 errors.plan.notAlternative — место не из альтернатив пункта или не опубликовано. Прежнее место становится альтернативой (можно вернуть).
+     * Правка плана: параметры поездки, дата, галочка варианта (addItem), «Замінити» альтернативой, удалить пункт
+     * @description 404 errors.plan.itemNotFound — пункта нет; 422 errors.plan.notAlternative — место не из альтернатив пункта или не опубликовано (прежнее место становится альтернативой — можно вернуть); 422 errors.plan.placeUnavailable — место addItem/basePlaceId не опубликовано; 422 errors.plan.dayOutOfRange — день больше trip.days; 409 errors.plan.alreadyInPlan — место уже в этом дне. Меньше days — пункты лишних дней убираются.
      */
     patch: operations["updateMyPlan"];
     trace?: never;
@@ -3212,6 +3212,11 @@ export interface components {
       address: components["schemas"]["LocalizedTextDto"] | null;
       location: components["schemas"]["LonLatDto"];
     };
+    /**
+     * @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»
+     * @enum {string}
+     */
+    PlanSlot: "morning" | "afternoon" | "evening" | "rain";
     ScenarioItemDto: {
       /** Format: uuid */
       id: string;
@@ -3227,6 +3232,8 @@ export interface components {
       alternatives: components["schemas"]["PlanPlaceDto"][];
       /** @description Расстояние от предыдущего пункта дня по прямой, м */
       distanceFromPreviousMeters: number | null;
+      /** @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ» */
+      slot: components["schemas"]["PlanSlot"];
     };
     ScenarioDayDto: {
       dayNo: number;
@@ -3247,6 +3254,26 @@ export interface components {
       version: number;
       plan: components["schemas"]["ScenarioDayDto"][];
     };
+    /**
+     * @description place — basePlaceId; locality — центр населённого пункта
+     * @enum {string}
+     */
+    PlanBaseKind: "place" | "locality";
+    PlanBaseDto: {
+      /** @description place — basePlaceId; locality — центр населённого пункта */
+      kind: components["schemas"]["PlanBaseKind"];
+      /** Format: uuid */
+      placeId: string | null;
+      name: components["schemas"]["LocalizedTextDto"];
+    };
+    PlanTripDto: {
+      adults: number;
+      children: number;
+      withCar: boolean;
+      days: number;
+      /** @description Від чого рахується відстань, якщо в день ще нічого не вибрано */
+      base: components["schemas"]["PlanBaseDto"] | null;
+    };
     UserPlanItemDto: {
       /** Format: uuid */
       id: string;
@@ -3262,12 +3289,72 @@ export interface components {
       alternatives: components["schemas"]["PlanPlaceDto"][];
       /** @description Расстояние от предыдущего пункта дня по прямой, м */
       distanceFromPreviousMeters: number | null;
+      /** @description Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ» */
+      slot: components["schemas"]["PlanSlot"];
       /** @description Пункт заменён пользователем */
       replaced: boolean;
     };
     UserPlanDayDto: {
       dayNo: number;
       items: components["schemas"]["UserPlanItemDto"][];
+    };
+    PlanOptionPlaceDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      categoryId: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      address: components["schemas"]["LocalizedTextDto"] | null;
+      location: components["schemas"]["LonLatDto"];
+      /** @description Название категории из справочника региона */
+      categoryName: components["schemas"]["LocalizedTextDto"];
+    };
+    /**
+     * @description Почему подходит
+     * @enum {string}
+     */
+    PlanOptionReason:
+      | "breakfast"
+      | "lunch"
+      | "dinner"
+      | "evening_out"
+      | "walk"
+      | "culture"
+      | "active"
+      | "fun"
+      | "relax"
+      | "shopping"
+      | "indoor";
+    /**
+     * @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати
+     * @enum {string}
+     */
+    PlanTravel: "walk" | "car" | "transport";
+    PlanOptionDto: {
+      place: components["schemas"]["PlanOptionPlaceDto"];
+      /**
+       * @description Что это: код подкатегории; waterfall / bar — по названию места из Google
+       * @example museums
+       */
+      kind: string;
+      /** @description Почему подходит */
+      reason: components["schemas"]["PlanOptionReason"];
+      /** @description По прямой от предыдущего пункта дня или базовой точки, м */
+      distanceMeters: number | null;
+      /** @description walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт; null — не від чого рахувати */
+      travel: components["schemas"]["PlanTravel"] | null;
+      /** @description Оцінка в дорозі, хв */
+      travelMinutes: number | null;
+      /** @description У місця є тег «З дітьми» */
+      kidsFriendly: boolean;
+    };
+    PlanSlotOptionsDto: {
+      slot: components["schemas"]["PlanSlot"];
+      options: components["schemas"]["PlanOptionDto"][];
+    };
+    PlanDayOptionsDto: {
+      dayNo: number;
+      slots: components["schemas"]["PlanSlotOptionsDto"][];
     };
     UserPlanDto: {
       /** Format: uuid */
@@ -3282,7 +3369,11 @@ export interface components {
       title: components["schemas"]["LocalizedTextDto"];
       /** Format: date */
       startDate: string | null;
+      trip: components["schemas"]["PlanTripDto"];
+      /** @description Дни 1…trip.days (пустой день — items: []) */
       plan: components["schemas"]["UserPlanDayDto"][];
+      /** @description Варианты на выбор по дням и частям дня; в списке GET /me/plan — пусто */
+      options: components["schemas"]["PlanDayOptionsDto"][];
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -3298,11 +3389,24 @@ export interface components {
        * @description Регион туриста: regionId из GET /context
        */
       regionId: string;
+      /** @description Дорослих */
+      adults?: number;
+      /** @description Дітей */
+      children?: number;
+      /** @description З авто; без авто — варіанти пішки, далі — «потрібен транспорт» */
+      withCar?: boolean;
+      /** @description Днів у плані; менше — пункти зайвих днів прибираються */
+      days?: number;
       /**
        * Format: uuid
-       * @description Опубликованный сценарий региона
+       * @description Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»
        */
-      scenarioId: string;
+      basePlaceId?: string | null;
+      /**
+       * Format: uuid
+       * @description Опубликованный сценарий региона; без него — свой план с вариантами на выбор
+       */
+      scenarioId?: string;
       /**
        * Format: date
        * @example 2026-11-10
@@ -3321,12 +3425,34 @@ export interface components {
        */
       placeId: string;
     };
+    AddPlanItemDto: {
+      dayNo: number;
+      slot: components["schemas"]["PlanSlot"];
+      /**
+       * Format: uuid
+       * @description Опубликованное место региона
+       */
+      placeId: string;
+    };
     UpdateUserPlanDto: {
       /**
        * Format: uuid
        * @description Регион туриста: regionId из GET /context
        */
       regionId: string;
+      /** @description Дорослих */
+      adults?: number;
+      /** @description Дітей */
+      children?: number;
+      /** @description З авто; без авто — варіанти пішки, далі — «потрібен транспорт» */
+      withCar?: boolean;
+      /** @description Днів у плані; менше — пункти зайвих днів прибираються */
+      days?: number;
+      /**
+       * Format: uuid
+       * @description Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»
+       */
+      basePlaceId?: string | null;
       /**
        * Format: date
        * @description null — убрать дату
@@ -3336,9 +3462,11 @@ export interface components {
       replaceItem?: components["schemas"]["ReplacePlanItemDto"];
       /**
        * Format: uuid
-       * @description Удалить пункт
+       * @description Удалить пункт (снять галочку)
        */
       removeItemId?: string;
+      /** @description Поставить галочку: вариант — в план */
+      addItem?: components["schemas"]["AddPlanItemDto"];
     };
     /** @enum {string} */
     ScenarioStatus: "draft" | "published" | "archived";
@@ -11590,6 +11718,17 @@ export interface operations {
         };
       };
       /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
       429: {
         headers: {
           /** @description Correlation id запроса */
@@ -11826,6 +11965,17 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

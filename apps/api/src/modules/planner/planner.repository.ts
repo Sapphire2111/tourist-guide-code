@@ -26,6 +26,27 @@ export type PlanPlaceRow = {
   status: string;
 };
 
+/** Место каталога для вариантов «Мій план» (plan-options.ts): опубликовано, с точкой, категория активна. */
+export type CatalogPlaceRow = {
+  id: string;
+  category_id: string;
+  category_code: string;
+  category_name: LocalizedText;
+  name_i18n: LocalizedText;
+  address_i18n: LocalizedText | null;
+  location: LonLat;
+  recommended: boolean;
+  tags: string[];
+};
+
+export type PlanTripWrite = {
+  adults?: number;
+  children?: number;
+  with_car?: boolean;
+  days?: number | null;
+  base_place_id?: string | null;
+};
+
 export type ScenarioWrite = {
   code: string;
   title_i18n: LocalizedText;
@@ -98,6 +119,49 @@ export class PlannerRepository {
         .where("places.id", "in", [...new Set(ids)])
         .execute() as Promise<PlanPlaceRow[]>
     );
+  }
+
+  /**
+   * Каталог региона для вариантов: как у гида — опубликовано, точка есть, категория активна; теги (активные) — коды,
+   * одним запросом (LEFT JOIN + array_agg). Не больше limit мест (по id).
+   */
+  catalogPlaces(limit: number): Promise<CatalogPlaceRow[]> {
+    return this.q
+      .selectFrom("places")
+      .innerJoin("categories", "categories.id", "places.category_id")
+      .leftJoin("place_tags", "place_tags.place_id", "places.id")
+      .leftJoin("tags", (j) => j.onRef("tags.id", "=", "place_tags.tag_id").on("tags.active", "=", true))
+      .select([
+        "places.id",
+        "places.category_id",
+        "categories.code as category_code",
+        "categories.name_i18n as category_name",
+        "places.name_i18n",
+        "places.address_i18n",
+        "places.recommended",
+      ])
+      .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
+      .select(sql<string[]>`array_remove(array_agg(tags.code ORDER BY tags.code), NULL)`.as("tags"))
+      .where("places.status", "=", "published")
+      .where("places.location", "is not", null)
+      .where("categories.active", "=", true)
+      .groupBy(["places.id", "categories.id"])
+      .orderBy("places.id")
+      .limit(limit)
+      .execute() as Promise<CatalogPlaceRow[]>;
+  }
+
+  /** Запасная точка отсчёта без базы и пунктов — первый активный населённый пункт региона (порядок админки). */
+  firstLocality(): Promise<{ name_i18n: LocalizedText; location: LonLat | null } | undefined> {
+    return this.q
+      .selectFrom("localities")
+      .select(["name_i18n"])
+      .select((eb) => lonLatOf(eb.ref("localities.location")).as("location"))
+      .where("active", "=", true)
+      .orderBy("sort_order")
+      .orderBy("code")
+      .limit(1)
+      .executeTakeFirst() as Promise<{ name_i18n: LocalizedText; location: LonLat | null } | undefined>;
   }
 
   createScenario(w: ScenarioWrite, createdBy: string | null): Promise<Scenario> {
@@ -174,14 +238,16 @@ export class PlannerRepository {
     return q.executeTakeFirst();
   }
 
-  createPlan(row: {
-    user_id: string;
-    scenario_id: string;
-    scenario_version: number;
-    title_i18n: LocalizedText;
-    start_date: string | null;
-    items: UserPlanItemRecord[];
-  }): Promise<UserPlan> {
+  createPlan(
+    row: {
+      user_id: string;
+      scenario_id: string | null;
+      scenario_version: number | null;
+      title_i18n: LocalizedText;
+      start_date: string | null;
+      items: UserPlanItemRecord[];
+    } & PlanTripWrite,
+  ): Promise<UserPlan> {
     return this.q
       .insertInto("user_plans")
       .values({ ...row, items: JSON.stringify(row.items) })
@@ -191,14 +257,15 @@ export class PlannerRepository {
 
   updatePlan(
     id: string,
-    patch: { start_date?: string | null; items?: UserPlanItemRecord[] },
+    patch: { start_date?: string | null; items?: UserPlanItemRecord[] } & PlanTripWrite,
   ): Promise<UserPlan | undefined> {
+    const { items, ...rest } = patch;
+    const set = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+    if (items === undefined && Object.keys(set).length === 0)
+      return this.q.selectFrom("user_plans").selectAll().where("id", "=", id).executeTakeFirst();
     return this.q
       .updateTable("user_plans")
-      .set({
-        ...(patch.start_date !== undefined ? { start_date: patch.start_date } : {}),
-        ...(patch.items !== undefined ? { items: JSON.stringify(patch.items) } : {}),
-      })
+      .set({ ...set, ...(items !== undefined ? { items: JSON.stringify(items) } : {}) })
       .where("id", "=", id)
       .returningAll()
       .executeTakeFirst();

@@ -372,4 +372,33 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
       code: "NOT_FOUND",
     });
   });
+
+  it("свой план (0019): параметры поездки, варианты из каталога, галочка — пункт в части дня", async () => {
+    const plan = await planner.createPlan(GUEST, {
+      regionId: base.regions.a,
+      days: 2,
+      adults: 2,
+      children: 1,
+      withCar: false,
+    });
+    expect(plan).toMatchObject({ scenarioId: null, trip: { days: 2, children: 1, withCar: false } });
+    expect(plan.plan).toHaveLength(2);
+    const option = plan.options[0]!.slots.flatMap((s) => s.options)[0]!;
+    expect(option.place.categoryName.uk).toBeTruthy();
+    const slot = plan.options[0]!.slots.find((s) => s.options.includes(option))!.slot;
+    const added = await planner.updatePlan(GUEST, plan.id, {
+      regionId: base.regions.a,
+      addItem: { dayNo: 1, slot, placeId: option.place.id },
+    });
+    expect(added.plan[0]!.items).toEqual([
+      expect.objectContaining({ slot, place: expect.objectContaining({ id: option.place.id }) }),
+    ]);
+    const fewer = await planner.updatePlan(GUEST, plan.id, {
+      regionId: base.regions.a,
+      days: 1,
+      withCar: true,
+    });
+    expect(fewer.trip).toMatchObject({ days: 1, withCar: true });
+    await planner.deletePlan(base.regions.a, GUEST, plan.id);
+  });
 });

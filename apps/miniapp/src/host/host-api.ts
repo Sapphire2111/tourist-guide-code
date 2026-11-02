@@ -7,6 +7,7 @@ import {
   ConflictError,
   NetworkError,
   type HostApi,
+  type PlanChange,
   type PlanDay,
   type PlanPlace,
   type RoomContext,
@@ -54,6 +55,7 @@ function daysOf(days: { dayNo: number; items: ItemDto[] }[]): PlanDay[] {
         note: i.note,
         alternatives: i.alternatives.map(placeOf),
         distanceMeters: i.distanceFromPreviousMeters,
+        slot: i.slot,
       })),
   }));
 }
@@ -73,7 +75,34 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
   schedule: daysOf(p.plan),
   scenarioUpdated: p.scenarioUpdated,
   updatedAt: p.updatedAt,
+  startDate: p.startDate,
+  trip: { adults: p.trip.adults, children: p.trip.children, withCar: p.trip.withCar, days: p.trip.days },
+  base: p.trip.base?.name ?? null,
+  options: p.options.map((d) => ({
+    day: d.dayNo,
+    slots: d.slots.map((s) => ({
+      slot: s.slot,
+      options: s.options.map((o) => ({
+        place: { id: o.place.id, name: o.place.name, categoryName: o.place.categoryName },
+        kind: o.kind,
+        reason: o.reason,
+        distanceMeters: o.distanceMeters,
+        travel: o.travel,
+        travelMinutes: o.travelMinutes,
+        kidsFriendly: o.kidsFriendly,
+      })),
+    })),
+  })),
 });
+
+/** Правка плана → тело PATCH /me/plan/{id}. */
+function patchOf(change: PlanChange) {
+  if ("replace" in change) return { replaceItem: change.replace };
+  if ("remove" in change) return { removeItemId: change.remove };
+  if ("add" in change)
+    return { addItem: { dayNo: change.add.day, slot: change.add.slot, placeId: change.add.placeId } };
+  return change.trip;
+}
 
 /** Ответ api: data при 2xx; 404/401/409 — свои ошибки; прочее — ApiCallError с messageKey сервера. */
 export async function ok<T>(p: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
@@ -183,15 +212,14 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
       planOf(await ok(api.GET("/me/plan/{id}", { params: { path: { id }, query: { regionId: region() } } }))),
     savePlan: async (scenarioId) =>
       planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), scenarioId } }))),
+    createPlan: async (trip) =>
+      planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), ...trip } }))),
     updatePlan: async (id, change) =>
       planOf(
         await ok(
           api.PATCH("/me/plan/{id}", {
             params: { path: { id } },
-            body: {
-              regionId: region(),
-              ...("replace" in change ? { replaceItem: change.replace } : { removeItemId: change.remove }),
-            },
+            body: { regionId: region(), ...patchOf(change) },
           }),
         ),
       ),
