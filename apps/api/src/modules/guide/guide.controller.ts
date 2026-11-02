@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   HttpCode,
   Inject,
   Param,
@@ -20,11 +19,12 @@ import {
   ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
-import { ApiError, ApiErrors } from "../../common/http/index.js";
+import { ApiError, ApiErrors, PublicCache } from "../../common/http/index.js";
 import { WithoutTenantContext } from "../../common/tenancy/index.js";
 import type { LonLat } from "../../db/index.js";
 import { RequireAuth } from "../auth/index.js";
 import { EmergencyContactListDto, toEmergencyContactDto } from "../emergency-contacts/index.js";
+import { RateLimit } from "../rate-limit/index.js";
 import type { RbacRequest } from "../rbac/index.js";
 import {
   FavoriteDto,
@@ -39,12 +39,19 @@ import {
 // Классы DTO запросов нужны в рантайме: emitDecoratorMetadata передаёт их в ValidationPipe.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AddFavoriteDto, OriginQueryDto, RegionQueryDto, SearchPlacesQueryDto } from "./guide.dto.js";
+import { FAVORITES_MAX } from "./guide.repository.js";
 import { GuideService } from "./guide.service.js";
 
 // Публичный каталог туриста (блок 4, ADR-0019; C02, C04–C06, C14). Без tenant-контекста принципала
 // (@WithoutTenantContext): у туриста назначений нет, регион — query regionId; сервис сам читает данные в
 // withTenant(regionContext) — RLS и TenantGuardPlugin ограничивают чтение этим регионом. Регион не найден или не
 // active — 404.
+
+/**
+ * Лимит поиска на пользователя (без сессии — на IP): текст ищется ILIKE без индекса (pg_trgm — позже, ADR-0019),
+ * один турист столько не набирает.
+ */
+export const SEARCH_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
 
 const uuid = new ParseUUIDPipe({
   exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_id" } }),
@@ -70,7 +77,7 @@ export class GuideCategoriesController {
 
   @Get()
   // Справочник меняется редко; ответ одинаков для всех туристов региона.
-  @Header("Cache-Control", "public, max-age=300")
+  @PublicCache(300)
   @ApiOperation({
     operationId: "listGuideCategories",
     summary: "Категории региона для туриста (главная C02, разделы C04): активные, с числом мест",
@@ -91,6 +98,7 @@ export class GuidePlacesController {
 
   // До ":id": порядок объявления — порядок маршрутов Express.
   @Get("search")
+  @RateLimit(SEARCH_RATE_LIMIT)
   @ApiOperation({
     operationId: "searchPlaces",
     summary: "Поиск мест: «Що поруч» (lat/lng + радиус), категория, текст q",
@@ -100,7 +108,7 @@ export class GuidePlacesController {
       "без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → " +
       "название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и " +
       `порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию ${SEARCH_LIMIT_DEFAULT}) ` +
-      "и offset (nextOffset). 404 — региона нет или он не активен.",
+      `и offset (nextOffset). Rate limit ${SEARCH_RATE_LIMIT.limit}/мин. 404 — региона нет или он не активен.`,
   })
   @ApiOkResponse({ type: PlaceSearchResultDto })
   @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
@@ -160,10 +168,12 @@ export class FavoritesController {
   @ApiOperation({
     operationId: "addFavorite",
     summary: "Добавить место в избранное (повтор — без изменений, тот же ответ)",
-    description: "404 — места нет в регионе или оно не опубликовано.",
+    description:
+      "404 — места нет в регионе или оно не опубликовано. 409 errors.favorites.limitReached — в избранном региона " +
+      `уже ${FAVORITES_MAX} мест.`,
   })
   @ApiCreatedResponse({ type: FavoriteDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "RATE_LIMITED")
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "RATE_LIMITED")
   async add(@Body() body: AddFavoriteDto, @Req() req: RbacRequest): Promise<FavoriteDto> {
     const fav = await this.guide.addFavorite(body.regionId, userOf(req), body.placeId);
     if (!fav) throw new ApiError("NOT_FOUND");
@@ -199,7 +209,7 @@ export class GuideEmergencyContactsController {
   constructor(@Inject(GuideService) private readonly guide: GuideService) {}
 
   @Get()
-  @Header("Cache-Control", "public, max-age=300")
+  @PublicCache(300)
   @ApiOperation({
     operationId: "listGuideEmergencyContacts",
     summary: "Экстренные контакты региона туриста («Халепа?»), только активные, по порядку",

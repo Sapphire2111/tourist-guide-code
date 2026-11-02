@@ -208,36 +208,44 @@ export class GuideRepository {
   /** Готовые фото мест по порядку: обложка первой, затем sort_order. */
   photos(placeIds: readonly string[]): Promise<PhotoRow[]> {
     if (placeIds.length === 0) return Promise.resolve([]);
-    return this.q
-      .selectFrom("place_media")
-      .innerJoin("media_assets", "media_assets.id", "place_media.media_asset_id")
-      .selectAll("media_assets")
-      .select(["place_media.place_id", "place_media.is_cover", "place_media.sort_order"])
-      .where("place_media.place_id", "in", placeIds)
-      .where("media_assets.status", "=", "ready")
-      .orderBy("place_media.place_id")
-      .orderBy("place_media.is_cover", "desc")
-      .orderBy("place_media.sort_order")
-      .orderBy("place_media.created_at")
-      .execute();
+    return (
+      this.q
+        .selectFrom("place_media")
+        .innerJoin("media_assets", "media_assets.id", "place_media.media_asset_id")
+        .selectAll("media_assets")
+        .select(["place_media.place_id", "place_media.is_cover", "place_media.sort_order"])
+        .where("place_media.place_id", "in", placeIds)
+        .where("media_assets.status", "=", "ready")
+        // Только фото: документ (private_document) туристу не отдаётся, даже если привязан по ошибке.
+        .where("media_assets.kind", "=", "image")
+        .orderBy("place_media.place_id")
+        .orderBy("place_media.is_cover", "desc")
+        .orderBy("place_media.sort_order")
+        .orderBy("place_media.created_at")
+        .execute()
+    );
   }
 
   /** Обложка (или первое готовое фото) каждого места. */
   covers(placeIds: readonly string[]): Promise<PhotoRow[]> {
     if (placeIds.length === 0) return Promise.resolve([]);
-    return this.q
-      .selectFrom("place_media")
-      .innerJoin("media_assets", "media_assets.id", "place_media.media_asset_id")
-      .distinctOn("place_media.place_id")
-      .selectAll("media_assets")
-      .select(["place_media.place_id", "place_media.is_cover", "place_media.sort_order"])
-      .where("place_media.place_id", "in", placeIds)
-      .where("media_assets.status", "=", "ready")
-      .orderBy("place_media.place_id")
-      .orderBy("place_media.is_cover", "desc")
-      .orderBy("place_media.sort_order")
-      .orderBy("place_media.created_at")
-      .execute();
+    return (
+      this.q
+        .selectFrom("place_media")
+        .innerJoin("media_assets", "media_assets.id", "place_media.media_asset_id")
+        .distinctOn("place_media.place_id")
+        .selectAll("media_assets")
+        .select(["place_media.place_id", "place_media.is_cover", "place_media.sort_order"])
+        .where("place_media.place_id", "in", placeIds)
+        .where("media_assets.status", "=", "ready")
+        // Только фото: документ (private_document) туристу не отдаётся, даже если привязан по ошибке.
+        .where("media_assets.kind", "=", "image")
+        .orderBy("place_media.place_id")
+        .orderBy("place_media.is_cover", "desc")
+        .orderBy("place_media.sort_order")
+        .orderBy("place_media.created_at")
+        .execute()
+    );
   }
 
   /**
@@ -320,6 +328,21 @@ export class GuideRepository {
       .orderBy("places.id")
       .limit(FAVORITES_MAX)
       .execute() as Promise<PlaceRow[]>;
+  }
+
+  /**
+   * Избранных пользователя в регионе контекста — те же записи, что в списке (favorites): только опубликованные места.
+   * Скрытые места лимит не занимают — пользователь их не видит и убрать не может.
+   */
+  async countFavorites(userId: string): Promise<number> {
+    const row = await (
+      this.published()
+        .innerJoin("favorites", "favorites.place_id", "places.id")
+        .where("favorites.user_id", "=", userId) as unknown as Q
+    )
+      .select((eb) => eb.fn.countAll<string>().as("n"))
+      .executeTakeFirstOrThrow();
+    return Number(row.n);
   }
 
   isFavorite(userId: string, placeId: string): Promise<boolean> {

@@ -8,6 +8,7 @@ export {
 } from "./correlation-id.js";
 export { httpMetricsMiddleware, metricsHandler } from "./http-metrics.js";
 export { ErrorEnvelopeFilter, toErrorResponse, type ErrorResponse } from "./error-envelope.filter.js";
+export { PublicCache } from "./public-cache.js";
 export { securityHeadersMiddleware } from "./security-headers.js";
 export { createValidationPipe, toFieldErrors } from "./validation.js";
 export {

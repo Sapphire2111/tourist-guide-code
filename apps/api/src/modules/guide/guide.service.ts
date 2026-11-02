@@ -23,7 +23,8 @@ import type {
   PlaceSearchResultDto,
   PlaceSummaryDto,
 } from "./guide.dto.js";
-import { GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
+import { SEARCH_OFFSET_MAX } from "./guide.dto.js";
+import { FAVORITES_MAX, GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
 import { localMoment, openState, type LocalMoment, type ScheduleRows } from "./open-now.js";
 
 export type SearchParams = {
@@ -86,7 +87,11 @@ export class GuideService {
       const page = rows.slice(0, params.limit);
       return {
         items: await this.summaries(region, page),
-        nextOffset: rows.length > params.limit ? params.offset + params.limit : null,
+        // Дальше SEARCH_OFFSET_MAX листать нельзя (валидация offset) — следующей страницы для клиента нет.
+        nextOffset:
+          rows.length > params.limit && params.offset + params.limit <= SEARCH_OFFSET_MAX
+            ? params.offset + params.limit
+            : null,
         radiusMeters: params.origin ? (params.radius ?? null) : null,
       };
     });
@@ -158,6 +163,15 @@ export class GuideService {
   async addFavorite(regionId: string, userId: string, placeId: string): Promise<FavoriteDto | undefined> {
     return this.inRegion(regionId, async () => {
       if (!(await this.repo.findPublished(placeId, undefined))) return undefined;
+      // Лимит списка (его выдача — до FAVORITES_MAX): новое место сверх лимита — 409; повтор уже добавленного — нет.
+      if (
+        !(await this.repo.isFavorite(userId, placeId)) &&
+        (await this.repo.countFavorites(userId)) >= FAVORITES_MAX
+      )
+        throw new ApiError("CONFLICT", {
+          messageKey: "errors.favorites.limitReached",
+          details: { reason: "favorites_limit", limit: FAVORITES_MAX },
+        });
       const row = await this.repo.addFavorite(userId, placeId);
       return { placeId: row.place_id, createdAt: row.created_at.toISOString() };
     });

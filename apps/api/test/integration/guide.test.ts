@@ -5,7 +5,7 @@
 // «Відкрито зараз» по графику в таймзоне региона, избранное (миграция 0014, RLS). Без Docker — пропуск (CI).
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createDatabase, type Db } from "../../src/db/index.js";
+import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
 import { GuideRepository, GuideService } from "../../src/modules/guide/index.js";
 import type { MediaService } from "../../src/modules/media/index.js";
@@ -331,6 +331,50 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     expect(card).toMatchObject({ openNow: false, openUntil: null });
   });
 
+  it("ночной интервал вчера + исключение «закрыто» сегодня: до конца ночной смены открыто, потом закрыто", async () => {
+    // «far»: пн 20:00–03:00 (через полночь), вт 09:00–18:00; вторник 2026-11-03 — закрыто весь день.
+    await sql(
+      `INSERT INTO place_schedules (region_id, place_id, day_of_week, opens_at, closes_at)
+       VALUES ($1, $2, 1, '20:00', '03:00'), ($1, $2, 2, '09:00', '18:00')`,
+      [base.regions.a, placeId("far")],
+    );
+    await sql(
+      `INSERT INTO place_schedule_exceptions (region_id, place_id, date, closed) VALUES ($1, $2, '2026-11-03', true)`,
+      [base.regions.a, placeId("far")],
+    );
+    const at = (iso: string) => {
+      const s = new GuideService(
+        appDb,
+        new GuideRepository(appDb),
+        new RegionsRepository(appDb),
+        new EmergencyContactsRepository(appDb),
+        { links: () => Promise.resolve([]) } as unknown as MediaService,
+      );
+      s.now = () => new Date(iso);
+      return s;
+    };
+    const inSearch = async (s: GuideService) =>
+      (await s.search(base.regions.a, { text: "Кава Далеко", limit: 5, offset: 0 })).items.find(
+        (i) => i.id === placeId("far"),
+      )!.openNow;
+    // Вт 01:30 по Киеву (UTC+2): смена понедельника ещё идёт — выборка исключений берёт вчера и сегодня.
+    const night = at("2026-11-02T23:30:00Z");
+    expect(await night.place(base.regions.a, placeId("far"), {})).toMatchObject({
+      openNow: true,
+      openUntil: "03:00",
+    });
+    expect(await inSearch(night)).toBe(true);
+    // Вт 10:00: по недельному графику открыто, но исключение даты закрывает весь день.
+    const morning = at("2026-11-03T08:00:00Z");
+    expect(await morning.place(base.regions.a, placeId("far"), {})).toMatchObject({ openNow: false });
+    expect(await inSearch(morning)).toBe(false);
+    // Карточка отдаёт исключение со вчерашней даты (to_char даты, без сдвига часового пояса процесса).
+    const card = await morning.place(base.regions.a, placeId("far"), {});
+    expect(card!.schedule.exceptions).toEqual([
+      { date: "2026-11-03", closed: true, opensAt: null, closesAt: null, note: null },
+    ]);
+  });
+
   it("категории: активные с числом мест; выключенная не видна; регион без статуса active — 404", async () => {
     await sql(
       `INSERT INTO categories (region_id, code, name_i18n, active) VALUES ($1, 'guide-off', '{"uk":"Вимкнено"}', false)`,
@@ -378,6 +422,13 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     // Снятое с публикации — не в списке, но убрать можно.
     await sql(`UPDATE places SET status = 'suspended' WHERE id = $1`, [placeId("north")]);
     expect(keysOf((await service.favorites(base.regions.a, user)).items)).toEqual(["east"]);
+    // Лимит считает только видимые: скрытое место ещё в таблице, но в счёт не идёт.
+    expect(await count(base.regions.a)).toBe(2);
+    expect(
+      await withTenant(appDb, regionContext(base.regions.a), () =>
+        new GuideRepository(appDb).countFavorites(user),
+      ),
+    ).toBe(1);
     await service.removeFavorite(base.regions.a, user, placeId("north"));
     await service.removeFavorite(base.regions.a, user, placeId("north"));
     expect(await count(base.regions.a)).toBe(1);

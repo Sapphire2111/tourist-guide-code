@@ -5,6 +5,7 @@ export {
   GuideEmergencyContactsController,
   GuidePlacesController,
   originOf,
+  SEARCH_RATE_LIMIT,
 } from "./guide.controller.js";
 export {
   AddFavoriteDto,
