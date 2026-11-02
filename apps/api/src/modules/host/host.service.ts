@@ -544,26 +544,37 @@ export class HostService {
     return updated;
   }
 
-  /** Места сотрудника с правом: назначения PLACE (действующие, роль с правом). */
+  /**
+   * Места сотрудника с правом: назначения PLACE (блок 5) и ORGANIZATION — все места организации (блок 6, ADR-0021),
+   * действующие, роль с правом. Места организации читаются в транзакции её региона.
+   */
   private async staffPlacesOf(userId: string, permission: PermissionCode): Promise<StaffPlace[]> {
     const grants: Grant[] = await this.rbac.grantsOf(userId);
     const now = new Date();
     const out = new Map<string, StaffPlace>();
-    for (const g of grants)
-      if (
-        g.scopeType === "PLACE" &&
-        g.scopeId &&
-        g.regionId &&
-        isGrantActive(g, now) &&
-        roleHasPermission(g.role, permission) &&
-        !out.has(g.scopeId.toLowerCase())
-      )
-        out.set(g.scopeId.toLowerCase(), {
-          placeId: g.scopeId.toLowerCase(),
-          regionId: g.regionId.toLowerCase(),
-          role: g.role,
-          grantId: g.id,
-        });
+    const orgGrants: Grant[] = [];
+    for (const g of grants) {
+      if (!g.scopeId || !g.regionId || !isGrantActive(g, now) || !roleHasPermission(g.role, permission))
+        continue;
+      if (g.scopeType === "ORGANIZATION") orgGrants.push(g);
+      if (g.scopeType !== "PLACE" || out.has(g.scopeId.toLowerCase())) continue;
+      out.set(g.scopeId.toLowerCase(), {
+        placeId: g.scopeId.toLowerCase(),
+        regionId: g.regionId.toLowerCase(),
+        role: g.role,
+        grantId: g.id,
+      });
+    }
+    for (const [regionId, list] of groupBy(orgGrants, (g) => g.regionId!.toLowerCase())) {
+      const places = await withTenant(this.db, regionContext(regionId), () =>
+        this.repo.placesOfOrganizations(list.map((g) => g.scopeId!.toLowerCase())),
+      );
+      for (const p of places) {
+        if (out.has(p.id)) continue;
+        const g = list.find((x) => x.scopeId!.toLowerCase() === p.organization_id)!;
+        out.set(p.id, { placeId: p.id, regionId, role: g.role, grantId: g.id });
+      }
+    }
     return [...out.values()];
   }
 
@@ -754,10 +765,14 @@ function toStaffMember(m: {
   };
 }
 
-function groupByRegion(places: readonly StaffPlace[]): Map<string, StaffPlace[]> {
-  const out = new Map<string, StaffPlace[]>();
-  for (const p of places) out.set(p.regionId, [...(out.get(p.regionId) ?? []), p]);
+function groupBy<T>(items: readonly T[], key: (t: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const item of items) out.set(key(item), [...(out.get(key(item)) ?? []), item]);
   return out;
+}
+
+function groupByRegion(places: readonly StaffPlace[]): Map<string, StaffPlace[]> {
+  return groupBy(places, (p) => p.regionId);
 }
 
 function transitionError(from: ServiceRequestStatus, to: ServiceRequestStatus): ApiError {

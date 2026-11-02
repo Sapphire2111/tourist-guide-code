@@ -8683,7 +8683,7 @@
     },
     "/partner/places/{id}/submit": {
       "post": {
-        "description": "Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.fields — незаполненные поля шаблона) или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; 409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.",
+        "description": "Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.missingFields — незаполненные поля шаблона) или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; 409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.",
         "operationId": "submitPartnerPlace",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -9781,6 +9781,13 @@
             "required": false,
             "in": "query",
             "description": "Регион (SUPERADMIN — любой; модератор/админ региона — только свой). Без него — все доступные",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "placeId",
+            "required": false,
+            "in": "query",
+            "description": "Только заявки этого места (карточка места в админке: статус модерации и история)",
             "schema": { "format": "uuid", "type": "string" }
           },
           {
@@ -11878,6 +11885,12 @@
             "type": "boolean",
             "description": "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)"
           },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId="
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -11897,6 +11910,7 @@
           "verifiedAt",
           "tagIds",
           "hostCapable",
+          "organizationId",
           "createdAt",
           "updatedAt"
         ]
@@ -12765,7 +12779,7 @@
         },
         "required": ["regionId"]
       },
-      "PlaceStaffRole": { "type": "string", "enum": ["ORG_STAFF", "ORG_OWNER"] },
+      "PlaceStaffRole": { "type": "string", "enum": ["ORG_STAFF", "ORG_MANAGER", "ORG_OWNER"] },
       "StaffPlaceDto": {
         "type": "object",
         "properties": {

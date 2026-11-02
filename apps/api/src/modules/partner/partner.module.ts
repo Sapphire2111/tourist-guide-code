@@ -13,16 +13,9 @@ import { RoleAssignmentsModule } from "../role-assignments/index.js";
 import { ModerationController } from "./moderation.controller.js";
 import { ModerationService } from "./moderation.service.js";
 import { PartnerController } from "./partner.controller.js";
+import { PARTNER_OPTIONS, type PartnerModuleOptions } from "./partner.options.js";
+import { PartnerRepository } from "./partner.repository.js";
 import { PartnerService } from "./partner.service.js";
-
-export type PartnerModuleOptions = {
-  /** TELEGRAM_BOT_TOKEN: уведомления о модерации ботом; без него — строки notifications со статусом skipped. */
-  botToken?: string;
-  /** TELEGRAM_BOT_USERNAME: готовая ссылка-приглашение t.me/<бот>?startapp=…; без него — только startParam. */
-  botUsername?: string;
-};
-
-export const PARTNER_OPTIONS = Symbol("PARTNER_OPTIONS");
 
 /**
  * Кабинет партнёра (блок 6, ADR-0021): онбординг по шаблону, редактор заведения, модерация (AD02), сотрудники и
@@ -45,6 +38,7 @@ export class PartnerModule {
             : null) satisfies TelegramSender | null,
         },
         NotificationsService,
+        PartnerRepository,
         PartnerService,
         ModerationService,
       ],

@@ -1372,7 +1372,7 @@ export interface paths {
     put?: never;
     /**
      * «Надіслати на модерацію»: draft | changes_requested | rejected → pending_moderation
-     * @description Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.fields — незаполненные поля шаблона) или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; 409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.
+     * @description Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.missingFields — незаполненные поля шаблона) или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; 409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.
      */
     post: operations["submitPartnerPlace"];
     delete?: never;
@@ -2483,6 +2483,11 @@ export interface components {
       tagIds: string[];
       /** @description Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5) */
       hostCapable: boolean;
+      /**
+       * Format: uuid
+       * @description Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId=
+       */
+      organizationId: string | null;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -2971,7 +2976,7 @@ export interface components {
       regionId: string;
     };
     /** @enum {string} */
-    PlaceStaffRole: "ORG_STAFF" | "ORG_OWNER";
+    PlaceStaffRole: "ORG_STAFF" | "ORG_MANAGER" | "ORG_OWNER";
     StaffPlaceDto: {
       /** Format: uuid */
       placeId: string;
@@ -14277,6 +14282,8 @@ export interface operations {
         status?: components["schemas"]["ModerationCaseStatus"];
         /** @description Регион (SUPERADMIN — любой; модератор/админ региона — только свой). Без него — все доступные */
         regionId?: string;
+        /** @description Только заявки этого места (карточка места в админке: статус модерации и история) */
+        placeId?: string;
       };
       header?: {
         /** @description Correlation id; иначе генерируется */

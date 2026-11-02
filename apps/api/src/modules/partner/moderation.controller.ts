@@ -59,7 +59,11 @@ export class ModerationController {
   @ApiOkResponse({ type: ModerationCaseListDto })
   @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN")
   list(@Query() q: ModerationCasesQueryDto, @Req() req: RbacRequest): Promise<ModerationCaseListDto> {
-    return this.moderation.list(userOf(req), { status: q.status ?? "open", regionId: q.regionId });
+    return this.moderation.list(userOf(req), {
+      status: q.status ?? "open",
+      regionId: q.regionId,
+      placeId: q.placeId,
+    });
   }
 
   @Get(":id")
