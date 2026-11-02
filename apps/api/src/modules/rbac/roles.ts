@@ -1,6 +1,6 @@
 // Реестр ролей: роль = набор permission-кодов + допустимые типы области. Бизнес-роли админки SUPERADMIN,
 // REGION_ADMIN, MODERATOR (блок 3, матрица roles-and-data §1.4) и технические роли-заглушки для тестов и seed
-// (T1-23); роли партнёра — блок 6. В БД роль — text (формат ^[A-Z][A-Z0-9_]*$): роль не из реестра прав не даёт.
+// (T1-23); роли партнёра — блок 6 (ADR-0021). В БД роль — text (формат ^[A-Z][A-Z0-9_]*$): роль не из реестра прав не даёт.
 import type { ScopeType } from "../../db/index.js";
 import { PERMISSIONS, type PermissionCode } from "./permissions.js";
 
@@ -126,9 +126,36 @@ const MODERATOR_PERMISSIONS: readonly PermissionCode[] = [
   "audit.read",
 ];
 
+/** Сотрудник (кассир, P10): заявки гостей. Права касс P02/P03 — блок 9. */
+const ORG_STAFF_PERMISSIONS: readonly PermissionCode[] = ["service_request.read", "service_request.process"];
+
+/**
+ * Менеджер (S-06 п. 7, P06 «ORG_MANAGER — часть полей», P07): карточка заведения без полей личности места (название,
+ * категория, адрес, точка — их меняет тот, у кого place.submit), график, фото, акции. Без сотрудников и финансов.
+ */
+const ORG_MANAGER_PERMISSIONS: readonly PermissionCode[] = [
+  ...ORG_STAFF_PERMISSIONS,
+  "place.edit",
+  "schedule.edit",
+  "media.upload",
+  "offer.manage",
+  "host_module.settings.edit",
+];
+
+/** Владелец (S-05, S-06): всё по своей организации, включая отправку на модерацию и сотрудников. */
+const ORG_OWNER_PERMISSIONS: readonly PermissionCode[] = [
+  ...ORG_MANAGER_PERMISSIONS,
+  "organization.edit",
+  "place.submit",
+  "staff.invite",
+  "staff.role.assign",
+  "staff.deactivate",
+  "staff.audit.read",
+];
+
 /**
  * Реестр ролей: бизнес-роли админки (блок 3) и технические роли-заглушки (тесты и seed, в prod не назначаются —
- * seed только local/staging, T1-23). Роли партнёра ORG_OWNER … AMBASSADOR, FIN_OPERATOR — блоки 6, 8, 11.
+ * seed только local/staging, T1-23). Роли партнёра ORG_OWNER, ORG_MANAGER, ORG_STAFF — блок 6 (ADR-0021); AMBASSADOR, FIN_OPERATOR — блоки 8, 11.
  */
 export const ROLES = {
   /** Суперадмин платформы (roles-and-data §1.1): назначается CLI `admin:create` или другим SUPERADMIN. */
@@ -141,15 +168,15 @@ export const ROLES = {
   /** Модератор региона (C-16); PLATFORM-модератор — POST. */
   MODERATOR: role(MODERATOR_PERMISSIONS, ["REGION"]),
   /**
-   * Сотрудник заведения (блок 5, ADR-0020): заявки гостей своего места — видеть и обрабатывать. Организаций пока
-   * нет: назначается на место (PLACE); ORGANIZATION — с блоком 6.
+   * Сотрудник (кассир) заведения: заявки гостей своего места/организации — видеть и обрабатывать (блок 5, ADR-0020).
+   * Редактор заведения, сотрудники и акции — 403 (блок 6, ADR-0021). Назначается на ORGANIZATION (приглашение) или
+   * PLACE (админ региона, блок 5).
    */
-  ORG_STAFF: role(["service_request.read", "service_request.process"], ["ORGANIZATION", "PLACE"]),
-  /** Владелец заведения (минимум блока 5): как сотрудник + настройки «Про заклад»; кабинет — блок 6. */
-  ORG_OWNER: role(
-    ["service_request.read", "service_request.process", "host_module.settings.edit"],
-    ["ORGANIZATION", "PLACE"],
-  ),
+  ORG_STAFF: role(ORG_STAFF_PERMISSIONS, ["ORGANIZATION", "PLACE"]),
+  /** Менеджер организации (блок 6): как сотрудник + редактор заведения (без полей личности места) и акции. */
+  ORG_MANAGER: role(ORG_MANAGER_PERMISSIONS, ["ORGANIZATION", "PLACE"]),
+  /** Владелец организации (блок 6): всё по своей организации — карточка и модерация, сотрудники, акции. */
+  ORG_OWNER: role(ORG_OWNER_PERMISSIONS, ["ORGANIZATION", "PLACE"]),
   /** Все права на всей платформе (аналог SUPERADMIN для тестов). */
   TECH_SUPERUSER: role(PERMISSIONS, ["PLATFORM"]),
   /** Администрирование региона: контент (в т. ч. фото, T1-20), аудит и назначение ролей в регионе. */

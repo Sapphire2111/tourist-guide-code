@@ -72,6 +72,13 @@ export const TABLE_TENANCY = {
   scenarios: "tenant",
   scenario_items: "tenant",
   user_plans: "tenant",
+  // Кабинет партнёра (0017, ADR-0021): шаблоны — платформы (global, у app только чтение); организации, модерация,
+  // приглашения и акции — регион организации/места.
+  partner_templates: "global",
+  organizations: "tenant",
+  moderation_cases: "tenant",
+  staff_invites: "tenant",
+  offers: "tenant",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

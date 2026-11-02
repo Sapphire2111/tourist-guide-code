@@ -1,5 +1,18 @@
 // Публичный интерфейс контекста catalog (блок 3, ADR-0017).
-export { LonLatDto, ScheduleDto, toScheduleDto } from "./catalog.dto.js";
+export {
+  LongTextDto,
+  LonLatDto,
+  PlaceMediaDto,
+  placeInput,
+  PutScheduleDto,
+  ScheduleDto,
+  scheduleInput,
+  ShortTextDto,
+  toPlaceMediaDto,
+  toScheduleDto,
+  UpdatePlaceDto,
+} from "./catalog.dto.js";
+export { rethrow as rethrowCatalogError } from "./catalog-http.js";
 export { CatalogModule } from "./catalog.module.js";
 export {
   CatalogRepository,
@@ -10,6 +23,7 @@ export {
 export {
   CatalogError,
   CatalogService,
+  type AuditMeta as CatalogAuditMeta,
   type CatalogErrorReason,
   type PlaceDetails,
   type PlaceSchedule,

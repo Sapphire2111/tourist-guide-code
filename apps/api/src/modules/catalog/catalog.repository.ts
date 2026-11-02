@@ -113,6 +113,8 @@ const PLACE_COLUMNS = [
   "places.verified_at",
   "places.first_published_at",
   "places.created_by",
+  "places.organization_id",
+  "places.partner_template_id",
   "places.created_at",
   "places.updated_at",
 ] as const;

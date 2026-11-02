@@ -7850,6 +7850,2335 @@
         "tags": ["admin"]
       }
     },
+    "/partner/templates": {
+      "get": {
+        "description": "Категории шаблона — активные категории справочника региона. 404 — регион не найден/не активен.",
+        "operationId": "listPartnerTemplates",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион онбординга: категории шаблона — из справочника этого региона",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerTemplateListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Шаблоны партнёра (P12, D-03): «Готель / садиба», «Заклад харчування», «Чан / сауна»",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/onboarding": {
+      "post": {
+        "description": "Заведение невидимо туристу до одобрения модератором. 404 — регион не активен; 422 errors.partner.templateUnavailable (нет шаблона) или errors.partner.categoryNotInTemplate (категория не из шаблона). Назначение ORG_OWNER и создание — в AuditLog.",
+        "operationId": "partnerOnboarding",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PartnerOnboardingDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerOnboardingResultDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Стати партнером» (S-05): Organization + Place(draft) + ORG_OWNER по шаблону",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/me": {
+      "get": {
+        "description": "Пусто — пользователь не партнёр (показать «Стати партнером»).",
+        "operationId": "getPartnerMe",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PartnerMeDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Режим партнёра (P13, P01): организации, роль, заведения, статус модерации, счётчики",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}": {
+      "get": {
+        "description": "403 — нет роли партнёра в организации заведения; 404 — заведения нет (или это не место партнёра).",
+        "operationId": "getPartnerPlace",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerPlaceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Карточка заведения в редакторе (P06): поля, график, фото, незаполненные поля шаблона, модерация",
+        "tags": ["partner"]
+      },
+      "patch": {
+        "description": "ORG_OWNER — все поля; ORG_MANAGER — без categoryId, name, address, location (403 identity_fields_forbidden); ORG_STAFF — 403. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.",
+        "operationId": "updatePartnerPlace",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdatePartnerPlaceDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerPlaceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Правка карточки (P06): черновик или живая версия опубликованного (без PlaceRevision, §1.6)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/schedule": {
+      "put": {
+        "description": "ORG_OWNER, ORG_MANAGER. 422 errors.place.scheduleInvalid (details.problems).",
+        "operationId": "putPartnerPlaceSchedule",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PutScheduleDto" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerPlaceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Заменить график работы (недельные интервалы и исключения)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/media/uploads": {
+      "post": {
+        "description": "Дальше: PUT файла по upload.url с upload.headers → POST …/media/{assetId}/confirm. 422 — тип/размер не подходят (details.reason).",
+        "operationId": "createPartnerPlaceMediaUpload",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PartnerMediaUploadRequestDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MediaUploadDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Фото заведения: заявка на загрузку → подписанная ссылка PUT (как POST /media/uploads)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/media/{assetId}/confirm": {
+      "post": {
+        "description": "Файл не прошёл проверку — 422 errors.place.mediaInvalid (details.reason = media_rejected).",
+        "operationId": "confirmPartnerPlaceMedia",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PartnerMediaConfirmDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerPlaceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Подтвердить загрузку фото и привязать к заведению (обработка вариантов — в фоне)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/media/{assetId}": {
+      "delete": {
+        "operationId": "deletePartnerPlaceMedia",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Убрано" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Убрать фото из карточки",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/submit": {
+      "post": {
+        "description": "Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.fields — незаполненные поля шаблона) или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; 409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.",
+        "operationId": "submitPartnerPlace",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PartnerSubmitDto" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerPlaceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Надіслати на модерацію»: draft | changes_requested | rejected → pending_moderation",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/offers": {
+      "get": {
+        "operationId": "listPartnerOffers",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Без фильтра — все",
+            "schema": { "$ref": "#/components/schemas/OfferStatus" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OfferListDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Акции заведения (ORG_OWNER, ORG_MANAGER)",
+        "tags": ["partner"]
+      },
+      "post": {
+        "operationId": "createPartnerOffer",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOfferDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OfferDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Новая акция (status active)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/offers/{offerId}": {
+      "patch": {
+        "operationId": "updatePartnerOffer",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "offerId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOfferDto" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OfferDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Правка акции; 409 errors.partner.offerArchived — архивная не меняется",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/places/{id}/offers/{offerId}/archive": {
+      "post": {
+        "operationId": "archivePartnerOffer",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "offerId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OfferDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "В архив (вместо удаления); повтор — без изменений",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/organizations/{orgId}/staff": {
+      "get": {
+        "operationId": "listPartnerStaff",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerStaffDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Сотрудники организации и приглашения (P09, только ORG_OWNER)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/organizations/{orgId}/staff/invites": {
+      "post": {
+        "description": "Токен возвращается один раз (в БД — хэш). Создание — AuditLog (без токена).",
+        "operationId": "createStaffInvite",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateStaffInviteDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StaffInviteCreatedDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Пригласить сотрудника: одноразовый токен на 72 ч (ORG_MANAGER или ORG_STAFF)",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/organizations/{orgId}/staff/invites/{inviteId}": {
+      "delete": {
+        "operationId": "revokeStaffInvite",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "inviteId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Отозвано" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Отозвать неиспользованное приглашение; 409 — уже принято",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/organizations/{orgId}/staff/{assignmentId}": {
+      "patch": {
+        "description": "Владельца менять нельзя — 403 details.reason = owner_protected.",
+        "operationId": "changeStaffRole",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "assignmentId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChangeStaffRoleDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerStaffMemberDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Сменить роль сотрудника (ORG_MANAGER ↔ ORG_STAFF): отзыв и новое назначение, AuditLog",
+        "tags": ["partner"]
+      },
+      "delete": {
+        "operationId": "deactivateStaff",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "assignmentId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Деактивирован" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Деактивировать сотрудника (отзыв назначения, AuditLog); владельца — 403 owner_protected",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/invites/{token}": {
+      "get": {
+        "description": "404 — токена нет. Истёкшее/принятое/отозванное — state, а не ошибка.",
+        "operationId": "getStaffInvite",
+        "parameters": [
+          { "name": "token", "required": true, "in": "path", "schema": { "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StaffInvitePreviewDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Приглашение по токену (P14): «Вас запрошено як <роль> до <Заклад>»",
+        "tags": ["partner"]
+      }
+    },
+    "/partner/invites/{token}/accept": {
+      "post": {
+        "description": "404 — токена нет; 409 errors.staffInvite.used | expired | revoked (details.reason); 409 errors.staffInvite.alreadyMember — уже сотрудник этой организации. Принятие — AuditLog.",
+        "operationId": "acceptStaffInvite",
+        "parameters": [
+          { "name": "token", "required": true, "in": "path", "schema": { "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StaffInviteAcceptedDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Принять приглашение: RoleAssignment на организацию, приглашение — использовано (одноразово)",
+        "tags": ["partner"]
+      }
+    },
+    "/admin/moderation/cases": {
+      "get": {
+        "description": "403 — нет права place.moderate ни в одном регионе (или в regionId).",
+        "operationId": "listModerationCases",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "По умолчанию open (очередь)",
+            "schema": { "$ref": "#/components/schemas/ModerationCaseStatus" }
+          },
+          {
+            "name": "regionId",
+            "required": false,
+            "in": "query",
+            "description": "Регион (SUPERADMIN — любой; модератор/админ региона — только свой). Без него — все доступные",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ModerationCaseListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Очередь модерации регионов модератора (старые сверху), фильтр статуса (по умолчанию open)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/cases/{id}": {
+      "get": {
+        "operationId": "getModerationCase",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ModerationCaseDetailDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Заявка: снимок карточки, владельцы (для подтверждения права, D-47), история заявок места",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/cases/{id}/approve": {
+      "post": {
+        "description": "409 errors.moderation.alreadyDecided — уже решено (details.decidedBy); 422 errors.place.notPublishable — карточка не готова (details.problems); 403 own_organization — модератор связан с организацией (BR-12). Решение — AuditLog; партнёру — уведомление ботом.",
+        "operationId": "approveModerationCase",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ApproveModerationDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ModerationCaseDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Схвалити» → place published (виден туристу); способ проверки права обязателен (D-47 А)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/cases/{id}/reject": {
+      "post": {
+        "operationId": "rejectModerationCase",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ModerationReasonDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ModerationCaseDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Відхилити» → place rejected (причина обязательна, видна партнёру)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/cases/{id}/return": {
+      "post": {
+        "operationId": "returnModerationCase",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ModerationReasonDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ModerationCaseDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Повернути на доопрацювання» → place changes_requested (комментарий обязателен)",
+        "tags": ["admin"]
+      }
+    },
     "/feature-flags": {
       "get": {
         "operationId": "getFeatureFlags",
@@ -9491,7 +11820,18 @@
           "active": { "type": "boolean" }
         }
       },
-      "PlaceStatus": { "type": "string", "enum": ["draft", "published", "suspended", "archived"] },
+      "PlaceStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "pending_moderation",
+          "changes_requested",
+          "rejected",
+          "published",
+          "suspended",
+          "archived"
+        ]
+      },
       "LongTextDto": {
         "type": "object",
         "properties": {
@@ -11166,6 +13506,841 @@
         "properties": { "status": { "allOf": [{ "$ref": "#/components/schemas/ScenarioStatus" }] } },
         "required": ["status"]
       },
+      "PartnerPlaceField": {
+        "type": "string",
+        "enum": ["name", "category", "description", "address", "location", "phone", "schedule", "photo"],
+        "description": "Обязательные поля карточки для отправки на модерацию"
+      },
+      "PartnerModule": {
+        "type": "string",
+        "enum": ["host_requests", "offers"],
+        "description": "Модули заведения: host_requests — заявки гостей отеля (блок 5), offers — акции"
+      },
+      "PartnerCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "example": "hotels" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" }
+        },
+        "required": ["id", "code", "name"]
+      },
+      "PartnerTemplateDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "example": "hotel", "description": "hotel | food | chan (D-03)" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "requiredFields": {
+            "type": "array",
+            "description": "Обязательные поля карточки для отправки на модерацию",
+            "items": { "$ref": "#/components/schemas/PartnerPlaceField" }
+          },
+          "modules": {
+            "type": "array",
+            "description": "Модули заведения: host_requests — заявки гостей отеля (блок 5), offers — акции",
+            "items": { "$ref": "#/components/schemas/PartnerModule" }
+          },
+          "categories": {
+            "description": "Категории шаблона в регионе (только активные); пусто — шаблон в регионе недоступен",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerCategoryDto" }
+          }
+        },
+        "required": ["id", "code", "name", "description", "requiredFields", "modules", "categories"]
+      },
+      "PartnerTemplateListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerTemplateDto" } }
+        },
+        "required": ["items"]
+      },
+      "PartnerOnboardingDto": {
+        "type": "object",
+        "properties": {
+          "regionId": { "type": "string", "format": "uuid", "description": "Регион заведения" },
+          "templateCode": {
+            "type": "string",
+            "example": "hotel",
+            "description": "Код шаблона (GET /partner/templates)"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Категория из categories шаблона"
+          },
+          "name": {
+            "description": "Назва закладу",
+            "allOf": [{ "$ref": "#/components/schemas/ShortTextDto" }]
+          },
+          "organizationName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Назва організації (юр./комерційна); по умолчанию — название заведения (uk)"
+          }
+        },
+        "required": ["regionId", "templateCode", "categoryId", "name"]
+      },
+      "PartnerRole": {
+        "type": "string",
+        "enum": ["ORG_OWNER", "ORG_MANAGER", "ORG_STAFF"],
+        "description": "Роль пользователя в организации"
+      },
+      "PartnerAbilitiesDto": {
+        "type": "object",
+        "properties": {
+          "editPlace": {
+            "type": "boolean",
+            "description": "Редактор заведения P06 (ORG_OWNER, ORG_MANAGER)"
+          },
+          "editIdentity": {
+            "type": "boolean",
+            "description": "Поля личности места — название, категория, адрес, точка (ORG_OWNER)"
+          },
+          "submit": { "type": "boolean", "description": "Отправить на модерацию (ORG_OWNER)" },
+          "manageStaff": { "type": "boolean", "description": "Сотрудники P09 (ORG_OWNER)" },
+          "manageOffers": { "type": "boolean", "description": "Акции P07 (ORG_OWNER, ORG_MANAGER)" },
+          "serviceRequests": { "type": "boolean", "description": "Заявки гостей P10 (все роли партнёра)" }
+        },
+        "required": ["editPlace", "editIdentity", "submit", "manageStaff", "manageOffers", "serviceRequests"]
+      },
+      "ModerationCaseStatus": { "type": "string", "enum": ["open", "decided"] },
+      "ModerationDecision": { "type": "string", "enum": ["approve", "reject", "changes_requested"] },
+      "PartnerModerationSummaryDto": {
+        "type": "object",
+        "properties": {
+          "caseId": { "type": "string", "format": "uuid" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ModerationCaseStatus" }] },
+          "decision": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ModerationDecision" }] },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Комментарий модератора (обязателен при reject и changes_requested)"
+          },
+          "submittedAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["caseId", "status", "decision", "comment", "submittedAt", "decidedAt"]
+      },
+      "PartnerPlaceSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/ShortTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "templateCode": { "type": "string", "nullable": true, "example": "hotel" },
+          "modules": {
+            "type": "array",
+            "description": "Модули по шаблону",
+            "items": { "$ref": "#/components/schemas/PartnerModule" }
+          },
+          "moderation": {
+            "nullable": true,
+            "description": "Последняя заявка на модерацию",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PartnerModerationSummaryDto" }]
+          },
+          "openServiceRequests": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Открытые заявки гостей (new/accepted/in_progress); null — у заведения нет модуля host_requests"
+          },
+          "activeOffers": { "type": "integer", "description": "Действующие акции (active)" }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "templateCode",
+          "modules",
+          "moderation",
+          "openServiceRequests",
+          "activeOffers"
+        ]
+      },
+      "PartnerOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "role": {
+            "description": "Роль пользователя в организации",
+            "allOf": [{ "$ref": "#/components/schemas/PartnerRole" }]
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Назначение роли (RoleAssignment)"
+          },
+          "abilities": { "$ref": "#/components/schemas/PartnerAbilitiesDto" },
+          "places": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerPlaceSummaryDto" } }
+        },
+        "required": ["id", "regionId", "name", "role", "assignmentId", "abilities", "places"]
+      },
+      "PartnerTemplateRefDto": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "example": "hotel" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "requiredFields": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerPlaceField" }
+          },
+          "modules": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerModule" } },
+          "categories": {
+            "description": "Допустимые категории (в регионе места)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerCategoryDto" }
+          }
+        },
+        "required": ["code", "name", "requiredFields", "modules", "categories"]
+      },
+      "PartnerPlaceDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "template": { "$ref": "#/components/schemas/PartnerTemplateRefDto" },
+          "role": {
+            "description": "Роль пользователя",
+            "allOf": [{ "$ref": "#/components/schemas/PartnerRole" }]
+          },
+          "abilities": { "$ref": "#/components/schemas/PartnerAbilitiesDto" },
+          "editable": {
+            "type": "boolean",
+            "description": "Можно ли сейчас править: false — на модерации (pending_moderation), приостановлено или в архиве"
+          },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "localityId": { "type": "string", "format": "uuid", "nullable": true },
+          "name": { "$ref": "#/components/schemas/ShortTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LongTextDto" }]
+          },
+          "address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ShortTextDto" }]
+          },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "phone": { "type": "string", "nullable": true, "example": "+380000000001" },
+          "website": { "type": "string", "nullable": true },
+          "telegram": { "type": "string", "nullable": true },
+          "tagIds": { "description": "id тегов", "type": "array", "items": { "type": "string" } },
+          "schedule": { "$ref": "#/components/schemas/ScheduleDto" },
+          "media": {
+            "description": "Фото (ссылки на варианты — GET /media/{id} недоступен партнёру: см. mediaLinks)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceMediaDto" }
+          },
+          "mediaPreview": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Ссылка на вариант w320 для превью каждого готового фото: mediaAssetId → url"
+          },
+          "missingFields": {
+            "type": "array",
+            "description": "Незаполненные обязательные поля шаблона (пусто — можно отправлять на модерацию)",
+            "items": { "$ref": "#/components/schemas/PartnerPlaceField" }
+          },
+          "moderation": {
+            "nullable": true,
+            "description": "Последняя заявка на модерацию",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PartnerModerationSummaryDto" }]
+          },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "regionId",
+          "status",
+          "template",
+          "role",
+          "abilities",
+          "editable",
+          "categoryId",
+          "localityId",
+          "name",
+          "description",
+          "address",
+          "location",
+          "phone",
+          "website",
+          "telegram",
+          "tagIds",
+          "schedule",
+          "media",
+          "mediaPreview",
+          "missingFields",
+          "moderation",
+          "updatedAt"
+        ]
+      },
+      "PartnerOnboardingResultDto": {
+        "type": "object",
+        "properties": {
+          "organization": { "$ref": "#/components/schemas/PartnerOrganizationDto" },
+          "place": { "$ref": "#/components/schemas/PartnerPlaceDto" }
+        },
+        "required": ["organization", "place"]
+      },
+      "PartnerMeDto": {
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerOrganizationDto" }
+          }
+        },
+        "required": ["organizations"]
+      },
+      "UpdatePartnerPlaceDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": { "type": "string", "format": "uuid" },
+          "localityId": { "type": "string", "format": "uuid", "nullable": true },
+          "name": { "$ref": "#/components/schemas/ShortTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LongTextDto" }]
+          },
+          "address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ShortTextDto" }]
+          },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^\\+[1-9][0-9]{6,14}$",
+            "description": "E.164"
+          },
+          "website": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Только https://"
+          },
+          "telegram": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[A-Za-z0-9_]{5,32}$",
+            "description": "Имя без @"
+          },
+          "tagIds": {
+            "description": "Полный набор тегов (заменяет текущий)",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "MediaAltTextDto": {
+        "type": "object",
+        "properties": {
+          "uk": { "type": "string", "maxLength": 500 },
+          "en": { "type": "string", "maxLength": 500 }
+        },
+        "required": ["uk"]
+      },
+      "PartnerMediaUploadRequestDto": {
+        "type": "object",
+        "properties": {
+          "mime": {
+            "type": "string",
+            "example": "image/jpeg",
+            "description": "image/jpeg, image/png, image/webp"
+          },
+          "size": { "type": "number", "minimum": 1, "description": "Точный размер файла, байт" },
+          "alt": {
+            "description": "Alt text (без него место не публикуется)",
+            "allOf": [{ "$ref": "#/components/schemas/MediaAltTextDto" }]
+          }
+        },
+        "required": ["mime", "size"]
+      },
+      "MediaOwnerType": { "type": "string", "enum": ["place", "organization", "region"] },
+      "MediaKind": { "type": "string", "enum": ["image", "private_document"] },
+      "MediaStatus": { "type": "string", "enum": ["pending", "uploaded", "processing", "ready", "rejected"] },
+      "MediaAssetDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "ownerType": { "allOf": [{ "$ref": "#/components/schemas/MediaOwnerType" }] },
+          "ownerId": { "type": "string", "format": "uuid" },
+          "kind": { "allOf": [{ "$ref": "#/components/schemas/MediaKind" }] },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/MediaStatus" }] },
+          "mime": { "type": "string" },
+          "size": { "type": "number" },
+          "alt": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/MediaAltTextDto" }]
+          },
+          "width": { "type": "number", "nullable": true },
+          "height": { "type": "number", "nullable": true },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "size_mismatch",
+              "type_mismatch",
+              "decode_failed",
+              "dimensions_too_large",
+              "original_missing"
+            ],
+            "description": "Причина отклонения (status = rejected)"
+          },
+          "links": {
+            "description": "Ссылки на варианты (ready)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MediaLinkDto" }
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "ownerType",
+          "ownerId",
+          "kind",
+          "status",
+          "mime",
+          "size",
+          "alt",
+          "width",
+          "height",
+          "rejectReason",
+          "links",
+          "createdAt"
+        ]
+      },
+      "MediaUploadTargetDto": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "method": { "type": "string", "enum": ["PUT"] },
+          "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Заголовки, которые обязательно отправить с PUT (входят в подпись)"
+          },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["url", "method", "headers", "expiresAt"]
+      },
+      "MediaUploadDto": {
+        "type": "object",
+        "properties": {
+          "asset": { "$ref": "#/components/schemas/MediaAssetDto" },
+          "upload": { "$ref": "#/components/schemas/MediaUploadTargetDto" }
+        },
+        "required": ["asset", "upload"]
+      },
+      "PartnerMediaConfirmDto": {
+        "type": "object",
+        "properties": {
+          "alt": {
+            "description": "Alt text фото (если не задан при загрузке)",
+            "allOf": [{ "$ref": "#/components/schemas/ShortTextDto" }]
+          },
+          "isCover": { "type": "boolean", "description": "Сделать обложкой" }
+        }
+      },
+      "PartnerSubmitDto": {
+        "type": "object",
+        "properties": {
+          "acceptTerms": {
+            "type": "boolean",
+            "description": "Согласие с условиями партнёра (S-05 п. 4); false — 422"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Комментарий для модератора (как связаться для подтверждения права на заведение, D-47)"
+          }
+        },
+        "required": ["acceptTerms"]
+      },
+      "OfferStatus": { "type": "string", "enum": ["active", "archived"] },
+      "OfferDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "title": { "$ref": "#/components/schemas/ShortTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LongTextDto" }]
+          },
+          "startsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "endsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/OfferStatus" }] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "placeId",
+          "title",
+          "description",
+          "startsAt",
+          "endsAt",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "OfferListDto": {
+        "type": "object",
+        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/OfferDto" } } },
+        "required": ["items"]
+      },
+      "CreateOfferDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LongTextDto" }]
+          },
+          "startsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Позже startsAt"
+          },
+          "title": { "$ref": "#/components/schemas/ShortTextDto" }
+        },
+        "required": ["title"]
+      },
+      "UpdateOfferDto": {
+        "type": "object",
+        "properties": {
+          "title": { "$ref": "#/components/schemas/ShortTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LongTextDto" }]
+          },
+          "startsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Позже startsAt"
+          }
+        }
+      },
+      "PartnerStaffMemberDto": {
+        "type": "object",
+        "properties": {
+          "assignmentId": { "type": "string", "format": "uuid" },
+          "userId": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string", "nullable": true },
+          "username": { "type": "string", "nullable": true, "description": "Telegram username (без @)" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/PartnerRole" }] },
+          "grantedAt": { "type": "string", "format": "date-time" },
+          "isMe": { "type": "boolean", "description": "Это вы" }
+        },
+        "required": ["assignmentId", "userId", "displayName", "username", "role", "grantedAt", "isMe"]
+      },
+      "StaffInviteRole": { "type": "string", "enum": ["ORG_MANAGER", "ORG_STAFF"] },
+      "StaffInviteState": { "type": "string", "enum": ["active", "accepted", "expired", "revoked"] },
+      "StaffInviteDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/StaffInviteRole" }] },
+          "state": { "allOf": [{ "$ref": "#/components/schemas/StaffInviteState" }] },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "acceptedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "acceptedByName": { "type": "string", "nullable": true, "description": "Кто принял (имя)" }
+        },
+        "required": ["id", "role", "state", "expiresAt", "createdAt", "acceptedAt", "acceptedByName"]
+      },
+      "PartnerStaffDto": {
+        "type": "object",
+        "properties": {
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerStaffMemberDto" } },
+          "invites": {
+            "description": "Приглашения (последние 50)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StaffInviteDto" }
+          }
+        },
+        "required": ["members", "invites"]
+      },
+      "CreateStaffInviteDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "ORG_MANAGER — менеджер, ORG_STAFF — касир",
+            "allOf": [{ "$ref": "#/components/schemas/StaffInviteRole" }]
+          }
+        },
+        "required": ["role"]
+      },
+      "StaffInviteCreatedDto": {
+        "type": "object",
+        "properties": {
+          "invite": { "$ref": "#/components/schemas/StaffInviteDto" },
+          "token": {
+            "type": "string",
+            "description": "Одноразовый токен (показывается один раз; в БД — только хэш)"
+          },
+          "startParam": {
+            "type": "string",
+            "example": "inv_…",
+            "description": "start_param Mini App: ссылка t.me/<бот>?startapp=<startParam> или QR"
+          },
+          "link": {
+            "type": "string",
+            "nullable": true,
+            "description": "Готовая ссылка t.me (если задан TELEGRAM_BOT_USERNAME)"
+          }
+        },
+        "required": ["invite", "token", "startParam", "link"]
+      },
+      "ChangeStaffRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "Новая роль сотрудника (владельца менять нельзя)",
+            "allOf": [{ "$ref": "#/components/schemas/StaffInviteRole" }]
+          }
+        },
+        "required": ["role"]
+      },
+      "StaffInvitePreviewDto": {
+        "type": "object",
+        "properties": {
+          "organizationName": { "type": "string" },
+          "placeNames": {
+            "description": "Заведения организации",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ShortTextDto" }
+          },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/StaffInviteRole" }] },
+          "state": { "allOf": [{ "$ref": "#/components/schemas/StaffInviteState" }] },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "alreadyMember": {
+            "type": "boolean",
+            "description": "Пользователь уже работает в этой организации"
+          }
+        },
+        "required": ["organizationName", "placeNames", "role", "state", "expiresAt", "alreadyMember"]
+      },
+      "StaffInviteAcceptedDto": {
+        "type": "object",
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/StaffInviteRole" }] },
+          "assignmentId": { "type": "string", "format": "uuid" }
+        },
+        "required": ["organizationId", "regionId", "role", "assignmentId"]
+      },
+      "VerificationMethod": { "type": "string", "enum": ["phone_call", "document", "site_visit", "other"] },
+      "ModerationCaseDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/ShortTextDto" },
+          "placeStatus": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "organizationName": { "type": "string" },
+          "templateCode": { "type": "string", "nullable": true, "example": "hotel" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ModerationCaseStatus" }] },
+          "decision": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ModerationDecision" }] },
+          "comment": { "type": "string", "nullable": true },
+          "verificationMethod": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/VerificationMethod" }]
+          },
+          "submittedBy": { "type": "string", "format": "uuid" },
+          "submittedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя подавшего (владелец)"
+          },
+          "submittedAt": { "type": "string", "format": "date-time" },
+          "decidedBy": { "type": "string", "format": "uuid", "nullable": true },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "placeStatus",
+          "organizationId",
+          "organizationName",
+          "templateCode",
+          "status",
+          "decision",
+          "comment",
+          "verificationMethod",
+          "submittedBy",
+          "submittedByName",
+          "submittedAt",
+          "decidedBy",
+          "decidedAt"
+        ]
+      },
+      "ModerationCaseListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Старые сверху (возраст заявки)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ModerationCaseDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "ModerationOwnerDto": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string", "nullable": true },
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "description": "Telegram username (для связи, D-47)"
+          }
+        },
+        "required": ["userId", "displayName", "username"]
+      },
+      "ModerationCaseDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/ShortTextDto" },
+          "placeStatus": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "organizationName": { "type": "string" },
+          "templateCode": { "type": "string", "nullable": true, "example": "hotel" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ModerationCaseStatus" }] },
+          "decision": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ModerationDecision" }] },
+          "comment": { "type": "string", "nullable": true },
+          "verificationMethod": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/VerificationMethod" }]
+          },
+          "submittedBy": { "type": "string", "format": "uuid" },
+          "submittedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя подавшего (владелец)"
+          },
+          "submittedAt": { "type": "string", "format": "date-time" },
+          "decidedBy": { "type": "string", "format": "uuid", "nullable": true },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "placeSnapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Снимок карточки на момент подачи (поля как в PlaceDto админки, график, фото)"
+          },
+          "partnerNote": {
+            "type": "string",
+            "nullable": true,
+            "description": "Комментарий партнёра при подаче"
+          },
+          "owners": {
+            "description": "Владельцы организации",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ModerationOwnerDto" }
+          },
+          "history": {
+            "description": "Прошлые заявки по этому месту (новые сверху)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ModerationCaseDto" }
+          },
+          "publishProblems": {
+            "description": "Что мешает публикации сейчас (PublishProblem каталога) — пусто: можно одобрять",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "placeStatus",
+          "organizationId",
+          "organizationName",
+          "templateCode",
+          "status",
+          "decision",
+          "comment",
+          "verificationMethod",
+          "submittedBy",
+          "submittedByName",
+          "submittedAt",
+          "decidedBy",
+          "decidedAt",
+          "placeSnapshot",
+          "partnerNote",
+          "owners",
+          "history",
+          "publishProblems"
+        ]
+      },
+      "ApproveModerationDto": {
+        "type": "object",
+        "properties": {
+          "verificationMethod": {
+            "description": "Как подтверждено право на заведение (D-47 А)",
+            "allOf": [{ "$ref": "#/components/schemas/VerificationMethod" }]
+          },
+          "comment": { "type": "string", "maxLength": 2000 }
+        },
+        "required": ["verificationMethod"]
+      },
+      "ModerationReasonDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Причина / что исправить (обязательна, видна партнёру)"
+          }
+        },
+        "required": ["reason"]
+      },
       "FeatureFlagKey": {
         "type": "string",
         "enum": [
@@ -11301,16 +14476,6 @@
         },
         "required": ["decision", "documentRef"]
       },
-      "MediaOwnerType": { "type": "string", "enum": ["place", "organization", "region"] },
-      "MediaKind": { "type": "string", "enum": ["image", "private_document"] },
-      "MediaAltTextDto": {
-        "type": "object",
-        "properties": {
-          "uk": { "type": "string", "maxLength": 500 },
-          "en": { "type": "string", "maxLength": 500 }
-        },
-        "required": ["uk"]
-      },
       "CreateMediaUploadDto": {
         "type": "object",
         "properties": {
@@ -11331,83 +14496,6 @@
           "alt": { "$ref": "#/components/schemas/MediaAltTextDto" }
         },
         "required": ["ownerType", "ownerId", "kind", "mime", "size"]
-      },
-      "MediaStatus": { "type": "string", "enum": ["pending", "uploaded", "processing", "ready", "rejected"] },
-      "MediaAssetDto": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "regionId": { "type": "string", "format": "uuid" },
-          "ownerType": { "allOf": [{ "$ref": "#/components/schemas/MediaOwnerType" }] },
-          "ownerId": { "type": "string", "format": "uuid" },
-          "kind": { "allOf": [{ "$ref": "#/components/schemas/MediaKind" }] },
-          "status": { "allOf": [{ "$ref": "#/components/schemas/MediaStatus" }] },
-          "mime": { "type": "string" },
-          "size": { "type": "number" },
-          "alt": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [{ "$ref": "#/components/schemas/MediaAltTextDto" }]
-          },
-          "width": { "type": "number", "nullable": true },
-          "height": { "type": "number", "nullable": true },
-          "rejectReason": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "size_mismatch",
-              "type_mismatch",
-              "decode_failed",
-              "dimensions_too_large",
-              "original_missing"
-            ],
-            "description": "Причина отклонения (status = rejected)"
-          },
-          "links": {
-            "description": "Ссылки на варианты (ready)",
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/MediaLinkDto" }
-          },
-          "createdAt": { "type": "string", "format": "date-time" }
-        },
-        "required": [
-          "id",
-          "regionId",
-          "ownerType",
-          "ownerId",
-          "kind",
-          "status",
-          "mime",
-          "size",
-          "alt",
-          "width",
-          "height",
-          "rejectReason",
-          "links",
-          "createdAt"
-        ]
-      },
-      "MediaUploadTargetDto": {
-        "type": "object",
-        "properties": {
-          "url": { "type": "string" },
-          "method": { "type": "string", "enum": ["PUT"] },
-          "headers": {
-            "type": "object",
-            "additionalProperties": { "type": "string" },
-            "description": "Заголовки, которые обязательно отправить с PUT (входят в подпись)"
-          },
-          "expiresAt": { "type": "string", "format": "date-time" }
-        },
-        "required": ["url", "method", "headers", "expiresAt"]
-      },
-      "MediaUploadDto": {
-        "type": "object",
-        "properties": {
-          "asset": { "$ref": "#/components/schemas/MediaAssetDto" },
-          "upload": { "$ref": "#/components/schemas/MediaUploadTargetDto" }
-        },
-        "required": ["asset", "upload"]
       }
     }
   }
