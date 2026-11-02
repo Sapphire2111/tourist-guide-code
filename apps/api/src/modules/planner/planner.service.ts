@@ -9,6 +9,8 @@ import {
   type Db,
   type JsonObject,
   type LocalizedText,
+  type LonLat,
+  type PlanSlot,
   type Region,
   type Scenario,
   type ScenarioItem,
@@ -23,7 +25,9 @@ import type {
   AdminScenarioDto,
   AdminScenarioListDto,
   CreateUserPlanDto,
+  PlanDayOptionsDto,
   PlanPlaceDto,
+  PlanTripDto,
   ScenarioDto,
   ScenarioInputDto,
   ScenarioItemDto,
@@ -35,14 +39,25 @@ import type {
   UserPlanListDto,
 } from "./planner.dto.js";
 import { USER_PLANS_MAX } from "./planner.dto.js";
+import { planOptions, slotOf, slotRank, type CatalogPlace } from "./plan-options.js";
 import {
+  addItem,
   planItemsFromScenario,
   removeItem,
   replaceItem,
   sphericalMeters,
+  trimDays,
   type PlanEditError,
 } from "./plan-rules.js";
-import { PlannerRepository, type PlanPlaceRow } from "./planner.repository.js";
+import {
+  PlannerRepository,
+  type CatalogPlaceRow,
+  type PlanPlaceRow,
+  type PlanTripWrite,
+} from "./planner.repository.js";
+
+/** Название своего плана (без сценария-основы). */
+const CUSTOM_PLAN_TITLE: LocalizedText = { uk: "Мій план", en: "My plan" };
 
 export const SCENARIO_ENTITY = "scenario";
 export const SCENARIO_AUDIT = {
@@ -63,6 +78,7 @@ type ViewItem = {
   durationMin: number | null;
   note: LocalizedText | null;
   alternatives: readonly string[];
+  slot?: PlanSlot;
 };
 
 const hhmm = (t: string | null) => (t === null ? null : t.slice(0, 5));
@@ -125,15 +141,18 @@ export class PlannerService {
     return this.inRegion(regionId, async () => {
       const row = await this.repo.findPlan(userId, id);
       if (!row) throw new ApiError("NOT_FOUND");
-      return (await this.planDtos([row]))[0]!;
+      return (await this.planDtos([row], true))[0]!;
     });
   }
 
-  /** «Зберегти план»: копия опубликованного сценария; планов в регионе — не больше USER_PLANS_MAX (409). */
+  /**
+   * «Зберегти план»: копия опубликованного сценария или свой план без основы (варианты на выбор по параметрам);
+   * планов в регионе — не больше USER_PLANS_MAX (409).
+   */
   async createPlan(userId: string, input: CreateUserPlanDto): Promise<UserPlanDto> {
     return this.inRegion(input.regionId, async () => {
-      const s = await this.repo.findScenario(input.scenarioId);
-      if (s?.status !== "published") throw new ApiError("NOT_FOUND");
+      const s = input.scenarioId ? await this.repo.findScenario(input.scenarioId) : null;
+      if (s !== null && s?.status !== "published") throw new ApiError("NOT_FOUND");
       // Гонка двух одновременных POST может дать USER_PLANS_MAX + 1 план — принято: лимит защищает от разрастания,
       // а не инвариант данных (блокировку строки пользователя ради этого не берём).
       if ((await this.repo.countPlans(userId)) >= USER_PLANS_MAX)
@@ -141,15 +160,20 @@ export class PlannerService {
           messageKey: "errors.plan.limitReached",
           details: { reason: "plans_limit", limit: USER_PLANS_MAX },
         });
+      const trip = await this.tripWrite(input);
+      const days = trip.days ?? s?.days ?? 1;
+      const items = s ? trimDays(planItemsFromScenario(await this.repo.items([s.id])), days) : [];
       const row = await this.repo.createPlan({
         user_id: userId,
-        scenario_id: s.id,
-        scenario_version: s.version,
-        title_i18n: s.title_i18n,
+        scenario_id: s?.id ?? null,
+        scenario_version: s?.version ?? null,
+        title_i18n: s?.title_i18n ?? CUSTOM_PLAN_TITLE,
         start_date: input.startDate ?? null,
-        items: planItemsFromScenario(await this.repo.items([s.id])),
+        items,
+        ...trip,
+        days,
       });
-      return (await this.planDtos([row]))[0]!;
+      return (await this.planDtos([row], true))[0]!;
     });
   }
 
@@ -158,6 +182,16 @@ export class PlannerService {
       const row = await this.repo.findPlan(userId, id, true);
       if (!row) throw new ApiError("NOT_FOUND");
       let items: UserPlanItemRecord[] = row.items;
+      const trip = await this.tripWrite(input);
+      if (trip.days !== undefined && trip.days !== null) items = trimDays(items, trip.days);
+      if (input.addItem) {
+        const days = trip.days ?? planDays(row);
+        if (input.addItem.dayNo > days) throw planError("day_out_of_range");
+        const target = await this.placeMap([input.addItem.placeId]);
+        if (target.get(input.addItem.placeId.toLowerCase())?.status !== "published")
+          throw planError("place_unavailable");
+        items = orFail(addItem(items, input.addItem));
+      }
       if (input.replaceItem) {
         const target = await this.placeMap([input.replaceItem.placeId]);
         if (target.get(input.replaceItem.placeId.toLowerCase())?.status !== "published")
@@ -168,8 +202,9 @@ export class PlannerService {
       const updated = await this.repo.updatePlan(row.id, {
         start_date: input.startDate,
         items: items === row.items ? undefined : items,
+        ...trip,
       });
-      return (await this.planDtos([updated ?? row]))[0]!;
+      return (await this.planDtos([updated ?? row], true))[0]!;
     });
   }
 
@@ -337,10 +372,18 @@ export class PlannerService {
       return p?.status === "published" && p.location ? toPlace(p) : null;
     };
     const days = new Map<number, (ScenarioItemDto & { source: T })[]>();
-    for (const i of [...items].sort((a, b) => a.dayNo - b.dayNo || a.position - b.position)) {
+    // Порядок дня — части дня (ранок → вечір, затем «якщо дощ»), внутри — позиция; расстояние — от предыдущего
+    // пункта дня, у запасного плана «якщо дощ» — между его пунктами.
+    const order = (i: T) => slotRank(slotOf(i));
+    for (const i of [...items].sort(
+      (a, b) => a.dayNo - b.dayNo || order(a) - order(b) || a.position - b.position,
+    )) {
       const list = days.get(i.dayNo) ?? [];
       const place = visible(i.placeId);
-      const prev = [...list].reverse().find((x) => x.place !== null);
+      const rain = slotOf(i) === "rain";
+      const prev = [...list]
+        .reverse()
+        .find((x) => x.place !== null && (slotOf(x.source) === "rain") === rain);
       list.push({
         id: i.id,
         position: i.position,
@@ -362,13 +405,18 @@ export class PlannerService {
     return [...days.entries()].map(([dayNo, list]) => ({ dayNo, items: list }));
   }
 
-  private async planDtos(rows: readonly UserPlan[]): Promise<UserPlanDto[]> {
+  /** Планы для ответа; withOptions — с вариантами на выбор (один план: GET по id, POST, PATCH). */
+  private async planDtos(rows: readonly UserPlan[], withOptions = false): Promise<UserPlanDto[]> {
     const versions = await this.repo.scenarioVersions(
       rows.flatMap((r) => (r.scenario_id ? [r.scenario_id] : [])),
     );
+    const catalog = withOptions ? await this.repo.catalogPlaces() : [];
     const out: UserPlanDto[] = [];
     for (const r of rows) {
-      const days = await this.view(r.items);
+      const view = new Map((await this.view(r.items)).map((d) => [d.dayNo, d.items]));
+      const n = planDays(r);
+      const days = Array.from({ length: n }, (_, k) => ({ dayNo: k + 1, items: view.get(k + 1) ?? [] }));
+      const { trip, baseAt } = await this.trip(r, withOptions);
       out.push({
         id: r.id,
         regionId: r.region_id,
@@ -380,15 +428,64 @@ export class PlannerService {
           (versions.get(r.scenario_id) ?? r.scenario_version) > r.scenario_version,
         title: r.title_i18n,
         startDate: r.start_date === null ? null : dateOnly(r.start_date),
+        trip,
         plan: days.map((d) => ({
           dayNo: d.dayNo,
-          items: d.items.map(({ source, ...dto }) => ({ ...dto, replaced: source.replacedPlaceId !== null })),
+          items: d.items.map(({ source, ...dto }) => ({
+            ...dto,
+            replaced: source.replacedPlaceId !== null,
+            slot: slotOf(source),
+          })),
         })),
+        options: withOptions ? optionsDto(days, catalog, trip, baseAt) : [],
         createdAt: r.created_at.toISOString(),
         updatedAt: r.updated_at.toISOString(),
       });
     }
     return out;
+  }
+
+  /** Параметры поездки из запроса → запись; базовая точка — только опубликованное место региона (иначе 422). */
+  private async tripWrite(input: CreateUserPlanDto | UpdateUserPlanDto): Promise<PlanTripWrite> {
+    if (input.basePlaceId) {
+      const base = await this.placeMap([input.basePlaceId]);
+      if (base.get(input.basePlaceId.toLowerCase())?.status !== "published")
+        throw planError("place_unavailable");
+    }
+    return {
+      adults: input.adults,
+      children: input.children,
+      with_car: input.withCar,
+      days: input.days,
+      base_place_id: input.basePlaceId === undefined ? undefined : (input.basePlaceId?.toLowerCase() ?? null),
+    };
+  }
+
+  /** Параметры для ответа и точка отсчёта вариантов: базовое место, иначе (для вариантов) первый населённый пункт. */
+  private async trip(
+    r: UserPlan,
+    withFallback: boolean,
+  ): Promise<{ trip: PlanTripDto; baseAt: LonLat | null }> {
+    const base: { trip: Omit<PlanTripDto, "base"> } = {
+      trip: { adults: r.adults, children: r.children, withCar: r.with_car, days: planDays(r) },
+    };
+    if (r.base_place_id) {
+      const p = (await this.placeMap([r.base_place_id])).get(r.base_place_id);
+      if (p?.status === "published" && p.location)
+        return {
+          trip: { ...base.trip, base: { kind: "place", placeId: p.id, name: p.name_i18n } },
+          baseAt: p.location,
+        };
+    }
+    if (withFallback) {
+      const l = await this.repo.firstLocality();
+      if (l?.location)
+        return {
+          trip: { ...base.trip, base: { kind: "locality", placeId: null, name: l.name_i18n } },
+          baseAt: l.location,
+        };
+    }
+    return { trip: { ...base.trip, base: null }, baseAt: null };
   }
 
   private async inRegion<T>(regionId: string, fn: (region: Region) => Promise<T>): Promise<T> {
@@ -421,6 +518,71 @@ function fromScenarioItem(i: ScenarioItem): ViewItem & { replacedPlaceId: null }
     alternatives: i.alternatives,
     replacedPlaceId: null,
   };
+}
+
+/** Дней в плане: сохранённое число, у планов до 0018 — по пунктам (не меньше 1). */
+function planDays(r: Pick<UserPlan, "days" | "items">): number {
+  return r.days ?? Math.max(1, ...r.items.map((i) => i.dayNo));
+}
+
+function catalogPlace(p: CatalogPlaceRow): CatalogPlace {
+  return {
+    id: p.id,
+    category: p.category_code,
+    names: Object.values(p.name_i18n).filter((v): v is string => typeof v === "string"),
+    location: p.location,
+    tags: p.tags,
+    recommended: p.recommended,
+  };
+}
+
+/** Варианты на выбор (plan-options.ts) → DTO с местами каталога. */
+function optionsDto(
+  days: readonly { dayNo: number; items: readonly (ScenarioItemDto & { source: ViewItem })[] }[],
+  catalog: readonly CatalogPlaceRow[],
+  trip: PlanTripDto,
+  baseAt: LonLat | null,
+): PlanDayOptionsDto[] {
+  const byId = new Map(catalog.map((p) => [p.id, p]));
+  const chosen = days.flatMap((d) =>
+    d.items.map((i) => ({
+      dayNo: d.dayNo,
+      slot: slotOf(i.source),
+      placeId: i.source.placeId,
+      location: i.place?.location ?? null,
+    })),
+  );
+  return planOptions({
+    days: trip.days,
+    items: chosen,
+    places: catalog.map(catalogPlace),
+    trip: { children: trip.children, withCar: trip.withCar },
+    base: baseAt,
+  }).map((d) => ({
+    dayNo: d.dayNo,
+    slots: d.slots.map((s) => ({
+      slot: s.slot,
+      options: s.options.map((o) => {
+        const p = byId.get(o.placeId)!;
+        return {
+          place: {
+            id: p.id,
+            categoryId: p.category_id,
+            name: p.name_i18n,
+            address: p.address_i18n,
+            location: p.location,
+            categoryName: p.category_name,
+          },
+          kind: o.kind,
+          reason: o.reason,
+          distanceMeters: o.distanceMeters,
+          travel: o.travel,
+          travelMinutes: o.travelMinutes,
+          kidsFriendly: o.kidsFriendly,
+        };
+      }),
+    })),
+  }));
 }
 
 function countAvailable(days: readonly { items: readonly { available: boolean }[] }[]): number {
@@ -511,9 +673,21 @@ function dateOnly(v: string | Date): string {
 }
 
 function planError(reason: PlanEditError): ApiError {
-  return reason === "item_not_found"
-    ? new ApiError("NOT_FOUND", { messageKey: "errors.plan.itemNotFound", details: { reason } })
-    : new ApiError("UNPROCESSABLE", { messageKey: "errors.plan.notAlternative", details: { reason } });
+  switch (reason) {
+    case "item_not_found":
+      return new ApiError("NOT_FOUND", { messageKey: "errors.plan.itemNotFound", details: { reason } });
+    case "already_in_plan":
+      return new ApiError("CONFLICT", { messageKey: "errors.plan.alreadyInPlan", details: { reason } });
+    case "place_unavailable":
+      return new ApiError("UNPROCESSABLE", {
+        messageKey: "errors.plan.placeUnavailable",
+        details: { reason },
+      });
+    case "day_out_of_range":
+      return new ApiError("UNPROCESSABLE", { messageKey: "errors.plan.dayOutOfRange", details: { reason } });
+    default:
+      return new ApiError("UNPROCESSABLE", { messageKey: "errors.plan.notAlternative", details: { reason } });
+  }
 }
 
 function orFail(r: UserPlanItemRecord[] | PlanEditError): UserPlanItemRecord[] {

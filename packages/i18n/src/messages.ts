@@ -646,6 +646,9 @@ export const uk = {
   "errors.plan.itemNotFound": "Пункту плану не знайдено — оновіть план.",
   "errors.plan.notAlternative": "Це місце не входить до альтернатив пункту.",
   "errors.plan.limitReached": "Збережених планів уже максимум — видаліть якийсь, щоб зберегти новий.",
+  "errors.plan.alreadyInPlan": "Це місце вже є в плані на цей день.",
+  "errors.plan.placeUnavailable": "Це місце зараз недоступне — оберіть інше.",
+  "errors.plan.dayOutOfRange": "Такого дня в плані немає — змініть кількість днів.",
   // Кабинет партнёра и модерация (блок 6, ADR-0021): details.reason уточняет причину.
   "errors.partner.templateUnavailable": "Шаблон недоступний у цьому регіоні.",
   "errors.partner.categoryNotInTemplate": "Ця категорія не підходить для обраного шаблону.",

@@ -2,7 +2,14 @@
 // расстояние между пунктами.
 import { describe, expect, it } from "vitest";
 import type { ScenarioItem, UserPlanItemRecord } from "../../db/index.js";
-import { planItemsFromScenario, removeItem, replaceItem, sphericalMeters } from "./plan-rules.js";
+import {
+  addItem,
+  planItemsFromScenario,
+  removeItem,
+  replaceItem,
+  sphericalMeters,
+  trimDays,
+} from "./plan-rules.js";
 
 const P = (n: number) => `0190f5c2-7d3e-7000-8000-${String(n).padStart(12, "0")}`;
 
@@ -74,5 +81,34 @@ describe("sphericalMeters", () => {
     expect(sphericalMeters({ lon: 24, lat: 48 }, { lon: 24, lat: 49 })).toBeGreaterThan(110_000);
     expect(sphericalMeters({ lon: 24, lat: 48 }, { lon: 24, lat: 49 })).toBeLessThan(112_000);
     expect(sphericalMeters({ lon: 24, lat: 48 }, { lon: 24, lat: 48 })).toBe(0);
+  });
+});
+
+describe("addItem / trimDays", () => {
+  it("галочка: новый пункт в конец дня с частью дня; повтор в тот же день — already_in_plan; в «якщо дощ» — можно", () => {
+    const base = planItemsFromScenario([
+      scenarioItem({ id: P(900), day_no: 1, position: 0, place_id: P(10) }),
+    ]);
+    const next = addItem(base, { dayNo: 1, slot: "evening", placeId: P(20).toUpperCase() });
+    if (typeof next === "string") throw new Error(next);
+    expect(next.at(-1)).toMatchObject({
+      dayNo: 1,
+      position: 1,
+      placeId: P(20),
+      slot: "evening",
+      alternatives: [],
+    });
+    expect(addItem(next, { dayNo: 1, slot: "morning", placeId: P(20) })).toBe("already_in_plan");
+    expect(addItem(next, { dayNo: 1, slot: "rain", placeId: P(20) })).not.toBe("already_in_plan");
+    expect(addItem(next, { dayNo: 2, slot: "morning", placeId: P(20) })).not.toBe("already_in_plan");
+  });
+
+  it("меньше дней — пункты лишних дней убираются; иначе тот же массив", () => {
+    const items = planItemsFromScenario([
+      scenarioItem({ id: P(900), day_no: 1 }),
+      scenarioItem({ id: P(901), day_no: 3 }),
+    ]);
+    expect(trimDays(items, 3)).toBe(items);
+    expect(trimDays(items, 2).map((i) => i.dayNo)).toEqual([1]);
   });
 });

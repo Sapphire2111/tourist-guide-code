@@ -1,7 +1,7 @@
 // Правила «Мій план» (C09, S-04) — без Nest и БД: копия пунктов сценария в план, замена альтернативой, удаление,
 // расстояние между пунктами дня.
 import { randomUUID } from "node:crypto";
-import type { LonLat, ScenarioItem, UserPlanItemRecord } from "../../db/index.js";
+import type { LonLat, PlanSlot, ScenarioItem, UserPlanItemRecord } from "../../db/index.js";
 
 const hhmm = (t: string | null) => (t === null ? null : t.slice(0, 5));
 
@@ -22,7 +22,12 @@ export function planItemsFromScenario(items: readonly ScenarioItem[]): UserPlanI
     }));
 }
 
-export type PlanEditError = "item_not_found" | "not_alternative";
+export type PlanEditError =
+  | "item_not_found"
+  | "not_alternative"
+  | "already_in_plan"
+  | "place_unavailable"
+  | "day_out_of_range";
 
 /**
  * «Замінити»: место пункта меняется на альтернативу из его набора; прежнее место становится альтернативой (можно
@@ -58,6 +63,41 @@ export function removeItem(
   const id = itemId.toLowerCase();
   if (!items.some((i) => i.id === id)) return "item_not_found";
   return items.filter((i) => i.id !== id);
+}
+
+/**
+ * Галочка у варианта: место — новым пунктом в часть дня (в конец дня по позиции; порядок показа — по частям дня).
+ * Одно место дважды в один день не ставится (кроме запасного «якщо дощ» — он отдельно от основного плана дня).
+ */
+export function addItem(
+  items: readonly UserPlanItemRecord[],
+  add: { dayNo: number; slot: PlanSlot; placeId: string },
+): UserPlanItemRecord[] | PlanEditError {
+  const placeId = add.placeId.toLowerCase();
+  const rain = add.slot === "rain";
+  if (items.some((i) => i.dayNo === add.dayNo && i.placeId === placeId && (i.slot === "rain") === rain))
+    return "already_in_plan";
+  const position = Math.max(-1, ...items.filter((i) => i.dayNo === add.dayNo).map((i) => i.position)) + 1;
+  return [
+    ...items,
+    {
+      id: randomUUID(),
+      dayNo: add.dayNo,
+      position,
+      placeId,
+      timeHint: null,
+      durationMin: null,
+      note: null,
+      alternatives: [],
+      replacedPlaceId: null,
+      slot: add.slot,
+    },
+  ];
+}
+
+/** Дней стало меньше — пункты лишних дней убираются. */
+export function trimDays(items: UserPlanItemRecord[], days: number): UserPlanItemRecord[] {
+  return items.every((i) => i.dayNo <= days) ? items : items.filter((i) => i.dayNo <= days);
 }
 
 /** Расстояние по большому кругу (сфера R = 6371 км), м — для подсказки «300 м» между пунктами дня. */

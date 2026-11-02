@@ -7198,7 +7198,7 @@
         "tags": ["planner"]
       },
       "post": {
-        "description": "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум.",
+        "description": "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
         "operationId": "createMyPlan",
         "parameters": [
           {
@@ -7256,6 +7256,15 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
             }
           },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
           "429": {
             "description": "Ошибка",
             "headers": {
@@ -7276,7 +7285,7 @@
           }
         },
         "security": [{ "session": [] }],
-        "summary": "«Зберегти план»: копия опубликованного сценария (UserPlan со ссылкой на версию основы)",
+        "summary": "«Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки",
         "tags": ["planner"]
       }
     },
@@ -7356,7 +7365,7 @@
         "tags": ["planner"]
       },
       "patch": {
-        "description": "404 errors.plan.itemNotFound — пункта нет; 422 errors.plan.notAlternative — место не из альтернатив пункта или не опубликовано. Прежнее место становится альтернативой (можно вернуть).",
+        "description": "404 errors.plan.itemNotFound — пункта нет; 422 errors.plan.notAlternative — место не из альтернатив пункта или не опубликовано (прежнее место становится альтернативой — можно вернуть); 422 errors.plan.placeUnavailable — место addItem/basePlaceId не опубликовано; 422 errors.plan.dayOutOfRange — день больше trip.days; 409 errors.plan.alreadyInPlan — место уже в этом дне. Меньше days — пункты лишних дней убираются.",
         "operationId": "updateMyPlan",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -7406,6 +7415,15 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
             }
           },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
           "422": {
             "description": "Ошибка",
             "headers": {
@@ -7435,7 +7453,7 @@
           }
         },
         "security": [{ "session": [] }],
-        "summary": "Правка плана: дата начала, «Замінити» пункт альтернативой, удалить пункт",
+        "summary": "Правка плана: параметры поездки, дата, галочка варианта (addItem), «Замінити» альтернативой, удалить пункт",
         "tags": ["planner"]
       },
       "delete": {
@@ -13263,6 +13281,44 @@
           "plan"
         ]
       },
+      "PlanBaseKind": {
+        "type": "string",
+        "enum": ["place", "locality"],
+        "description": "place — basePlaceId; locality — центр населённого пункта"
+      },
+      "PlanBaseDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "place — basePlaceId; locality — центр населённого пункта",
+            "allOf": [{ "$ref": "#/components/schemas/PlanBaseKind" }]
+          },
+          "placeId": { "type": "string", "format": "uuid", "nullable": true },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" }
+        },
+        "required": ["kind", "placeId", "name"]
+      },
+      "PlanTripDto": {
+        "type": "object",
+        "properties": {
+          "adults": { "type": "integer" },
+          "children": { "type": "integer" },
+          "withCar": { "type": "boolean" },
+          "days": { "type": "integer", "minimum": 1, "maximum": 14 },
+          "base": {
+            "nullable": true,
+            "description": "Від чого рахується відстань, якщо в день ще нічого не вибрано",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PlanBaseDto" }]
+          }
+        },
+        "required": ["adults", "children", "withCar", "days", "base"]
+      },
+      "PlanSlot": {
+        "type": "string",
+        "enum": ["morning", "afternoon", "evening", "rain"],
+        "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»"
+      },
       "UserPlanItemDto": {
         "type": "object",
         "properties": {
@@ -13292,7 +13348,11 @@
             "nullable": true,
             "description": "Расстояние от предыдущего пункта дня по прямой, м"
           },
-          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" }
+          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" },
+          "slot": {
+            "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день); rain — «якщо дощ»",
+            "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }]
+          }
         },
         "required": [
           "id",
@@ -13304,7 +13364,8 @@
           "available",
           "alternatives",
           "distanceFromPreviousMeters",
-          "replaced"
+          "replaced",
+          "slot"
         ]
       },
       "UserPlanDayDto": {
@@ -13314,6 +13375,90 @@
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/UserPlanItemDto" } }
         },
         "required": ["dayNo", "items"]
+      },
+      "PlanOptionPlaceDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "address": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "location": { "$ref": "#/components/schemas/LonLatDto" },
+          "categoryName": {
+            "description": "Название категории из справочника региона",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          }
+        },
+        "required": ["id", "categoryId", "name", "address", "location", "categoryName"]
+      },
+      "PlanOptionReason": {
+        "type": "string",
+        "enum": [
+          "breakfast",
+          "lunch",
+          "dinner",
+          "evening_out",
+          "walk",
+          "culture",
+          "active",
+          "fun",
+          "relax",
+          "shopping",
+          "indoor"
+        ],
+        "description": "Почему подходит"
+      },
+      "PlanTravel": {
+        "type": "string",
+        "enum": ["walk", "car", "transport"],
+        "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт"
+      },
+      "PlanOptionDto": {
+        "type": "object",
+        "properties": {
+          "place": { "$ref": "#/components/schemas/PlanOptionPlaceDto" },
+          "kind": {
+            "type": "string",
+            "example": "museums",
+            "description": "Что это: код подкатегории; waterfall / bar — по названию места из Google"
+          },
+          "reason": {
+            "description": "Почему подходит",
+            "allOf": [{ "$ref": "#/components/schemas/PlanOptionReason" }]
+          },
+          "distanceMeters": {
+            "type": "integer",
+            "nullable": true,
+            "description": "По прямой от предыдущего пункта дня или базовой точки, м"
+          },
+          "travel": {
+            "description": "walk — пішки; car — на авто; transport — без авто далеко: потрібен транспорт",
+            "allOf": [{ "$ref": "#/components/schemas/PlanTravel" }]
+          },
+          "travelMinutes": { "type": "integer", "nullable": true, "description": "Оцінка в дорозі, хв" },
+          "kidsFriendly": { "type": "boolean", "description": "У місця є тег «З дітьми»" }
+        },
+        "required": ["place", "kind", "reason", "distanceMeters", "travel", "travelMinutes", "kidsFriendly"]
+      },
+      "PlanSlotOptionsDto": {
+        "type": "object",
+        "properties": {
+          "slot": { "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }] },
+          "options": { "type": "array", "items": { "$ref": "#/components/schemas/PlanOptionDto" } }
+        },
+        "required": ["slot", "options"]
+      },
+      "PlanDayOptionsDto": {
+        "type": "object",
+        "properties": {
+          "dayNo": { "type": "integer" },
+          "slots": { "type": "array", "items": { "$ref": "#/components/schemas/PlanSlotOptionsDto" } }
+        },
+        "required": ["dayNo", "slots"]
       },
       "UserPlanDto": {
         "type": "object",
@@ -13328,7 +13473,17 @@
           },
           "title": { "$ref": "#/components/schemas/LocalizedTextDto" },
           "startDate": { "type": "string", "format": "date", "nullable": true },
-          "plan": { "type": "array", "items": { "$ref": "#/components/schemas/UserPlanDayDto" } },
+          "trip": { "$ref": "#/components/schemas/PlanTripDto" },
+          "plan": {
+            "description": "Дни 1…trip.days (пустой день — items: [])",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/UserPlanDayDto" }
+          },
+          "options": {
+            "description": "Варианты на выбор по дням и частям дня; в списке GET /me/plan — пусто",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlanDayOptionsDto" }
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -13340,7 +13495,9 @@
           "scenarioUpdated",
           "title",
           "startDate",
+          "trip",
           "plan",
+          "options",
           "createdAt",
           "updatedAt"
         ]
@@ -13364,14 +13521,32 @@
             "format": "uuid",
             "description": "Регион туриста: regionId из GET /context"
           },
+          "adults": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Дорослих" },
+          "children": { "type": "integer", "minimum": 0, "maximum": 20, "description": "Дітей" },
+          "withCar": {
+            "type": "boolean",
+            "description": "З авто; без авто — варіанти пішки, далі — «потрібен транспорт»"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 14,
+            "description": "Днів у плані; менше — пункти зайвих днів прибираються"
+          },
+          "basePlaceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»"
+          },
           "scenarioId": {
             "type": "string",
             "format": "uuid",
-            "description": "Опубликованный сценарий региона"
+            "description": "Опубликованный сценарий региона; без него — свой план с вариантами на выбор"
           },
           "startDate": { "type": "string", "format": "date", "nullable": true, "example": "2026-11-10" }
         },
-        "required": ["regionId", "scenarioId"]
+        "required": ["regionId"]
       },
       "ReplacePlanItemDto": {
         "type": "object",
@@ -13381,6 +13556,15 @@
         },
         "required": ["itemId", "placeId"]
       },
+      "AddPlanItemDto": {
+        "type": "object",
+        "properties": {
+          "dayNo": { "type": "integer", "minimum": 1, "maximum": 14 },
+          "slot": { "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }] },
+          "placeId": { "type": "string", "format": "uuid", "description": "Опубликованное место региона" }
+        },
+        "required": ["dayNo", "slot", "placeId"]
+      },
       "UpdateUserPlanDto": {
         "type": "object",
         "properties": {
@@ -13388,6 +13572,24 @@
             "type": "string",
             "format": "uuid",
             "description": "Регион туриста: regionId из GET /context"
+          },
+          "adults": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Дорослих" },
+          "children": { "type": "integer", "minimum": 0, "maximum": 20, "description": "Дітей" },
+          "withCar": {
+            "type": "boolean",
+            "description": "З авто; без авто — варіанти пішки, далі — «потрібен транспорт»"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 14,
+            "description": "Днів у плані; менше — пункти зайвих днів прибираються"
+          },
+          "basePlaceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»"
           },
           "startDate": {
             "type": "string",
@@ -13399,7 +13601,15 @@
             "description": "«Замінити»: место — из alternatives пункта",
             "allOf": [{ "$ref": "#/components/schemas/ReplacePlanItemDto" }]
           },
-          "removeItemId": { "type": "string", "format": "uuid", "description": "Удалить пункт" }
+          "removeItemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Удалить пункт (снять галочку)"
+          },
+          "addItem": {
+            "description": "Поставить галочку: вариант — в план",
+            "allOf": [{ "$ref": "#/components/schemas/AddPlanItemDto" }]
+          }
         },
         "required": ["regionId"]
       },

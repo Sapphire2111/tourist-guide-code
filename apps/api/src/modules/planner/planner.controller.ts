@@ -126,12 +126,14 @@ export class UserPlansController {
   @Post()
   @ApiOperation({
     operationId: "createMyPlan",
-    summary: "«Зберегти план»: копия опубликованного сценария (UserPlan со ссылкой на версию основы)",
+    summary:
+      "«Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки",
     description:
-      "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум.",
+      "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; " +
+      "422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
   })
   @ApiCreatedResponse({ type: UserPlanDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "RATE_LIMITED")
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "UNPROCESSABLE", "RATE_LIMITED")
   create(@Body() body: CreateUserPlanDto, @Req() req: RbacRequest): Promise<UserPlanDto> {
     return this.planner.createPlan(userOf(req), body);
   }
@@ -152,14 +154,17 @@ export class UserPlansController {
   @Patch(":id")
   @ApiOperation({
     operationId: "updateMyPlan",
-    summary: "Правка плана: дата начала, «Замінити» пункт альтернативой, удалить пункт",
+    summary:
+      "Правка плана: параметры поездки, дата, галочка варианта (addItem), «Замінити» альтернативой, удалить пункт",
     description:
       "404 errors.plan.itemNotFound — пункта нет; 422 errors.plan.notAlternative — место не из альтернатив пункта " +
-      "или не опубликовано. Прежнее место становится альтернативой (можно вернуть).",
+      "или не опубликовано (прежнее место становится альтернативой — можно вернуть); 422 errors.plan.placeUnavailable " +
+      "— место addItem/basePlaceId не опубликовано; 422 errors.plan.dayOutOfRange — день больше trip.days; " +
+      "409 errors.plan.alreadyInPlan — место уже в этом дне. Меньше days — пункты лишних дней убираются.",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiOkResponse({ type: UserPlanDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "UNPROCESSABLE", "RATE_LIMITED")
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "UNPROCESSABLE", "RATE_LIMITED")
   update(
     @Param("id", uuid) id: string,
     @Body() body: UpdateUserPlanDto,
