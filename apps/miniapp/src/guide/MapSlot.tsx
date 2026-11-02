@@ -8,7 +8,14 @@ import type { PlacesMapProps } from "./PlacesMap.js";
 type MapModule = { default: ComponentType<PlacesMapProps> };
 
 let mapModule: Promise<MapModule> | null = null;
-let lazyFailed = false;
+let loadModule = (): Promise<MapModule> => import("./PlacesMap.js");
+
+/** Только для тестов: подмена загрузчика модуля карты и сброс состояния. */
+export function setMapLoaderForTests(loader: () => Promise<MapModule>): void {
+  loadModule = loader;
+  mapModule = null;
+  lazyMap = null;
+}
 
 /**
  * Заранее (экран с картой открылся, места ещё грузятся): модуль Leaflet и соединение с сервером тайлов —
@@ -23,16 +30,12 @@ export function preloadMap(): Promise<MapModule> {
       link.dataset.mapPreconnect = "";
       document.head.appendChild(link);
     }
-    mapModule = import("./PlacesMap.js")
-      .then((m) => {
-        lazyFailed = false; // модуль загрузился (например, предзагрузкой) — старый lazy не нужен
-        return m;
-      })
-      .catch((e: unknown) => {
-        mapModule = null;
-        lazyFailed = true;
-        throw e;
-      });
+    mapModule = loadModule().catch((e: unknown) => {
+      // Повтор после сбоя: и промис, и lazy (он запомнил отказ) сбрасываются — следующий монтаж создаст новый.
+      mapModule = null;
+      lazyMap = null;
+      throw e;
+    });
   }
   return mapModule;
 }
@@ -41,10 +44,7 @@ export function preloadMap(): Promise<MapModule> {
 // настоящий повтор (сеть вернулась — карта появится), а не вечное «не вдалося».
 let lazyMap: ComponentType<PlacesMapProps> | null = null;
 function currentLazyMap(): ComponentType<PlacesMapProps> {
-  if (!lazyMap || lazyFailed) {
-    lazyFailed = false;
-    lazyMap = lazy(preloadMap);
-  }
+  if (!lazyMap) lazyMap = lazy(preloadMap);
   return lazyMap;
 }
 
