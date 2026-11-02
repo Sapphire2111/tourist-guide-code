@@ -4366,6 +4366,7 @@
     },
     "/admin/places/{id}/publish": {
       "post": {
+        "description": "Место партнёра (organizationId не null), ни разу не опубликованное, — 409 errors.place.moderationRequired: первая публикация только решением модерации (POST /admin/moderation/cases/{id}/approve).",
         "operationId": "publishPlace",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "type": "string" } },
@@ -8171,7 +8172,7 @@
         "tags": ["partner"]
       },
       "patch": {
-        "description": "ORG_OWNER — все поля; ORG_MANAGER — без categoryId, name, address, location (403 identity_fields_forbidden); ORG_STAFF — 403. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.",
+        "description": "ORG_OWNER — все поля; ORG_MANAGER — без полей личности categoryId, localityId, name, address, location (403 identity_fields_forbidden); ORG_STAFF — 403. У опубликованного места поля личности не меняются — 409 errors.partner.identityChangeRequiresModeration (через админа региона); описание, контакты, график, фото — сразу. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.",
         "operationId": "updatePartnerPlace",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -14193,6 +14194,12 @@
           "organizationId": { "type": "string", "format": "uuid" },
           "organizationName": { "type": "string" },
           "templateCode": { "type": "string", "nullable": true, "example": "hotel" },
+          "templateName": {
+            "nullable": true,
+            "description": "Название шаблона",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
           "status": { "allOf": [{ "$ref": "#/components/schemas/ModerationCaseStatus" }] },
           "decision": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ModerationDecision" }] },
           "comment": { "type": "string", "nullable": true },
@@ -14208,7 +14215,16 @@
           },
           "submittedAt": { "type": "string", "format": "date-time" },
           "decidedBy": { "type": "string", "format": "uuid", "nullable": true },
-          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "decidedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Кто решил: имя или логин админки"
+          },
+          "ownOrganization": {
+            "type": "boolean",
+            "description": "Заявка организации, где у модератора есть роль (BR-12): решить нельзя — 403 own_organization"
+          }
         },
         "required": [
           "id",
@@ -14219,6 +14235,7 @@
           "organizationId",
           "organizationName",
           "templateCode",
+          "templateName",
           "status",
           "decision",
           "comment",
@@ -14227,7 +14244,9 @@
           "submittedByName",
           "submittedAt",
           "decidedBy",
-          "decidedAt"
+          "decidedAt",
+          "decidedByName",
+          "ownOrganization"
         ]
       },
       "ModerationCaseListDto": {
@@ -14254,6 +14273,25 @@
         },
         "required": ["userId", "displayName", "username"]
       },
+      "PossibleDuplicateDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/ShortTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "source": {
+            "type": "string",
+            "enum": ["manual", "google"],
+            "description": "google — место из импорта Google Places"
+          },
+          "distanceMeters": {
+            "type": "number",
+            "nullable": true,
+            "description": "Расстояние до места заявки, м (null — нет точки)"
+          }
+        },
+        "required": ["id", "name", "status", "source", "distanceMeters"]
+      },
       "ModerationCaseDetailDto": {
         "type": "object",
         "properties": {
@@ -14265,6 +14303,12 @@
           "organizationId": { "type": "string", "format": "uuid" },
           "organizationName": { "type": "string" },
           "templateCode": { "type": "string", "nullable": true, "example": "hotel" },
+          "templateName": {
+            "nullable": true,
+            "description": "Название шаблона",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
           "status": { "allOf": [{ "$ref": "#/components/schemas/ModerationCaseStatus" }] },
           "decision": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ModerationDecision" }] },
           "comment": { "type": "string", "nullable": true },
@@ -14281,6 +14325,15 @@
           "submittedAt": { "type": "string", "format": "date-time" },
           "decidedBy": { "type": "string", "format": "uuid", "nullable": true },
           "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "decidedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Кто решил: имя или логин админки"
+          },
+          "ownOrganization": {
+            "type": "boolean",
+            "description": "Заявка организации, где у модератора есть роль (BR-12): решить нельзя — 403 own_organization"
+          },
           "placeSnapshot": {
             "type": "object",
             "additionalProperties": true,
@@ -14305,6 +14358,16 @@
             "description": "Что мешает публикации сейчас (PublishProblem каталога) — пусто: можно одобрять",
             "type": "array",
             "items": { "type": "string" }
+          },
+          "possibleDuplicates": {
+            "description": "Возможные дубли: места региона в радиусе ~150 м или с похожим названием (до 5; источник google — импорт)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PossibleDuplicateDto" }
+          },
+          "snapshotMediaPreview": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Превью фото снимка: mediaAssetId → ссылка w320 (строится при чтении)"
           }
         },
         "required": [
@@ -14316,6 +14379,7 @@
           "organizationId",
           "organizationName",
           "templateCode",
+          "templateName",
           "status",
           "decision",
           "comment",
@@ -14325,11 +14389,15 @@
           "submittedAt",
           "decidedBy",
           "decidedAt",
+          "decidedByName",
+          "ownOrganization",
           "placeSnapshot",
           "partnerNote",
           "owners",
           "history",
-          "publishProblems"
+          "publishProblems",
+          "possibleDuplicates",
+          "snapshotMediaPreview"
         ]
       },
       "ApproveModerationDto": {

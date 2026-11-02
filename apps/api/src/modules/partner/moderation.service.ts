@@ -14,6 +14,7 @@ import {
 import { AuditService } from "../audit/index.js";
 import { CatalogRepository, CatalogService, rethrowCatalogError } from "../catalog/index.js";
 import { NotificationsService } from "../host/index.js";
+import { MediaService } from "../media/index.js";
 import { isGrantActive, RbacService, regionScope, roleHasPermission, type Grant } from "../rbac/index.js";
 import { DECISION_PLACE_STATUS } from "./partner-rules.js";
 import type {
@@ -39,6 +40,9 @@ export const MODERATION_AUDIT: Readonly<Record<ModerationDecision, string>> = {
 export const NOTIFICATION_TEMPLATE_DECISION = "moderation.decision";
 
 const QUEUE_LIMIT = 200;
+/** Возможные дубли места: радиус и сколько показать (AD02). */
+export const DUPLICATE_RADIUS_METERS = 150;
+const DUPLICATE_LIMIT = 5;
 
 /** Где пользователь модерирует: вся платформа (SUPERADMIN) или набор регионов (MODERATOR, REGION_ADMIN — C-15). */
 type ModerationScope = { platform: boolean; regions: Set<string>; grants: Grant[] };
@@ -65,6 +69,7 @@ export class ModerationService {
     @Inject(RbacService) private readonly rbac: RbacService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(MediaService) private readonly media: MediaService,
   ) {}
 
   now: () => Date = () => new Date();
@@ -94,22 +99,45 @@ export class ModerationService {
           : b.submitted_at.getTime() - a.submitted_at.getTime(),
       );
     }
-    return { items: rows.slice(0, QUEUE_LIMIT).map(toCaseDto) };
+    const now = this.now();
+    return {
+      items: rows
+        .slice(0, QUEUE_LIMIT)
+        .map((r) => toCaseDto(r, relatedTo(s.grants, r.organization_id, r.place_id, now))),
+    };
   }
 
   async get(userId: string, id: string): Promise<ModerationCaseDetailDto> {
-    const { regionId } = await this.caseAccess(userId, id);
+    const { regionId, grants } = await this.caseAccess(userId, id);
     return withTenant(this.db, regionContext(regionId), async () => {
       const row = await this.repo.caseRow(id.toLowerCase());
       if (!row) throw notFound();
-      const [owners, history, problems] = await Promise.all([
+      const place = await this.catalogRepo.findPlace(row.place_id);
+      const [owners, history, problems, duplicates, preview] = await Promise.all([
         this.repo.staffOf(row.organization_id),
         this.repo.placeHistory(row.place_id, row.id),
         this.catalog.publishCheck(row.place_id).catch(rethrowCatalogError),
+        this.repo.possibleDuplicates(
+          row.place_id,
+          place?.name_i18n.uk ?? row.place_name.uk,
+          place?.location ?? null,
+          DUPLICATE_RADIUS_METERS,
+          DUPLICATE_LIMIT,
+        ),
+        this.snapshotPreview(row.place_snapshot),
       ]);
+      const own = relatedTo(grants, row.organization_id, row.place_id, this.now());
       return {
-        ...toCaseDto(row),
+        ...toCaseDto(row, own),
         placeSnapshot: row.place_snapshot,
+        possibleDuplicates: duplicates.map((d) => ({
+          id: d.id,
+          name: d.name_i18n,
+          status: d.status as ModerationCaseDto["placeStatus"],
+          source: d.source === "google" ? "google" : "manual",
+          distanceMeters: d.distance === null ? null : Math.round(Number(d.distance)),
+        })),
+        snapshotMediaPreview: preview,
         partnerNote: row.partner_note,
         owners: owners
           .filter((m) => m.role === "ORG_OWNER")
@@ -120,7 +148,7 @@ export class ModerationService {
               username: m.username,
             }),
           ),
-        history: history.map(toCaseDto),
+        history: history.map((h) => toCaseDto(h, own)),
         publishProblems: [...problems],
       };
     });
@@ -222,6 +250,21 @@ export class ModerationService {
 
   // --- внутреннее ---
 
+  /** Ссылки превью фото снимка строятся при чтении (в снимке — только id фото: подписанные ссылки истекают). */
+  private async snapshotPreview(snapshot: Record<string, unknown>): Promise<Record<string, string>> {
+    const media = Array.isArray(snapshot.media) ? (snapshot.media as { mediaAssetId?: unknown }[]) : [];
+    const out: Record<string, string> = {};
+    for (const m of media) {
+      if (typeof m.mediaAssetId !== "string") continue;
+      const asset = await this.media.find(m.mediaAssetId);
+      if (asset?.status !== "ready") continue;
+      const links = await this.media.links(asset);
+      const link = links.find((l) => l.name === "w320") ?? links[0];
+      if (link) out[m.mediaAssetId] = link.url;
+    }
+    return out;
+  }
+
   private async scopeOf(userId: string): Promise<ModerationScope> {
     const grants = await this.rbac.grantsOf(userId);
     const now = this.now();
@@ -264,7 +307,7 @@ function relatedTo(grants: readonly Grant[], organizationId: string, placeId: st
 const notFound = () => new ApiError("NOT_FOUND");
 const forbidden = (reason: string) => new ApiError("FORBIDDEN", { details: { reason } });
 
-export function toCaseDto(r: ModerationCaseRow): ModerationCaseDto {
+export function toCaseDto(r: ModerationCaseRow, ownOrganization = false): ModerationCaseDto {
   return {
     id: r.id,
     regionId: r.region_id,
@@ -274,6 +317,7 @@ export function toCaseDto(r: ModerationCaseRow): ModerationCaseDto {
     organizationId: r.organization_id,
     organizationName: r.organization_name,
     templateCode: r.template_code,
+    templateName: r.template_name,
     status: r.status,
     decision: r.decision,
     comment: r.comment,
@@ -283,5 +327,7 @@ export function toCaseDto(r: ModerationCaseRow): ModerationCaseDto {
     submittedAt: r.submitted_at.toISOString(),
     decidedBy: r.decided_by,
     decidedAt: r.decided_at?.toISOString() ?? null,
+    decidedByName: r.decided_by_name,
+    ownOrganization,
   };
 }

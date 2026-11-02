@@ -616,7 +616,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Опубликовать: нужны описание, адрес, точка, активная категория и alt text у всех фото (иначе 422) */
+    /**
+     * Опубликовать: нужны описание, адрес, точка, активная категория и alt text у всех фото (иначе 422)
+     * @description Место партнёра (organizationId не null), ни разу не опубликованное, — 409 errors.place.moderationRequired: первая публикация только решением модерации (POST /admin/moderation/cases/{id}/approve).
+     */
     post: operations["publishPlace"];
     delete?: never;
     options?: never;
@@ -1279,7 +1282,7 @@ export interface paths {
     head?: never;
     /**
      * Правка карточки (P06): черновик или живая версия опубликованного (без PlaceRevision, §1.6)
-     * @description ORG_OWNER — все поля; ORG_MANAGER — без categoryId, name, address, location (403 identity_fields_forbidden); ORG_STAFF — 403. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.
+     * @description ORG_OWNER — все поля; ORG_MANAGER — без полей личности categoryId, localityId, name, address, location (403 identity_fields_forbidden); ORG_STAFF — 403. У опубликованного места поля личности не меняются — 409 errors.partner.identityChangeRequiresModeration (через админа региона); описание, контакты, график, фото — сразу. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.
      */
     patch: operations["updatePartnerPlace"];
     trace?: never;
@@ -3831,6 +3834,8 @@ export interface components {
       organizationName: string;
       /** @example hotel */
       templateCode: string | null;
+      /** @description Название шаблона */
+      templateName: components["schemas"]["LocalizedTextDto"] | null;
       status: components["schemas"]["ModerationCaseStatus"];
       decision: components["schemas"]["ModerationDecision"] | null;
       comment: string | null;
@@ -3845,6 +3850,10 @@ export interface components {
       decidedBy: string | null;
       /** Format: date-time */
       decidedAt: string | null;
+      /** @description Кто решил: имя или логин админки */
+      decidedByName: string | null;
+      /** @description Заявка организации, где у модератора есть роль (BR-12): решить нельзя — 403 own_organization */
+      ownOrganization: boolean;
     };
     ModerationCaseListDto: {
       /** @description Старые сверху (возраст заявки) */
@@ -3856,6 +3865,19 @@ export interface components {
       displayName: string | null;
       /** @description Telegram username (для связи, D-47) */
       username: string | null;
+    };
+    PossibleDuplicateDto: {
+      /** Format: uuid */
+      id: string;
+      name: components["schemas"]["ShortTextDto"];
+      status: components["schemas"]["PlaceStatus"];
+      /**
+       * @description google — место из импорта Google Places
+       * @enum {string}
+       */
+      source: "manual" | "google";
+      /** @description Расстояние до места заявки, м (null — нет точки) */
+      distanceMeters: number | null;
     };
     ModerationCaseDetailDto: {
       /** Format: uuid */
@@ -3871,6 +3893,8 @@ export interface components {
       organizationName: string;
       /** @example hotel */
       templateCode: string | null;
+      /** @description Название шаблона */
+      templateName: components["schemas"]["LocalizedTextDto"] | null;
       status: components["schemas"]["ModerationCaseStatus"];
       decision: components["schemas"]["ModerationDecision"] | null;
       comment: string | null;
@@ -3885,6 +3909,10 @@ export interface components {
       decidedBy: string | null;
       /** Format: date-time */
       decidedAt: string | null;
+      /** @description Кто решил: имя или логин админки */
+      decidedByName: string | null;
+      /** @description Заявка организации, где у модератора есть роль (BR-12): решить нельзя — 403 own_organization */
+      ownOrganization: boolean;
       /** @description Снимок карточки на момент подачи (поля как в PlaceDto админки, график, фото) */
       placeSnapshot: {
         [key: string]: unknown;
@@ -3897,6 +3925,12 @@ export interface components {
       history: components["schemas"]["ModerationCaseDto"][];
       /** @description Что мешает публикации сейчас (PublishProblem каталога) — пусто: можно одобрять */
       publishProblems: string[];
+      /** @description Возможные дубли: места региона в радиусе ~150 м или с похожим названием (до 5; источник google — импорт) */
+      possibleDuplicates: components["schemas"]["PossibleDuplicateDto"][];
+      /** @description Превью фото снимка: mediaAssetId → ссылка w320 (строится при чтении) */
+      snapshotMediaPreview: {
+        [key: string]: string;
+      };
     };
     ApproveModerationDto: {
       /** @description Как подтверждено право на заведение (D-47 А) */

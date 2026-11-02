@@ -67,7 +67,7 @@ export const DECISION_PLACE_STATUS: Readonly<Record<ModerationDecision, PlaceSta
 };
 
 /** Поля личности места: меняет только тот, кто отправляет на модерацию (ORG_OWNER), не менеджер (P06). */
-export const IDENTITY_FIELDS = ["categoryId", "name", "address", "location"] as const;
+export const IDENTITY_FIELDS = ["categoryId", "localityId", "name", "address", "location"] as const;
 
 export function touchedIdentityFields(input: Partial<Record<string, unknown>>): string[] {
   return IDENTITY_FIELDS.filter((f) => input[f] !== undefined);

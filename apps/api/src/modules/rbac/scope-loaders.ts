@@ -7,12 +7,14 @@ import { regionScope, scope, type ScopeParentLoader, type ScopeParentLoaders } f
 /** Место → его организация (место партнёра, блок 6) или регион (место админки и импорта). */
 export function placeParentLoader(db: Db): ScopeParentLoader {
   return async (id) => {
-    // Функция возвращает 0 или 1 строку: место не найдено — строки нет.
+    // Один вызов функции: 0 строк — места нет.
     const row = await currentDb(db)
-      .selectNoFrom([
-        sql<string | null>`(app_place_parent(${id}::uuid)).organization_id`.as("organization_id"),
-        sql<string | null>`(app_place_parent(${id}::uuid)).region_id`.as("region_id"),
-      ])
+      .selectFrom(
+        sql<{ organization_id: string | null; region_id: string | null }>`app_place_parent(${id}::uuid)`.as(
+          "p",
+        ),
+      )
+      .select(["p.organization_id", "p.region_id"])
       .executeTakeFirst();
     if (!row?.region_id) return undefined;
     return row.organization_id ? scope("ORGANIZATION", row.organization_id) : regionScope(row.region_id);

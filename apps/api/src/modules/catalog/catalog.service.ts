@@ -56,6 +56,7 @@ export type CatalogErrorReason =
   | "tags_not_found"
   | "invalid_transition"
   | "not_publishable"
+  | "moderation_required"
   | "not_deletable"
   | "schedule_invalid"
   | "media_not_found"
@@ -629,6 +630,9 @@ export class CatalogService {
     requireRegionContext();
     const before = (await this.repo.lockPlace(id)) ?? notFound();
     if (!canTransition(before.status, action)) throw new CatalogError("invalid_transition");
+    // Место партнёра (блок 6, ADR-0021) впервые публикуется только решением модератора (AD02), не админом напрямую.
+    if (action === "publish" && !!before.organization_id && !before.first_published_at)
+      throw new CatalogError("moderation_required");
     if (action === "publish") {
       await this.repo.shareLockCategory(before.category_id);
       await this.assertPublishable(before);

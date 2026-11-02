@@ -69,6 +69,8 @@ import { PartnerService } from "./partner.service.js";
 
 /** Онбординг: не больше 5 новых заведений в час на пользователя (S-05: защита от фейковых заявок, BR-14). */
 export const ONBOARDING_RATE_LIMIT = { limit: 5, windowSec: 3600 } as const;
+/** Отправка на модерацию: не больше 10 в час на пользователя. */
+export const SUBMIT_RATE_LIMIT = { limit: 10, windowSec: 3600 } as const;
 /** Приглашения: не больше 30 в час. */
 export const INVITE_RATE_LIMIT = { limit: 30, windowSec: 3600 } as const;
 
@@ -186,9 +188,10 @@ export class PartnerController {
     operationId: "updatePartnerPlace",
     summary: "Правка карточки (P06): черновик или живая версия опубликованного (без PlaceRevision, §1.6)",
     description:
-      "ORG_OWNER — все поля; ORG_MANAGER — без categoryId, name, address, location (403 " +
-      "identity_fields_forbidden); ORG_STAFF — 403. 409 errors.partner.placeNotEditable — на модерации, " +
-      "приостановлено или в архиве. Изменение — AuditLog.",
+      "ORG_OWNER — все поля; ORG_MANAGER — без полей личности categoryId, localityId, name, address, location " +
+      "(403 identity_fields_forbidden); ORG_STAFF — 403. У опубликованного места поля личности не меняются — 409 " +
+      "errors.partner.identityChangeRequiresModeration (через админа региона); описание, контакты, график, фото — " +
+      "сразу. 409 errors.partner.placeNotEditable — на модерации, приостановлено или в архиве. Изменение — AuditLog.",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiOkResponse({ type: PartnerPlaceDto })
@@ -274,6 +277,7 @@ export class PartnerController {
 
   @Post("places/:id/submit")
   @HttpCode(200)
+  @RateLimit(SUBMIT_RATE_LIMIT)
   @ApiOperation({
     operationId: "submitPartnerPlace",
     summary: "«Надіслати на модерацію»: draft | changes_requested | rejected → pending_moderation",
