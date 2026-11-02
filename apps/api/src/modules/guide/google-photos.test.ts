@@ -7,7 +7,7 @@ import type { EmergencyContactsRepository } from "../emergency-contacts/index.js
 import type { MediaService } from "../media/index.js";
 import type { RegionsRepository } from "../regions/index.js";
 import type { GuideRepository } from "./guide.repository.js";
-import { GuideService } from "./guide.service.js";
+import { GuideService, isAutoDescription } from "./guide.service.js";
 import { GooglePhotosService } from "./google-photos.js";
 
 const NAME = "places/ChIJ-YqOVmolN0cRIY6uqQPGF4k/photos/AbC_1";
@@ -15,12 +15,29 @@ const URI = "https://lh3.googleusercontent.com/places/abc=w400";
 
 const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
 
+/** usage — счётчик дня в «БД» (google_api_usage): общий между экземплярами сервиса, как после рестарта api. */
 function photos(
-  opts: { apiKey?: string; dailyLimit?: number; dbRow?: { photo_uri: string; fetched_at: Date } } = {},
+  opts: {
+    apiKey?: string;
+    dailyLimit?: number;
+    dbRow?: { photo_uri: string; fetched_at: Date };
+    usage?: { count: number };
+    usageFails?: boolean;
+  } = {},
 ) {
-  const { db, queries } = recordingDb({}, (q) =>
-    q.sql.startsWith("select") && opts.dbRow ? [opts.dbRow] : [],
-  );
+  const usage = opts.usage ?? { count: 0 };
+  const limit = opts.dailyLimit ?? 300;
+  const { db, queries } = recordingDb({}, (q) => {
+    if (q.sql.startsWith('insert into "google_api_usage"')) {
+      if (opts.usageFails) throw new Error("db down");
+      // ON CONFLICT … WHERE count < limit RETURNING count: исчерпан — строки нет.
+      expect(q.sql).toContain('"google_api_usage"."count" < $');
+      if (usage.count >= limit) return [];
+      usage.count++;
+      return [{ count: usage.count }];
+    }
+    return q.sql.startsWith("select") && opts.dbRow ? [opts.dbRow] : [];
+  });
   const fetchMock = vi.fn(() => Promise.resolve(ok({ photoUri: URI, name: NAME })));
   const svc = new GooglePhotosService(db, {
     apiKey: "apiKey" in opts ? opts.apiKey : "secret-key",
@@ -68,16 +85,40 @@ describe("GooglePhotosService", () => {
     expect(await noKey.svc.uri(NAME, 400)).toBeNull();
     expect(noKey.fetchMock).not.toHaveBeenCalled();
 
-    const limited = photos({ dailyLimit: 1 });
-    expect(await limited.svc.uri(NAME, 400)).toBe(URI);
-    expect(await limited.svc.uri(NAME, 1200)).toBeNull();
-    expect(limited.fetchMock).toHaveBeenCalledTimes(1);
+    const down = photos({ usageFails: true });
+    expect(await down.svc.uri(NAME, 400)).toBeNull();
+    expect(down.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("суточный предел — счётчик в БД: переживает рестарт api (новый экземпляр сервиса)", async () => {
+    const usage = { count: 0 };
+    const first = photos({ dailyLimit: 1, usage });
+    expect(await first.svc.uri(NAME, 400)).toBe(URI);
+    expect(await first.svc.uri(NAME, 1200)).toBeNull();
+    const restarted = photos({ dailyLimit: 1, usage });
+    expect(await restarted.svc.uri(NAME, 1200)).toBeNull();
+    expect(first.fetchMock).toHaveBeenCalledTimes(1);
+    expect(restarted.fetchMock).not.toHaveBeenCalled();
+    expect(usage.count).toBe(1);
+  });
+
+  it("ошибка Google по фото запоминается на 6 ч: повтор в окне — без запроса, после — снова", async () => {
+    const { svc, fetchMock } = photos();
+    let t = Date.parse("2026-11-03T10:00:00Z");
+    svc.now = () => new Date(t);
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 500 }));
+    expect(await svc.uri(NAME, 400)).toBeNull();
+    expect(await svc.uri(NAME, 400)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    t += 6 * 3600_000 + 1;
+    expect(await svc.uri(NAME, 400)).toBe(URI);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("ссылка карточки — на прокси api, без ключа", () => {
     const { svc } = photos();
-    expect(svc.proxyUrl("r1", "p1", 2, 1200)).toBe(
-      "https://api.example/places/p1/google-photos/2?regionId=r1&w=1200",
+    expect(svc.proxyUrl("r1", "p1", 2, 1200, NAME)).toMatch(
+      /^https:\/\/api\.example\/places\/p1\/google-photos\/2\?regionId=r1&w=1200&v=[0-9a-f]{8}$/,
     );
   });
 });
@@ -100,6 +141,7 @@ function guide(enrichment: unknown, photosSvc?: GooglePhotosService) {
         website: null,
         telegram: null,
         verified_at: null,
+        source: "google",
         recommended: false,
         location: { lon: 24.58, lat: 48.47 },
         distance: null,
@@ -173,8 +215,10 @@ describe("GuideService.place — богатая карточка", () => {
       amenities: ["beer"],
       googlePhotos: [
         {
-          url: `https://api.example/places/${PLACE}/google-photos/0?regionId=${REGION}&w=400`,
-          largeUrl: `https://api.example/places/${PLACE}/google-photos/0?regionId=${REGION}&w=1200`,
+          url: expect.stringContaining(
+            `https://api.example/places/${PLACE}/google-photos/0?regionId=${REGION}&w=400&v=`,
+          ) as unknown as string,
+          largeUrl: expect.stringContaining("&w=1200&v=") as unknown as string,
           authors: [{ name: "Олена" }],
         },
       ],
@@ -190,5 +234,15 @@ describe("GuideService.place — богатая карточка", () => {
     const svc = guide(enrichment, photos().svc);
     expect(await svc.googlePhoto(REGION, PLACE, 0, 400)).toBe(URI);
     expect(await svc.googlePhoto(REGION, PLACE, 3, 400)).toBeUndefined();
+  });
+});
+
+describe("descriptionAuto — скрывать можно только автоописание импорта", () => {
+  it("импорт Google с подписью источника — авто; ручное описание (админка) — нет", async () => {
+    expect(isAutoDescription("google", { uk: "Ресторан у Яремчі. Джерело: Google Maps." })).toBe(true);
+    expect(isAutoDescription("google", { uk: "Наш ресторан з терасою — описав власник." })).toBe(false);
+    expect(isAutoDescription("manual", { uk: "Ресторан у Яремчі. Джерело: Google Maps." })).toBe(false);
+    expect(isAutoDescription("google", null)).toBe(false);
+    expect((await guide(undefined).place(REGION, PLACE, {}))?.descriptionAuto).toBe(true);
   });
 });

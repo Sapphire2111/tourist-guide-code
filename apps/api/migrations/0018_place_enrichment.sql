@@ -54,3 +54,16 @@ CREATE TABLE google_photo_uris (
 
 REVOKE ALL ON google_photo_uris FROM app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON google_photo_uris TO app;
+
+-- global: суточный счётчик платных запросов к Google из api (страховка бюджета GOOGLE_PHOTO_DAILY_LIMIT). В БД, а не в
+-- памяти: Render засыпает и перезапускает процесс — счётчик в памяти обнулялся бы. Увеличивается атомарно
+-- (INSERT … ON CONFLICT DO UPDATE … WHERE count < предел RETURNING count): нет строки в ответе — предел исчерпан.
+CREATE TABLE google_api_usage (
+  day date NOT NULL,
+  kind text NOT NULL CONSTRAINT google_api_usage_kind_check CHECK (kind ~ '^[a-z_]{1,40}$'),
+  count integer NOT NULL DEFAULT 0 CONSTRAINT google_api_usage_count_check CHECK (count >= 0),
+  CONSTRAINT google_api_usage_pkey PRIMARY KEY (day, kind)
+);
+
+REVOKE ALL ON google_api_usage FROM app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON google_api_usage TO app;

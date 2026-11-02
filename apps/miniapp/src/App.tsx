@@ -43,7 +43,7 @@ import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
 import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import type { Role } from "./role.js";
-import type { TelegramUser, TelegramWebApp } from "./telegram.js";
+import { consumeBack, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
@@ -82,7 +82,10 @@ function Back({ webApp }: { webApp?: TelegramWebApp }) {
   const back = webApp?.BackButton;
   useEffect(() => {
     if (!back) return;
-    const onClick = () => navigate("/", { replace: true });
+    // Открыт слой поверх экрана (полноэкранное фото) — «Назад» закрывает его, а не уводит на главную.
+    const onClick = () => {
+      if (!consumeBack()) navigate("/", { replace: true });
+    };
     back.onClick(onClick);
     back.show();
     return () => {

@@ -8,8 +8,11 @@ import type { AiResult } from "./ai.js";
 import type { EnrichedPlace } from "./enrich.js";
 
 export type EnrichWriteItem = EnrichedPlace & {
-  /** Текст ИИ и хэш его входа; undefined — ИИ в прогоне не участвовал. */
-  ai?: { hash: string; result: AiResult | null } | undefined;
+  /**
+   * Текст ИИ и хэш его входа. result null — текста для этих фактов ещё нет: сохранённый текст для других фактов
+   * (иной ai_input_hash) снимается. hash null — фактов мало, текст снимается. undefined — ИИ не участвовал.
+   */
+  ai?: { hash: string | null; result: AiResult | null } | undefined;
 };
 
 export type EnrichWriteStats = {
@@ -17,6 +20,8 @@ export type EnrichWriteStats = {
   /** Мест нет в БД региона (импорт ещё не записал) — пропущены. */
   notInDb: number;
   aiWritten: number;
+  /** Сняты устаревшие тексты ИИ (факты изменились, нового текста ещё нет). */
+  aiCleared: number;
 };
 
 export async function writeEnrichment(
@@ -32,7 +37,7 @@ export async function writeEnrichment(
       .where("source", "=", "google")
       .execute();
     const idOf = new Map(rows.map((r) => [r.google_place_id!, r.id]));
-    const stats: EnrichWriteStats = { written: 0, notInDb: 0, aiWritten: 0 };
+    const stats: EnrichWriteStats = { written: 0, notInDb: 0, aiWritten: 0, aiCleared: 0 };
     for (const it of items) {
       const placeId = idOf.get(it.googlePlaceId);
       if (!placeId) {
@@ -53,7 +58,7 @@ export async function writeEnrichment(
         update.wiki = it.wiki;
         update.wiki_fetched_at = now;
       }
-      if (it.ai?.result) {
+      if (it.ai?.result && it.ai.hash) {
         const text = it.ai.result.text;
         values.ai_summary_uk = text;
         values.ai_model = text ? it.ai.result.model : null;
@@ -67,13 +72,28 @@ export async function writeEnrichment(
         });
         if (text) stats.aiWritten++;
       }
-      if (!Object.keys(update).length) continue;
-      await trx
-        .insertInto("place_enrichments")
-        .values(values)
-        .onConflict((oc) => oc.columns(["region_id", "place_id"]).doUpdateSet(update))
-        .execute();
-      stats.written++;
+      if (Object.keys(update).length) {
+        await trx
+          .insertInto("place_enrichments")
+          .values(values)
+          .onConflict((oc) => oc.columns(["region_id", "place_id"]).doUpdateSet(update))
+          .execute();
+        stats.written++;
+      }
+      if (it.ai && !(it.ai.result && it.ai.hash)) {
+        // Текст для прежних фактов не выдаётся за актуальный.
+        const hash = it.ai.hash;
+        const cleared = await trx
+          .updateTable("place_enrichments")
+          .set({ ai_summary_uk: null, ai_model: null, ai_generated_at: null, ai_input_hash: null })
+          .where("place_id", "=", placeId)
+          .where("ai_summary_uk", "is not", null)
+          .where((eb) =>
+            hash ? eb.or([eb("ai_input_hash", "is", null), eb("ai_input_hash", "!=", hash)]) : eb.val(true),
+          )
+          .executeTakeFirst();
+        stats.aiCleared += Number(cleared.numUpdatedRows);
+      }
     }
     return stats;
   });

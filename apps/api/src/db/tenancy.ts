@@ -82,6 +82,7 @@ export const TABLE_TENANCY = {
   // Богатая картка місця (0018): обогащение места — регион места; кэш адресов фото Google — общий (имя фото глобально).
   place_enrichments: "tenant",
   google_photo_uris: "global",
+  google_api_usage: "global",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

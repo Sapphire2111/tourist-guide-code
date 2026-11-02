@@ -17,7 +17,9 @@ import {
   runAi,
   type BatchesApi,
 } from "./ai.js";
+import { recordingDb } from "../../test/support/recording-db.js";
 import { parseEnrichArgs } from "./args.js";
+import { writeEnrichment } from "./writer.js";
 import { amenitiesOf, normalizeDetails } from "./details.js";
 import { enrich } from "./enrich.js";
 import { bestHit, findWikipedia, nameScore, transliterate, WikipediaClient } from "./wikipedia.js";
@@ -326,6 +328,38 @@ describe("Вікіпедія — только уверенное совпаде�
   });
 });
 
+function fakeBatches(text: string, stopReason = "end_turn") {
+  const created: { custom_id: string }[][] = [];
+  let status: "in_progress" | "ended" = "in_progress";
+  const api = {
+    create: vi.fn((body: { requests: { custom_id: string }[] }) => {
+      created.push(body.requests);
+      return Promise.resolve({ id: "msgbatch_1" });
+    }),
+    retrieve: vi.fn(() => Promise.resolve({ processing_status: status, request_counts: { processing: 1 } })),
+    results: vi.fn(() =>
+      Promise.resolve(
+        (async function* () {
+          for (const r of created.flat())
+            yield {
+              custom_id: r.custom_id,
+              result: {
+                type: "succeeded",
+                message: {
+                  model: "claude-sonnet-5-5",
+                  stop_reason: stopReason,
+                  content: [{ type: "text", text }],
+                  usage: { input_tokens: 500, output_tokens: 80 },
+                },
+              },
+            };
+        })(),
+      ),
+    ),
+  };
+  return { api: api as unknown as BatchesApi, raw: api, end: () => (status = "ended") };
+}
+
 describe("ИИ-текст", () => {
   const google = normalizeDetails(DETAILS);
   const input = {
@@ -363,40 +397,6 @@ describe("ИИ-текст", () => {
     );
   });
 
-  function fakeBatches(text: string) {
-    const created: { custom_id: string }[][] = [];
-    let status: "in_progress" | "ended" = "in_progress";
-    const api = {
-      create: vi.fn((body: { requests: { custom_id: string }[] }) => {
-        created.push(body.requests);
-        return Promise.resolve({ id: "msgbatch_1" });
-      }),
-      retrieve: vi.fn(() =>
-        Promise.resolve({ processing_status: status, request_counts: { processing: 1 } }),
-      ),
-      results: vi.fn(() =>
-        Promise.resolve(
-          (async function* () {
-            for (const r of created.flat())
-              yield {
-                custom_id: r.custom_id,
-                result: {
-                  type: "succeeded",
-                  message: {
-                    model: "claude-sonnet-5-5",
-                    stop_reason: "end_turn",
-                    content: [{ type: "text", text }],
-                    usage: { input_tokens: 500, output_tokens: 80 },
-                  },
-                },
-              };
-          })(),
-        ),
-      ),
-    };
-    return { api: api as unknown as BatchesApi, raw: api, end: () => (status = "ended") };
-  }
-
   it("пакет: отправка, незавершённый — дособирается следующим прогоном; результат в кэше, повтор не платит", async () => {
     const store = new AiStore(await tmp());
     const facts = buildFacts(input)!;
@@ -429,6 +429,95 @@ describe("ИИ-текст", () => {
     const s = await runAi(b.api, store, items, { maxNew: 1, wait: true, pollMs: 1 });
     expect(s).toMatchObject({ needed: 2, submitted: 1, rejected: 1, accepted: 0 });
     expect((await store.get(items[0]!.hash))?.text).toBeNull();
+  });
+});
+
+describe("повторы и устаревшие данные", () => {
+  it("ИИ: отказ или обрыв по max_tokens не кэшируется — следующий прогон повторит", async () => {
+    const store = new AiStore(await tmp());
+    const facts = buildFacts({
+      name: "Woodstone",
+      category: "Ресторани",
+      locality: null,
+      address: null,
+      google: normalizeDetails(DETAILS),
+      wiki: null,
+    })!;
+    const items = [{ hash: factsHash(facts), facts }];
+    for (const reason of ["refusal", "max_tokens"]) {
+      const b = fakeBatches("", reason);
+      b.end();
+      const s = await runAi(b.api, store, items, { maxNew: 1, wait: true, pollMs: 1 });
+      expect(s).toMatchObject({ submitted: 1, errored: 1, accepted: 0, rejected: 0 });
+      expect(await store.get(items[0]!.hash)).toBeNull();
+    }
+  });
+
+  it("Вікіпедія 429/5xx — место «не искали», прогон не падает, ответ не кэшируется", async () => {
+    const f = vi.fn(() => Promise.resolve(new Response("busy", { status: 429 })));
+    const wiki = new WikipediaClient({ cacheDir: await tmp(), maxRequests: 10, fetch: f as typeof fetch });
+    const google = new GooglePlacesClient({
+      apiKey: undefined,
+      cacheDir: await tmp(),
+      maxRequests: 0,
+      planOnly: true,
+    });
+    const r = await enrich([place({ categoryCode: "nature", name: "Водоспад Пробій" })], google, wiki);
+    expect(r.stats).toMatchObject({ wikiSearched: 0, wikiUnavailable: 1, wikiFound: 0 });
+    expect(r.places[0]!.wiki).toBeUndefined();
+    await enrich([place({ categoryCode: "nature", name: "Водоспад Пробій" })], google, wiki);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it("запись: факты изменились, нового текста нет — устаревший текст ИИ снимается; новый — пишется", async () => {
+    const { db, queries } = recordingDb({}, (q) =>
+      q.sql.startsWith('select "id", "google_place_id"') ? [{ id: "p-1", google_place_id: PLACE_ID }] : [],
+    );
+    const base = {
+      ...(
+        await enrich(
+          [place()],
+          new GooglePlacesClient({
+            apiKey: undefined,
+            cacheDir: await tmp(),
+            maxRequests: 0,
+            planOnly: true,
+          }),
+          undefined,
+        )
+      ).places[0]!,
+    };
+    const g = normalizeDetails(DETAILS);
+    await writeEnrichment(
+      db,
+      "0190f5c2-7d3e-7000-8000-00000000000a",
+      [{ ...base, google: g, ai: { hash: "a".repeat(32), result: null } }],
+      new Date(),
+    );
+    const clear = queries.find((q) => q.sql.startsWith('update "place_enrichments"'));
+    expect(clear?.sql).toContain('"ai_input_hash" != $');
+    expect(clear?.parameters).toContain("a".repeat(32));
+
+    queries.length = 0;
+    await writeEnrichment(
+      db,
+      "0190f5c2-7d3e-7000-8000-00000000000a",
+      [
+        {
+          ...base,
+          google: g,
+          ai: {
+            hash: "b".repeat(32),
+            result: { text: "Текст.", model: "m", generatedAt: "2026-11-03T00:00:00Z" },
+          },
+        },
+      ],
+      new Date(),
+    );
+    expect(queries.some((q) => q.sql.startsWith('update "place_enrichments"'))).toBe(false);
+    expect(queries.find((q) => q.sql.startsWith('insert into "place_enrichments"'))?.parameters).toContain(
+      "Текст.",
+    );
   });
 });
 

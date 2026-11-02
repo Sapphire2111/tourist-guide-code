@@ -76,3 +76,23 @@ export function initTelegram(webApp: TelegramWebApp, root: HTMLElement = documen
   webApp.onEvent?.("themeChanged", syncTheme);
   webApp.expand();
 }
+
+/**
+ * Перехват «Назад» (нативная BackButton): открытый поверх экрана слой (полноэкранное фото) закрывается вместо
+ * перехода на главную. Последний зарегистрированный — первым; возвращает функцию снятия.
+ */
+const backInterceptors: (() => void)[] = [];
+export function interceptBack(fn: () => void): () => void {
+  backInterceptors.push(fn);
+  return () => {
+    const i = backInterceptors.lastIndexOf(fn);
+    if (i >= 0) backInterceptors.splice(i, 1);
+  };
+}
+/** Обработать «Назад» перехватчиком; true — обработано, переход не нужен. */
+export function consumeBack(): boolean {
+  const fn = backInterceptors.at(-1);
+  if (!fn) return false;
+  fn();
+  return true;
+}

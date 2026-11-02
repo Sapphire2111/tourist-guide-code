@@ -191,6 +191,11 @@ export class WikiLimitError extends Error {
   override readonly name = "WikiLimitError";
 }
 
+/** Временный сбой Вікіпедії (429, 5xx, сеть): место не искалось в этом прогоне. */
+export class WikiUnavailableError extends Error {
+  override readonly name = "WikiUnavailableError";
+}
+
 /** Свободные лицензии Commons (короткие имена). Иное (Fair use, «non-free») — без фото. */
 const FREE_LICENSE = /^(cc[ -]?by|cc[ -]?by[ -]?sa|cc0|public domain|pd\b|attribution|gfdl|fal\b)/i;
 
@@ -245,13 +250,19 @@ export class WikipediaClient {
     if (this.requests >= this.options.maxRequests)
       throw new WikiLimitError(`Достигнут лимит запросов к Вікіпедії: ${this.options.maxRequests}`);
     this.requests++;
-    const res = await this.fetch(url, {
-      headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT, Accept: "application/json" },
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 15_000),
-    });
+    let res: Response;
+    try {
+      res = await this.fetch(url, {
+        headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(this.options.timeoutMs ?? 15_000),
+      });
+    } catch (err) {
+      throw new WikiUnavailableError(`Вікіпедія: ${err instanceof Error ? err.name : "сеть"}`);
+    }
     // 404 (нет статьи) — тоже ответ: кэшируется как null.
     const data: unknown = res.ok ? await res.json() : res.status === 404 ? null : undefined;
-    if (data === undefined) throw new Error(`Вікіпедія: HTTP ${res.status}`);
+    // 429/5xx и прочее — временный сбой: не кэшируется, место считается «не искали» (повтор следующим прогоном).
+    if (data === undefined) throw new WikiUnavailableError(`Вікіпедія: HTTP ${res.status}`);
     await mkdir(this.options.cacheDir, { recursive: true });
     await writeFile(file, JSON.stringify(data));
     return data;
@@ -362,7 +373,9 @@ export async function findWikipedia(
     const s = await client.summary(lang, hit.title);
     if (!s) continue;
     const image = s.fileTitle ? await client.commonsImage(s.fileTitle) : null;
-    return { lang, title: s.title, url: s.url, extract: shortExtract(s.extract), image };
+    const extract = shortExtract(s.extract);
+    const truncated = extract !== s.extract.replace(/\s+/g, " ").trim();
+    return { lang, title: s.title, url: s.url, extract, truncated, image };
   }
   return null;
 }

@@ -96,6 +96,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "consents",
       "feature_flag_gate_marks",
       "feature_flags",
+      "google_api_usage",
       "google_photo_uris",
       "idempotency_keys",
       "messaging_consents",

@@ -134,7 +134,8 @@ try {
       `${stats.googleLimitReached ? " (остановлено лимитом --max-requests)" : ""}.`,
   );
   console.log(
-    `Вікіпедія: искали ${stats.wikiSearched}, найдено ${stats.wikiFound}, с фото Commons ${stats.wikiWithImage}` +
+    `Вікіпедія: искали ${stats.wikiSearched}, найдено ${stats.wikiFound}, с фото Commons ${stats.wikiWithImage}, ` +
+      `недоступна (429/5xx — повторить позже) ${stats.wikiUnavailable}` +
       `${stats.wikiLimitReached ? " (остановлено лимитом)" : ""}.`,
   );
   console.log(
@@ -161,7 +162,12 @@ try {
   for (const p of places) {
     const it = aiItems.get(p.googlePlaceId);
     const result: AiResult | null = it ? await store.get(it.hash) : null;
-    items.push({ ...p, ai: it && result ? { hash: it.hash, result } : undefined });
+    // Хэш фактов передаётся всегда: устаревший текст (другие факты, нового ещё нет) запись снимает. Фактов нет при
+    // свежих данных Google — текст тоже снимается (hash null).
+    items.push({
+      ...p,
+      ai: it ? { hash: it.hash, result } : p.google ? { hash: null, result: null } : undefined,
+    });
   }
 
   if (!args.plan && !args.dryRun) {
@@ -173,7 +179,7 @@ try {
       const written = await writeEnrichment(db, regionId, items, new Date());
       report.write = written;
       console.log(
-        `\nЗапись в ${args.region}: обогащено мест ${written.written}, ИИ-текстов ${written.aiWritten}; ` +
+        `\nЗапись в ${args.region}: обогащено мест ${written.written}, ИИ-текстов ${written.aiWritten}, снято устаревших ${written.aiCleared}; ` +
           `нет в БД (сначала импорт) ${written.notInDb}.`,
       );
     } finally {

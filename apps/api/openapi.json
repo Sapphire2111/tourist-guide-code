@@ -5647,6 +5647,13 @@
             "schema": { "default": 400, "type": "number", "enum": [400, 1200] }
           },
           {
+            "name": "v",
+            "required": false,
+            "in": "query",
+            "description": "Отпечаток фото из googlePhotos карточки (кэш браузера); сервером не проверяется",
+            "schema": { "type": "string" }
+          },
+          {
             "name": "X-Request-Id",
             "in": "header",
             "description": "Correlation id; иначе генерируется",
@@ -12661,13 +12668,14 @@
           "title": { "type": "string" },
           "url": { "type": "string", "description": "Статья" },
           "extract": { "type": "string", "description": "Начало статьи (до ~700 символов)" },
+          "truncated": { "type": "boolean", "description": "extract обрезан — пометка «скорочено»" },
           "image": {
             "nullable": true,
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/WikipediaImageDto" }]
           }
         },
-        "required": ["lang", "title", "url", "extract", "image"]
+        "required": ["lang", "title", "url", "extract", "truncated", "image"]
       },
       "PlaceCardDto": {
         "type": "object",
@@ -12716,6 +12724,10 @@
             "nullable": true,
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "descriptionAuto": {
+            "type": "boolean",
+            "description": "description — автоописание импорта Google («… Джерело: Google Maps.»): при тексте ШІ/Google/Вікіпедії его можно скрыть; ручное описание — false"
           },
           "website": { "type": "string", "nullable": true, "example": "https://example.com" },
           "telegram": { "type": "string", "nullable": true, "description": "Имя в Telegram без @" },
@@ -12822,6 +12834,7 @@
           "regionId",
           "category",
           "description",
+          "descriptionAuto",
           "website",
           "telegram",
           "verifiedAt",

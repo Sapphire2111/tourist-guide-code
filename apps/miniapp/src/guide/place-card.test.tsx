@@ -14,6 +14,7 @@ afterEach(cleanup);
 const P1 = "00000000-0000-4000-8000-000000000201";
 
 const base: PlaceDetail = {
+  descriptionAuto: true,
   id: P1,
   name: { uk: "Wood Stone" },
   categoryId: "c1",
@@ -158,6 +159,7 @@ describe("богатая картка місця", () => {
         title: "Пробій (водоспад)",
         url: "https://uk.m.wikipedia.org/wiki/Пробій",
         extract: "Пробій — водоспад на річці Прут.",
+        truncated: true,
         image: {
           url: "https://upload.wikimedia.org/x.jpg",
           author: "MSha",
@@ -173,6 +175,7 @@ describe("богатая картка місця", () => {
     );
     expect(within(wiki).getByRole("link", { name: /MSha · CC BY-SA 3.0 · Wikimedia Commons/ })).toBeDefined();
     expect(wiki.textContent).toContain("Джерело: Вікіпедія");
+    expect(screen.getByTestId("place-wiki-truncated").textContent).toBe("(скорочено)");
   });
 
   it("нет данных Google/Вікіпедії/ШІ — блоков нет, только описание и график (ничего не выдумываем)", async () => {
@@ -190,6 +193,58 @@ describe("богатая картка місця", () => {
     ])
       expect(screen.queryByTestId(id), id).toBeNull();
     expect(screen.getByText("Ресторан у Яремчі. Джерело: Google Maps.")).toBeDefined();
+  });
+});
+
+describe("картка: устойчивость и описание", () => {
+  it("лайтбокс открыт на последнем фото, фото пропало из галереи — индекс зажимается, без ошибки", async () => {
+    await renderCard({ ...base, ...rich });
+    fireEvent.click(screen.getByRole("button", { name: "Відкрити фото 2 з 2" }));
+    const thumbs = screen.getByTestId("place-photos").querySelectorAll("img");
+    fireEvent.error(thumbs[1]!);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe(
+      "https://api.example/places/p/google-photos/0?w=1200",
+    );
+    expect(dialog.textContent).toContain("1 / 1");
+  });
+
+  it("большое фото не загрузилось — превью; не загрузилось и оно — лайтбокс закрывается, фокус на кнопке фото", async () => {
+    await renderCard({ ...base, ...rich });
+    const opener = screen.getByRole("button", { name: "Відкрити фото 1 з 2" });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(document.body.style.overflow).toBe("hidden");
+    const img = () => screen.getByRole("dialog").querySelector("img")!;
+    fireEvent.error(img());
+    expect(img().getAttribute("src")).toBe("https://api.example/places/p/google-photos/0?w=400");
+    fireEvent.error(img());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Відкрити фото 1 з 2" }));
+  });
+
+  it("«Назад» Telegram при открытом фото закрывает фото, а не уходит с экрана", async () => {
+    const { consumeBack } = await import("../telegram.js");
+    await renderCard({ ...base, ...rich });
+    expect(consumeBack()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Відкрити фото 1 з 2" }));
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(consumeBack()).toBe(false);
+  });
+
+  it("ручное описание (не автоописание импорта) остаётся рядом с текстом ШІ", async () => {
+    await renderCard({ ...base, ...rich, descriptionAuto: false, description: { uk: "Опис від власника." } });
+    expect(screen.getByText("Опис від власника.")).toBeDefined();
+    expect(screen.getByTestId("place-about")).toBeDefined();
+  });
+
+  it("атрибуция Google — и при одном лишь типе места от Google", async () => {
+    await renderCard({ ...base, typeLabel: "Ресторан" });
+    expect(screen.getByTestId("place-google-attribution")).toBeDefined();
   });
 });
 
@@ -231,6 +286,7 @@ describe("cardOf — богатые поля", () => {
     });
     const card = cardOf({
       ...dto,
+      descriptionAuto: false,
       typeLabel: "Ресторан",
       summary: null,
       aiSummary: null,

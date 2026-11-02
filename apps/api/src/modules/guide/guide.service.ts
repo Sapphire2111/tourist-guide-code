@@ -29,6 +29,14 @@ import { GooglePhotosService, type GooglePhotoWidth } from "./google-photos.js";
 import { FAVORITES_MAX, GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
 import { localMoment, openState, type LocalMoment, type ScheduleRows } from "./open-now.js";
 
+/**
+ * Описание — автоописание импорта Google («Ресторан у Яремчі. Джерело: Google Maps.», places-import/mapping.ts
+ * describe): у места из импорта текст оканчивается подписью источника. Ручное описание (админка, партнёр) — нет.
+ */
+export function isAutoDescription(source: string | undefined, d: { uk: string } | null): boolean {
+  return source === "google" && Boolean(d && /Джерело: Google Maps\.\s*$/.test(d.uk));
+}
+
 export type SearchParams = {
   origin?: LonLat;
   /** Радиус, м — только с origin. */
@@ -132,6 +140,7 @@ export class GuideService {
           icon: category?.icon ?? null,
         },
         description: row.description_i18n,
+        descriptionAuto: isAutoDescription(row.source, row.description_i18n),
         website: row.website,
         telegram: row.telegram,
         verifiedAt: row.verified_at?.toISOString() ?? null,
@@ -216,15 +225,15 @@ export class GuideService {
       reviews: g?.reviews ?? [],
       googlePhotos: this.googlePhotos?.enabled
         ? (g?.photos ?? []).map((p, i) => ({
-            url: this.googlePhotos!.proxyUrl(regionId, placeId, i, 400),
-            largeUrl: this.googlePhotos!.proxyUrl(regionId, placeId, i, 1200),
+            url: this.googlePhotos!.proxyUrl(regionId, placeId, i, 400, p.name),
+            largeUrl: this.googlePhotos!.proxyUrl(regionId, placeId, i, 1200, p.name),
             width: p.width,
             height: p.height,
             authors: p.authors,
           }))
         : [],
       googleMapsUri: g?.mapsUri ?? null,
-      wikipedia: w,
+      wikipedia: w ? { ...w, truncated: w.truncated ?? false } : null,
     };
   }
 

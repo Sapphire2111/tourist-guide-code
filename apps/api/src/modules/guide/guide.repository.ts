@@ -40,6 +40,8 @@ export type PlaceCardRow = PlaceRow & {
   website: string | null;
   telegram: string | null;
   verified_at: Date | null;
+  /** Источник (0016): google — импорт places:import-google. */
+  source: "manual" | "google";
 };
 
 export type SearchQuery = {
@@ -180,6 +182,7 @@ export class GuideRepository {
         "places.website",
         "places.telegram",
         "places.verified_at",
+        "places.source",
       ])
       .executeTakeFirst() as Promise<PlaceCardRow | undefined>;
   }

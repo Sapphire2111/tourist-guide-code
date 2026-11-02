@@ -53,6 +53,8 @@ export type WikipediaInfo = {
   title: string;
   url: string;
   extract: string;
+  /** Опис скорочено (у статье больше текста). */
+  truncated: boolean;
   image: { url: string; author: string | null; license: string | null; sourceUrl: string } | null;
 };
 
@@ -74,6 +76,8 @@ export type PlaceDetail = PlaceSummary & {
   openUntil: string | null;
   /** В избранном; null — без сессии. */
   favorite: boolean | null;
+  /** description — автоописание импорта Google (можно скрыть при содержательном тексте); ручное — false. */
+  descriptionAuto?: boolean;
   // Богатая карточка: данные Google Maps, Вікіпедія, ИИ-текст. Нет данных — null/[] (блок не показывается).
   /** Тип места по Google (uk): «Піцерія». */
   typeLabel?: string | null;

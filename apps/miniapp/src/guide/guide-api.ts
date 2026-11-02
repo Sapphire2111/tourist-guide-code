@@ -78,6 +78,7 @@ function richOf(dto: Partial<CardDto>): Partial<PlaceDetail> {
   const wiki = dto.wikipedia ?? null;
   const wikiUrl = https(wiki?.url);
   return {
+    descriptionAuto: dto.descriptionAuto ?? false,
     typeLabel: dto.typeLabel ?? null,
     summary: dto.summary ?? null,
     aiSummary: dto.aiSummary ? { text: dto.aiSummary.text, model: dto.aiSummary.model } : null,
@@ -103,6 +104,7 @@ function richOf(dto: Partial<CardDto>): Partial<PlaceDetail> {
             title: wiki.title,
             url: wikiUrl,
             extract: wiki.extract,
+            truncated: wiki.truncated ?? false,
             image:
               wiki.image && https(wiki.image.url) && https(wiki.image.sourceUrl)
                 ? {

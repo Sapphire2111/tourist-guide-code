@@ -3,7 +3,10 @@
 // редирект на него — файл грузится браузером прямо с googleusercontent.com, к себе не копируется. Ключ
 // GOOGLE_MAPS_API_KEY остаётся на сервере (в photoUri его нет). Адреса кэшируются: в памяти процесса и в БД
 // (google_photo_uris) — повторные просмотры и перезапуск api не стоят запросов. Суточный предел запросов к Google —
-// страховка бюджета: сверх него фото без кэша не отдаются (404, карточка просто покажет меньше фото).
+// страховка бюджета: счётчик в БД (google_api_usage, переживает рестарт и засыпание Render); сверх него фото без
+// кэша не отдаются (404, карточка покажет меньше фото). Ошибка Google по фото запоминается на FAILURE_TTL — повторные
+// просмотры в этом окне не тратят запросы.
+import { createHash } from "node:crypto";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { sql } from "kysely";
 import { InjectDb, type Db } from "../../db/index.js";
@@ -27,7 +30,11 @@ export type GooglePhotosConfig = {
 };
 
 export const GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT = 300;
-export const GOOGLE_PHOTO_TTL_HOURS_DEFAULT = 72;
+export const GOOGLE_PHOTO_TTL_HOURS_DEFAULT = 24;
+/** Сколько помнить ошибку Google по фото (без повторных запросов). */
+export const GOOGLE_PHOTO_FAILURE_TTL_MS = 6 * 3600_000;
+/** Вид счётчика в google_api_usage. */
+const USAGE_KIND = "place_photos";
 const MEMORY_MAX = 5000;
 const TIMEOUT_MS = 8000;
 const PHOTO_NAME = /^places\/[A-Za-z0-9_-]{1,255}\/photos\/[A-Za-z0-9_-]{1,1024}$/;
@@ -37,9 +44,8 @@ export class GooglePhotosService {
   private readonly log = new Logger("GooglePhotos");
   private readonly memory = new Map<string, { uri: string; expires: number }>();
   private readonly inflight = new Map<string, Promise<string | null>>();
-  private day = "";
-  /** Запросов к Google за текущие сутки (UTC). */
-  requestsToday = 0;
+  /** Ошибки Google по `name|w` до момента повтора. */
+  private readonly failures = new Map<string, number>();
   private readonly cfg: GooglePhotosConfig & { dailyLimit: number; ttlHours: number };
 
   constructor(
@@ -47,9 +53,9 @@ export class GooglePhotosService {
     @Optional() @Inject(GOOGLE_PHOTOS_CONFIG) config?: GooglePhotosConfig,
   ) {
     this.cfg = {
-      dailyLimit: GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT,
-      ttlHours: GOOGLE_PHOTO_TTL_HOURS_DEFAULT,
       ...config,
+      dailyLimit: config?.dailyLimit ?? GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT,
+      ttlHours: config?.ttlHours ?? GOOGLE_PHOTO_TTL_HOURS_DEFAULT,
     };
   }
 
@@ -61,10 +67,20 @@ export class GooglePhotosService {
     return Boolean(this.cfg.apiKey);
   }
 
-  /** Ссылка карточки на прокси фото: GET /places/{id}/google-photos/{n}?regionId=…&w=…. */
-  proxyUrl(regionId: string, placeId: string, index: number, width: GooglePhotoWidth): string {
+  /**
+   * Ссылка карточки на прокси фото: GET /places/{id}/google-photos/{n}?regionId=…&w=…&v=…. v — отпечаток имени фото:
+   * после обновления обогащения n-е фото может стать другим, и кэш браузера не покажет его с чужим автором.
+   */
+  proxyUrl(
+    regionId: string,
+    placeId: string,
+    index: number,
+    width: GooglePhotoWidth,
+    photoName: string,
+  ): string {
     const base = (this.cfg.apiBaseUrl ?? "").replace(/\/+$/, "");
-    return `${base}/places/${placeId}/google-photos/${index}?regionId=${regionId}&w=${width}`;
+    const v = createHash("sha256").update(photoName).digest("hex").slice(0, 8);
+    return `${base}/places/${placeId}/google-photos/${index}?regionId=${regionId}&w=${width}&v=${v}`;
   }
 
   /** Адрес файла фото у Google или null (нет ключа, предел на сутки, ошибка Google, недопустимый ответ). */
@@ -74,6 +90,11 @@ export class GooglePhotosService {
     const now = this.now().getTime();
     const hit = this.memory.get(key);
     if (hit && hit.expires > now) return hit.uri;
+    const failedUntil = this.failures.get(key);
+    if (failedUntil !== undefined) {
+      if (failedUntil > now) return null;
+      this.failures.delete(key);
+    }
     const running = this.inflight.get(key);
     if (running) return running;
     const p = this.resolve(photoName, width, now).finally(() => this.inflight.delete(key));
@@ -104,7 +125,12 @@ export class GooglePhotosService {
       return row.photo_uri;
     }
     const uri = await this.fetchFromGoogle(photoName, width, now);
-    if (!uri) return null;
+    if (uri === "limit") return null;
+    if (!uri) {
+      if (this.failures.size >= MEMORY_MAX) this.failures.clear();
+      this.failures.set(key, now + GOOGLE_PHOTO_FAILURE_TTL_MS);
+      return null;
+    }
     this.remember(key, uri, now);
     try {
       await this.db
@@ -123,21 +149,42 @@ export class GooglePhotosService {
     return uri;
   }
 
-  private async fetchFromGoogle(photoName: string, width: number, now: number): Promise<string | null> {
-    const apiKey = this.cfg.apiKey;
-    if (!apiKey) return null;
+  /**
+   * Атомарно занять запрос из суточного предела (счётчик в БД): строка дня увеличивается, только пока count < limit.
+   * Нет строки в ответе — предел исчерпан; ошибка БД — тоже отказ (бюджет важнее фото).
+   */
+  async takeDailyQuota(now: number): Promise<boolean> {
     const day = new Date(now).toISOString().slice(0, 10);
-    if (day !== this.day) {
-      this.day = day;
-      this.requestsToday = 0;
+    try {
+      const row = await this.db
+        .insertInto("google_api_usage")
+        .values({ day, kind: USAGE_KIND, count: 1 })
+        .onConflict((oc) =>
+          oc
+            .columns(["day", "kind"])
+            .doUpdateSet({ count: sql`google_api_usage.count + 1` })
+            .where("google_api_usage.count", "<", this.cfg.dailyLimit),
+        )
+        .returning("count")
+        .executeTakeFirst();
+      if (row && row.count <= this.cfg.dailyLimit) return true;
+      this.log.warn(`Суточный предел запросов фото Google исчерпан: ${this.cfg.dailyLimit}`);
+      return false;
+    } catch (err) {
+      this.log.warn(`Счётчик запросов Google недоступен: ${err instanceof Error ? err.message : "ошибка"}`);
+      return false;
     }
-    if (this.requestsToday >= this.cfg.dailyLimit) {
-      if (this.requestsToday === this.cfg.dailyLimit)
-        this.log.warn(`Суточный предел запросов фото Google исчерпан: ${this.cfg.dailyLimit}`);
-      this.requestsToday++;
-      return null;
-    }
-    this.requestsToday++;
+  }
+
+  /** Адрес файла у Google; "limit" — предел на сутки (не ошибка фото); null — ошибка Google/ответа. */
+  private async fetchFromGoogle(
+    photoName: string,
+    width: number,
+    now: number,
+  ): Promise<string | null | "limit"> {
+    const apiKey = this.cfg.apiKey;
+    if (!apiKey) return "limit";
+    if (this.cfg.dailyLimit <= 0 || !(await this.takeDailyQuota(now))) return "limit";
     try {
       const res = await (this.cfg.fetch ?? fetch)(
         `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${width}&skipHttpRedirect=true`,

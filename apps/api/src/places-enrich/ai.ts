@@ -206,7 +206,7 @@ export type AiRunStats = {
   usage: { inputTokens: number; outputTokens: number };
 };
 
-/** Текст из ответа модели: только text-блоки, отказ — null. */
+/** Текст из ответа модели: только text-блоки; отказ или обрыв (max_tokens) — null (повторить позже). */
 function messageText(m: Anthropic.Message): string | null {
   if (m.stop_reason === "refusal" || m.stop_reason === "max_tokens") return null;
   return m.content
@@ -258,8 +258,13 @@ export async function runAi(
       const msg = r.result.message;
       stats.usage.inputTokens += msg.usage.input_tokens;
       stats.usage.outputTokens += msg.usage.output_tokens;
+      // Отказ или обрыв по max_tokens — не окончательный ответ: в кэш не пишется, следующий прогон повторит.
       const raw = messageText(msg);
-      const text = raw === null ? null : acceptText(raw);
+      if (raw === null) {
+        stats.errored++;
+        continue;
+      }
+      const text = acceptText(raw);
       if (text) stats.accepted++;
       else stats.rejected++;
       await store.put(r.custom_id, { text, model: msg.model || AI_MODEL, generatedAt });

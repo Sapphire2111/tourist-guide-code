@@ -163,6 +163,15 @@ export class GooglePhotoQueryDto extends RegionQueryDto {
   @Type(() => Number)
   @IsIn([...GOOGLE_PHOTO_WIDTHS])
   w?: GooglePhotoWidth;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: "Отпечаток фото из googlePhotos карточки (кэш браузера); сервером не проверяется",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  v?: string;
 }
 
 export class AddFavoriteDto {
@@ -353,6 +362,7 @@ export class WikipediaDto {
   @ApiProperty({ type: String }) title!: string;
   @ApiProperty({ type: String, description: "Статья" }) url!: string;
   @ApiProperty({ type: String, description: "Начало статьи (до ~700 символов)" }) extract!: string;
+  @ApiProperty({ type: Boolean, description: "extract обрезан — пометка «скорочено»" }) truncated!: boolean;
   @ApiProperty({ type: WikipediaImageDto, nullable: true }) image!: WikipediaImageDto | null;
 }
 
@@ -361,6 +371,12 @@ export class PlaceCardDto extends PlaceSummaryDto {
   @ApiProperty({ type: String, format: "uuid" }) regionId!: string;
   @ApiProperty({ type: GuideCategoryRefDto }) category!: GuideCategoryRefDto;
   @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "description — автоописание импорта Google («… Джерело: Google Maps.»): при тексте ШІ/Google/Вікіпедії его можно скрыть; ручное описание — false",
+  })
+  descriptionAuto!: boolean;
   @ApiProperty({ type: String, nullable: true, example: "https://example.com" }) website!: string | null;
   @ApiProperty({ type: String, nullable: true, description: "Имя в Telegram без @" }) telegram!:
     | string

@@ -2903,6 +2903,8 @@ export interface components {
       url: string;
       /** @description Начало статьи (до ~700 символов) */
       extract: string;
+      /** @description extract обрезан — пометка «скорочено» */
+      truncated: boolean;
       image: components["schemas"]["WikipediaImageDto"] | null;
     };
     PlaceCardDto: {
@@ -2930,6 +2932,8 @@ export interface components {
       regionId: string;
       category: components["schemas"]["GuideCategoryRefDto"];
       description: components["schemas"]["LocalizedTextDto"] | null;
+      /** @description description — автоописание импорта Google («… Джерело: Google Maps.»): при тексте ШІ/Google/Вікіпедії его можно скрыть; ручное описание — false */
+      descriptionAuto: boolean;
       /** @example https://example.com */
       website: string | null;
       /** @description Имя в Telegram без @ */
@@ -10026,6 +10030,8 @@ export interface operations {
         regionId: string;
         /** @description Ширина, px */
         w?: 400 | 1200;
+        /** @description Отпечаток фото из googlePhotos карточки (кэш браузера); сервером не проверяется */
+        v?: string;
       };
       header?: {
         /** @description Correlation id; иначе генерируется */

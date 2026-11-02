@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
+import { interceptBack } from "../telegram.js";
 import { routeUrl } from "./geo.js";
 import { Badge, PlaceBadges, useDistance } from "./parts.js";
 import "./place-card.css";
@@ -156,31 +157,80 @@ function Credit({ authors, fallback }: { authors: Author[]; fallback?: string })
 
 function Lightbox({ slides, start, onClose }: { slides: Slide[]; start: number; onClose: () => void }) {
   const { t } = useT();
-  const [i, setI] = useState(start);
+  const [pos, setI] = useState(start);
+  // Большое фото не загрузилось — показываем превью; не загрузилось и оно — закрываем.
+  const [fallback, setFallback] = useState<ReadonlySet<string>>(new Set());
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const s = slides[i]!;
+  // Галерея могла укоротиться (фото не загрузилось): индекс — в пределах массива; пусто — закрыть.
+  const i = Math.min(pos, Math.max(0, slides.length - 1));
+  const s = slides[i];
   const go = useCallback(
-    (d: number) => setI((v) => (v + d + slides.length) % slides.length),
+    (d: number) => setI((v) => (Math.min(v, slides.length - 1) + d + slides.length) % slides.length),
     [slides.length],
   );
   useEffect(() => {
+    if (!slides.length) onClose();
+  }, [slides.length, onClose]);
+  useEffect(() => {
+    // Фокус — внутрь, по закрытию — обратно на кнопку фото; фон не прокручивается; «Назад» Telegram закрывает.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const releaseBack = interceptBack(onClose);
+    return () => {
+      document.body.style.overflow = overflow;
+      releaseBack();
+      opener?.focus();
+    };
+  }, [onClose]);
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") go(1);
       if (e.key === "ArrowLeft") go(-1);
+      if (e.key === "Tab" && dialogRef.current) {
+        const items = [...dialogRef.current.querySelectorAll<HTMLElement>("button, a[href]")];
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [go, onClose]);
+  if (!s) return null;
+  const src = fallback.has(s.largeUrl) ? s.url : s.largeUrl;
   // В body: у предков экрана могут быть transform/overflow — fixed внутри них не накрыл бы шапку и навигацию.
   return createPortal(
-    <div className="pc-lightbox" role="dialog" aria-modal="true" aria-label={t("miniapp.place.gallery")}>
+    <div
+      ref={dialogRef}
+      className="pc-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("miniapp.place.gallery")}
+    >
       <button ref={closeRef} type="button" className="pc-lb-close" onClick={onClose}>
         <span aria-hidden="true">×</span>
         <span className="pc-sr">{t("miniapp.place.photoClose")}</span>
       </button>
-      <img src={s.largeUrl} alt={s.alt} referrerPolicy="no-referrer" />
+      <img
+        key={src}
+        src={src}
+        alt={s.alt}
+        referrerPolicy="no-referrer"
+        onError={() => {
+          if (src === s.largeUrl && s.url !== s.largeUrl) setFallback((f) => new Set(f).add(s.largeUrl));
+          else onClose();
+        }}
+      />
       <div className="pc-lb-bar">
         {slides.length > 1 && (
           <button type="button" className="pc-lb-nav" onClick={() => go(-1)}>
@@ -211,6 +261,7 @@ function Gallery({ slides: all }: { slides: Slide[] }) {
   const [open, setOpen] = useState<number | null>(null);
   const [active, setActive] = useState(0);
   const slides = all.filter((s) => !failed.has(s.url));
+  const close = useCallback(() => setOpen(null), []);
   if (!slides.length) return null;
   return (
     <section className="pc-gallery" aria-label={t("miniapp.place.gallery")} data-testid="place-photos">
@@ -251,7 +302,7 @@ function Gallery({ slides: all }: { slides: Slide[] }) {
           {t("miniapp.place.photoCounter", { n: active + 1, total: slides.length })}
         </span>
       )}
-      {open !== null && <Lightbox slides={slides} start={open} onClose={() => setOpen(null)} />}
+      {open !== null && <Lightbox slides={slides} start={open} onClose={close} />}
     </section>
   );
 }
@@ -392,9 +443,21 @@ function PlaceView({ place }: { place: PlaceDetail }) {
   const reviews = place.reviews ?? [];
   const wiki = place.wikipedia ?? null;
   const about = place.aiSummary?.text ?? place.summary ?? null;
-  // Автоописание импорта («Ресторан у Яремчі. Джерело: Google Maps.») не нужно, когда есть содержательный текст.
-  const description = place.description && !about && !wiki ? pickLocalized(place.description, locale) : null;
-  const hasGoogle = Boolean(place.rating || reviews.length || amenities.length || place.googlePhotos?.length);
+  // Автоописание импорта («Ресторан у Яремчі. Джерело: Google Maps.», descriptionAuto от api) не нужно, когда есть
+  // содержательный текст; ручное описание (админка, партнёр) показывается всегда.
+  const description =
+    place.description && !(place.descriptionAuto && (about || wiki))
+      ? pickLocalized(place.description, locale)
+      : null;
+  const hasGoogle = Boolean(
+    place.typeLabel ||
+    place.summary ||
+    (place.priceLevel !== null && place.priceLevel !== undefined) ||
+    place.rating ||
+    reviews.length ||
+    amenities.length ||
+    place.googlePhotos?.length,
+  );
   const price =
     place.priceLevel !== null &&
     place.priceLevel !== undefined &&
@@ -603,7 +666,17 @@ function PlaceView({ place }: { place: PlaceDetail }) {
                 </figcaption>
               </figure>
             )}
-            <p className="pc-m0">{wiki.extract}</p>
+            <p className="pc-m0">
+              {wiki.extract}
+              {wiki.truncated && (
+                <>
+                  {" "}
+                  <span className="pc-muted" data-testid="place-wiki-truncated">
+                    {t("miniapp.place.wikiTruncated")}
+                  </span>
+                </>
+              )}
+            </p>
             <ExtLink href={wiki.url} className="pc-textlink">
               {t("miniapp.place.wikiReadMore")}
             </ExtLink>

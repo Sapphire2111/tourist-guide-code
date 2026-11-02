@@ -1136,6 +1136,8 @@ export type PlaceEnrichmentWiki = {
   title: string;
   url: string;
   extract: string;
+  /** extract — начало статьи (обрезано по предложению); в карточке — пометка «скорочено». */
+  truncated?: boolean;
   image: {
     url: string;
     width: number | null;
@@ -1178,6 +1180,13 @@ export interface GooglePhotoUrisTable {
   max_width: number;
   photo_uri: string;
   fetched_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** Суточный счётчик платных запросов к Google из api (0018). day — "YYYY-MM-DD" (UTC). */
+export interface GoogleApiUsageTable {
+  day: ColumnType<string, string, never>;
+  kind: ColumnType<string, string, never>;
+  count: number;
 }
 
 export interface Database {
@@ -1235,4 +1244,5 @@ export interface Database {
   // Богатая картка місця (0018).
   place_enrichments: PlaceEnrichmentsTable;
   google_photo_uris: GooglePhotoUrisTable;
+  google_api_usage: GoogleApiUsageTable;
 }

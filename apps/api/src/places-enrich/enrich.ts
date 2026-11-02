@@ -4,7 +4,13 @@ import type { PlaceEnrichmentGoogle, PlaceEnrichmentWiki } from "../db/index.js"
 import { RequestLimitError, type GooglePlacesClient } from "../places-import/google-client.js";
 import type { MappedPlace } from "../places-import/mapping.js";
 import { hasGoogleData, normalizeDetails } from "./details.js";
-import { findWikipedia, WIKI_CATEGORIES, WikiLimitError, type WikipediaClient } from "./wikipedia.js";
+import {
+  findWikipedia,
+  WIKI_CATEGORIES,
+  WikiLimitError,
+  WikiUnavailableError,
+  type WikipediaClient,
+} from "./wikipedia.js";
 
 export type EnrichedPlace = {
   googlePlaceId: string;
@@ -32,6 +38,8 @@ export type EnrichStats = {
   wikiSearched: number;
   wikiFound: number;
   wikiWithImage: number;
+  /** Вікіпедія временно недоступна (429/5xx/сеть) — эти места не искались, повторить прогоном позже. */
+  wikiUnavailable: number;
   /** Остановлено лимитом запросов Google / Вікіпедії. */
   googleLimitReached: boolean;
   wikiLimitReached: boolean;
@@ -71,6 +79,7 @@ export async function enrich(
     wikiSearched: 0,
     wikiFound: 0,
     wikiWithImage: 0,
+    wikiUnavailable: 0,
     googleLimitReached: false,
     wikiLimitReached: false,
     skippedByCategory: 0,
@@ -125,10 +134,16 @@ export async function enrich(
           if (item.wiki.image) stats.wikiWithImage++;
         }
       } catch (err) {
-        if (!(err instanceof WikiLimitError)) throw err;
-        log(err.message);
-        stats.wikiLimitReached = true;
-        item.wiki = undefined;
+        if (err instanceof WikiUnavailableError) {
+          stats.wikiSearched--;
+          stats.wikiUnavailable++;
+          item.wiki = undefined;
+        } else {
+          if (!(err instanceof WikiLimitError)) throw err;
+          log(err.message);
+          stats.wikiLimitReached = true;
+          item.wiki = undefined;
+        }
       }
     }
     out.push(item);
