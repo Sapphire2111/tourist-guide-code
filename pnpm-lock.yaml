@@ -41,6 +41,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@tg/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@tg/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

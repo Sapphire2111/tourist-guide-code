@@ -1,10 +1,7 @@
 name: CI
 
-# Минуты GitHub Actions на исходе (02.11.2026): основная работа — на self-hosted runner владельца
-# (Windows, метка tg-local, docs/ci-runner.md). На GitHub-раннерах — только то, что требует Linux/Docker
-# (integration) или oasdiff, и только у готового PR (не черновика). Документация в PR CI не запускает.
-# Репозиторий публичный: PR из форков и от Dependabot — чужой код (postinstall и т. п.), на машину владельца
-# не пускаем: check и audit для них идут на ubuntu-latest, e2e и secrets пропускаются.
+# Репозиторий публичный — минуты GitHub-раннеров бесплатны, все job'ы идут на ubuntu-latest параллельно.
+# Self-hosted runner владельца (метка tg-local) остаётся зарегистрированным как запасной, сейчас не используется.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -33,7 +30,7 @@ defaults:
 jobs:
   check:
     name: check + build + load
-    runs-on: ${{ (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || fromJSON('["self-hosted","tg-local"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -41,9 +38,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-          # На self-hosted store pnpm и так на диске; восстановление из кеша GitHub — ~2 мин впустую.
-          package-manager-cache: false
-          cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
+          cache: pnpm
       - uses: actions/cache@v4
         with:
           path: .turbo
@@ -62,8 +57,6 @@ jobs:
           git diff --exit-code -- apps/api/openapi.json packages/api-client/src/generated
           test -z "$(git status --porcelain -- apps/api/openapi.json packages/api-client/src/generated)" || { echo "::error::Спека/клиент устарели: выполните pnpm api:generate и закоммитьте"; exit 1; }
       - name: Нагрузочный сценарий (autocannon, пороги NFR)
-        env:
-          LOAD_PORT: 4420 # не 4320: на машине владельца может идти локальный прогон
         run: pnpm test:load
 
   integration:
@@ -88,28 +81,22 @@ jobs:
       - run: pnpm test:integration
 
   e2e:
-    if: ${{ !(github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) }}
-    runs-on: [self-hosted, tg-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Порты не те, что по умолчанию (4310/4311/4320): на машине владельца может идти локальный прогон.
-    env:
-      E2E_MINIAPP_PORT: 4410
-      E2E_ADMIN_PORT: 4411
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-          package-manager-cache: false
+          cache: pnpm
       - uses: actions/cache@v4
         with:
           path: .turbo
           key: turbo-e2e-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-e2e-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      # Браузеры остаются на машине раннера между запусками; системные зависимости на Windows не нужны.
-      - run: pnpm --filter @tg/e2e exec playwright install chromium
+      - run: pnpm --filter @tg/e2e exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -122,7 +109,7 @@ jobs:
 
   audit:
     name: audit (зависимости)
-    runs-on: ${{ (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || fromJSON('["self-hosted","tg-local"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -137,12 +124,11 @@ jobs:
 
   secrets:
     name: secrets (gitleaks)
-    if: ${{ !(github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) }}
-    runs-on: [self-hosted, tg-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GITLEAKS_VERSION: 8.28.0
-      GITLEAKS_SHA256: da6458e8864af553807de1c46a7a8eac0880bd6b99ba56288e87e86a45af884f
+      GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
     steps:
       - uses: actions/checkout@v5
         with:
@@ -150,11 +136,11 @@ jobs:
       # Бинарь из релиза (MIT), без лицензионного ключа gitleaks-action; сканируется вся история.
       - name: Установить gitleaks
         run: |
-          curl -sSfL -o gitleaks.zip "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_windows_x64.zip"
-          echo "${GITLEAKS_SHA256}  gitleaks.zip" | sha256sum -c -
-          unzip -o -q gitleaks.zip gitleaks.exe
-          rm gitleaks.zip
-      - run: ./gitleaks.exe git --redact --verbose --exit-code 1 .
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          rm gitleaks.tgz
+      - run: ./gitleaks git --redact --verbose --exit-code 1 .
 
   openapi-diff:
     name: openapi-diff (ломающие изменения API)

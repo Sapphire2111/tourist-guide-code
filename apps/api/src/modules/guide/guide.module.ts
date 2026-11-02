@@ -7,6 +7,7 @@ import {
   GuideEmergencyContactsController,
   GuidePlacesController,
 } from "./guide.controller.js";
+import { GuideRepository } from "./guide.repository.js";
 import { GuideService } from "./guide.service.js";
 
 /**
@@ -21,7 +22,7 @@ import { GuideService } from "./guide.service.js";
     FavoritesController,
     GuideEmergencyContactsController,
   ],
-  providers: [GuideService],
+  providers: [GuideRepository, GuideService],
   exports: [GuideService],
 })
 export class GuideModule {}

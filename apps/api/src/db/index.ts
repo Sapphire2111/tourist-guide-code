@@ -148,6 +148,8 @@ export {
   type PromotionAdLabel,
   type PromotionStatus,
 } from "./schema.js";
+// Публичный каталог (0014, ADR-0019).
+export { type Favorite, type NewFavorite } from "./schema.js";
 export { setLocalLockTimeout } from "./lock-timeout.js";
 // Каталог (0012, ADR-0017).
 export {
