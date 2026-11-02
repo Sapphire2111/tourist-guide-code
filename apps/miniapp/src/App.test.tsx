@@ -100,7 +100,7 @@ describe("роутинг и ролевой режим", () => {
     });
     expect(screen.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeDefined();
     // Без сессии Telegram кабинет не открывается (данные — /partner/* с сессией).
-    expect(screen.getByText("Кабінет партнера відкривається з Telegram.")).toBeDefined();
+    expect(screen.getByText("Кабінет партнера відкривається в Telegram.")).toBeDefined();
   });
 
   it("партнёр: модуль кабинета выключен флагом — пункта нет", async () => {
@@ -120,7 +120,7 @@ describe("роутинг и ролевой режим", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByRole("heading", { level: 1, name: "Сторінку не знайдено" })).toBeDefined();
-    expect(screen.queryByText("Кабінет партнера відкривається з Telegram.")).toBeNull();
+    expect(screen.queryByText("Кабінет партнера відкривається в Telegram.")).toBeNull();
   });
 
   it("гость в кабинете партнёра — отказ; «Назад» ведёт на главную без новой записи истории", async () => {

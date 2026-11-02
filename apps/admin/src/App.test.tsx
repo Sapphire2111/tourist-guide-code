@@ -104,7 +104,7 @@ describe("вход", () => {
     fireEvent.change(screen.getByLabelText("Пароль"), { target: { value: "wrong" } });
     fireEvent.click(screen.getByRole("button", { name: "Увійти" }));
     await flush();
-    expect(screen.getByRole("alert").textContent).toContain("Невірний логін або пароль.");
+    expect(screen.getByRole("alert").textContent).toContain("Неправильний логін або пароль.");
     expect((screen.getByLabelText("Пароль") as HTMLInputElement).value).toBe("");
     expect(getToken()).toBeNull();
   });
@@ -309,7 +309,7 @@ describe("места", () => {
     const alert = within(status).getByRole("alert");
     expect(alert.textContent).toContain("Місце не можна опублікувати");
     expect(alert.textContent).toContain("Немає опису українською.");
-    expect(alert.textContent).toContain("Не вказано точку на мапі");
+    expect(alert.textContent).toContain("Не вказано точку на карті");
     fixed = true;
     fireEvent.click(within(status).getByRole("button", { name: "Опублікувати" }));
     await flush();
@@ -418,6 +418,6 @@ describe("QR и ошибки", () => {
     render(<App api={api} />);
     await flush();
     await flush();
-    expect(screen.getByRole("alert").textContent).toBe("Не налаштовано ім’я бота: друк QR недоступний.");
+    expect(screen.getByRole("alert").textContent).toBe("Не налаштовано ім'я бота: друк QR недоступний.");
   });
 });

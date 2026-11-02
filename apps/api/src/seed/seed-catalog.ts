@@ -185,7 +185,7 @@ export const SEED_PLACES: readonly {
     category: "hotels",
     locality: "tatariv",
     name: { uk: "Готель «Тестова Смерека»", en: "Test Smereka hotel" },
-    description: { uk: "Затишний готель біля річки Прут: сніданки, парковка, трансфер до підйомників." },
+    description: { uk: "Затишний готель біля річки Прут: сніданки, паркування, трансфер до підйомників." },
     address: { uk: "вул. Тестова, 1, Татарів" },
     at: { lon: 24.5712, lat: 48.3478 },
     phone: "+380000000101",

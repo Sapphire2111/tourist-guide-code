@@ -213,7 +213,7 @@ describe("P01/P13 дашборд", () => {
 
   it("владелец: статус, комментарий модератора, ссылки P06/P07/P09/P10", async () => {
     setup(<PartnerDashboard />, { me: () => Promise.resolve({ organizations: [org()] }) });
-    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібні доопрацювання");
+    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібно доопрацювати");
     expect(screen.getByTestId("moderator-comment").textContent).toContain("Додайте фото фасаду");
     expect(screen.getByRole("link", { name: "Редагувати заклад" }).getAttribute("href")).toBe(
       `#/partner/place/${PLACE}`,
@@ -277,14 +277,14 @@ describe("P06 редактор", () => {
       ),
     );
     setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place({ missingFields: [] })), submit });
-    fireEvent.click(await screen.findByLabelText("Погоджуюсь з умовами для партнерів"));
+    fireEvent.click(await screen.findByLabelText("Погоджуюся з умовами для партнерів"));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Надіслати на модерацію" }));
     });
     expect(screen.getByTestId("missing-fields").textContent).toBe(
       "Для модерації заповніть: Фото, Графік роботи",
     );
-    expect(screen.getByTestId("submit-message").textContent).toContain("Заповніть обов’язкові поля");
+    expect(screen.getByTestId("submit-message").textContent).toContain("Заповніть обов'язкові поля");
   });
 
   it("на модерации — только чтение", async () => {
@@ -469,7 +469,7 @@ describe("исправления ревью", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Зберегти$/ }));
     });
     expect(updatePlace).not.toHaveBeenCalled();
-    expect(screen.getByTestId("editor-message").textContent).toBe("Назва обов’язкова.");
+    expect(screen.getByTestId("editor-message").textContent).toBe("Назва обов'язкова.");
   });
 
   describe("uploadPhoto", () => {
@@ -561,7 +561,7 @@ describe("исправления ревью", () => {
     // Показ «до» — день по Києву, не следующий.
     expect((await screen.findByTestId("offer-item")).textContent).toContain("до 10.11.2026");
     fireEvent.change(screen.getByLabelText("Назва акції"), { target: { value: "Чан у подарунок" } });
-    fireEvent.change(screen.getByLabelText("Кінець (необов’язково)"), { target: { value: "2026-11-10" } });
+    fireEvent.change(screen.getByLabelText("Кінець (необов'язково)"), { target: { value: "2026-11-10" } });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Створити акцію" }));
     });
@@ -573,7 +573,7 @@ describe("исправления ревью", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Змінити: Знижка 10%" }));
-    expect((screen.getByLabelText("Кінець (необов’язково)") as HTMLInputElement).value).toBe("2026-11-10");
+    expect((screen.getByLabelText("Кінець (необов'язково)") as HTMLInputElement).value).toBe("2026-11-10");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Зберегти акцію" }));
     });
@@ -583,10 +583,10 @@ describe("исправления ревью", () => {
       expect.objectContaining({ endsAt: "2026-11-10T21:59:59.000Z" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "В архів: Знижка 10%" }));
+    fireEvent.click(screen.getByRole("button", { name: "До архіву: Знижка 10%" }));
     expect(archiveOffer).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Так, в архів" }));
+      fireEvent.click(screen.getByRole("button", { name: "Так, до архіву" }));
     });
     expect(archiveOffer).toHaveBeenCalledWith(PLACE, "o1");
   });
