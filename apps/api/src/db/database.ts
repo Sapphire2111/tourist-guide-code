@@ -51,9 +51,9 @@ export function onIdleClientError(err: Error): void {
   console.error("PostgreSQL: ошибка простаивающего соединения пула:", err.message);
 }
 
-/** Логирует обрыв соединения, выданного из пула (запрос/транзакция идёт), вместо падения процесса. */
+/** Логирует обрыв соединения пула (в т. ч. выданного под запрос/транзакцию) вместо падения процесса. */
 export function onActiveClientError(err: Error): void {
-  console.error("PostgreSQL: обрыв занятого соединения пула:", err.message);
+  console.error("PostgreSQL: обрыв соединения пула:", err.message);
 }
 
 /**
@@ -66,7 +66,15 @@ export function createDatabase({
   tenancy,
   defaultTenant,
 }: DatabaseOptions): Db {
-  const pool = new pg.Pool({ connectionString, max: maxConnections, application_name: "tg-api" });
+  // keepAlive и таймаут подключения: Neon может «тихо» потерять сокет или долго просыпаться — без них запрос/connect
+  // висят до TCP-таймаута ОС (минуты), а очередь пула растёт.
+  const pool = new pg.Pool({
+    connectionString,
+    max: maxConnections,
+    application_name: "tg-api",
+    keepAlive: true,
+    connectionTimeoutMillis: 10_000,
+  });
   // Ошибка простаивающего соединения (рестарт/обрыв БД) приходит событием пула; без обработчика
   // Node завершает процесс. Пул сам выбрасывает сломанное соединение и потом откроет новое.
   pool.on("error", onIdleClientError);

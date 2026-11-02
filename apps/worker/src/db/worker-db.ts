@@ -17,11 +17,13 @@ export interface WorkerDb {
 export function createWorkerDb(connectionString: string): WorkerDb {
   // max 4: очистка ПДн (раз в час) + запись событий (concurrency очереди analytics — 5, запрос короткий) + ресайз
   // фото (короткие вызовы функций между операциями с файлами).
-  const pool = new pg.Pool({ connectionString, max: 4 });
+  // keepAlive и таймаут подключения — как в api (Neon может «тихо» потерять сокет или долго просыпаться).
+  const pool = new pg.Pool({ connectionString, max: 4, keepAlive: true, connectionTimeoutMillis: 10_000 });
+  const logError = (err: Error) => console.error("PostgreSQL: обрыв соединения пула:", err.message);
   // Ошибка простаивающего соединения (рестарт БД) не должна ронять процесс: пул пересоздаст соединение.
-  pool.on("error", () => undefined);
+  pool.on("error", logError);
   // Обрыв занятого соединения приходит на сам client — без слушателя процесс падает; запрос и так получит ошибку.
-  pool.on("connect", (client) => client.on("error", () => undefined));
+  pool.on("connect", (client) => client.on("error", logError));
   return {
     purger: auditPiiPurger(pool),
     analytics: analyticsWriter(pool),

@@ -28,7 +28,7 @@ describe("createDatabase", () => {
 
     expect(() => client.emit("error", new Error("Connection terminated unexpectedly"))).not.toThrow();
     expect(error).toHaveBeenCalledWith(
-      expect.stringContaining("занятого"),
+      expect.stringContaining("обрыв соединения"),
       "Connection terminated unexpectedly",
     );
     await db.destroy();
