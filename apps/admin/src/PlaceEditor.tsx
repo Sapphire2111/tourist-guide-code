@@ -234,17 +234,18 @@ function PlaceStatus({ place, onChange }: { place: Place; onChange: (p: Place) =
         </h2>
         <Field label={t("admin.reason")} value={reason} onChange={setReason} />
         <div style={row}>
-          {(s === "draft" || s === "suspended" || s === "archived") && (
-            <SmallButton disabled={acting} onClick={() => act(() => transition("publish"))}>
-              {t("admin.place.publish")}
-            </SmallButton>
-          )}
+          {(s === "draft" || s === "suspended" || s === "archived") &&
+            !(s === "draft" && place.organizationId) && (
+              <SmallButton disabled={acting} onClick={() => act(() => transition("publish"))}>
+                {t("admin.place.publish")}
+              </SmallButton>
+            )}
           {s === "published" && (
             <SmallButton disabled={acting} onClick={() => act(() => transition("suspend"))}>
               {t("admin.place.suspend")}
             </SmallButton>
           )}
-          {s !== "archived" && (
+          {s !== "archived" && !MODERATION_STATUSES.includes(s) && (
             <SmallButton disabled={acting} onClick={() => act(() => transition("archive"))}>
               {t("admin.place.archive")}
             </SmallButton>

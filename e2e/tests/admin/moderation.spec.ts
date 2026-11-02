@@ -172,15 +172,32 @@ test("шаблон — назва, рішення — з іменем того, 
   await expect(page.getByText(/admin@example\.com/)).toBeVisible();
 });
 
-test("публікація партнерського місця з каталогу: зрозуміла відмова", async ({ page }) => {
+test("партнерське місце, що ще не публікувалось: у чернетці немає «Опублікувати», з архіву — зрозуміла відмова", async ({
+  page,
+}) => {
+  const state = adminMockState.get(page)!;
+  const base = { ...state.places[0]!, organizationId: "00000000-0000-4000-8000-000000000903" };
+  state.places.push({ ...base, id: "00000000-0000-4000-8000-000000000888", status: "draft" });
+  state.places.push({ ...base, id: "00000000-0000-4000-8000-000000000889", status: "archived" });
+  await login(page, "/#/places/00000000-0000-4000-8000-000000000888");
+  await expect(page.getByRole("button", { name: "Перевірити готовність" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Опублікувати" })).toHaveCount(0);
+
+  await page.goto("/#/places/00000000-0000-4000-8000-000000000889");
+  await page.getByRole("button", { name: "Опублікувати" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Заклад партнера публікується лише через модерацію.");
+});
+
+test("місце на модерації: немає «В архів» й «Опублікувати»", async ({ page }) => {
   const state = adminMockState.get(page)!;
   state.places.push({
     ...state.places[0]!,
-    id: "00000000-0000-4000-8000-000000000888",
-    status: "draft",
-    partnerOwned: true,
+    id: "00000000-0000-4000-8000-000000000890",
+    status: "pending_moderation",
+    organizationId: "00000000-0000-4000-8000-000000000903",
   });
-  await login(page, "/#/places/00000000-0000-4000-8000-000000000888");
-  await page.getByRole("button", { name: "Опублікувати" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Заклад партнера публікується лише через модерацію.");
+  await login(page, "/#/places/00000000-0000-4000-8000-000000000890");
+  await expect(page.getByRole("button", { name: "Перевірити готовність" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "В архів" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Опублікувати" })).toHaveCount(0);
 });

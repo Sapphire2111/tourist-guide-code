@@ -73,7 +73,7 @@ function Status({ c }: { c: Case }) {
 }
 
 export function ModerationScreen({ id }: { id?: string }) {
-  return id ? <CaseScreen id={id} /> : <QueueScreen />;
+  return id ? <CaseScreen key={id} id={id} /> : <QueueScreen />;
 }
 
 function QueueScreen() {

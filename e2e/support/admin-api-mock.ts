@@ -440,7 +440,9 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (sub === "publish-check") return json(route, { problems: publishProblems(place) });
         if (sub === "publish") {
           state.publishCalls += 1;
-          if (place.partnerOwned) return error(route, 409, "CONFLICT", "errors.place.moderationRequired");
+          // Место партнёра, ни разу не опубликованное: первая публикация только решением модерации.
+          if (place.organizationId && !place.firstPublishedAt)
+            return error(route, 409, "CONFLICT", "errors.place.moderationRequired");
           const problems = publishProblems(place);
           if (problems.length)
             return error(route, 422, "UNPROCESSABLE", "errors.place.notPublishable", {
