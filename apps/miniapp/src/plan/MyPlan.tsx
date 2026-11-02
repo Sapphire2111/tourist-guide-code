@@ -416,7 +416,10 @@ function ScenarioItemRow({ item }: { item: PlanItem }) {
     <li style={card} data-testid="plan-item">
       {item.time && <span style={{ fontWeight: 700, marginRight: 8 }}>{item.time}</span>}
       {item.place ? (
-        <Link to={`/place/${item.place.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+        <Link
+          to={`/place/${encodeURIComponent(item.place.id)}`}
+          style={{ fontSize: "1.2rem", fontWeight: 700 }}
+        >
           {name}
         </Link>
       ) : (
@@ -545,33 +548,114 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
         )}
       </section>
       <Live message={status} testId="plan-status" />
-      {plan.schedule.map((d) => {
-        const date = dayDate(plan.startDate, d.day, locale);
-        const options = plan.options.find((o) => o.day === d.day)?.slots ?? [];
-        return (
-          <section key={d.day} aria-labelledby={`day-${d.day}`} data-testid="plan-day" className="plan-day">
-            <h2 id={`day-${d.day}`} style={{ fontSize: "1.25rem" }}>
-              {t("miniapp.plan.day", { n: d.day })}
-              {date && <span className="kosiv-muted plan-day-date"> · {date}</span>}
-            </h2>
-            {PLAN_SLOTS.map((slot) => (
-              <SlotSection
-                key={slot}
-                day={d.day}
-                slot={slot}
-                items={d.items.filter((i) => i.slot === slot)}
-                options={options.find((s) => s.slot === slot)?.options ?? []}
-                edit={edit}
-              />
-            ))}
-          </section>
-        );
-      })}
+      {plan.schedule.map((d) => (
+        <DaySection
+          key={d.day}
+          day={d}
+          date={dayDate(plan.startDate, d.day, locale)}
+          initiallyOpen={d.day === openDay(plan.startDate, plan.schedule.length)}
+          options={plan.options.find((o) => o.day === d.day)?.slots ?? []}
+          edit={edit}
+        />
+      ))}
     </Stack>
   );
 }
 
-/** Часть дня: отмеченные (в плане) и варианты на выбор; после выбора варианты свёрнуты в «Ще варіанти». */
+/** Какой день открыт сначала: сегодняшний по дате начала, иначе первый. */
+function openDay(start: string | null, days: number, now = new Date()): number {
+  if (!start) return 1;
+  const [y, m, d] = start.split("-").map(Number);
+  if (!y || !m || !d) return 1;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const n = Math.round((today.getTime() - new Date(y, m - 1, d).getTime()) / 86_400_000) + 1;
+  return n >= 1 && n <= days ? n : 1;
+}
+
+/** Кнопка-заголовок раздела: свернуть/развернуть (aria-expanded, aria-controls). */
+function Disclosure({
+  open,
+  onToggle,
+  controls,
+  children,
+  testId,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="plan-toggle"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      data-testid={testId}
+    >
+      <span className="plan-toggle-text">{children}</span>
+      <span className="plan-toggle-icon" aria-hidden="true">
+        {open ? "−" : "+"}
+      </span>
+    </button>
+  );
+}
+
+/** День плана: свёрнут — заголовок и «Обрано: N»; развёрнут — части дня. */
+function DaySection({
+  day,
+  date,
+  initiallyOpen,
+  options,
+  edit,
+}: {
+  day: PlanDay;
+  date: string | null;
+  initiallyOpen: boolean;
+  options: { slot: PlanSlot; options: PlanOption[] }[];
+  edit: Edit;
+}) {
+  const { t } = useT();
+  const [open, setOpen] = useState(initiallyOpen);
+  const bodyId = `day-${day.day}-body`;
+  return (
+    <section aria-labelledby={`day-${day.day}`} data-testid="plan-day" data-open={open} className="plan-day">
+      <h2 id={`day-${day.day}`} className="plan-day-title">
+        <Disclosure open={open} onToggle={() => setOpen((o) => !o)} controls={bodyId}>
+          {t("miniapp.plan.day", { n: day.day })}
+          {date && <span className="kosiv-muted plan-day-date"> · {date}</span>}
+          <span className="plan-day-count" data-testid="day-chosen">
+            {t("miniapp.plan.chosenCount", { n: day.items.filter((i) => i.slot !== "rain").length })}
+          </span>
+        </Disclosure>
+      </h2>
+      {open && (
+        <div id={bodyId} className="plan-day-body">
+          {PLAN_SLOTS.map((slot) => (
+            <SlotSection
+              key={slot}
+              day={day.day}
+              slot={slot}
+              items={day.items.filter((i) => i.slot === slot)}
+              options={options.find((s) => s.slot === slot)?.options ?? []}
+              edit={edit}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Сколько вариантов видно сразу; остальные — в «Ще варіанти». */
+const OPTIONS_VISIBLE = 3;
+
+/**
+ * Часть дня: отмеченные (в плане) и варианты на выбор — сразу до трёх, остальные в «Ще варіанти»; после выбора все
+ * варианты свёрнуты. План Б «якщо дощ» свёрнут целиком, пока в нём ничего не выбрано.
+ */
 function SlotSection({
   day,
   slot,
@@ -587,14 +671,19 @@ function SlotSection({
 }) {
   const { t } = useT();
   const headingId = `day-${day}-${slot}`;
-  const optionList = options.length ? (
+  const [open, setOpen] = useState(slot !== "rain" || items.length > 0);
+  const list = (opts: PlanOption[]) => (
     <ul className="plan-choices" aria-label={t("miniapp.plan.options")}>
-      {options.map((o) => (
+      {opts.map((o) => (
         <OptionRow key={o.place.id} day={day} slot={slot} option={o} edit={edit} />
       ))}
     </ul>
-  ) : (
-    <p className="kosiv-muted">{t("miniapp.plan.noOptions")}</p>
+  );
+  const more = (opts: PlanOption[]) => (
+    <details className="plan-more">
+      <summary>{t("miniapp.plan.moreOptions", { n: opts.length })}</summary>
+      {list(opts)}
+    </details>
   );
   const body = (
     <>
@@ -608,15 +697,15 @@ function SlotSection({
       ) : (
         <p className="kosiv-muted plan-note">{t("miniapp.plan.chosenNone")}</p>
       )}
-      {items.length && options.length ? (
-        <details className="plan-more">
-          <summary>{t("miniapp.plan.moreOptions", { n: options.length })}</summary>
-          {optionList}
-        </details>
+      {!options.length ? (
+        <p className="kosiv-muted">{t("miniapp.plan.noOptions")}</p>
+      ) : items.length ? (
+        more(options)
       ) : (
         <>
           <h4 className="plan-options-title">{t("miniapp.plan.options")}</h4>
-          {optionList}
+          {list(options.slice(0, OPTIONS_VISIBLE))}
+          {options.length > OPTIONS_VISIBLE && more(options.slice(OPTIONS_VISIBLE))}
         </>
       )}
     </>
@@ -628,9 +717,19 @@ function SlotSection({
       data-testid={`plan-slot-${slot}`}
     >
       <h3 id={headingId} className="plan-slot-title">
-        {t(`miniapp.plan.slot.${slot}` as MessageKey)}
+        {slot === "rain" ? (
+          <Disclosure open={open} onToggle={() => setOpen((o) => !o)} controls={`${headingId}-body`}>
+            {t("miniapp.plan.slot.rain")}
+          </Disclosure>
+        ) : (
+          t(`miniapp.plan.slot.${slot}` as MessageKey)
+        )}
       </h3>
-      {body}
+      {open && (
+        <div id={`${headingId}-body`} className="plan-slot-body">
+          {body}
+        </div>
+      )}
     </section>
   );
 }
@@ -744,7 +843,10 @@ function OptionRow({
           </span>
         )}
       </span>
-      <Link to={`/place/${option.place.id}`} aria-label={t("miniapp.plan.details", { name })}>
+      <Link
+        to={`/place/${encodeURIComponent(option.place.id)}`}
+        aria-label={t("miniapp.plan.details", { name })}
+      >
         {t("miniapp.plan.detailsShort")}
       </Link>
     </Choice>
@@ -779,7 +881,10 @@ function ChosenRow({ item, edit }: { item: PlanItem; edit: Edit }) {
       {item.note && <span className="plan-reason">{pickLocalized(item.note, locale)}</span>}
       <span className="plan-chips">
         {item.place && (
-          <Link to={`/place/${item.place.id}`} aria-label={t("miniapp.plan.details", { name })}>
+          <Link
+            to={`/place/${encodeURIComponent(item.place.id)}`}
+            aria-label={t("miniapp.plan.details", { name })}
+          >
             {t("miniapp.plan.detailsShort")}
           </Link>
         )}

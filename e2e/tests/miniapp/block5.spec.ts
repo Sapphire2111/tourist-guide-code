@@ -207,8 +207,15 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Водоспад Пробій");
     await day1.getByRole("checkbox", { name: "Колиба «Ватра»" }).check();
     await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Колиба «Ватра»");
+    // День 2 свёрнут; план Б свёрнут — раскрываем.
+    await expect(
+      page
+        .getByTestId("plan-day")
+        .nth(1)
+        .getByRole("button", { name: /День 2/ }),
+    ).toHaveAttribute("aria-expanded", "false");
     const rain = day1.getByTestId("plan-slot-rain");
-    await expect(rain.getByRole("heading", { name: "Якщо дощ — план Б" })).toBeVisible();
+    await rain.getByRole("button", { name: "Якщо дощ — план Б" }).click();
     await rain.getByRole("checkbox", { name: "Музей писанки" }).check();
     await expect(page.getByTestId("plan-status")).toHaveText("Додано в план: Музей писанки");
 

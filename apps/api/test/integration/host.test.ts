@@ -373,7 +373,7 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
     });
   });
 
-  it("свой план (0018): параметры поездки, варианты из каталога, галочка — пункт в части дня", async () => {
+  it("свой план (0019): параметры поездки, варианты из каталога, галочка — пункт в части дня", async () => {
     const plan = await planner.createPlan(GUEST, {
       regionId: base.regions.a,
       days: 2,

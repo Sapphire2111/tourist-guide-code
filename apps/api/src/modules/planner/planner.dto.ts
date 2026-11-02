@@ -93,7 +93,7 @@ export const OPTION_REASONS = [
 ] as const satisfies readonly OptionReason[];
 export const TRAVEL_MODES = ["walk", "car", "transport"] as const satisfies readonly Travel[];
 
-/** Параметры поездки (0018), любые из полей; при создании по умолчанию — 2 дорослих, 0 дітей, з авто. */
+/** Параметры поездки (0019), любые из полей; при создании по умолчанию — 2 дорослих, 0 дітей, з авто. */
 export class PlanTripInputDto extends PlannerRegionQueryDto {
   @ApiPropertyOptional({ type: "integer", minimum: 1, maximum: PLAN_PEOPLE_MAX, description: "Дорослих" })
   @IsOptional()

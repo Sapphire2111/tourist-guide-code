@@ -350,7 +350,7 @@ describe("C09 Мій план", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: "Недоступно. Замініть пункт." })),
     );
     expect(updatePlan).toHaveBeenLastCalledWith(plan().id, { remove: "i2" });
-    expect(screen.getAllByText("Ще нічого не обрано — позначте варіанти нижче.")).toHaveLength(4);
+    expect(screen.getAllByText("Ще нічого не обрано — позначте варіанти нижче.")).toHaveLength(3);
   });
 });
 

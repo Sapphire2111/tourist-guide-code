@@ -1,38 +1,17 @@
-// Главная в стиле «Сучасна Косівщина»: сезонный герой, места выбранного курорта, быстрый поиск сезона.
+// Главная в стиле «Сучасна Косівщина»: места региона (курорта), быстрый поиск сезона.
 // Только реальные данные мест (GET /places/search); сезонные слоганы — общий текст спецификации.
 import { Link, useT } from "@tg/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useGuide, type Async } from "../guide/context.js";
 import type { PlaceSummary } from "../guide/types.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
-import { ICONS, Rosette } from "./Ornament.js";
+import { ICONS } from "./Ornament.js";
 import { useResort, useResortCaption } from "./ResortProvider.js";
-import { SeasonSwitcher } from "./Chrome.js";
 import { SEASON_CONFIG } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
 /** Сколько мест в ленте главной. */
 export const HOME_PLACES = 8;
-/** Задержка запроса ленты после смены курорта, мс. */
-export const RESORT_DEBOUNCE_MS = 250;
-
-export function SeasonHero() {
-  const { t } = useT();
-  const { season } = useSeason();
-  const cfg = SEASON_CONFIG[season];
-  return (
-    <section className="kosiv-card kosiv-hero" aria-label={t(cfg.badge)} data-testid="season-hero">
-      <Rosette className="kosiv-hero-rosette" />
-      <p className="kosiv-badge">
-        <span aria-hidden="true">{cfg.icon}</span>
-        {t(cfg.badge)}
-      </p>
-      <p className="kosiv-hero-title">{t(cfg.title)}</p>
-      <blockquote className="kosiv-quote">«{t(cfg.quote)}»</blockquote>
-      <SeasonSwitcher />
-    </section>
-  );
-}
 
 /** Ссылка поиска мест по запросу (экран /search). */
 export function searchPath(q?: string): string {
@@ -73,24 +52,17 @@ export function ResortPlaces() {
   const caption = useResortCaption();
   const area = resort.area;
   const [places, setPlaces] = useState<Async<PlaceSummary[]>>({ status: "loading" });
-  const firstLoad = useRef(true);
   useEffect(() => {
     if (!regionId) return;
     let alive = true;
     // Смена курорта: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
     setPlaces((p) => (p.status === "ready" ? p : { status: "loading" }));
-    // Быстрое листание свайпера — один запрос на остановку (первая загрузка — сразу).
-    const delay = firstLoad.current ? 0 : RESORT_DEBOUNCE_MS;
-    firstLoad.current = false;
-    const timer = window.setTimeout(() => {
-      api.search({ ...(area ? { point: area.center, radius: area.radius } : {}), limit: HOME_PLACES }).then(
-        (data) => alive && setPlaces({ status: "ready", data }),
-        (error: unknown) => alive && setPlaces({ status: "error", error }),
-      );
-    }, delay);
+    api.search({ ...(area ? { point: area.center, radius: area.radius } : {}), limit: HOME_PLACES }).then(
+      (data) => alive && setPlaces({ status: "ready", data }),
+      (error: unknown) => alive && setPlaces({ status: "error", error }),
+    );
     return () => {
       alive = false;
-      window.clearTimeout(timer);
     };
     // area определяется resort.id.
     // eslint-disable-next-line react-hooks/exhaustive-deps

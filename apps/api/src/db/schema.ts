@@ -913,11 +913,11 @@ export type UserPlanItemRecord = {
   alternatives: string[];
   /** Исходное место пункта сценария, если пункт заменён. */
   replacedPlaceId: string | null;
-  /** Часть дня (0018): пункт, выбранный из вариантов; у пунктов сценария нет — часть дня по timeHint. */
+  /** Часть дня (0019): пункт, выбранный из вариантов; у пунктов сценария нет — часть дня по timeHint. */
   slot?: PlanSlot;
 };
 
-/** Части дня «Мій план» (0018); rain — запасной план «якщо дощ». */
+/** Части дня «Мій план» (0019); rain — запасной план «якщо дощ». */
 export const PLAN_SLOTS = ["morning", "afternoon", "evening", "rain"] as const;
 export type PlanSlot = (typeof PLAN_SLOTS)[number];
 
@@ -930,13 +930,13 @@ export interface UserPlansTable {
   title_i18n: Jsonb<LocalizedText>;
   start_date: Nullable<string>;
   items: JsonbArray<UserPlanItemRecord>;
-  /** Параметры поездки (0018). */
+  /** Параметры поездки (0019). */
   adults: ColumnType<number, number | undefined, number>;
   children: ColumnType<number, number | undefined, number>;
   with_car: ColumnType<boolean, boolean | undefined, boolean>;
-  /** Дней в плане (1–14); NULL — у планов до 0018, берётся из пунктов. */
+  /** Дней в плане (1–14); NULL — у планов до 0019, берётся из пунктов. */
   days: Nullable<number>;
-  /** Где живёт турист (0018): от неё — «пішки / потрібен транспорт». */
+  /** Где живёт турист (0019): от неё — «пішки / потрібен транспорт». */
   base_place_id: Nullable<string>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;

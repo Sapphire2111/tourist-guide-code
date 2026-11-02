@@ -8,9 +8,9 @@ import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
-import { HOME_PLACES, RESORT_DEBOUNCE_MS, ResortPlaces, SeasonTags } from "./HomeParts.js";
+import { HOME_PLACES, ResortPlaces, SeasonTags } from "./HomeParts.js";
 import { ResortProvider, useResort } from "./ResortProvider.js";
-import { hasResorts, RESORTS } from "./resorts.js";
+import { RESORTS } from "./resorts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
 import {
   readSeason,
@@ -150,13 +150,23 @@ const place = {
   adLabel: null,
 };
 
-describe("свайпер курортов", () => {
-  it("главная: выбор курорта — поиск в радиусе от его центра; «Усе Прикарпаття» — весь регион", async () => {
+function PickYaremche() {
+  const { setResort } = useResort();
+  return (
+    <button type="button" onClick={() => setResort("yaremche")}>
+      pick
+    </button>
+  );
+}
+
+describe("курорты", () => {
+  it("главная: весь регион; курорт — поиск в радиусе от его центра, прежняя лента до ответа", async () => {
     const search = vi.fn(async () => [place]);
     render(
       <GuideProvider value={env(search)}>
         <ResortProvider>
           <AppTop path="/" profile={false} />
+          <PickYaremche />
           <ResortPlaces />
         </ResortProvider>
       </GuideProvider>,
@@ -166,14 +176,12 @@ describe("свайпер курортов", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     expect(screen.getByTestId("home-place").textContent).toContain("Яремче, вул. Свободи, 1");
     const yaremche = RESORTS.find((r) => r.id === "yaremche")!;
-    // Быстрое листание: Микуличин → Яремче — один запрос после паузы, по последнему выбору.
     const before = search.mock.calls.length;
     const shown = screen.getByTestId("home-places");
-    fireEvent.click(screen.getByRole("button", { name: /Микуличин/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Яремче/ }));
+    fireEvent.click(screen.getByRole("button", { name: "pick" }));
     // Пока идёт запрос, прежняя лента на месте.
     expect(screen.getByTestId("home-places")).toBe(shown);
-    await act(async () => new Promise((r) => setTimeout(r, RESORT_DEBOUNCE_MS + 50)));
+    await flush();
     expect(search.mock.calls.length).toBe(before + 1);
     expect(search).toHaveBeenLastCalledWith({
       point: yaremche.area!.center,
@@ -205,6 +213,38 @@ describe("свайпер курортов", () => {
       radius: bukovel.area!.radius,
     });
     expect(screen.getByTestId("resort-caption").textContent).toBe("Поблизу: Буковель (до 5 км від центру)");
+  });
+
+  it("шапка главной: без свайпера курортов; сезон — под шестерёнкой", () => {
+    const view = render(
+      <SeasonProvider>
+        <AppTop path="/" profile={false} />
+      </SeasonProvider>,
+    );
+    expect(screen.queryByTestId("resort-swiper")).toBeNull();
+    expect(screen.getByTestId("app-settings").hidden).toBe(true);
+    const gear = screen.getByRole("button", { name: "Налаштування" });
+    expect(gear.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(gear);
+    expect(gear.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("app-settings").hidden).toBe(false);
+    // Escape закрывает панель.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(gear.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByTestId("app-settings").hidden).toBe(true);
+    // Выбор сезона применяется и закрывает панель.
+    fireEvent.click(gear);
+    fireEvent.click(screen.getByRole("button", { name: /Весна/ }));
+    expect(document.documentElement.dataset.season).toBe("spring");
+    expect(gear.getAttribute("aria-expanded")).toBe("false");
+    // Переход на другой экран закрывает панель.
+    fireEvent.click(gear);
+    view.rerender(
+      <SeasonProvider>
+        <AppTop path="/help" profile={false} />
+      </SeasonProvider>,
+    );
+    expect(screen.getByTestId("app-settings").hidden).toBe(true);
   });
 
   it("шапка вне главной — ссылка на главную, без свайпера на экранах без фильтра", () => {
@@ -261,14 +301,6 @@ describe("курорт и контекст входа", () => {
       </ResortProvider>,
     );
     expect(screen.getByTestId("current").textContent).toBe("all");
-    expect(hasResorts("test-region")).toBe(true);
-    expect(hasResorts("other")).toBe(false);
-    expect(hasResorts(undefined)).toBe(false);
-  });
-
-  it("свайпера нет вне региона курортов", () => {
-    render(<AppTop path="/" profile={false} resorts={false} />);
-    expect(screen.queryByTestId("resort-swiper")).toBeNull();
   });
 });
 

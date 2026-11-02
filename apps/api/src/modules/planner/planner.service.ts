@@ -520,7 +520,7 @@ function fromScenarioItem(i: ScenarioItem): ViewItem & { replacedPlaceId: null }
   };
 }
 
-/** Дней в плане: сохранённое число, у планов до 0018 — по пунктам (не меньше 1). */
+/** Дней в плане: сохранённое число, у планов до 0019 — по пунктам (не меньше 1). */
 function planDays(r: Pick<UserPlan, "days" | "items">): number {
   return r.days ?? Math.max(1, ...r.items.map((i) => i.dayNo));
 }

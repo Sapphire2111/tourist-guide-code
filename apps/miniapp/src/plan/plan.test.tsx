@@ -172,7 +172,12 @@ describe("Мій план: варіанти на вибір", () => {
     expect(kolyba!.textContent).toContain("6,2 км");
     expect(within(screen.getByTestId("plan-slot-evening")).getByText(/немає відповідних місць/)).toBeTruthy();
     const rain = screen.getByTestId("plan-slot-rain");
-    expect(within(rain).getByRole("heading", { name: "Якщо дощ — план Б" })).toBeTruthy();
+    // План Б свёрнут: кнопка-заголовок.
+    const toggle = within(rain).getByRole("button", { name: "Якщо дощ — план Б" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(within(rain).queryByText("Під дахом — підійде в дощ")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(within(rain).getByText("Під дахом — підійде в дощ")).toBeTruthy();
     expect(within(rain).getByRole("link", { name: "Деталі: Музей писанки" }).getAttribute("href")).toContain(
       "/place/r1",
@@ -212,6 +217,31 @@ describe("Мій план: варіанти на вибір", () => {
     );
     const more = within(afternoon).getByText("Ще варіанти: 1").closest("details")!;
     expect(more.open).toBe(false);
+  });
+});
+
+describe("Мій план: згорнуті дні", () => {
+  it("открыт первый день; остальные свёрнуты с «Обрано: N»; в части дня — 3 варианта и «Ще варіанти»", async () => {
+    const two = plan({
+      trip: { ...plan().trip, days: 2 },
+      schedule: [1, 2].map((day) => ({ day, items: [] })),
+    });
+    two.options.push({ ...two.options[0]!, day: 2 });
+    two.options[0]!.slots[1]!.options.push(option("a3", "Ресторан «Три»"), option("a4", "Ресторан «Чотири»"));
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => two });
+    const [day1, day2] = await screen.findAllByTestId("plan-day");
+    const [b1, b2] = [day1!, day2!].map((d) => within(d).getByRole("button", { name: /День/ }));
+    expect(b1!.getAttribute("aria-expanded")).toBe("true");
+    expect(b2!.getAttribute("aria-expanded")).toBe("false");
+    expect(within(day2!).getByTestId("day-chosen").textContent).toBe("Обрано: 0");
+    expect(within(day2!).queryByTestId("plan-slot-morning")).toBeNull();
+    const afternoon = within(day1!).getByTestId("plan-slot-afternoon");
+    const more = within(afternoon).getByText("Ще варіанти: 1").closest("details")!;
+    expect(more.open).toBe(false);
+    expect(within(afternoon).getAllByTestId("plan-option")).toHaveLength(4);
+    fireEvent.click(b2!);
+    expect(b2!.getAttribute("aria-expanded")).toBe("true");
+    expect(within(day2!).getByTestId("plan-slot-morning")).toBeTruthy();
   });
 });
 
