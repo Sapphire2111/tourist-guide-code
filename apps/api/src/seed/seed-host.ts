@@ -378,7 +378,7 @@ export async function seedHost(db: Db, regions: Record<SeedRegionKey, string>): 
 }
 
 /** ORG_STAFF демо-сотрудника на отель (отдельная транзакция, как assignOnce в seed.ts). */
-async function assignStaff(db: Db, hotel: string): Promise<boolean> {
+export async function assignStaff(db: Db, hotel: string): Promise<boolean> {
   const service = new RoleAssignmentService(
     new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS),
     new ScopeHierarchy({ PLACE: placeParentLoader(db) }),
