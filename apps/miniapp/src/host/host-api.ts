@@ -156,7 +156,6 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
           }),
         ),
       ),
-    isStaff: async () => (await ok(api.GET("/staff/places"))).items.length > 0,
     staffRequests: async (status) =>
       (
         await ok(api.GET("/staff/service-requests", { params: { query: status ? { status } : {} } }))

@@ -229,6 +229,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
         withdrawnAt: state.messaging[purpose] ? null : "2026-11-02T00:00:00Z",
       })),
     privacyRequests: state.privacyRequests,
+    staffMode: state.staff,
   });
   // api на другом origin, чем страница: CORS-заголовки, как у настоящего api (Bearer → preflight).
   const cors = {

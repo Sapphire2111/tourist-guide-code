@@ -437,29 +437,11 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
     [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
   );
   const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
-  // Режим персонала (D-50): есть места, где пользователь — ORG_STAFF/ORG_OWNER (GET /staff/places).
-  // Только при включённом module.host_requests; ошибка — состояние «error» с повтором (без «нет доступа»).
+  // Режим персонала (D-50): признак staffMode из /me (сервер считает роли ORG_STAFF/ORG_OWNER), только при
+  // включённом module.host_requests. Отдельный запрос не нужен — «нет доступа» не мелькает до ответа.
   const hostRequests = flags?.["module.host_requests"] === true;
-  const [staffCheck, setStaffCheck] = useState<{ key: string; role: StaffRole }>({
-    key: "",
-    role: "loading",
-  });
-  const [staffAttempt, setStaffAttempt] = useState(0);
-  const staffKey = `${signedIn}:${hostRequests}:${staffAttempt}`;
-  useEffect(() => {
-    if (!signedIn || !hostRequests) return;
-    let alive = true;
-    hApi.isStaff().then(
-      (v) => alive && setStaffCheck({ key: staffKey, role: v ? "yes" : "no" }),
-      () => alive && setStaffCheck({ key: staffKey, role: "error" }),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [hApi, signedIn, hostRequests, staffKey]);
-  const staff: StaffRole =
-    !signedIn || !hostRequests ? "no" : staffCheck.key === staffKey ? staffCheck.role : "loading";
-  const retryStaff = useCallback(() => setStaffAttempt((n) => n + 1), []);
+  const staff: StaffRole = session && hostRequests && session.me.staffMode ? "yes" : "no";
+  const retryStaff = useCallback(() => undefined, []);
   const host = useMemo<HostEnv>(
     () => ({
       api: hApi,

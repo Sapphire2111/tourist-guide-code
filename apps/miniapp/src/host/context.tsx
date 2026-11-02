@@ -37,7 +37,6 @@ export function noopHostApi(): HostApi {
     createRequest: fail,
     myRequests: fail,
     cancelRequest: fail,
-    isStaff: async () => false,
     staffRequests: fail,
     setStatus: fail,
     scenarios: fail,

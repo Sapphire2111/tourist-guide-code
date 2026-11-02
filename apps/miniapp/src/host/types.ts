@@ -152,8 +152,6 @@ export type HostApi = {
   createRequest(req: NewServiceRequest): Promise<ServiceRequest>;
   myRequests(): Promise<ServiceRequest[]>;
   cancelRequest(id: string): Promise<ServiceRequest>;
-  /** Есть ли у пользователя места, где он персонал (D-50). */
-  isStaff(): Promise<boolean>;
   staffRequests(status: RequestStatus | null): Promise<ServiceRequest[]>;
   setStatus(id: string, status: StaffTransition, reason: string | null): Promise<ServiceRequest>;
   scenarios(): Promise<ScenarioSummary[]>;
