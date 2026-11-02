@@ -25,10 +25,15 @@ export function photoOf(dto: PhotoDto | null): Photo | null {
   return { url: v.url, alt: dto.alt };
 }
 
+/** Путь на нашем api ("/places/…"); protocol-relative "//host/…" (и "/\host") — чужой хост, отсекается. */
+function sameOrigin(url: string): string | null {
+  return /^\/(?![/\\])/.test(url) ? url : null;
+}
+
 /** Обложка у нас (Google/Wikimedia) — с подписью автора; api без поля — null. */
 export function coverPhotoOf(dto: SummaryDto["coverPhoto"] | undefined): Photo | null {
   if (!dto) return null;
-  const url = https(dto.url) ?? (dto.url.startsWith("/") ? dto.url : null);
+  const url = https(dto.url) ?? sameOrigin(dto.url);
   if (!url) return null;
   return {
     url,
@@ -110,8 +115,8 @@ function richOf(dto: Partial<CardDto>): Partial<PlaceDetail> {
       uri: https(r.uri),
     })),
     googlePhotos: (dto.googlePhotos ?? []).flatMap((p) => {
-      const url = https(p.url) ?? (p.url.startsWith("/") ? p.url : null);
-      const largeUrl = https(p.largeUrl) ?? (p.largeUrl.startsWith("/") ? p.largeUrl : null);
+      const url = https(p.url) ?? sameOrigin(p.url);
+      const largeUrl = https(p.largeUrl) ?? sameOrigin(p.largeUrl);
       return url && largeUrl ? [{ url, largeUrl, authors: p.authors.map(authorOf) }] : [];
     }),
     googleMapsUri: https(dto.googleMapsUri),
