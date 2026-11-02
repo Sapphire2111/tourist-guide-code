@@ -302,6 +302,19 @@ describe("GET /cover в сервисе", () => {
     expect(coverBytes).not.toHaveBeenCalled();
     expect((await svc.cover(REGION, PLACE))?.bytes?.toString()).toBe("webp");
     expect(coverBytes).toHaveBeenCalledTimes(1);
+    // Повтор той же версии — из памяти, без bytea из БД; новая версия — снова из БД.
+    expect((await svc.cover(REGION, PLACE))?.bytes?.toString()).toBe("webp");
+    expect(coverBytes).toHaveBeenCalledTimes(1);
+    const later = new Date("2026-11-04T00:00:00Z");
+    repo.coverVersion = () => Promise.resolve({ mime: "image/webp", photo_name: NAME, fetched_at: later });
+    coverBytes.mockResolvedValue({
+      bytes: Buffer.from("new"),
+      mime: "image/webp",
+      photo_name: NAME,
+      fetched_at: later,
+    });
+    expect((await svc.cover(REGION, PLACE))?.bytes?.toString()).toBe("new");
+    expect(coverBytes).toHaveBeenCalledTimes(2);
   });
 });
 

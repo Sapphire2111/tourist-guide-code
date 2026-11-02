@@ -427,7 +427,34 @@ describe("обложки", () => {
       fetch: fetchImpl,
       resize,
     });
-    expect(stats).toMatchObject({ deferred: 1, failed: 0, written: 0 });
+    expect(stats).toMatchObject({ deferred: 0, wikiUnavailable: 1, failed: 0, written: 0 });
+    // 429 — Wikimedia до конца прогона не запрашивается; обрыв тела — тоже временно.
+    wikiStatus = 429;
+    const before = vi.mocked(fetchImpl).mock.calls.length;
+    const s429 = await runCovers(
+      ["w1", "w2", "w3"].map((id) => ({ ...place(id), address: null, google: g, wiki })),
+      {
+        google,
+        db: recordingDb({}).db,
+        regionId: "0190f5c2-7d3e-7000-8000-00000000000a",
+        existing: new Set(),
+        write: true,
+        fetch: fetchImpl,
+        resize,
+      },
+    );
+    expect(s429).toMatchObject({ wikiUnavailable: 3, written: 0, failed: 0 });
+    expect(vi.mocked(fetchImpl).mock.calls.length).toBe(before + 1);
+    const broken = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => Promise.reject(new DOMException("timeout", "TimeoutError")),
+      }),
+    ) as unknown as typeof fetch;
+    await expect(makeCover({ google: g, wiki }, { google, fetch: broken, resize })).rejects.toBeInstanceOf(
+      WikimediaUnavailableError,
+    );
   });
 
   it("без записи (план/dry-run) — только подсчёт, без запросов", async () => {

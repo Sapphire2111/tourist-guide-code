@@ -144,7 +144,8 @@ try {
     console.log(
       `Обложки: есть ${coverStats.existing}, нужно ${coverStats.needed + planCovers} (Wikimedia ${wikiCovers} — бесплатно; ` +
         `Google ${googleCovers}: в этом месяце до ${Math.min(googleCovers, remainingPhotos)}); записано ${coverStats.written} ` +
-        `(Wikimedia ${coverStats.wikimedia}, Google ${coverStats.google}), отложено пределом ${coverStats.deferred}, ` +
+        `(Wikimedia ${coverStats.wikimedia}, Google ${coverStats.google}), отложено пределом Google ${coverStats.deferred}, ` +
+        `Wikimedia недоступна (повторить позже) ${coverStats.wikiUnavailable}, ` +
         `ошибок ${coverStats.failed}.`,
     );
     report.covers = {

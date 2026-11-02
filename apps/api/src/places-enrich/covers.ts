@@ -39,6 +39,13 @@ export const sharpResize: Resize = async (input) => {
 /** Wikimedia временно недоступна (429/5xx/сеть): обложка откладывается до следующего прогона, Google не тратится. */
 export class WikimediaUnavailableError extends Error {
   override readonly name = "WikimediaUnavailableError";
+  /** 429: Wikimedia просит не нагружать — до конца прогона к ней не обращаться. */
+  constructor(
+    message: string,
+    readonly rateLimited = false,
+  ) {
+    super(message);
+  }
 }
 
 async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
@@ -54,10 +61,16 @@ async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   }
   if (res.status === 429 || res.status >= 500) {
     await res.body?.cancel();
-    throw new WikimediaUnavailableError(`Wikimedia: HTTP ${res.status}`);
+    throw new WikimediaUnavailableError(`Wikimedia: HTTP ${res.status}`, res.status === 429);
   }
   if (!res.ok) throw new Error(`Wikimedia: HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    // Обрыв/таймаут при чтении тела — тоже временно.
+    throw new WikimediaUnavailableError(`Wikimedia: ${err instanceof Error ? err.name : "обрыв"}`);
+  }
   if (buf.length > MAX_SOURCE_BYTES) throw new Error("Файл Wikimedia слишком большой");
   return buf;
 }
@@ -167,8 +180,10 @@ export type CoverStats = {
   wikimedia: number;
   google: number;
   failed: number;
-  /** Отложены: Google — пределом (следующий месяц), Wikimedia — временно недоступна (следующий прогон). */
+  /** Google-обложки отложены пределом (следующий месяц). */
   deferred: number;
+  /** Wikimedia временно недоступна (429/5xx/сеть) — отложены до следующего прогона. */
+  wikiUnavailable: number;
 };
 
 /** Обложки для мест без неё; запись — только с db (иначе — подсчёт). */
@@ -193,8 +208,11 @@ export async function runCovers(
     google: 0,
     failed: 0,
     deferred: 0,
+    wikiUnavailable: 0,
   };
   let googleStopped = false;
+  // После 429 от Wikimedia — к ней больше не обращаться до конца прогона.
+  let wikiStopped = false;
   for (const p of places) {
     if (!hasCoverSource(p)) continue;
     if (deps.existing.has(p.googlePlaceId)) {
@@ -203,6 +221,10 @@ export async function runCovers(
     }
     stats.needed++;
     if (!deps.write || !deps.db || !deps.regionId) continue;
+    if (p.wiki?.image && wikiStopped) {
+      stats.wikiUnavailable++;
+      continue;
+    }
     if (!p.wiki?.image && googleStopped) {
       stats.deferred++;
       continue;
@@ -221,7 +243,8 @@ export async function runCovers(
     } catch (err) {
       if (err instanceof WikimediaUnavailableError) {
         deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message} — отложена до следующего прогона`);
-        stats.deferred++;
+        if (err.rateLimited) wikiStopped = true;
+        stats.wikiUnavailable++;
         continue;
       }
       if (err instanceof RequestLimitError) {
