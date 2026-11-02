@@ -6,11 +6,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto } from "../guide/index.js";
 import type { AssistantRepository, PlaceEnrichmentFacts } from "./assistant.repository.js";
+import type { RegionsRepository } from "../regions/index.js";
 import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
+import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
 
 const REGION = "0190f5c2-7d3e-7000-8000-00000000000a";
+const USER = "0190f5c2-7d3e-7000-8000-0000000000ee";
+const YAREMCHE = "0190f5c2-7d3e-7000-8000-000000000301";
+const POLIANYTSIA = "0190f5c2-7d3e-7000-8000-000000000302";
 const EAT = "0190f5c2-7d3e-7000-8000-000000000101";
 const CAFES = "0190f5c2-7d3e-7000-8000-000000000102";
 const MUSEUMS = "0190f5c2-7d3e-7000-8000-000000000103";
@@ -51,6 +56,7 @@ const intent = (over: Partial<AssistantIntent> = {}): AssistantIntent => ({
   kind: "places",
   categories: ["cafes"],
   nameQuery: null,
+  locality: null,
   radiusMeters: null,
   priceMin: null,
   priceMax: null,
@@ -74,6 +80,10 @@ function setup(
     places?: PlaceSummaryDto[];
     enrichment?: Record<string, PlaceEnrichmentFacts>;
     dailyLimit?: number;
+    userDailyLimit?: number;
+    regionStatus?: string;
+    /** place_id → locality_id. */
+    placeLocality?: Record<string, string>;
   } = {},
 ) {
   const guide = {
@@ -101,18 +111,32 @@ function setup(
         new Map(ids.flatMap((id) => (opts.enrichment?.[id] ? [[id, opts.enrichment[id]] as const] : []))),
       ),
     ),
+    localities: vi.fn(() =>
+      Promise.resolve([
+        { id: YAREMCHE, code: "yaremche", name_i18n: { uk: "Яремче" } },
+        { id: POLIANYTSIA, code: "polianytsia", name_i18n: { uk: "Поляниця (Буковель)" } },
+      ]),
+    ),
+    placeLocalities: vi.fn((_r: string, ids: readonly string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, opts.placeLocality?.[id] ?? null]))),
+    ),
+  };
+  const budget = new AssistantBudget({ dailyLimit: opts.dailyLimit, userDailyLimit: opts.userDailyLimit });
+  const regions = {
+    findById: vi.fn(() => Promise.resolve({ id: REGION, status: opts.regionStatus ?? "active" })),
   };
   const service = new AssistantService(
     repo as unknown as AssistantRepository,
     guide as unknown as GuideService,
     llm as AssistantLlm,
     speech as AssistantSpeech,
-    { dailyLimit: opts.dailyLimit },
+    budget,
+    regions as unknown as RegionsRepository,
   );
-  return { service, guide, llm, speech, repo };
+  return { service, guide, llm, speech, repo, budget, regions };
 }
 
-const ask = (text = "кав'ярня поруч", over: Partial<Parameters<AssistantService["query"]>[1]> = {}) => ({
+const ask = (text = "кав'ярня поруч", over: Partial<Parameters<AssistantService["query"]>[2]> = {}) => ({
   text,
   history: [],
   previous: null,
@@ -127,7 +151,7 @@ describe("AssistantService.query", () => {
       Promise.resolve(reply(intent({ radiusMeters: 1500 }))),
     );
     const { service, guide } = setup({ llm: { create } });
-    const res = await service.query(REGION, ask("кава", { origin: { lon: 24.5, lat: 48.4 } }));
+    const res = await service.query(REGION, USER, ask("кава", { origin: { lon: 24.5, lat: 48.4 } }));
     expect(guide.categories).toHaveBeenCalledWith(REGION);
     const tool = create.mock.calls[0]![0].tools![0] as Anthropic.Tool;
     expect(JSON.stringify(tool.input_schema)).not.toContain('"empty"');
@@ -152,7 +176,7 @@ describe("AssistantService.query", () => {
         ),
       },
     });
-    const res = await service.query(REGION, ask());
+    const res = await service.query(REGION, USER, ask());
     expect(guide.search).toHaveBeenCalledTimes(1);
     expect(guide.search).toHaveBeenCalledWith(
       REGION,
@@ -176,7 +200,7 @@ describe("AssistantService.query", () => {
         [c.id]: { google: google({ priceLevel: 4 }), wiki: null, ai: null },
       },
     });
-    const res = await service.query(REGION, ask());
+    const res = await service.query(REGION, USER, ask());
     expect(res.items.map((i) => [i.place.id, i.priceLevel, i.kidsFriendly])).toEqual([
       [b.id, 1, true],
       [a.id, 2, false],
@@ -193,7 +217,7 @@ describe("AssistantService.query", () => {
       places: [place(1, { openNow: false }), place(2, { openNow: null })],
       llm: { create: vi.fn(() => Promise.resolve(reply(intent({ priceMin: 3, openNow: true })))) },
     });
-    const res = await service.query(REGION, ask());
+    const res = await service.query(REGION, USER, ask());
     expect(res.items).toHaveLength(2);
     expect(res.notes).toEqual(["none_open", "price_unknown"]);
   });
@@ -218,7 +242,7 @@ describe("AssistantService.query", () => {
         },
       },
     });
-    const res = await service.query(REGION, ask("екскурсія", { origin: { lon: 24.5, lat: 48.4 } }));
+    const res = await service.query(REGION, USER, ask("екскурсія", { origin: { lon: 24.5, lat: 48.4 } }));
     expect(res.items.map((i) => i.place.id)).toEqual([near.id, far.id]);
     expect(res.route!.lengthMeters).toBeGreaterThan(4000);
     expect(res.items[0]).toMatchObject({
@@ -238,8 +262,11 @@ describe("AssistantService.query", () => {
       });
       const res = await service.query(
         REGION,
-        ask("як справи?", { previous: intent({ categories: ["museums"] }) }),
+        USER,
+        // Намерение с клиента: чужой код не попадает в ответ.
+        ask("як справи?", { previous: intent({ categories: ["museums", "forged"] }) }),
       );
+      expect(res.intent.categories).not.toContain("forged");
       expect(res.intent.clarify).toBe(true);
       expect(res.items).toEqual([]);
       expect(guide.search).not.toHaveBeenCalled();
@@ -248,7 +275,7 @@ describe("AssistantService.query", () => {
 
   it("без ключа Claude — 503 errors.assistant.unavailable, каталог и модель не трогаются", async () => {
     const { service, guide, llm } = setup({ llm: { enabled: false } });
-    const err = await service.query(REGION, ask()).catch((e: unknown) => e);
+    const err = await service.query(REGION, USER, ask()).catch((e: unknown) => e);
     expect(status(err)).toBe(503);
     expect((err as ApiError).messageKey).toBe("errors.assistant.unavailable");
     expect(guide.categories).not.toHaveBeenCalled();
@@ -263,20 +290,39 @@ describe("AssistantService.query", () => {
       const { service } = setup({
         llm: { create: vi.fn(() => Promise.reject(new AssistantUpstreamError(reason))) },
       });
-      expect(status(await service.query(REGION, ask()).catch((e: unknown) => e))).toBe(code);
+      expect(status(await service.query(REGION, USER, ask()).catch((e: unknown) => e))).toBe(code);
     }
   });
 
-  it("суточный предел: сверх — 503, на следующие сутки снова можно", async () => {
-    const { service, llm } = setup({ dailyLimit: 2 });
-    service.now = () => new Date("2026-11-03T10:00:00Z");
-    await service.query(REGION, ask());
-    await service.transcribe(Buffer.from("x"), "audio/webm");
-    expect(status(await service.query(REGION, ask()).catch((e: unknown) => e))).toBe(503);
+  it("суточный бюджет: запрос — 1 единица, голос — 2; сверх общего — 503, на следующие сутки снова можно", async () => {
+    const { service, llm, budget } = setup({ dailyLimit: 3 });
+    budget.now = () => new Date("2026-11-03T10:00:00Z");
+    await service.query(REGION, USER, ask());
+    await service.transcribe(REGION, USER, Buffer.from("x"), "audio/webm");
+    expect(status(await service.query(REGION, "other-user", ask()).catch((e: unknown) => e))).toBe(503);
     expect(llm.create).toHaveBeenCalledTimes(1);
-    service.now = () => new Date("2026-11-04T00:00:01Z");
-    await service.query(REGION, ask());
+    budget.now = () => new Date("2026-11-04T00:00:01Z");
+    await service.query(REGION, USER, ask());
     expect(llm.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("предел пользователя — 429 errors.assistant.dailyLimit, другой пользователь не затронут", async () => {
+    const { service, llm, budget } = setup({ userDailyLimit: 2 });
+    budget.now = () => new Date("2026-11-03T10:00:00Z");
+    await service.query(REGION, USER, ask());
+    await service.query(REGION, USER, ask());
+    const err = await service.query(REGION, USER, ask()).catch((e: unknown) => e);
+    expect(status(err)).toBe(429);
+    expect((err as ApiError).messageKey).toBe("errors.assistant.dailyLimit");
+    await service.query(REGION, "other-user", ask());
+    expect(llm.create).toHaveBeenCalledTimes(3);
+  });
+
+  it("неверный ключ Claude (401/403) — 503, а не 502", async () => {
+    const { service } = setup({
+      llm: { create: vi.fn(() => Promise.reject(new AssistantUpstreamError("config", 401))) },
+    });
+    expect(status(await service.query(REGION, USER, ask()).catch((e: unknown) => e))).toBe(503);
   });
 });
 
@@ -287,7 +333,7 @@ describe("проживання", () => {
       Promise.resolve(reply(intent({ categories: ["hotels"], radiusMeters: 1000 }))),
     );
     const { service, guide } = setup({ places: [hotel], llm: { create } });
-    const res = await service.query(REGION, ask("готель поруч", { origin: { lon: 24.5, lat: 48.4 } }));
+    const res = await service.query(REGION, USER, ask("готель поруч", { origin: { lon: 24.5, lat: 48.4 } }));
     const params = create.mock.calls[0]![0];
     const schema = JSON.stringify((params.tools![0] as Anthropic.Tool).input_schema);
     expect(schema).toContain('"stay"');
@@ -301,21 +347,90 @@ describe("проживання", () => {
   });
 });
 
+describe("населені пункти", () => {
+  it("«прокат лиж у Буковелі» при выбранном Яремче — ищем в Поляниці (Буковель), без радиуса от точки", async () => {
+    const yaremche = place(1, { name: { uk: "Прокат у Яремчі" } });
+    const bukovel = place(2, { name: { uk: "Прокат у Буковелі" } });
+    const create = vi.fn((_p: Anthropic.MessageCreateParamsNonStreaming) =>
+      Promise.resolve(reply(intent({ categories: ["cafes"], locality: "polianytsia" }))),
+    );
+    const { service, guide } = setup({
+      places: [yaremche, bukovel],
+      llm: { create },
+      placeLocality: { [yaremche.id]: YAREMCHE, [bukovel.id]: POLIANYTSIA },
+    });
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("прокат лиж у Буковелі", { origin: { lon: 24.55, lat: 48.45 }, localityIds: [YAREMCHE] }),
+    );
+    // В инструменте — коды пунктов с названиями и синонимами.
+    const tool = create.mock.calls[0]![0].tools![0] as Anthropic.Tool;
+    const schema = JSON.stringify(tool.input_schema);
+    expect(schema).toContain('"polianytsia"');
+    expect(schema).toContain("Буковель");
+    expect(guide.search).toHaveBeenCalledWith(REGION, expect.objectContaining({ radius: undefined }));
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
+    expect(res.intent.locality).toBe("polianytsia");
+  });
+
+  it("пункт не назван — действует выбор туриста; чужие id и код от модели вне списка — игнорируются", async () => {
+    const a = place(1);
+    const b = place(2);
+    const { service } = setup({
+      places: [a, b],
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ locality: "atlantis" })))) },
+      placeLocality: { [a.id]: YAREMCHE, [b.id]: POLIANYTSIA },
+    });
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("кава", { localityIds: [YAREMCHE, "0190f5c2-7d3e-7000-8000-000000000999"] }),
+    );
+    expect(res.intent.locality).toBeNull();
+    expect(res.items.map((i) => i.place.id)).toEqual([a.id]);
+  });
+});
+
 describe("AssistantService.transcribe", () => {
   it("текст распознавания; без ключа — 503; отклонённое аудио — 422", async () => {
     const ok = setup();
-    expect(await ok.service.transcribe(Buffer.from("x"), "audio/ogg")).toBe("кава поруч");
+    expect(await ok.service.transcribe(REGION, USER, Buffer.from("x"), "audio/ogg")).toBe("кава поруч");
     expect(ok.speech.recognize).toHaveBeenCalledWith(Buffer.from("x"), "audio/ogg");
     const off = setup({ speech: { enabled: false } });
     expect(
-      status(await off.service.transcribe(Buffer.from("x"), "audio/webm").catch((e: unknown) => e)),
+      status(
+        await off.service.transcribe(REGION, USER, Buffer.from("x"), "audio/webm").catch((e: unknown) => e),
+      ),
     ).toBe(503);
     const bad = setup({
       speech: { recognize: vi.fn(() => Promise.reject(new AssistantUpstreamError("rejected", 400))) },
     });
     expect(
-      status(await bad.service.transcribe(Buffer.from("x"), "audio/webm").catch((e: unknown) => e)),
+      status(
+        await bad.service.transcribe(REGION, USER, Buffer.from("x"), "audio/webm").catch((e: unknown) => e),
+      ),
     ).toBe(422);
+    const config = setup({
+      speech: { recognize: vi.fn(() => Promise.reject(new AssistantUpstreamError("config", 403))) },
+    });
+    expect(
+      status(
+        await config.service
+          .transcribe(REGION, USER, Buffer.from("x"), "audio/webm")
+          .catch((e: unknown) => e),
+      ),
+    ).toBe(503);
+  });
+
+  it("регион не active — 404 до траты бюджета и распознавания", async () => {
+    const { service, speech, budget } = setup({ regionStatus: "draft", userDailyLimit: 1 });
+    const spend = vi.spyOn(budget, "spend");
+    expect(
+      status(await service.transcribe(REGION, USER, Buffer.from("x"), "audio/webm").catch((e: unknown) => e)),
+    ).toBe(404);
+    expect(spend).not.toHaveBeenCalled();
+    expect(speech.recognize).not.toHaveBeenCalled();
   });
 });
 

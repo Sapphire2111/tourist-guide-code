@@ -1,9 +1,9 @@
 // Экран ассистента: диалог «реплика → места каталога». Места, цены и описания — только из ответа api (каталог и
 // обогащение); модель на сервере выбирает лишь категории и фильтры. Уточнения — следующей репликой или чипом;
 // контекст диалога (прежние реплики и намерение) хранится здесь и отправляется с каждым запросом.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Stack, useT } from "@tg/ui";
+import { Button, Stack, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
 import { useGuide, type Async } from "../guide/context.js";
 import { MapSlot, preloadMap } from "../guide/MapSlot.js";
@@ -14,6 +14,36 @@ import type { AssistantApi, AssistantIntent, AssistantItem, AssistantResult } fr
 import { AssistantBox } from "./AssistantBox.js";
 
 type Turn = { id: number; text: string; state: Async<AssistantResult> };
+
+/**
+ * Диалог переживает переход в карточку места и «Назад» (без повторного платного запроса): сохраняются только
+ * завершённые реплики — текст запроса и ответ каталога — в sessionStorage вкладки; «Новий пошук» очищает.
+ */
+export const DIALOG_KEY = "tg.assistant.dialog";
+
+export function loadDialog(): Turn[] {
+  try {
+    const raw = sessionStorage.getItem(DIALOG_KEY);
+    const list = raw ? (JSON.parse(raw) as { text: string; data: AssistantResult }[]) : [];
+    return Array.isArray(list)
+      ? list.map((x, i) => ({ id: i + 1, text: x.text, state: { status: "ready", data: x.data } }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDialog(turns: readonly Turn[]): void {
+  try {
+    const done = turns.flatMap((x) =>
+      x.state.status === "ready" ? [{ text: x.text, data: x.state.data }] : [],
+    );
+    if (done.length) sessionStorage.setItem(DIALOG_KEY, JSON.stringify(done));
+    else sessionStorage.removeItem(DIALOG_KEY);
+  } catch {
+    // хранилище недоступно — диалог живёт только на экране
+  }
+}
 
 /** Что ищем — по намерению: категории (названия из справочника), фильтры. */
 export function useIntentSummary(index: CategoryIndex): (intent: AssistantIntent) => string {
@@ -44,8 +74,18 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
   const index = useCategoryIndex(guide.api);
   const summary = useIntentSummary(index);
   const errorText = useErrorText();
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const nextId = useRef(1);
+  const [, navigate] = useRoute();
+  // Новый запрос с главной — новый диалог; возврат на #/assistant — прежний диалог из sessionStorage.
+  const [turns, setTurns] = useState<Turn[]>(() => (initialQuery.trim() ? [] : loadDialog()));
+  const nextId = useRef(turns.length + 1);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  useEffect(() => saveDialog(turns), [turns]);
   const point = guide.base?.point ?? null;
 
   const ask = (text: string) => {
@@ -61,7 +101,14 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
         (data) => ({ status: "ready", data }) as const,
         (error: unknown) => ({ status: "error", error }) as const,
       )
-      .then((state) => setTurns((all) => all.map((x) => (x.id === id ? { ...x, state } : x))));
+      .then((state) => {
+        // Ушли с экрана до ответа — ответ всё равно сохраняется в диалог (вернёмся — не платим повторно).
+        if (!alive.current) {
+          if (state.status === "ready") saveDialog([...loadDialog(), { id, text, state }]);
+          return;
+        }
+        setTurns((all) => all.map((x) => (x.id === id ? { ...x, state } : x)));
+      });
   };
 
   // Запрос с главной (#/assistant?q=…) — сразу первой репликой.
@@ -71,6 +118,8 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
     if (started.current || !initialQuery.trim()) return;
     started.current = true;
     ask(initialQuery.trim());
+    // Адрес без запроса: «Назад» из карточки места вернёт диалог, а не повторит запрос.
+    navigate("/assistant", { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -140,7 +189,13 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
       )}
       <AssistantBox api={api} onSubmit={ask} busy={busy} id="assistant-next" autoFocus={!initialQuery} />
       {turns.length > 0 && (
-        <Button onClick={() => setTurns([])} disabled={busy}>
+        <Button
+          onClick={() => {
+            saveDialog([]);
+            setTurns([]);
+          }}
+          disabled={busy}
+        >
           {t("miniapp.assistant.newDialog")}
         </Button>
       )}
@@ -152,9 +207,10 @@ function ResultView({ result }: { result: AssistantResult }) {
   const { t } = useT();
   const { base } = useGuide();
   const distance = useRadiusLabel();
+  // Тот же массив между рендерами — карта не перестраивает маркеры при каждом рендере экрана.
+  const places = useMemo(() => result.items.map((i) => i.place), [result]);
   if (result.intent.clarify || !result.items.length) return null;
   const tour = result.intent.kind === "tour";
-  const places = result.items.map((i) => i.place);
   return (
     <Stack>
       {result.notes.map((n) => (

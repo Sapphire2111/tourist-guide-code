@@ -12,14 +12,17 @@ export type AssistantConfig = {
   anthropicApiKey?: string | undefined;
   /** Серверный ключ Google с включённым Speech-to-Text; нет — голос недоступен (503). */
   googleApiKey?: string | undefined;
-  /** Обращений к Claude и Speech-to-Text в сутки (UTC) на процесс. */
+  /** Единиц (запрос — 1, голос — 2) в сутки (UTC) на всё api — Claude и Speech-to-Text. */
   dailyLimit?: number;
+  /** Единиц в сутки на пользователя. */
+  userDailyLimit?: number;
 };
 
 /** Сбой внешнего сервиса: reason — для конверта ошибки, без текста туриста. */
 export class AssistantUpstreamError extends Error {
   constructor(
-    readonly reason: "timeout" | "upstream" | "rejected",
+    /** config — неверный ключ или выключенный API (503); rejected — плохое аудио (422). */
+    readonly reason: "timeout" | "upstream" | "rejected" | "config",
     readonly status?: number,
   ) {
     super(`assistant upstream: ${reason}${status ? ` ${status}` : ""}`);
@@ -36,12 +39,13 @@ const LLM_TIMEOUT_MS = 20_000;
 
 export function createAnthropicLlm(apiKey: string | undefined): AssistantLlm {
   // Ключ передаётся явно: без ANTHROPIC_API_KEY SDK не должен подхватывать чужие учётные данные окружения.
-  const client = apiKey ? new Anthropic({ apiKey, timeout: LLM_TIMEOUT_MS, maxRetries: 1 }) : null;
+  // Без повторов SDK: каждый вызов учтён в суточном пределе как одна единица.
+  const client = apiKey ? new Anthropic({ apiKey, timeout: LLM_TIMEOUT_MS, maxRetries: 0 }) : null;
   const log = new Logger("AssistantLlm");
   return {
     enabled: client !== null,
     async create(params) {
-      if (!client) throw new AssistantUpstreamError("rejected");
+      if (!client) throw new AssistantUpstreamError("config");
       try {
         return await client.messages.create(params);
       } catch (e) {
@@ -49,7 +53,8 @@ export function createAnthropicLlm(apiKey: string | undefined): AssistantLlm {
         if (e instanceof Anthropic.APIError) {
           // Только статус: тело ошибки может содержать фрагменты запроса.
           log.warn(`Claude API: ${e.status ?? "network"}`);
-          throw new AssistantUpstreamError("upstream", e.status ?? undefined);
+          const config = e.status === 401 || e.status === 403;
+          throw new AssistantUpstreamError(config ? "config" : "upstream", e.status ?? undefined);
         }
         throw e;
       }
@@ -72,6 +77,37 @@ const SPEECH_URL = "https://speech.googleapis.com/v1/speech:recognize";
 const SPEECH_TIMEOUT_MS = 15_000;
 
 type RecognizeResponse = { results?: { alternatives?: { transcript?: string }[] }[] };
+type GoogleError = { error?: { status?: string; details?: { reason?: string }[] } };
+
+/** Ошибки ключа и проекта Google: не вина аудио — ассистент недоступен (503). */
+const CONFIG_REASONS = new Set([
+  "API_KEY_INVALID",
+  "API_KEY_SERVICE_BLOCKED",
+  "API_KEY_HTTP_REFERRER_BLOCKED",
+  "API_KEY_IP_ADDRESS_BLOCKED",
+  "SERVICE_DISABLED",
+  "BILLING_DISABLED",
+]);
+
+/** Причина отказа Speech-to-Text: config (ключ/API), rejected (запрос с аудио), upstream (прочее). */
+export function speechFailure(
+  status: number,
+  body: unknown,
+): { reason: AssistantUpstreamError["reason"]; code: string } {
+  const err = (body as GoogleError | null)?.error;
+  const reason = err?.details?.find((d) => typeof d?.reason === "string")?.reason;
+  const code = [err?.status, reason].filter(Boolean).join("/") || "-";
+  if (
+    status === 401 ||
+    status === 403 ||
+    err?.status === "PERMISSION_DENIED" ||
+    err?.status === "UNAUTHENTICATED" ||
+    (reason !== undefined && CONFIG_REASONS.has(reason))
+  )
+    return { reason: "config", code };
+  if (status === 400) return { reason: "rejected", code };
+  return { reason: "upstream", code };
+}
 
 /** Google Speech-to-Text v1 speech:recognize (синхронно, до 1 мин аудио), язык uk-UA. */
 export function createGoogleSpeech(
@@ -82,7 +118,7 @@ export function createGoogleSpeech(
   return {
     enabled: Boolean(apiKey),
     async recognize(audio, mime) {
-      if (!apiKey) throw new AssistantUpstreamError("rejected");
+      if (!apiKey) throw new AssistantUpstreamError("config");
       let res: Response;
       try {
         res = await fetchImpl(SPEECH_URL, {
@@ -106,8 +142,10 @@ export function createGoogleSpeech(
         throw new AssistantUpstreamError((e as Error).name === "TimeoutError" ? "timeout" : "upstream");
       }
       if (!res.ok) {
-        log.warn(`Speech-to-Text: ${res.status}`);
-        throw new AssistantUpstreamError(res.status === 400 ? "rejected" : "upstream", res.status);
+        const f = speechFailure(res.status, await res.json().catch(() => null));
+        // Только коды: текст ошибки Google может повторять фрагменты запроса.
+        log.warn(`Speech-to-Text: ${res.status} ${f.code}`);
+        throw new AssistantUpstreamError(f.reason, res.status);
       }
       const body = (await res.json()) as RecognizeResponse;
       return (body.results ?? [])

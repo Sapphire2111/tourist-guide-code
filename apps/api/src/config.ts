@@ -97,10 +97,16 @@ export const apiEnvSchema = z
     // отвечает 503 errors.assistant.unavailable (не 500). Голос (POST /assistant/transcribe) — Google Speech-to-Text
     // по GOOGLE_MAPS_API_KEY (в проекте Google должен быть включён Speech-to-Text API).
     ANTHROPIC_API_KEY: optionalString(),
-    // Предел обращений ассистента к Claude и Speech-to-Text в сутки на процесс (страховка бюджета). По умолчанию 500.
+    // Суточный бюджет ассистента в единицах (запрос к Claude — 1, голос — 2) на всё api: счётчик в Redis rate limit
+    // (без Redis — в памяти процесса). По умолчанию 500.
     ASSISTANT_DAILY_LIMIT: z.preprocess(
       blankToUndefined,
       z.coerce.number().int().min(0).max(100_000).default(500),
+    ),
+    // И на пользователя в сутки (те же единицы). По умолчанию 40.
+    ASSISTANT_USER_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(10_000).default(40),
     ),
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),

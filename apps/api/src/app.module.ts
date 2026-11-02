@@ -64,6 +64,7 @@ export class AppModule {
           | "GOOGLE_PHOTO_MONTHLY_LIMIT"
           | "ANTHROPIC_API_KEY"
           | "ASSISTANT_DAILY_LIMIT"
+          | "ASSISTANT_USER_DAILY_LIMIT"
         >
       >,
   ): DynamicModule {
@@ -125,6 +126,7 @@ export class AppModule {
             anthropicApiKey: env.ANTHROPIC_API_KEY,
             googleApiKey: env.GOOGLE_MAPS_API_KEY,
             dailyLimit: env.ASSISTANT_DAILY_LIMIT,
+            userDailyLimit: env.ASSISTANT_USER_DAILY_LIMIT,
           },
           guide,
         ),

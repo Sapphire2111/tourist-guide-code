@@ -13251,6 +13251,12 @@
             "items": { "type": "string" }
           },
           "nameQuery": { "type": "string", "nullable": true, "maxLength": 60 },
+          "locality": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64,
+            "description": "Код населённого пункта, названного туристом; null — действует выбор localityIds"
+          },
           "radiusMeters": { "type": "integer", "nullable": true, "minimum": 300, "maximum": 20000 },
           "priceMin": {
             "type": "integer",
@@ -13306,6 +13312,12 @@
             "description": "Прежние реплики диалога (контекст хранит клиент)",
             "type": "array",
             "items": { "type": "string" }
+          },
+          "localityIds": {
+            "maxItems": 10,
+            "description": "Населённые пункты, выбранные туристом («Локація»); названный в реплике — главнее",
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
           },
           "previous": {
             "description": "Намерение прошлого ответа (для уточнений)",

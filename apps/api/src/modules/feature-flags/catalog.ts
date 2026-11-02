@@ -71,7 +71,7 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   "module.reviews": flag("Подтверждённые отзывы (блок 10)", ALWAYS, ["release.mvp"]),
   "module.ambassadors": flag("Амбассадоры (блок 11)", ALWAYS, ["release.mvp"]),
   // ИИ-ассистент: внешние платные API (Claude, Google Speech-to-Text) — в prod выключен до отдельного решения.
-  "module.assistant": flag("Голосовий/текстовий асистент на головній (Claude, Speech-to-Text)", ON, [
+  "module.assistant": flag("Голосовой/текстовый ассистент на главной (Claude, Speech-to-Text)", ON, [
     "release.r1",
   ]),
 });

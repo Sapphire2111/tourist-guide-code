@@ -1,8 +1,10 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 import { GuideModule } from "../guide/index.js";
+import { RegionsModule } from "../regions/index.js";
 import { AssistantController } from "./assistant.controller.js";
 import { AssistantRepository } from "./assistant.repository.js";
 import { AssistantService } from "./assistant.service.js";
+import { AssistantBudget } from "./budget.js";
 import {
   ASSISTANT_CONFIG,
   ASSISTANT_LLM,
@@ -26,10 +28,11 @@ export class AssistantModule {
   ): DynamicModule {
     return {
       module: AssistantModule,
-      imports: [guide],
+      imports: [guide, RegionsModule],
       controllers: [AssistantController],
       providers: [
         AssistantRepository,
+        AssistantBudget,
         AssistantService,
         { provide: ASSISTANT_CONFIG, useValue: config },
         { provide: ASSISTANT_LLM, useFactory: () => createAnthropicLlm(config.anthropicApiKey) },

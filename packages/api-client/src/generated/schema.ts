@@ -3100,6 +3100,8 @@ export interface components {
       /** @description Коды категорий каталога */
       categories: string[];
       nameQuery: string | null;
+      /** @description Код населённого пункта, названного туристом; null — действует выбор localityIds */
+      locality?: string | null;
       radiusMeters: number | null;
       /** @description Ценовой уровень Google */
       priceMin: number | null;
@@ -3130,6 +3132,8 @@ export interface components {
       text: string;
       /** @description Прежние реплики диалога (контекст хранит клиент) */
       history?: string[];
+      /** @description Населённые пункты, выбранные туристом («Локація»); названный в реплике — главнее */
+      localityIds?: string[];
       /** @description Намерение прошлого ответа (для уточнений) */
       previous?: components["schemas"]["AssistantIntentDto"];
     };

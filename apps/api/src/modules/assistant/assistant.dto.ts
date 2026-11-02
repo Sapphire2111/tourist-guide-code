@@ -8,6 +8,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -32,6 +33,8 @@ import {
 
 /** Длина реплики туриста, символов. */
 export const ASSISTANT_TEXT_MAX = 300;
+/** Выбранных населённых пунктов — не больше. */
+export const ASSISTANT_LOCALITIES_MAX = 10;
 /** Прежних реплик в контексте — не больше. */
 export const ASSISTANT_HISTORY_MAX = 5;
 /** Аудио — не больше 512 КиБ (≈ 1 мин Opus; клиент пишет до 15 с). */
@@ -65,6 +68,17 @@ export class AssistantIntentDto {
   @IsString()
   @MaxLength(INTENT_NAME_MAX)
   nameQuery!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 64,
+    description: "Код населённого пункта, названного туристом; null — действует выбор localityIds",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  locality!: string | null;
 
   @ApiProperty({ type: "integer", nullable: true, minimum: INTENT_RADIUS_MIN, maximum: INTENT_RADIUS_MAX })
   @IsOptional()
@@ -124,6 +138,18 @@ export class AssistantQueryDto extends OriginQueryDto {
   @IsString({ each: true })
   @MaxLength(ASSISTANT_TEXT_MAX, { each: true })
   history?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: "uuid",
+    maxItems: ASSISTANT_LOCALITIES_MAX,
+    description: "Населённые пункты, выбранные туристом («Локація»); названный в реплике — главнее",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ASSISTANT_LOCALITIES_MAX)
+  @IsUUID("all", { each: true })
+  localityIds?: string[];
 
   @ApiPropertyOptional({ type: AssistantIntentDto, description: "Намерение прошлого ответа (для уточнений)" })
   @IsOptional()

@@ -49,21 +49,34 @@ describe("createGoogleSpeech", () => {
     expect(await speech.recognize(Buffer.from("abc"), "audio/webm")).toBe("");
   });
 
-  it("ошибки: 400 — rejected, 5xx — upstream; в лог — только статус", async () => {
+  it("ошибки: плохое аудио — rejected, ключ/выключенный API — config, 5xx — upstream; в лог — только коды", async () => {
     const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-    const err = (status: number) =>
+    const err = (status: number, error: Record<string, unknown>) =>
       createGoogleSpeech("KEY", (() =>
         Promise.resolve(
-          jsonResponse({ error: { message: "секрет туриста" } }, status),
+          jsonResponse({ error: { message: "секрет туриста", ...error } }, status),
         )) as unknown as typeof fetch)
         .recognize(Buffer.from("секрет"), "audio/webm")
         .then(
           () => undefined,
           (e: unknown) => e as AssistantUpstreamError,
         );
-    expect((await err(400))?.reason).toBe("rejected");
-    expect((await err(503))?.reason).toBe("upstream");
-    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(["Speech-to-Text: 400", "Speech-to-Text: 503"]);
+    expect((await err(400, { status: "INVALID_ARGUMENT" }))?.reason).toBe("rejected");
+    expect(
+      (await err(400, { status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] }))?.reason,
+    ).toBe("config");
+    expect(
+      (await err(403, { status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] }))?.reason,
+    ).toBe("config");
+    expect((await err(503, { status: "UNAVAILABLE" }))?.reason).toBe("upstream");
+    const logged = warn.mock.calls.map((c) => String(c[0]));
+    expect(logged).toEqual([
+      "Speech-to-Text: 400 INVALID_ARGUMENT",
+      "Speech-to-Text: 400 INVALID_ARGUMENT/API_KEY_INVALID",
+      "Speech-to-Text: 403 PERMISSION_DENIED/SERVICE_DISABLED",
+      "Speech-to-Text: 503 UNAVAILABLE",
+    ]);
+    expect(logged.join(" ")).not.toContain("секрет");
   });
 
   it("без ключа — выключен", () => {

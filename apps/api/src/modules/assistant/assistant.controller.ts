@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Inject, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, HttpCode, Inject, Post, Query, Req, Res } from "@nestjs/common";
 import { ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import type { Readable } from "node:stream";
 import { ApiError, ApiErrors } from "../../common/http/index.js";
@@ -9,6 +9,7 @@ import { originOf } from "../guide/index.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RegionQueryDto } from "../guide/index.js";
 import { RateLimit } from "../rate-limit/index.js";
+import type { RbacRequest } from "../rbac/index.js";
 import {
   ASSISTANT_AUDIO_MAX_BYTES,
   ASSISTANT_TEXT_MAX,
@@ -39,20 +40,42 @@ const touristRegion: FeatureRegionResolver = ({ request }) => {
 
 type StreamRequest = Readable & { headers: Record<string, string | string[] | undefined> };
 
-/** Тело запроса до max байт; больше — 413 (чтение прерывается сразу, весь файл не принимается). */
-export async function readLimited(req: Readable, max: number): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
-    size += b.length;
-    if (size > max) {
-      req.destroy();
-      throw tooLarge();
-    }
-    chunks.push(b);
-  }
-  return Buffer.concat(chunks);
+/**
+ * Тело запроса до max байт; больше — 413: чтение прекращается (остаток не принимается), соединение закрывается
+ * после ответа (Connection: close у ответа ставит вызывающий) — без обрыва сокета до отправки 413.
+ */
+export function readLimited(req: Readable, max: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    const onData = (chunk: Buffer | string) => {
+      const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += b.length;
+      if (size > max) {
+        cleanup();
+        req.pause();
+        reject(tooLarge());
+        return;
+      }
+      chunks.push(b);
+    };
+    const onEnd = () => {
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const onError = (e: unknown) => {
+      cleanup();
+      reject(e);
+    };
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+  });
 }
 
 const tooLarge = () =>
@@ -102,7 +125,7 @@ export class AssistantController {
     "BAD_GATEWAY",
     "GATEWAY_TIMEOUT",
   )
-  query(@Body() body: AssistantQueryDto): Promise<AssistantResultDto> {
+  query(@Body() body: AssistantQueryDto, @Req() req: RbacRequest): Promise<AssistantResultDto> {
     const text = body.text.trim();
     if (!text)
       throw new ApiError("VALIDATION_FAILED", {
@@ -110,11 +133,12 @@ export class AssistantController {
           fields: [{ field: "text", constraint: "isNotEmpty", messageKey: "errors.validation.isNotEmpty" }],
         },
       });
-    return this.assistant.query(body.regionId, {
+    return this.assistant.query(body.regionId, userOf(req), {
       text,
       origin: originOf(body),
       history: (body.history ?? []).map((h) => h.trim()).filter(Boolean),
-      previous: body.previous ?? null,
+      previous: body.previous ? { ...body.previous, locality: body.previous.locality ?? null } : null,
+      localityIds: body.localityIds ?? [],
     });
   }
 
@@ -145,7 +169,11 @@ export class AssistantController {
     "BAD_GATEWAY",
     "GATEWAY_TIMEOUT",
   )
-  async transcribe(@Query() _q: RegionQueryDto, @Req() req: StreamRequest): Promise<AssistantTranscriptDto> {
+  async transcribe(
+    @Query() q: RegionQueryDto,
+    @Req() req: StreamRequest & RbacRequest,
+    @Res({ passthrough: true }) res: { setHeader(name: string, value: string): unknown },
+  ): Promise<AssistantTranscriptDto> {
     const mime = audioMimeOf(req.headers["content-type"]);
     if (!mime)
       throw new ApiError("BAD_REQUEST", {
@@ -154,13 +182,26 @@ export class AssistantController {
         details: { reason: "unsupported_media_type", accepted: [...AUDIO_MIMES] },
       });
     const declared = Number(req.headers["content-length"]);
-    if (Number.isFinite(declared) && declared > ASSISTANT_AUDIO_MAX_BYTES) throw tooLarge();
-    const audio = await readLimited(req, ASSISTANT_AUDIO_MAX_BYTES);
+    let audio: Buffer;
+    try {
+      if (Number.isFinite(declared) && declared > ASSISTANT_AUDIO_MAX_BYTES) throw tooLarge();
+      audio = await readLimited(req, ASSISTANT_AUDIO_MAX_BYTES);
+    } catch (e) {
+      // Непрочитанный остаток тела — не ждём: соединение закроется после ответа 413.
+      res.setHeader("Connection", "close");
+      throw e;
+    }
     if (!audio.length)
       throw new ApiError("BAD_REQUEST", {
         messageKey: "errors.assistant.audio",
         details: { reason: "empty" },
       });
-    return { text: await this.assistant.transcribe(audio, mime) };
+    return { text: await this.assistant.transcribe(q.regionId, userOf(req), audio, mime) };
   }
+}
+
+function userOf(req: RbacRequest): string {
+  const userId = req.principal?.userId;
+  if (!userId) throw new ApiError("UNAUTHENTICATED");
+  return userId;
 }

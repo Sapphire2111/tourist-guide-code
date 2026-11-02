@@ -59,6 +59,7 @@ export function AssistantBox({
       setStatus(reason === "denied" ? t("miniapp.assistant.micDenied") : t("miniapp.assistant.noSpeech")),
   );
   const recording = recorder.state === "recording";
+  const micBlocked = busy || transcribing || recorder.state === "starting";
 
   return (
     <form role="search" onSubmit={submit} className="assistant" data-testid="assistant-box">
@@ -77,27 +78,30 @@ export function AssistantBox({
           onChange={(e) => setDraft(e.target.value)}
           disabled={recording || transcribing}
         />
-        {recorder.supported && (
-          <button
-            type="button"
-            className="assistant-mic"
-            data-testid="assistant-mic"
-            aria-pressed={recording}
-            aria-label={recording ? t("miniapp.assistant.stop") : t("miniapp.assistant.mic")}
-            disabled={busy || transcribing || recorder.state === "starting"}
-            onClick={() => {
-              setStatus(null);
-              if (recording) recorder.stop();
-              else recorder.start();
-            }}
-          >
-            {recording ? <StopIcon /> : <MicIcon />}
-          </button>
-        )}
         <Button type="submit" disabled={busy || recording || transcribing || !draft.trim()}>
           {t("miniapp.assistant.send")}
         </Button>
       </div>
+      {recorder.supported && (
+        // Подпись постоянная (имя кнопки не меняется во время записи — фокус и озвучка не сбиваются); запись —
+        // aria-pressed и строка статуса ниже. Не disabled во время ожидания: фокус остаётся на кнопке.
+        <button
+          type="button"
+          className="assistant-mic"
+          data-testid="assistant-mic"
+          aria-pressed={recording}
+          aria-disabled={micBlocked}
+          onClick={() => {
+            if (micBlocked) return;
+            setStatus(null);
+            if (recording) recorder.stop();
+            else recorder.start();
+          }}
+        >
+          {recording ? <StopIcon /> : <MicIcon />}
+          <span>{t("miniapp.assistant.mic")}</span>
+        </button>
+      )}
       {/* Постоянная live-область: запись, распознавание и ошибки голоса объявляются читалкой. */}
       <p role="status" className="kosiv-muted assistant-status" data-testid="assistant-voice-status">
         {recording ? t("miniapp.assistant.recording") : (status ?? "")}

@@ -8,7 +8,7 @@ import { setMapLoaderForTests } from "../guide/MapSlot.js";
 import type { PlacesMapProps } from "../guide/PlacesMap.js";
 import type { GuideApi, PlaceSummary } from "../guide/types.js";
 import { ApiCallError } from "../host/types.js";
-import { Assistant } from "./Assistant.js";
+import { Assistant, DIALOG_KEY } from "./Assistant.js";
 import {
   createAssistantApi,
   type AssistantApi,
@@ -35,6 +35,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   window.location.hash = "";
+  sessionStorage.clear();
 });
 
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -231,6 +232,36 @@ describe("Assistant: диалог", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "Асистент тимчасово недоступний. Скористайтеся розділами або пошуком.",
     );
+  });
+});
+
+describe("Assistant: «Назад» из карточки", () => {
+  it("адрес без запроса, диалог восстанавливается без повторного запроса; «Новий пошук» очищает", async () => {
+    const api = fakeAssistant();
+    const first = render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="кав'ярня" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(window.location.hash).toBe("#/assistant");
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(2);
+    first.unmount();
+
+    // Вернулись (#/assistant без q): тот же диалог, api не вызывается.
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(api.ask).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("assistant-reply").textContent).toBe("Шукаю: Кафе");
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Новий пошук" }));
+    expect(screen.queryByTestId("assistant-dialog")).toBeNull();
+    expect(sessionStorage.getItem(DIALOG_KEY)).toBeNull();
   });
 });
 

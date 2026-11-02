@@ -24,7 +24,7 @@ test("текст: «Що шукаєте?» → места каталога и к
   await box.getByLabel("Що шукаєте?").fill("Недорога кав'ярня");
   await box.getByRole("button", { name: "Знайти" }).click();
 
-  await expect(page).toHaveURL(/#\/assistant\?q=/);
+  await expect(page).toHaveURL(/#\/assistant$/);
   await expect(page.getByTestId("assistant-status")).toHaveText("Знайдено в каталозі: 2");
   await expect(page.getByTestId("assistant-reply")).toHaveText("Шукаю: Кав'ярні");
   const places = page.getByTestId("assistant-place");
@@ -55,6 +55,16 @@ test("текст: «Що шукаєте?» → места каталога и к
   // Карточка — обычная карточка места каталога.
   await places.first().getByRole("link", { name: "Кав'ярня «Ватра»" }).click();
   await expect(page).toHaveURL(/#\/place\//);
+
+  // «Назад» — тот же диалог без повторного (платного) запроса.
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/assistant$/);
+  await expect(page.getByTestId("assistant-reply")).toHaveText([
+    "Шукаю: Кав'ярні",
+    "Шукаю: Кав'ярні, недорого",
+  ]);
+  await expect(places).toHaveCount(1);
+  expect(mock.queries).toHaveLength(2);
 });
 
 test("«готель поруч» — места проживания из каталога", async ({ page }) => {
@@ -90,14 +100,15 @@ test.describe("голос", () => {
     const mock = await installAssistantMock(page);
     await page.goto("/");
     const mic = page.getByTestId("assistant-mic");
-    await expect(mic).toHaveAccessibleName("Сказати голосом");
+    await expect(mic).toHaveAccessibleName("Скажи, чого душа бажає");
+    await expect(mic).toHaveText("Скажи, чого душа бажає");
     await mic.click();
     await expect(page.getByTestId("assistant-voice-status")).toHaveText(
       "Слухаю… Натисніть ще раз, щоб завершити.",
     );
     await expect(mic).toHaveAttribute("aria-pressed", "true");
     await mic.click();
-    await expect(page).toHaveURL(/#\/assistant\?q=/);
+    await expect(page).toHaveURL(/#\/assistant$/);
     await expect(page.getByTestId("assistant-place")).toHaveCount(2);
     expect(mock.transcribes).toEqual([
       { contentType: "audio/webm", bytes: "OggS-fake-opus-audio".length, regionId: REGION_ID },

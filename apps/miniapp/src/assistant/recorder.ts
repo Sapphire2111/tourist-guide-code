@@ -23,6 +23,8 @@ export type RecorderState = "idle" | "starting" | "recording";
 
 /**
  * start — запрос микрофона и запись; stop (или RECORD_MAX_MS) — onDone(blob). Отказ в доступе — onError("denied").
+ * Микрофон освобождается всегда: после записи, при ошибке MediaRecorder и при уходе с экрана — в том числе если
+ * разрешение пришло уже после размонтирования.
  */
 export function useRecorder(
   onDone: (audio: Blob) => void,
@@ -31,6 +33,8 @@ export function useRecorder(
   const [mime] = useState(() => recordMime());
   const [state, setState] = useState<RecorderState>("idle");
   const rec = useRef<MediaRecorder | null>(null);
+  const busy = useRef(false);
+  const alive = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const done = useRef(onDone);
   const fail = useRef(onError);
@@ -45,48 +49,66 @@ export function useRecorder(
   }, []);
 
   const start = useCallback(() => {
-    if (!mime || rec.current) return;
+    if (!mime || busy.current) return;
+    busy.current = true;
     setState("starting");
+    const release = (stream: MediaStream) => stream.getTracks().forEach((t) => t.stop());
     navigator.mediaDevices.getUserMedia({ audio: true }).then(
       (stream) => {
+        // Экран закрыт, пока ждали разрешения, — микрофон сразу освобождается.
+        if (!alive.current) {
+          release(stream);
+          return;
+        }
         const chunks: Blob[] = [];
-        const r = new MediaRecorder(stream, { mimeType: mime });
-        rec.current = r;
-        r.ondataavailable = (e) => {
-          if (e.data.size) chunks.push(e.data);
-        };
-        r.onstop = () => {
-          stream.getTracks().forEach((t) => t.stop());
+        let r: MediaRecorder;
+        try {
+          r = new MediaRecorder(stream, { mimeType: mime });
+          r.ondataavailable = (e) => {
+            if (e.data.size) chunks.push(e.data);
+          };
+          r.onstop = () => {
+            release(stream);
+            rec.current = null;
+            busy.current = false;
+            if (!alive.current) return;
+            setState("idle");
+            const blob = new Blob(chunks, { type: mime });
+            if (blob.size) done.current(blob);
+            else fail.current("failed");
+          };
+          r.start();
+        } catch {
+          release(stream);
           rec.current = null;
+          busy.current = false;
           setState("idle");
-          const blob = new Blob(chunks, { type: mime });
-          if (blob.size) done.current(blob);
-          else fail.current("failed");
-        };
-        r.start();
+          fail.current("failed");
+          return;
+        }
+        rec.current = r;
         setState("recording");
         timer.current = setTimeout(stop, RECORD_MAX_MS);
       },
       (e: unknown) => {
+        busy.current = false;
+        if (!alive.current) return;
         setState("idle");
         fail.current((e as { name?: string })?.name === "NotAllowedError" ? "denied" : "failed");
       },
     );
   }, [mime, stop]);
 
-  // Уход с экрана посреди записи — запись прекращается, микрофон освобождается.
-  useEffect(
-    () => () => {
+  // Уход с экрана посреди записи — запись прекращается без отправки, микрофон освобождается.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
       clearTimeout(timer.current);
       const r = rec.current;
-      if (r && r.state !== "inactive") {
-        r.onstop = null;
-        r.stop();
-        r.stream.getTracks().forEach((t) => t.stop());
-      }
-    },
-    [],
-  );
+      if (r && r.state !== "inactive") r.stop();
+    };
+  }, []);
 
   return { supported: Boolean(mime), state, start, stop };
 }

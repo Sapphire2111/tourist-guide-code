@@ -31,6 +31,7 @@ import { AssistantService } from "./assistant.service.js";
 
 const REGION = "0190f5c2-7d3e-7000-8000-00000000000a";
 const USER = "0190f5c2-7d3e-7000-8000-0000000000ee";
+const LOCALITY = "0190f5c2-7d3e-7000-8000-000000000301";
 
 let app: INestApplication | undefined;
 afterEach(async () => {
@@ -43,6 +44,7 @@ const result = {
     kind: "places",
     categories: ["cafes"],
     nameQuery: null,
+    locality: null,
     radiusMeters: null,
     priceMin: null,
     priceMax: null,
@@ -106,14 +108,16 @@ describe("POST /assistant/query", () => {
         lng: 24.5,
         history: ["кав'ярня поруч", " "],
         previous: result.intent,
+        localityIds: [LOCALITY],
       })
       .expect(200);
     expect(res.body).toEqual(result);
-    expect(service.query).toHaveBeenCalledWith(REGION, {
+    expect(service.query).toHaveBeenCalledWith(REGION, USER, {
       text: "дешевше",
       origin: { lon: 24.5, lat: 48.4 },
       history: ["кав'ярня поруч"],
       previous: result.intent,
+      localityIds: [LOCALITY],
     });
   });
 
@@ -138,6 +142,8 @@ describe("POST /assistant/query", () => {
     await post({ previous: { ...result.intent, suggestions: ["hack"] } }).expect(400);
     await post({ previous: { ...result.intent, priceMax: 9 } }).expect(400);
     await post({ lat: 48.4 }).expect(400);
+    await post({ localityIds: ["yaremche"] }).expect(400);
+    await post({ localityIds: Array(11).fill(LOCALITY) }).expect(400);
     await post({ extra: 1 }).expect(400);
     expect(service.query).not.toHaveBeenCalled();
   });
@@ -160,7 +166,7 @@ describe("POST /assistant/transcribe", () => {
     const { http, service } = await start();
     const res = await post(http as never, "audio/webm;codecs=opus", Buffer.from("OggS")).expect(200);
     expect(res.body).toEqual({ text: "кава поруч" });
-    expect(service.transcribe).toHaveBeenCalledWith(Buffer.from("OggS"), "audio/webm");
+    expect(service.transcribe).toHaveBeenCalledWith(REGION, USER, Buffer.from("OggS"), "audio/webm");
     await post(http as never, "audio/ogg", Buffer.from("OggS")).expect(200);
   });
 
@@ -173,6 +179,7 @@ describe("POST /assistant/transcribe", () => {
       413,
     );
     expect((r413.body as ErrorEnvelope).error.messageKey).toBe("errors.assistant.audioTooLarge");
+    expect(r413.headers["connection"]).toBe("close");
     await http()
       .post("/assistant/transcribe")
       .set("Content-Type", "audio/webm")

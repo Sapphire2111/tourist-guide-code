@@ -23,13 +23,15 @@
   padding-left: 18px;
 }
 .assistant-mic {
-  flex: none;
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 16px 6px 12px;
   border-radius: 9999px;
+  font-weight: 600;
   border: 1.5px solid var(--app-border, #d6d3d1);
   background: var(--app-surface, #fff);
   color: var(--app-text, #1c1917);
@@ -40,7 +42,7 @@
   border-color: #b91c1c;
   color: #fff;
 }
-.assistant-mic:disabled {
+.assistant-mic[aria-disabled="true"] {
   opacity: 0.5;
 }
 .assistant-status {
