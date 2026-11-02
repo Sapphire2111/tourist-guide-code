@@ -84,6 +84,10 @@ export type ScenarioSummary = {
 
 export type PlanPlace = { id: string; name: LocalizedText };
 
+/** Часть дня плана; rain — запасной план «якщо дощ». */
+export type PlanSlot = "morning" | "afternoon" | "evening" | "rain";
+export const PLAN_SLOTS: readonly PlanSlot[] = ["morning", "afternoon", "evening", "rain"];
+
 export type PlanItem = {
   id: string;
   /** «HH:MM» или null. */
@@ -93,7 +97,48 @@ export type PlanItem = {
   note: LocalizedText | null;
   alternatives: PlanPlace[];
   distanceMeters: number | null;
+  /** Часть дня (у пунктов сценария — по времени). */
+  slot: PlanSlot;
 };
+
+/** Почему вариант подходит (ключ текста miniapp.plan.reason.*). */
+export type PlanOptionReason =
+  | "breakfast"
+  | "lunch"
+  | "dinner"
+  | "evening_out"
+  | "walk"
+  | "culture"
+  | "active"
+  | "fun"
+  | "relax"
+  | "shopping"
+  | "indoor";
+
+/** Вариант на выбор — настоящее место каталога. */
+export type PlanOption = {
+  place: PlanPlace & { categoryName: LocalizedText };
+  /** Код подкатегории или waterfall / bar (по названию из Google). */
+  kind: string;
+  reason: PlanOptionReason;
+  distanceMeters: number | null;
+  /** walk — пішки, car — на авто, transport — без авто далеко; null — не від чого рахувати. */
+  travel: "walk" | "car" | "transport" | null;
+  travelMinutes: number | null;
+  kidsFriendly: boolean;
+};
+
+export type PlanDayOptions = { day: number; slots: { slot: PlanSlot; options: PlanOption[] }[] };
+
+/** Параметры поездки. */
+export type PlanTrip = {
+  adults: number;
+  children: number;
+  withCar: boolean;
+  days: number;
+};
+
+export type TripInput = PlanTrip & { startDate?: string | null; basePlaceId?: string | null };
 
 export type PlanDay = { day: number; items: PlanItem[] };
 
@@ -106,9 +151,19 @@ export type UserPlan = {
   schedule: PlanDay[];
   scenarioUpdated: boolean;
   updatedAt: string;
+  startDate: string | null;
+  trip: PlanTrip;
+  /** От чего считается расстояние, если в день ещё ничего не выбрано. */
+  base: LocalizedText | null;
+  /** Варианты на выбор (только у одного плана; в списке — пусто). */
+  options: PlanDayOptions[];
 };
 
-export type PlanChange = { replace: { itemId: string; placeId: string } } | { remove: string };
+export type PlanChange =
+  | { replace: { itemId: string; placeId: string } }
+  | { remove: string }
+  | { add: { day: number; slot: PlanSlot; placeId: string } }
+  | { trip: Partial<TripInput> };
 
 /** Ошибка api: код и messageKey из конверта ошибки сервера; details — например, текущий статус при 409. */
 export class ApiCallError extends Error {
@@ -160,5 +215,7 @@ export type HostApi = {
   plan(id: string): Promise<UserPlan>;
   /** «Зберегти як план»: план из сценария. */
   savePlan(scenarioId: string): Promise<UserPlan>;
+  /** «Скласти свій план»: без сценария, с параметрами поездки. */
+  createPlan(trip: TripInput): Promise<UserPlan>;
   updatePlan(id: string, change: PlanChange): Promise<UserPlan>;
 };

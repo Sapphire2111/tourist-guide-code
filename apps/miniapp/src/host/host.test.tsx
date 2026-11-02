@@ -281,8 +281,17 @@ describe("C09 Мій план", () => {
           note: null,
           alternatives: [place("b", "Пекарня")],
           distanceMeters: null,
+          slot: "morning",
         },
-        { id: "i2", time: "11:00", place: null, note: null, alternatives: [], distanceMeters: 1200 },
+        {
+          id: "i2",
+          time: "11:00",
+          place: null,
+          note: null,
+          alternatives: [],
+          distanceMeters: 1200,
+          slot: "morning",
+        },
       ],
     },
   ];
@@ -293,6 +302,10 @@ describe("C09 Мій план", () => {
     schedule: days("a"),
     scenarioUpdated: false,
     updatedAt: "",
+    startDate: null,
+    trip: { adults: 2, children: 0, withCar: true, days: 1 },
+    base: null,
+    options: [],
     ...over,
   });
 
@@ -322,7 +335,7 @@ describe("C09 Мій план", () => {
     expect(window.location.hash).toBe(`#/plan/saved/${plan().id}`);
   });
 
-  it("сохранённый план: замена и удаление пункта — PATCH", async () => {
+  it("сохранённый план: замена и снятие галочки с пункта — PATCH", async () => {
     const updatePlan = vi
       .fn<HostApi["updatePlan"]>()
       .mockResolvedValueOnce(plan({ schedule: days("b") }))
@@ -331,13 +344,15 @@ describe("C09 Мій план", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Замінити: Кав'ярня" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Замінити на: Пекарня" })));
     expect(updatePlan).toHaveBeenCalledWith(plan().id, { replace: { itemId: "i1", placeId: "b" } });
-    expect(screen.getByRole("link", { name: "Пекарня" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Пекарня" })).toBeTruthy();
     expect(text("plan-status")).toBe("Пункт замінено: Пекарня");
     await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Видалити «Недоступно. Замініть пункт.»" })),
+      fireEvent.click(screen.getByRole("checkbox", { name: "Недоступно. Замініть пункт." })),
     );
     expect(updatePlan).toHaveBeenLastCalledWith(plan().id, { remove: "i2" });
-    expect(screen.getByText("На цей день пунктів немає.")).toBeTruthy();
+    expect(screen.getAllByText("Ще нічого не обрано — позначте варіанти нижче.")).toHaveLength(4);
+    // План Б свёрнут: его тело в DOM, но скрыто.
+    expect(screen.getByTestId("plan-slot-rain").querySelector("[hidden]")).toBeTruthy();
   });
 });
 

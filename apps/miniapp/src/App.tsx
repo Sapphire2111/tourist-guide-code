@@ -41,7 +41,16 @@ import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/cont
 import { createHostApi } from "./host/host-api.js";
 import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
-import { MyPlan, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
+import { MyPlan, NewPlanScreen, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
+import { PartnerProvider, usePartnerOrgs } from "./partner/context.js";
+import { PartnerDashboard } from "./partner/Dashboard.js";
+import { AcceptInvite } from "./partner/Invite.js";
+import { PartnerOffers } from "./partner/Offers.js";
+import { PartnerOnboarding } from "./partner/Onboarding.js";
+import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
+import { ModeSwitch } from "./partner/parts.js";
+import { PlaceEditor } from "./partner/PlaceEditor.js";
+import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
 import { consumeBack, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
@@ -62,10 +71,15 @@ export type AppProps = {
   analytics?: Analytics;
   /** API блока 5 (тесты подменяют); по умолчанию — поверх api. */
   hostApi?: HostApi;
+  /** API кабинета партнёра (блок 6; тесты подменяют); по умолчанию — поверх api. */
+  partnerApi?: PartnerApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
-type RoutesProps = Omit<AppProps, "startup" | "locale" | "guideApi" | "analytics" | "hostApi"> & {
+type RoutesProps = Omit<
+  AppProps,
+  "startup" | "locale" | "guideApi" | "analytics" | "hostApi" | "partnerApi"
+> & {
   session?: Session;
   onMe: (me: Me) => void;
   /** Явный повтор GET /context после сбоя (один запрос на нажатие); true — загружен. */
@@ -168,6 +182,7 @@ function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "se
 function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
   const { t } = useT();
   const { staff } = useHost();
+  const partnerOrgs = usePartnerOrgs();
   return (
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
@@ -187,10 +202,12 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
       <SeasonTags />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
-        {role === "partner" && (
+        {(role === "partner" || partnerOrgs.length > 0) && (
           // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
           <Feature flag="module.partner_cabinet">
-            <Link to="/partner">{t("miniapp.partner.open")}</Link>
+            <Link to="/partner" data-testid="partner-link">
+              {t("miniapp.partner.open")}
+            </Link>
           </Feature>
         )}
         <Health api={api} />
@@ -263,12 +280,63 @@ function useFocusHeading(path: string) {
   }, [path]);
 }
 
+const PARTNER_PATH_RE = /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff)?$/;
+
+/**
+ * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
+ * Приглашение (P14) — /partner/invite, токен только в памяти (session.invite), не в адресе.
+ */
+function partnerScreen(path: string, invite: string | undefined): ReactNode {
+  if (path === "/partner") return <PartnerDashboard />;
+  if (path === "/partner/new") return <PartnerOnboarding />;
+  if (path === "/partner/invite") return <AcceptInvite token={invite ?? ""} />;
+  const m = PARTNER_PATH_RE.exec(path);
+  if (!m) return null;
+  const [, kind, raw, sub] = m;
+  const id = uuidOf(raw!);
+  if (!id) return null;
+  if (kind === "place" && !sub) return <PlaceEditor key={id} id={id} />;
+  if (kind === "place" && sub === "/offers") return <PartnerOffers key={id} placeId={id} />;
+  if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
+  return null;
+}
+
+/** C15 → P13/P12: переключатель режима для партнёра, иначе «Стати партнером». */
+function PartnerEntry() {
+  const { t } = useT();
+  const orgs = usePartnerOrgs();
+  return (
+    <div className="kosiv-card kosiv-panel" data-testid="partner-entry">
+      <h2>{t("miniapp.partner.title")}</h2>
+      {orgs.length ? (
+        <ModeSwitch current="tourist" inProfile />
+      ) : (
+        <Link to="/partner/new" className="kosiv-cta">
+          {t("miniapp.partner.become")}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Открытие по приглашению (start_param inv_<токен>): один раз — на экран P14. */
+function useInviteRedirect(invite: string | undefined, enabled: boolean) {
+  const [, navigate] = useRoute();
+  const done = useRef(false);
+  useEffect(() => {
+    if (invite === undefined || !enabled || done.current) return;
+    done.current = true;
+    navigate("/partner/invite", { replace: true });
+  }, [invite, enabled, navigate]);
+}
+
 function Routes(props: RoutesProps) {
   const { api, role, webApp, session, onMe } = props;
   const { t } = useT();
   const [path] = useRoute();
   useFocusHeading(path);
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
+  useInviteRedirect(session?.invite, partnerCabinet);
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
@@ -367,6 +435,14 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
+  if (hostRequests && path === "/plan/new")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <NewPlanScreen />
+        </RequireRegion>
+      </Screen>
+    );
   const planRoute = hostRequests && /^\/plan\/(scenario|saved)\/([^/]+)$/.exec(path);
   if (planRoute) {
     const id = uuidOf(planRoute[2]!);
@@ -388,21 +464,32 @@ function Routes(props: RoutesProps) {
     return (
       <Screen title={t("miniapp.profile.title")} webApp={webApp}>
         <Profile api={api} me={session.me} webApp={webApp} onChange={onMe} />
+        <Feature flag="module.partner_cabinet">
+          <PartnerEntry />
+        </Feature>
       </Screen>
     );
   }
   // Кабинет партнёра (модуль блока 6) при выключенном флаге — как несуществующий путь (T1-22).
-  if (path === "/partner" && partnerCabinet) {
+  const partner = partnerCabinet ? partnerScreen(path, session?.invite) : null;
+  if (partner && !session)
     return (
       <Screen title={t("miniapp.partner.title")} webApp={webApp}>
-        {role === "partner" ? (
-          <p>{t("common.stub")}</p>
-        ) : (
-          <p role="alert">{t("miniapp.partner.forbidden")}</p>
-        )}
+        <p role="alert">
+          {t(role === "partner" ? "miniapp.partner.needsLogin" : "miniapp.partner.forbidden")}
+        </p>
       </Screen>
     );
-  }
+  // Онбординг партнёра и приглашение — только после обязательных согласий (C01); P14 — после формы.
+  if (partner && !hasRequiredConsents(session!.me))
+    return (
+      <Screen title={t("miniapp.partner.title")} webApp={webApp}>
+        <div className="kosiv-card kosiv-panel" data-testid="partner-consents">
+          <Onboarding api={api} webApp={webApp} onDone={onMe} />
+        </div>
+      </Screen>
+    );
+  if (partner) return <Screen webApp={webApp}>{partner}</Screen>;
   return (
     <Screen title={t("common.notFound")} webApp={webApp}>
       <Link to="/">{t("common.toHome")}</Link>
@@ -459,7 +546,15 @@ function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
   );
 }
 
-export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hostApi, ...props }: AppProps) {
+export function App({
+  locale = DEFAULT_LOCALE,
+  startup,
+  guideApi,
+  analytics,
+  hostApi,
+  partnerApi,
+  ...props
+}: AppProps) {
   const { webApp } = props;
   const [state, setState] = useState<StartupState>(startup ? { status: "loading" } : { status: "browser" });
   // ready() после первого рендера: Telegram снимает заглушку загрузки, когда интерфейс уже есть.
@@ -535,6 +630,8 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
     }),
     [hApi, venue, context, staff],
   );
+  const pApi = useMemo(() => partnerApi ?? createPartnerApi(props.api), [partnerApi, props.api]);
+  const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
@@ -548,10 +645,14 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
               ) : (
                 <GuideProvider value={guide}>
                   <HostProvider value={host}>
-                    <Shell
-                      profile={Boolean(session && hasRequiredConsents(session.me))}
-                      routes={<Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />}
-                    />
+                    <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
+                      <Shell
+                        profile={Boolean(session && hasRequiredConsents(session.me))}
+                        routes={
+                          <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                        }
+                      />
+                    </PartnerProvider>
                   </HostProvider>
                 </GuideProvider>
               )}
