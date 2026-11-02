@@ -810,6 +810,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/places/{id}/google-photos/{index}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Фото Google места (галерея картки): 302 на файл Google без ключа api
+     * @description Без аутентификации. index — номер в googlePhotos карточки, w — 400 (превью) или 1200. Файл не копируется: api получает адрес у Google Place Photos (кэш в памяти и БД) и отвечает редиректом. 404 — места, фото нет или Google недоступен (суточный предел запросов). Rate limit 120/мин.
+     */
+    get: operations["getGuidePlaceGooglePhoto"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/places/{id}": {
     parameters: {
       query?: never;
@@ -2780,6 +2800,111 @@ export interface components {
       name: components["schemas"]["LocalizedTextDto"];
       group: components["schemas"]["TagGroup"];
     };
+    AiSummaryDto: {
+      /** @description 2–3 предложения «що це і чим цікаво» — показывать с пометкой ШІ */
+      text: string;
+      /** @example claude-sonnet-5-5 */
+      model: string;
+      /** Format: date-time */
+      generatedAt: string;
+    };
+    /**
+     * @description «Що пропонує» — только подтверждённые Google
+     * @enum {string}
+     */
+    PlaceAmenity:
+      | "breakfast"
+      | "brunch"
+      | "lunch"
+      | "dinner"
+      | "coffee"
+      | "dessert"
+      | "beer"
+      | "wine"
+      | "cocktails"
+      | "vegetarian"
+      | "dine_in"
+      | "takeout"
+      | "delivery"
+      | "curbside_pickup"
+      | "reservable"
+      | "outdoor_seating"
+      | "live_music"
+      | "kids_menu"
+      | "good_for_children"
+      | "good_for_groups"
+      | "watching_sports"
+      | "dogs_allowed"
+      | "restroom"
+      | "parking_free"
+      | "parking_paid"
+      | "wheelchair_entrance"
+      | "wheelchair_parking"
+      | "wheelchair_restroom"
+      | "wheelchair_seating"
+      | "cards"
+      | "nfc"
+      | "cash_only";
+    /** @enum {string} */
+    RatingSource: "google";
+    PlaceRatingDto: {
+      /** @example 4.8 */
+      value: number;
+      /** @description Число оценок */
+      count: number;
+      source: components["schemas"]["RatingSource"];
+    };
+    GoogleAuthorDto: {
+      name: string;
+      /** @description Профиль автора в Google Maps */
+      uri: string | null;
+      /** @description Аватар (googleusercontent.com) */
+      photoUri: string | null;
+    };
+    GoogleReviewDto: {
+      author: components["schemas"]["GoogleAuthorDto"];
+      rating: number | null;
+      text: string;
+      language: string | null;
+      /** Format: date-time */
+      publishTime: string | null;
+      /** @example 2 місяці тому */
+      relativeTime: string | null;
+      /** @description Отзыв в Google Maps */
+      uri: string | null;
+    };
+    GooglePhotoDto: {
+      /** @description Превью 400 px: редирект api на файл Google (без ключа) */
+      url: string;
+      /** @description То же фото 1200 px — полноэкранный просмотр */
+      largeUrl: string;
+      width: number | null;
+      height: number | null;
+      /** @description Авторы фото — подпись под фото */
+      authors: components["schemas"]["GoogleAuthorDto"][];
+    };
+    WikipediaImageDto: {
+      /** @description Файл Wikimedia Commons (upload.wikimedia.org) */
+      url: string;
+      width: number | null;
+      height: number | null;
+      author: string | null;
+      /** @example CC BY-SA 4.0 */
+      license: string | null;
+      licenseUrl: string | null;
+      /** @description Страница файла на Commons */
+      sourceUrl: string;
+    };
+    WikipediaDto: {
+      /** @example uk */
+      lang: string;
+      title: string;
+      /** @description Статья */
+      url: string;
+      /** @description Начало статьи (до ~700 символов) */
+      extract: string;
+      image: components["schemas"]["WikipediaImageDto"] | null;
+    };
     PlaceCardDto: {
       /** Format: uuid */
       id: string;
@@ -2827,6 +2952,29 @@ export interface components {
       openUntil: string | null;
       /** @description В избранном; null — без сессии */
       favorite: boolean | null;
+      /**
+       * @description Тип места по Google (uk)
+       * @example Піцерія
+       */
+      typeLabel: string | null;
+      /** @description Описание Google (editorialSummary) */
+      summary: string | null;
+      /** @description Текст ИИ из фактов Google и Вікіпедії */
+      aiSummary: components["schemas"]["AiSummaryDto"] | null;
+      /** @description Ценовой уровень Google: 0 — бесплатно, 1–4 — от недорого до очень дорого */
+      priceLevel: number | null;
+      /** @description «Що пропонує» — только подтверждённые Google */
+      amenities: components["schemas"]["PlaceAmenity"][];
+      /** @description Рейтинг Google */
+      rating: components["schemas"]["PlaceRatingDto"] | null;
+      /** @description До 5 отзывов Google */
+      reviews: components["schemas"]["GoogleReviewDto"][];
+      /** @description До 5 фото Google (через прокси api) */
+      googlePhotos: components["schemas"]["GooglePhotoDto"][];
+      /** @description Место в Google Maps (атрибуция, «усі відгуки») */
+      googleMapsUri: string | null;
+      /** @description Вікіпедія для пам'яток */
+      wikipedia: components["schemas"]["WikipediaDto"] | null;
     };
     FavoriteListDto: {
       /** @description Избранные опубликованные места региона, новые сверху (до 200); снятые с публикации не входят */
@@ -9824,6 +9972,79 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PlaceSearchResultDto"];
         };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getGuidePlaceGooglePhoto: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+        /** @description Ширина, px */
+        w?: 400 | 1200;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+        index: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Location — файл фото на googleusercontent.com */
+      302: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Ошибка */
       400: {

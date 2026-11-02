@@ -44,6 +44,11 @@ function fakeService() {
     ),
     removeFavorite: vi.fn(() => Promise.resolve()),
     emergencyContacts: vi.fn(() => Promise.resolve([])),
+    googlePhoto: vi.fn((_r: string, id: string, index: number) =>
+      Promise.resolve(
+        id === PLACE && index === 0 ? "https://lh3.googleusercontent.com/p/abc=w400" : undefined,
+      ),
+    ),
   };
 }
 
@@ -191,6 +196,29 @@ describe("GET /places/{id}", () => {
     const { http, service } = await start({ authenticated: true });
     await http().get(`/places/${PLACE}?regionId=${REGION}`).expect(200);
     expect(service.place).toHaveBeenCalledWith(REGION, PLACE, { origin: undefined, userId: USER });
+  });
+});
+
+describe("GET /places/{id}/google-photos/{index}", () => {
+  it("302 на файл Google с публичным кешем; ширина по умолчанию 400, 1200 — по запросу", async () => {
+    const { http, service } = await start();
+    const res = await http().get(`/places/${PLACE}/google-photos/0?regionId=${REGION}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("https://lh3.googleusercontent.com/p/abc=w400");
+    expect(res.headers["cache-control"]).toBe("public, max-age=21600");
+    expect(service.googlePhoto).toHaveBeenCalledWith(REGION, PLACE, 0, 400);
+    await http().get(`/places/${PLACE}/google-photos/0?regionId=${REGION}&w=1200`).expect(302);
+    expect(service.googlePhoto).toHaveBeenLastCalledWith(REGION, PLACE, 0, 1200);
+  });
+
+  it("нет фото — 404 без публичного кеша; неверные w/index/id — 400", async () => {
+    const { http } = await start();
+    const missing = await http().get(`/places/${PLACE}/google-photos/1?regionId=${REGION}`).expect(404);
+    expect(missing.headers["cache-control"]).not.toContain("public");
+    await http().get(`/places/${PLACE}/google-photos/9?regionId=${REGION}`).expect(404);
+    await http().get(`/places/${PLACE}/google-photos/0?regionId=${REGION}&w=800`).expect(400);
+    await http().get(`/places/${PLACE}/google-photos/x?regionId=${REGION}`).expect(400);
+    await http().get(`/places/not-a-uuid/google-photos/0?regionId=${REGION}`).expect(400);
   });
 });
 

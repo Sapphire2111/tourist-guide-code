@@ -184,6 +184,15 @@ export class GuideRepository {
       .executeTakeFirst() as Promise<PlaceCardRow | undefined>;
   }
 
+  /** Обогащение места (0018): Google, Вікіпедія, ИИ-текст; нет — undefined. */
+  enrichment(placeId: string) {
+    return this.q
+      .selectFrom("place_enrichments")
+      .select(["google", "wiki", "ai_summary_uk", "ai_model", "ai_generated_at"])
+      .where("place_id", "=", placeId)
+      .executeTakeFirst();
+  }
+
   findCategory(id: string) {
     return this.q
       .selectFrom("categories")

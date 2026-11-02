@@ -49,6 +49,49 @@ export type SearchTextRequest = {
 
 export type SearchTextResponse = { places?: GooglePlace[]; nextPageToken?: string };
 
+/**
+ * Поля Place Details для богатой карточки (places:enrich). Отзывы, удобства и ценовой уровень — SKU «Place Details
+ * Enterprise + Atmosphere» (самый дорогой): запрос один на место, ответ кэшируется. Часы, телефон, сайт, рейтинг
+ * уже есть из Text Search импорта и здесь не запрашиваются повторно.
+ */
+export const DETAILS_FIELD_MASK = [
+  "id",
+  "primaryTypeDisplayName",
+  "editorialSummary",
+  "priceLevel",
+  "rating",
+  "userRatingCount",
+  "googleMapsUri",
+  "reviews",
+  "photos",
+  "servesBreakfast",
+  "servesBrunch",
+  "servesLunch",
+  "servesDinner",
+  "servesCoffee",
+  "servesDessert",
+  "servesBeer",
+  "servesWine",
+  "servesCocktails",
+  "servesVegetarianFood",
+  "dineIn",
+  "takeout",
+  "delivery",
+  "curbsidePickup",
+  "reservable",
+  "outdoorSeating",
+  "liveMusic",
+  "menuForChildren",
+  "goodForChildren",
+  "goodForGroups",
+  "goodForWatchingSports",
+  "allowsDogs",
+  "restroom",
+  "parkingOptions",
+  "accessibilityOptions",
+  "paymentOptions",
+].join(",");
+
 /** Исчерпан лимит запросов к Google (--max-requests): импорт останавливает выгрузку и работает с тем, что есть. */
 export class RequestLimitError extends Error {
   override readonly name = "RequestLimitError";
@@ -74,7 +117,14 @@ export type GoogleClientOptions = {
   fetch?: typeof fetch;
   /** Таймаут одного запроса, мс. */
   timeoutMs?: number;
+  /** Только оценка: в сеть не ходить, промахи кэша считать в planned (places:enrich --plan). */
+  planOnly?: boolean;
 };
+
+/** Режим planOnly: ответа нет в кэше, запрос только учтён. */
+export class PlannedRequest extends Error {
+  override readonly name = "PlannedRequest";
+}
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 
@@ -105,6 +155,10 @@ const isSearchResponse = (v: unknown): v is SearchTextResponse =>
     (Array.isArray(v.places) && v.places.every((p) => isObject(p) && typeof p.id === "string"))) &&
   (v.nextPageToken === undefined || typeof v.nextPageToken === "string");
 
+/** Ответ Place Details: объект с id (остальное разбирает places-enrich/details.ts). */
+const isDetailsResponse = (v: unknown): v is Record<string, unknown> & { id: string } =>
+  isObject(v) && typeof v.id === "string";
+
 const isPhotoMediaResponse = (v: unknown): v is { photoUri?: string } =>
   isObject(v) && (v.photoUri === undefined || typeof v.photoUri === "string");
 
@@ -134,8 +188,10 @@ async function readLimited(res: Response, limit: number): Promise<Buffer> {
 
 export class GooglePlacesClient {
   /** Запросов к Google за прогон (по видам). */
-  readonly requests = { search: 0, photoMedia: 0, photoDownload: 0 };
+  readonly requests = { search: 0, photoMedia: 0, photoDownload: 0, details: 0 };
   cacheHits = 0;
+  /** Режим оценки (planOnly): ответов нет в кэше — сколько запросов понадобилось бы (по видам), без сети. */
+  readonly planned = { search: 0, photoMedia: 0, photoDownload: 0, details: 0 };
   private readonly fetch: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -145,7 +201,31 @@ export class GooglePlacesClient {
   }
 
   get totalRequests(): number {
-    return this.requests.search + this.requests.photoMedia + this.requests.photoDownload;
+    return (
+      this.requests.search + this.requests.photoMedia + this.requests.photoDownload + this.requests.details
+    );
+  }
+
+  /**
+   * Place Details (New) на uk: поля DETAILS_FIELD_MASK. null — в режиме planOnly ответа нет в кэше (запрос учтён
+   * в planned) или Google не знает такого места (404).
+   */
+  async placeDetails(placeId: string): Promise<(Record<string, unknown> & { id: string }) | null> {
+    if (!/^[A-Za-z0-9_-]{1,255}$/.test(placeId)) throw new GoogleApiError("Недопустимый id места Google");
+    const file = path.join(this.options.cacheDir, `details-${hash(`${placeId}|${DETAILS_FIELD_MASK}`)}.json`);
+    try {
+      return await this.cached(file, "details", isDetailsResponse, async (key) => {
+        const res = await this.fetch(`${API}/places/${placeId}?languageCode=uk&regionCode=UA`, {
+          headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": DETAILS_FIELD_MASK },
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+        return this.json(res, "place details", isDetailsResponse);
+      });
+    } catch (err) {
+      if (err instanceof PlannedRequest) return null;
+      if (err instanceof GoogleApiError && err.status === 404) return null;
+      throw err;
+    }
   }
 
   private searchFile(body: SearchTextRequest): string {
@@ -251,6 +331,10 @@ export class GooglePlacesClient {
       }
     } catch {
       // нет в кэше (или файл испорчен) — запрос
+    }
+    if (this.options.planOnly) {
+      this.planned[kind]++;
+      throw new PlannedRequest();
     }
     const key = this.options.apiKey;
     if (!key) throw new GoogleApiError("Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше");

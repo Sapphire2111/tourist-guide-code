@@ -8,7 +8,9 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  ParseIntPipe,
   Query,
+  Redirect,
   Req,
 } from "@nestjs/common";
 import {
@@ -17,6 +19,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
 import { ApiError, ApiErrors, PublicCache } from "../../common/http/index.js";
@@ -38,7 +41,13 @@ import {
 } from "./guide.dto.js";
 // Классы DTO запросов нужны в рантайме: emitDecoratorMetadata передаёт их в ValidationPipe.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { AddFavoriteDto, OriginQueryDto, RegionQueryDto, SearchPlacesQueryDto } from "./guide.dto.js";
+import {
+  AddFavoriteDto,
+  GooglePhotoQueryDto,
+  OriginQueryDto,
+  RegionQueryDto,
+  SearchPlacesQueryDto,
+} from "./guide.dto.js";
 import { FAVORITES_MAX } from "./guide.repository.js";
 import { GuideService } from "./guide.service.js";
 
@@ -52,6 +61,15 @@ import { GuideService } from "./guide.service.js";
  * один турист столько не набирает.
  */
 export const SEARCH_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
+
+/** Лимит прокси фото Google на пользователя/IP: галерея — до 5 фото в 2 ширинах на карточку. */
+export const GOOGLE_PHOTO_RATE_LIMIT = { limit: 120, windowSec: 60 } as const;
+/** Сколько браузер кэширует редирект на файл фото (адрес Google живёт дольше). */
+export const GOOGLE_PHOTO_CACHE_SEC = 6 * 3600;
+
+const photoIndex = new ParseIntPipe({
+  exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_index" } }),
+});
 
 const uuid = new ParseUUIDPipe({
   exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_id" } }),
@@ -122,6 +140,33 @@ export class GuidePlacesController {
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,
     });
+  }
+
+  @Get(":id/google-photos/:index")
+  @RateLimit(GOOGLE_PHOTO_RATE_LIMIT)
+  @PublicCache(GOOGLE_PHOTO_CACHE_SEC)
+  @Redirect()
+  @ApiOperation({
+    operationId: "getGuidePlaceGooglePhoto",
+    summary: "Фото Google места (галерея картки): 302 на файл Google без ключа api",
+    description:
+      "Без аутентификации. index — номер в googlePhotos карточки, w — 400 (превью) или 1200. Файл не копируется: " +
+      "api получает адрес у Google Place Photos (кэш в памяти и БД) и отвечает редиректом. 404 — места, фото нет " +
+      `или Google недоступен (суточный предел запросов). Rate limit ${GOOGLE_PHOTO_RATE_LIMIT.limit}/мин.`,
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiParam({ name: "index", schema: { type: "integer", minimum: 0, maximum: 4 } })
+  @ApiResponse({ status: 302, description: "Location — файл фото на googleusercontent.com" })
+  @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
+  async googlePhoto(
+    @Param("id", uuid) id: string,
+    @Param("index", photoIndex) index: number,
+    @Query() q: GooglePhotoQueryDto,
+  ): Promise<{ url: string; statusCode: number }> {
+    if (index < 0 || index > 4) throw new ApiError("NOT_FOUND");
+    const url = await this.guide.googlePhoto(q.regionId, id, index, q.w ?? 400);
+    if (!url) throw new ApiError("NOT_FOUND");
+    return { url, statusCode: 302 };
   }
 
   @Get(":id")

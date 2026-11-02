@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { ApiError } from "../../common/http/index.js";
 import {
   InjectDb,
@@ -7,6 +7,7 @@ import {
   type Db,
   type EmergencyContact,
   type LonLat,
+  type PlaceEnrichment,
   type PromotionAdLabel,
   type Region,
 } from "../../db/index.js";
@@ -24,6 +25,7 @@ import type {
   PlaceSummaryDto,
 } from "./guide.dto.js";
 import { SEARCH_OFFSET_MAX } from "./guide.dto.js";
+import { GooglePhotosService, type GooglePhotoWidth } from "./google-photos.js";
 import { FAVORITES_MAX, GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
 import { localMoment, openState, type LocalMoment, type ScheduleRows } from "./open-now.js";
 
@@ -51,6 +53,8 @@ export class GuideService {
     @Inject(RegionsRepository) private readonly regions: RegionsRepository,
     @Inject(EmergencyContactsRepository) private readonly contacts: EmergencyContactsRepository,
     @Inject(MediaService) private readonly media: MediaService,
+    // Необязателен: без него (тесты, сборка без GuideModule) фото Google в карточке не показываются.
+    @Optional() @Inject(GooglePhotosService) private readonly googlePhotos?: GooglePhotosService,
   ) {}
 
   /** Часы сервиса (подменяется в тестах). */
@@ -106,13 +110,14 @@ export class GuideService {
       const row = await this.repo.findPublished(id, opts.origin);
       if (!row) return undefined;
       const at = localMoment(this.now(), region.timezone);
-      const [category, tags, photos, schedules, labels, favorite] = await Promise.all([
+      const [category, tags, photos, schedules, labels, favorite, enrichment] = await Promise.all([
         this.repo.findCategory(row.category_id),
         this.repo.placeTags(id),
         this.repo.photos([id]),
         this.repo.schedules([id], { from: at.previousDate }),
         this.repo.adLabels([id]),
         opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
+        this.repo.enrichment(id),
       ]);
       const schedule = schedules.get(id) ?? { weekly: [], exceptions: [] };
       const state = openState(schedule, at);
@@ -149,8 +154,78 @@ export class GuideService {
         }),
         openUntil: state.openUntil,
         favorite,
+        ...this.enriched(region.id, id, enrichment),
       };
     });
+  }
+
+  /**
+   * Адрес файла фото Google для прокси: n-е фото обогащения опубликованного места региона. undefined — места, фото
+   * или адреса нет (404).
+   */
+  async googlePhoto(
+    regionId: string,
+    id: string,
+    index: number,
+    width: GooglePhotoWidth,
+  ): Promise<string | undefined> {
+    const name = await this.inRegion(regionId, async () => {
+      if (!(await this.repo.findPublished(id, undefined))) return undefined;
+      return (await this.repo.enrichment(id))?.google?.photos[index]?.name;
+    });
+    if (!name || !this.googlePhotos) return undefined;
+    // Вне транзакции региона: запрос к Google не держит соединение с БД открытым.
+    return (await this.googlePhotos.uri(name, width)) ?? undefined;
+  }
+
+  /** Поля богатой карточки из обогащения; нет данных — пустые (блоки карточка не покажет). */
+  private enriched(
+    regionId: string,
+    placeId: string,
+    e:
+      | Pick<PlaceEnrichment, "google" | "wiki" | "ai_summary_uk" | "ai_model" | "ai_generated_at">
+      | undefined,
+  ): Pick<
+    PlaceCardDto,
+    | "typeLabel"
+    | "summary"
+    | "aiSummary"
+    | "priceLevel"
+    | "amenities"
+    | "rating"
+    | "reviews"
+    | "googlePhotos"
+    | "googleMapsUri"
+    | "wikipedia"
+  > {
+    const g = e?.google ?? null;
+    const w = e?.wiki ?? null;
+    return {
+      typeLabel: g?.typeLabel ?? null,
+      summary: g?.summary ?? null,
+      aiSummary:
+        e?.ai_summary_uk && e.ai_model && e.ai_generated_at
+          ? { text: e.ai_summary_uk, model: e.ai_model, generatedAt: e.ai_generated_at.toISOString() }
+          : null,
+      priceLevel: g?.priceLevel ?? null,
+      amenities: g?.amenities ?? [],
+      rating:
+        g?.rating !== null && g?.rating !== undefined && g.ratingCount
+          ? { value: g.rating, count: g.ratingCount, source: "google" }
+          : null,
+      reviews: g?.reviews ?? [],
+      googlePhotos: this.googlePhotos?.enabled
+        ? (g?.photos ?? []).map((p, i) => ({
+            url: this.googlePhotos!.proxyUrl(regionId, placeId, i, 400),
+            largeUrl: this.googlePhotos!.proxyUrl(regionId, placeId, i, 1200),
+            width: p.width,
+            height: p.height,
+            authors: p.authors,
+          }))
+        : [],
+      googleMapsUri: g?.mapsUri ?? null,
+      wikipedia: w,
+    };
   }
 
   async favorites(regionId: string, userId: string): Promise<FavoriteListDto> {

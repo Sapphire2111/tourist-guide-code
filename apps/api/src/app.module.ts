@@ -58,6 +58,8 @@ export class AppModule {
           | "TELEGRAM_BOT_USERNAME"
           | "ADMIN_LOGIN_HMAC_SECRET"
           | "TELEGRAM_INIT_DATA_MAX_AGE_HOURS"
+          | "GOOGLE_MAPS_API_KEY"
+          | "GOOGLE_PHOTO_DAILY_LIMIT"
         >
       >,
   ): DynamicModule {
@@ -103,8 +105,13 @@ export class AppModule {
         EmergencyContactsModule,
         // Каталог региона для админки (блок 3, ADR-0017).
         CatalogModule,
-        // Публичный каталог туриста (блок 4, ADR-0019): категории, поиск, картка місця, избранное, «Халепа?».
-        GuideModule,
+        // Публичный каталог туриста (блок 4, ADR-0019): категории, поиск, картка місця, избранное, «Халепа?»;
+        // фото Google в карточке — через прокси api (ключ только на сервере).
+        GuideModule.forRoot({
+          apiKey: env.GOOGLE_MAPS_API_KEY,
+          dailyLimit: env.GOOGLE_PHOTO_DAILY_LIMIT,
+          apiBaseUrl: env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4300}`,
+        }),
         // Заявки гостиницы, «Про заклад», персонал и планировщик (блок 5, ADR-0020).
         HostRequestsModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN }),
         PlannerModule,

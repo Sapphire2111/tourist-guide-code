@@ -1048,6 +1048,138 @@ export interface OffersTable {
 }
 export type Offer = Selectable<OffersTable>;
 
+// --- Богатая картка місця (0018): обогащение Google / Вікіпедія / ИИ (tenant) и кэш адресов фото Google (global) ---
+
+/** Удобство места по данным Google Place Details (только «да»; нет данных или «нет» — не пишется). */
+export const PLACE_AMENITIES = [
+  "breakfast",
+  "brunch",
+  "lunch",
+  "dinner",
+  "coffee",
+  "dessert",
+  "beer",
+  "wine",
+  "cocktails",
+  "vegetarian",
+  "dine_in",
+  "takeout",
+  "delivery",
+  "curbside_pickup",
+  "reservable",
+  "outdoor_seating",
+  "live_music",
+  "kids_menu",
+  "good_for_children",
+  "good_for_groups",
+  "watching_sports",
+  "dogs_allowed",
+  "restroom",
+  "parking_free",
+  "parking_paid",
+  "wheelchair_entrance",
+  "wheelchair_parking",
+  "wheelchair_restroom",
+  "wheelchair_seating",
+  "cards",
+  "nfc",
+  "cash_only",
+] as const;
+export type PlaceAmenity = (typeof PLACE_AMENITIES)[number];
+
+/** Автор фото или отзыва Google (атрибуция обязательна по правилам Google Maps Platform). */
+export type GoogleAuthor = { name: string; uri: string | null; photoUri: string | null };
+
+/** Фото Google: имя ресурса (places/…/photos/…) — файл отдаёт Google через прокси api, к себе не копируется. */
+export type PlaceEnrichmentPhoto = {
+  name: string;
+  width: number | null;
+  height: number | null;
+  authors: GoogleAuthor[];
+};
+
+export type PlaceEnrichmentReview = {
+  author: GoogleAuthor;
+  /** 1–5 */
+  rating: number | null;
+  text: string;
+  /** Язык текста (uk — переведён Google или оригинал). */
+  language: string | null;
+  /** ISO 8601. */
+  publishTime: string | null;
+  /** «2 місяці тому» — от Google на языке запроса. */
+  relativeTime: string | null;
+  /** Ссылка на отзыв в Google Maps. */
+  uri: string | null;
+};
+
+/** Нормализованные данные Google Place Details (places:enrich); пустые поля — null/[]. */
+export type PlaceEnrichmentGoogle = {
+  /** primaryTypeDisplayName (uk): «Піцерія», «Водоспад». */
+  typeLabel: string | null;
+  /** editorialSummary (uk): описание от Google. */
+  summary: string | null;
+  /** priceLevel: 0 — бесплатно, 1–4 — от недорого до очень дорого. */
+  priceLevel: number | null;
+  rating: number | null;
+  ratingCount: number | null;
+  /** Страница места в Google Maps. */
+  mapsUri: string | null;
+  amenities: PlaceAmenity[];
+  reviews: PlaceEnrichmentReview[];
+  photos: PlaceEnrichmentPhoto[];
+};
+
+/** Вікіпедія для пам'ятки: статья найдена по координатам и названию (только уверенное совпадение). */
+export type PlaceEnrichmentWiki = {
+  lang: string;
+  title: string;
+  url: string;
+  extract: string;
+  image: {
+    url: string;
+    width: number | null;
+    height: number | null;
+    /** Автор (текст без HTML) и лицензия файла Wikimedia Commons. */
+    author: string | null;
+    license: string | null;
+    licenseUrl: string | null;
+    /** Страница файла на Commons. */
+    sourceUrl: string;
+  } | null;
+};
+
+export interface PlaceEnrichmentsTable {
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  google: ColumnType<
+    PlaceEnrichmentGoogle | null,
+    PlaceEnrichmentGoogle | null | undefined,
+    PlaceEnrichmentGoogle | null
+  >;
+  google_fetched_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  wiki: ColumnType<
+    PlaceEnrichmentWiki | null,
+    PlaceEnrichmentWiki | null | undefined,
+    PlaceEnrichmentWiki | null
+  >;
+  wiki_fetched_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  ai_summary_uk: Nullable<string>;
+  ai_model: Nullable<string>;
+  ai_generated_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  ai_input_hash: Nullable<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type PlaceEnrichment = Selectable<PlaceEnrichmentsTable>;
+
+export interface GooglePhotoUrisTable {
+  photo_name: string;
+  max_width: number;
+  photo_uri: string;
+  fetched_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database {
   app_meta: AppMetaTable;
   feature_flags: FeatureFlagsTable;
@@ -1100,4 +1232,7 @@ export interface Database {
   moderation_cases: ModerationCasesTable;
   staff_invites: StaffInvitesTable;
   offers: OffersTable;
+  // Богатая картка місця (0018).
+  place_enrichments: PlaceEnrichmentsTable;
+  google_photo_uris: GooglePhotoUrisTable;
 }

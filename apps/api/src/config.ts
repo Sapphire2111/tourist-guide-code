@@ -80,6 +80,14 @@ export const apiEnvSchema = z
     // (балансировщик Render), 0 в local. Неверное значение: больше — IP можно подделать, меньше — все клиенты
     // делят лимит одного адреса прокси.
     TRUST_PROXY_HOPS: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).max(5).optional()),
+    // Фото Google в картке місця (прокси GET /places/{id}/google-photos/{n}): серверный ключ Places API (New);
+    // не задан — фото Google не показываются. В браузер не отдаётся (в адресе файла его нет).
+    GOOGLE_MAPS_API_KEY: optionalString(),
+    // Предел запросов к Google Place Photos в сутки (страховка бюджета; адреса кэшируются). По умолчанию 1000.
+    GOOGLE_PHOTO_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(100_000).default(1000),
+    ),
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),
   })
