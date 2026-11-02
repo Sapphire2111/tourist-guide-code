@@ -132,6 +132,7 @@ describe("вход", () => {
       "Категорії та теги",
       "Місця",
       "QR-коди",
+      "Сценарії «Мій план»",
       "Екстрені контакти",
       "Аудит",
     ]);
@@ -276,6 +277,24 @@ describe("места", () => {
                 },
               ];
         if (p.endsWith("/schedule")) return [200, { timezone: "Europe/Kyiv", weekly: [], exceptions: [] }];
+        if (p.endsWith("/host-module"))
+          return [
+            200,
+            {
+              placeId: PLACE.id,
+              regionId: "r1",
+              configured: false,
+              enabled: false,
+              wifiSsid: null,
+              wifiPassword: null,
+              receptionPhone: null,
+              hours: null,
+              sections: [],
+              services: [],
+              updatedAt: null,
+            },
+          ];
+        if (p.endsWith("/staff")) return [200, { items: [] }];
         return undefined;
       }),
     );
