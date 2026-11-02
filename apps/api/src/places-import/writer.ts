@@ -1,7 +1,7 @@
 // Запись импорта в каталог региона: в tenant-контексте региона (regionContext: TenantGuardPlugin + RLS), как пишет
 // api. Идемпотентно: населённые пункты и дополнительные категории — ON CONFLICT DO NOTHING по коду (правки админки не
 // трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются.
-import { point, regionContext, withTenant, type Db } from "../db/index.js";
+import { point, regionContext, withTenant, type Db, type LocalizedText } from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
@@ -31,6 +31,8 @@ export type WriteStats = {
   schedulesRejected: number;
   /** Опубликованные места импорта, которые Google теперь отдаёт как закрытые навсегда, — сняты с публикации. */
   suspendedClosed: number;
+  /** google_place_id снятых с публикации (в аудит прогона). */
+  suspendedIds: string[];
   /** Места импорта в БД, которых не было в этой выгрузке (только отчёт; null — выгрузка неполная, не считалось). */
   missingFromGoogle: number | null;
   missingExamples: string[];
@@ -86,6 +88,7 @@ export async function writePlaces(
       manualPlaces: 0,
       schedulesRejected: 0,
       suspendedClosed: 0,
+      suspendedIds: [],
       missingFromGoogle: null,
       missingExamples: [],
     };
@@ -189,7 +192,11 @@ export async function writePlaces(
           // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
           // uk обновляет Google, переводы админки (en…) остаются.
           oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => ({
-            address_i18n: eb(eb.ref("places.address_i18n"), "||", eb.ref("excluded.address_i18n")),
+            address_i18n: eb(
+              eb.fn.coalesce(eb.ref("places.address_i18n"), eb.val({} as LocalizedText)),
+              "||",
+              eb.ref("excluded.address_i18n"),
+            ),
             location: eb.ref("excluded.location"),
             locality_id: eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")),
             phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
@@ -234,14 +241,16 @@ export async function writePlaces(
     // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем.
     const closed = [...new Set(options.closedIds ?? [])];
     for (let from = 0; from < closed.length; from += BATCH) {
-      const r = await trx
+      const rows = await trx
         .updateTable("places")
         .set({ status: "suspended" })
         .where("source", "=", "google")
         .where("status", "=", "published")
         .where("google_place_id", "in", closed.slice(from, from + BATCH))
-        .executeTakeFirst();
-      stats.suspendedClosed += Number(r.numUpdatedRows);
+        .returning("google_place_id")
+        .execute();
+      stats.suspendedIds.push(...rows.map((r) => r.google_place_id!));
+      stats.suspendedClosed += rows.length;
     }
 
     // Пропавшие из выдачи — только отчёт: место могло не попасть в запросы, это не повод его скрывать.
@@ -268,6 +277,9 @@ export async function writePlaces(
         inserted: stats.inserted,
         updated: stats.updated,
         suspendedClosed: stats.suspendedClosed,
+        suspendedIds: stats.suspendedIds,
+        schedulesRejected: stats.schedulesRejected,
+        missingFromGoogle: stats.missingFromGoogle,
         schedulesWritten: stats.schedulesWritten,
         categoriesCreated: stats.categoriesCreated,
         localitiesCreated: stats.localitiesCreated,

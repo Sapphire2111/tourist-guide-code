@@ -92,9 +92,7 @@ export function isAllowedPhotoUrl(raw: string): boolean {
   }
   if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
   const host = url.hostname.toLowerCase();
-  return ["googleusercontent.com", "ggpht.com", "googleapis.com"].some(
-    (d) => host === d || host.endsWith(`.${d}`),
-  );
+  return ["googleusercontent.com", "ggpht.com"].some((d) => host === d || host.endsWith(`.${d}`));
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -222,7 +220,10 @@ export class GooglePlacesClient {
         url = new URL(location, url).toString();
         continue;
       }
-      if (!res.ok) throw new GoogleApiError(`Фото: HTTP ${res.status}`, res.status);
+      if (!res.ok) {
+        await res.body?.cancel();
+        throw new GoogleApiError(`Фото: HTTP ${res.status}`, res.status);
+      }
       const data = await readLimited(res, maxBytes);
       await mkdir(this.options.cacheDir, { recursive: true });
       await writeFile(file, data);

@@ -183,7 +183,7 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
       calls++;
       const url = String(input);
       if (url.includes("/media?"))
-        return new Response(JSON.stringify({ photoUri: "https://lh3.example/photo" }));
+        return new Response(JSON.stringify({ photoUri: "https://lh3.googleusercontent.com/p/test=w1600" }));
       return new Response(new Uint8Array(jpeg), { headers: { "Content-Type": "image/jpeg" } });
     }) as typeof globalThis.fetch;
     const client = new GooglePlacesClient({ apiKey: "test", cacheDir, maxRequests: 100, fetch });
@@ -195,8 +195,16 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     const ids = await googlePlaceIds(appDb, base.regions.a);
     expect(ids.size).toBe(2);
 
-    const first = await importPhotos(appDb, client, storage, base.regions.a, places, ids);
-    expect(first).toMatchObject({ added: 3, rejected: 0, failed: 0 });
+    // photoUri — на хосте Google: другой не пройдёт проверку адреса фото (isAllowedPhotoUrl).
+    const log: string[] = [];
+    const first = await importPhotos(appDb, client, storage, base.regions.a, places, ids, (l) => log.push(l));
+    expect(first, JSON.stringify({ first, log })).toEqual({
+      placesConsidered: 2,
+      added: 3,
+      rejected: 0,
+      failed: 0,
+      limitReached: false,
+    });
     const media = (
       await sql(
         `SELECT p.google_place_id, pm.is_cover, m.status, m.alt_i18n, m.variants
@@ -302,7 +310,14 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
       )
     ).rows[0];
     expect(audit).toMatchObject({ actor_type: "system", entity_type: "region", code: "test-region" });
-    expect(audit.new_values).toMatchObject({ source: "google", suspendedClosed: 1, inserted: 0 });
+    expect(audit.new_values).toMatchObject({
+      source: "google",
+      suspendedClosed: 1,
+      suspendedIds: ["gC"],
+      missingFromGoogle: 2,
+      schedulesRejected: 0,
+      inserted: 0,
+    });
     expect(
       (await sql("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'place.import'")).rows[0].n,
     ).toBe(auditBefore + 1);

@@ -81,7 +81,8 @@ export async function collect(
     const box = boundingBox(locality.at, locality.radiusM);
     for (const textQuery of queries) {
       let pageToken: string | undefined;
-      let previous: SearchTextRequest | undefined;
+      /** Запросы цепочки страниц этого запроса: при устаревшем токене кэш сбрасывается целиком. */
+      const chain: SearchTextRequest[] = [];
       try {
         for (let page = 0; page < MAX_PAGES; page++) {
           const request: SearchTextRequest = {
@@ -103,13 +104,14 @@ export async function collect(
           } catch (err) {
             // Токен следующей страницы из кэша устарел: страница пропускается, кэш предыдущей сбрасывается —
             // следующий прогон запросит её заново со свежим токеном.
-            if (!(err instanceof GoogleApiError && err.status === 400 && pageToken && previous)) throw err;
+            if (!(err instanceof GoogleApiError && err.status === 400 && pageToken && chain.length))
+              throw err;
             log(`${locality.code} «${textQuery}»: страница ${page + 1} отклонена Google (400), пропущена`);
             pagesFailed++;
-            await client.forgetSearch(previous);
+            for (const r of chain) await client.forgetSearch(r);
             break;
           }
-          previous = request;
+          chain.push(request);
           for (const p of res.places ?? []) {
             fetched++;
             if (p.id && !raw.has(p.id)) raw.set(p.id, p);

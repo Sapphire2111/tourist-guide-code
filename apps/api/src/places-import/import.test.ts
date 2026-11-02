@@ -235,7 +235,7 @@ describe("клиент Google: фото и формат ответов", () => {
   it("разрешённые адреса фото — только https на хостах Google", () => {
     expect(isAllowedPhotoUrl("https://lh3.googleusercontent.com/p/abc=w1600")).toBe(true);
     expect(isAllowedPhotoUrl("https://lh5.ggpht.com/x")).toBe(true);
-    expect(isAllowedPhotoUrl("https://places.googleapis.com/v1/x")).toBe(true);
+    expect(isAllowedPhotoUrl("https://places.googleapis.com/v1/x")).toBe(false);
     expect(isAllowedPhotoUrl("http://lh3.googleusercontent.com/x")).toBe(false);
     expect(isAllowedPhotoUrl("https://evil.com/googleusercontent.com")).toBe(false);
     expect(isAllowedPhotoUrl("https://googleusercontent.com.evil.com/x")).toBe(false);
