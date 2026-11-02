@@ -428,3 +428,55 @@ describe("GET /context/{start_param}", () => {
     expect(rule).toEqual(QR_CONTEXT_RATE_LIMIT);
   });
 });
+
+describe("GET /context (открытие без QR)", () => {
+  let app: INestApplication | undefined;
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  it("регион по умолчанию, status default; без скана, касания и qr_scanned; EntryContext direct", async () => {
+    const s = await start();
+    app = s.app;
+    const res = await request(app.getHttpServer())
+      .get(`/context?anonymousId=${ANON}`)
+      .set("X-Test-User", USER)
+      .expect(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).toEqual({
+      status: "default",
+      entryType: "default",
+      region: expect.objectContaining({ id: REGION_DEFAULT, code: "test-region" }),
+      qrPoint: null,
+      venue: null,
+      entryContextId: expect.stringMatching(UUID),
+      anonymousId: ANON,
+    });
+    expect(s.repo.scans).toEqual([]);
+    expect(s.repo.touches).toEqual([]);
+    expect(s.repo.lookups).toEqual([]);
+    expect(s.events).toEqual([]);
+    expect(s.repo.entries).toEqual([
+      expect.objectContaining({
+        region_id: REGION_DEFAULT,
+        qr_point_id: null,
+        entry_type: "default",
+        source: "direct",
+        qr_scan_event_id: null,
+        user_id: USER,
+        anonymous_id: ANON,
+      }),
+    ]);
+  });
+
+  it("нет активных регионов — region null, EntryContext не пишется; мусорный anonymousId заменяется", async () => {
+    const s = await start({ regions: [] });
+    app = s.app;
+    const res = await request(app.getHttpServer()).get("/context?anonymousId=nope").expect(200);
+    expect(res.body).toMatchObject({ status: "default", region: null, entryContextId: null });
+    expect(res.body.anonymousId).toMatch(UUID);
+    expect(s.repo.entries).toEqual([]);
+    expect(s.repo.scans).toEqual([]);
+  });
+});

@@ -14,7 +14,7 @@ const REGION = {
   defaultLanguage: "uk",
 };
 
-const neutral = (status: "inactive" | "not_found" | "invalid") => ({
+const neutral = (status: "inactive" | "not_found" | "invalid" | "default") => ({
   status,
   entryType: "default",
   region: REGION,
@@ -241,7 +241,7 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
     route.fulfill({ status, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
 
   await page.route(
-    (url) => /^\/(auth\/telegram|me|me\/.+|context\/.+)$/.test(url.pathname),
+    (url) => /^\/(auth\/telegram|me|me\/.+|context|context\/.+)$/.test(url.pathname),
     async (route) => {
       const req = route.request();
       const path = new URL(req.url()).pathname;
@@ -266,6 +266,11 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
           },
           201,
         );
+      }
+      // Открытие без QR — регион по умолчанию (не скан).
+      if (path === "/context") {
+        state.contextCalls += 1;
+        return json(route, neutral("default"));
       }
       if (path.startsWith("/context/")) {
         state.contextCalls += 1;

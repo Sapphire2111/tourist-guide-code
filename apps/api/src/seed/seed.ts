@@ -24,7 +24,7 @@ import { seedUuid } from "./ids.js";
 
 /** Реальный пилотный регион определит D-01 (замена в блоке 3); это условный регион для разработки. */
 export const SEED_REGIONS = [
-  { key: "a", code: "test-region", name: { uk: "Тестовий регіон", en: "Test region" } },
+  { key: "a", code: "test-region", name: { uk: "Прикарпаття", en: "Prykarpattia" } },
   { key: "b", code: "test-region-b", name: { uk: "Тестовий регіон Б", en: "Test region B" } },
 ] as const;
 export type SeedRegionKey = (typeof SEED_REGIONS)[number]["key"];

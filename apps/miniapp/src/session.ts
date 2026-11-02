@@ -1,5 +1,6 @@
 // Поток старта Mini App (блок 2, ADR-0015/0016): POST /auth/telegram → токен сессии → GET /context/{start_param}
-// (ровно один раз за открытие) → GET /me. Токен — в памяти и sessionStorage (ADR-0009), anonymousId — в localStorage.
+// (без QR — GET /context; ровно один раз за открытие) → GET /me. Токен — в памяти и sessionStorage (ADR-0009),
+// anonymousId — в localStorage.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import type { MessageKey } from "@tg/i18n";
 import type { TelegramWebApp } from "./telegram.js";
@@ -89,18 +90,25 @@ export type StartupState =
       status: "ready";
       login: LoginResult;
       context: QrContext | null;
-      /** start_param, контекст по которому не загрузился (429/5xx/сеть) — повтор только по кнопке. */
-      contextFailed?: string;
+      /**
+       * Контекст не загрузился (429/5xx/сеть) — повтор только по кнопке. startParam — QR открытия; нет — открытие
+       * без QR (GET /context, регион по умолчанию).
+       */
+      contextFailed?: { startParam?: string };
       me: Me;
     };
 
-/** Один запрос GET /context; null — сбой (429/5xx/сеть), не нейтральный контекст. */
-export async function fetchContext(api: ApiClient, startParam: string): Promise<QrContext | null> {
+/**
+ * Один запрос контекста: со start_param — GET /context/{start_param} (скан QR), без — GET /context (регион по
+ * умолчанию). null — сбой (429/5xx/сеть), не нейтральный контекст.
+ */
+export async function fetchContext(api: ApiClient, startParam?: string): Promise<QrContext | null> {
   try {
     const anonymousId = getAnonymousId();
-    const res = await api.GET("/context/{start_param}", {
-      params: { path: { start_param: startParam }, query: anonymousId ? { anonymousId } : {} },
-    });
+    const query = anonymousId ? { anonymousId } : {};
+    const res = startParam
+      ? await api.GET("/context/{start_param}", { params: { path: { start_param: startParam }, query } })
+      : await api.GET("/context", { params: { query } });
     if (!res.data) return null;
     setAnonymousId(res.data.anonymousId);
     return res.data;
@@ -150,14 +158,14 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
     if (!auth.data) return { status: "error", messageKey: errorKey(auth.response.status) };
     setToken(auth.data.token);
     const startParam = auth.data.startParam ?? getStartParam(webApp);
-    const context = startParam ? await fetchContext(api, startParam) : null;
+    const context = await fetchContext(api, startParam || undefined);
     const me = await api.GET("/me");
     if (!me.data) return { status: "error", messageKey: errorKey(me.response.status) };
     return {
       status: "ready",
       login: auth.data,
       context,
-      ...(startParam && !context ? { contextFailed: startParam } : {}),
+      ...(context ? {} : { contextFailed: startParam ? { startParam } : {} }),
       me: me.data,
     };
   } catch {
