@@ -3,11 +3,204 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
     <title>Гід туриста</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- data-season и цвета окна Telegram до загрузки бандла (inline-скрипты запрещены CSP). -->
+    <script src="./season-boot.js"></script>
+    <!-- Критичный стиль: токены сезонов «Сучасна Косівщина» и заставка — первый кадр без белой вспышки. -->
+    <style>
+      :root,
+      [data-season="summer"] {
+        --app-bg: #fdfbf6;
+        --app-surface: #ffffff;
+        --app-surface-2: #f4efe1;
+        --app-text: #231f1a;
+        --app-muted: #6b6356;
+        --app-accent: #2d6a4f;
+        --app-accent-2: #d97724;
+        --app-border: #e5dec9;
+        --app-pill-bg: #e6f0ec;
+        /* Текстовые варианты акцентов: ≥ 4.5:1 на bg, surface, surface-2 и pill-bg. */
+        --app-accent-ink: #2d6a4f;
+        --app-accent-2-ink: #9a4f0f;
+        --font-heading: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      [data-season="winter"] {
+        --app-bg: #f8f9fa;
+        --app-surface: #ffffff;
+        --app-surface-2: #ebf0f5;
+        --app-text: #1c252c;
+        --app-muted: #5c6b73;
+        --app-accent: #c83e2b;
+        --app-accent-2: #2b5b84;
+        --app-border: #d5e0ea;
+        --app-pill-bg: #e3ecf4;
+        --app-accent-ink: #a8321f;
+        --app-accent-2-ink: #2b5b84;
+      }
+      [data-season="spring"] {
+        --app-bg: #fbf9f5;
+        --app-surface: #ffffff;
+        --app-surface-2: #f1efe6;
+        --app-text: #1e2822;
+        --app-muted: #5f6f65;
+        --app-accent: #7e42b3;
+        --app-accent-2: #2e7d5b;
+        --app-border: #dce5df;
+        --app-pill-bg: #eae4f2;
+        --app-accent-ink: #7e42b3;
+        --app-accent-2-ink: #256a4c;
+      }
+      [data-season="autumn"] {
+        --app-bg: #faf5ee;
+        --app-surface: #fffdf9;
+        --app-surface-2: #efe6d8;
+        --app-text: #2b2118;
+        --app-muted: #756250;
+        --app-accent: #b84a27;
+        --app-accent-2: #9c6b21;
+        --app-border: #e4d4be;
+        --app-pill-bg: #f3e3d3;
+        --app-accent-ink: #9a3b1d;
+        --app-accent-2-ink: #7a5216;
+      }
+      html,
+      body {
+        margin: 0;
+        background-color: var(--app-bg);
+        color: var(--app-text);
+        font-family: var(--font-body);
+      }
+      .kosiv-splash {
+        min-height: var(--tg-viewport-stable-height, 100vh);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 24px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      .kosiv-splash p {
+        margin: 0;
+      }
+      .kosiv-splash-title {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: 2.6rem;
+        line-height: 1.05;
+        letter-spacing: -0.01em;
+      }
+      .kosiv-splash-wave {
+        display: block;
+        width: 180px;
+        height: 14px;
+      }
+      .kosiv-splash-badge {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 9999px;
+        background: var(--app-pill-bg);
+        color: var(--app-accent-ink);
+        font-weight: 600;
+        font-size: 0.875rem;
+      }
+      [data-season="winter"] .kosiv-splash-badge:empty::before {
+        content: "❄️ Зимовий сезон • Коляда & Ski";
+      }
+      [data-season="spring"] .kosiv-splash-badge:empty::before {
+        content: "🌱 Весняний сезон • Крокуси & Вода";
+      }
+      [data-season="summer"] .kosiv-splash-badge:empty::before {
+        content: "☀️ Літній сезон • Вершини & Річки";
+      }
+      [data-season="autumn"] .kosiv-splash-badge:empty::before {
+        content: "🍂 Осінній сезон • Тумани & Гриби";
+      }
+      .kosiv-splash-note {
+        color: var(--app-muted);
+        font-size: 0.95rem;
+      }
+      .kosiv-dots {
+        display: inline-flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .kosiv-dots i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--app-accent);
+        animation: kosiv-dot 1.2s ease-in-out infinite;
+      }
+      .kosiv-dots i:nth-child(2) {
+        background: var(--app-accent-2);
+        animation-delay: 0.15s;
+      }
+      .kosiv-dots i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      @keyframes kosiv-dot {
+        0%,
+        80%,
+        100% {
+          opacity: 0.25;
+          transform: translateY(0);
+        }
+        40% {
+          opacity: 1;
+          transform: translateY(-4px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .kosiv-dots i {
+          animation: none;
+          opacity: 0.7;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Заставка до загрузки бандла; React заменяет её такой же (Splash.tsx) — без мигания. -->
+      <div class="kosiv-splash">
+        <svg
+          width="44"
+          height="44"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--app-accent)"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path
+            d="M12 3c-3 4-6 6-6 11a6 6 0 0012 0c0-5-3-7-6-11z"
+            fill="var(--app-accent)"
+            fill-opacity="0.18"
+          />
+          <path d="M12 8v9M9 12l3-2 3 2" stroke="var(--app-accent-2)" stroke-linecap="round" />
+        </svg>
+        <p class="kosiv-splash-title">Гід туриста</p>
+        <svg class="kosiv-splash-wave" viewBox="0 0 400 14" preserveAspectRatio="none" aria-hidden="true">
+          <path
+            d="M0 7 Q 12 1, 25 7 T 50 7 T 75 7 T 100 7 T 125 7 T 150 7 T 175 7 T 200 7 T 225 7 T 250 7 T 275 7 T 300 7 T 325 7 T 350 7 T 375 7 T 400 7"
+            fill="none"
+            stroke="var(--app-accent-2)"
+            stroke-width="2"
+            vector-effect="non-scaling-stroke"
+          />
+          <circle cx="75" cy="7" r="2.5" fill="var(--app-accent)" />
+          <circle cx="200" cy="7" r="2.5" fill="var(--app-accent)" />
+          <circle cx="325" cy="7" r="2.5" fill="var(--app-accent)" />
+        </svg>
+        <p class="kosiv-splash-badge"></p>
+        <p class="kosiv-splash-note">Ласкаво просимо в Карпати</p>
+        <span class="kosiv-dots" role="status" aria-label="Завантажуємо…"><i></i><i></i><i></i></span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

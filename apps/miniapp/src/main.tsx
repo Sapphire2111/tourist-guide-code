@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { resolveLocale } from "@tg/i18n";
+import "./design/kosiv.css";
 import { App } from "./App.js";
 import { api } from "./api.js";
 import { getStubRole } from "./role.js";

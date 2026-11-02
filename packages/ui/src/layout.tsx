@@ -17,14 +17,16 @@ export function Stack({
   );
 }
 
+// Размеры и форму приложение может переопределить переменными --button-* (дизайн Mini App); по умолчанию — как было.
 const buttonStyle: CSSProperties = {
   font: "inherit",
   // Крупный жирный текст: button_color Telegram (#3390ec) с белым — 3.4:1, AA проходит только как large text (3:1).
-  fontSize: "1.2rem",
-  fontWeight: 700,
-  padding: "10px 16px",
+  fontSize: "var(--button-font-size, 1.2rem)",
+  fontWeight: "var(--button-font-weight, 700)" as CSSProperties["fontWeight"],
+  padding: "var(--button-padding, 10px 16px)",
+  minHeight: 44,
   border: 0,
-  borderRadius: "var(--radius)",
+  borderRadius: "var(--button-radius, var(--radius))",
   background: "var(--color-button)",
   color: "var(--color-button-text)",
   cursor: "pointer",
