@@ -103,11 +103,16 @@ export class HostService {
 
   // --- гость: «Про заклад» ---
 
-  async guestModule(regionId: string, placeId: string, entryContextId?: string): Promise<HostModuleDto> {
+  async guestModule(
+    regionId: string,
+    placeId: string,
+    entryContextId?: string,
+    userId?: string,
+  ): Promise<HostModuleDto> {
     return this.inRegion(regionId, async (region) => {
       const { place, module } = await this.publishedModule(placeId);
-      const entry = entryContextId ? await this.repo.entryRoom(entryContextId, placeId) : undefined;
-      const fromThisPlace = entry?.matches === true;
+      const entry = await this.entryOf(entryContextId, placeId, userId);
+      const fromThisPlace = entry !== undefined;
       const now = this.now();
       const hours = hoursOf(module);
       const opening = nextOpening(hours, now, region.timezone);
@@ -147,18 +152,11 @@ export class HostService {
           details: { reason: "service_unavailable" },
         });
       // D-49: комната QR номера — из контекста входа (гость не меняет); на общем QR — введённая гостем.
-      const entry = input.entryContextId
-        ? await this.repo.entryRoom(input.entryContextId, input.placeId)
-        : undefined;
+      const entry = await this.entryOf(input.entryContextId, input.placeId, userId);
       let room: { label: string; source: RoomSource } | null = null;
       if (entry?.room_label) room = { label: entry.room_label, source: "qr" };
       else if (input.roomLabel?.trim()) room = { label: input.roomLabel.trim(), source: "guest" };
-      const duplicate = await this.repo.findActiveDuplicate(
-        input.placeId,
-        service.code,
-        userId,
-        room?.label ?? null,
-      );
+      const duplicate = await this.repo.findActiveDuplicate(input.placeId, service.code, userId);
       if (duplicate) throw duplicateError(duplicate.id);
       const now = this.now();
       const opening = nextOpening(hoursOf(module), now, region.timezone);
@@ -166,7 +164,7 @@ export class HostService {
         .insertRequest({
           place_id: input.placeId,
           user_id: userId,
-          entry_context_id: entry?.matches ? input.entryContextId! : null,
+          entry_context_id: entry ? input.entryContextId! : null,
           service_code: service.code,
           service_title_i18n: service.title,
           room_label: room?.label ?? null,
@@ -364,6 +362,12 @@ export class HostService {
     input: PutHostModuleDto,
     meta: AuditMeta,
   ): Promise<AdminHostModuleDto> {
+    requireRegion();
+    if (input.hours && input.hours.from === input.hours.to)
+      throw new ApiError("UNPROCESSABLE", {
+        messageKey: "errors.hostModule.hoursEmpty",
+        details: { reason: "hours_empty" },
+      });
     const place = await this.repo.findPlace(placeId);
     if (!place) throw new ApiError("NOT_FOUND");
     const codes = input.services.map((s) => s.code);
@@ -423,6 +427,7 @@ export class HostService {
     input: AssignPlaceStaffDto,
     meta: AuditMeta,
   ): Promise<PlaceStaffMemberDto> {
+    requireRegion();
     if (!(await this.repo.findPlace(placeId))) throw new ApiError("NOT_FOUND");
     const user = await this.repo.findUserByTelegram(input);
     if (!user)
@@ -460,6 +465,7 @@ export class HostService {
   }
 
   async adminRevokeStaff(placeId: string, assignmentId: string, meta: AuditMeta): Promise<void> {
+    requireRegion();
     const members = await this.repo.staffOf(placeId, PLACE_STAFF_ROLES);
     if (!members.some((m) => m.assignment_id === assignmentId.toLowerCase())) throw new ApiError("NOT_FOUND");
     try {
@@ -477,6 +483,18 @@ export class HostService {
   }
 
   // --- внутреннее ---
+
+  /**
+   * Контекст входа по QR этого отеля (репозиторий: точка hotel этого места, активна, не старше срока). Контекст,
+   * привязанный к другому пользователю, чем пользователь запроса, не используется (чужой пароль Wi-Fi и номер).
+   */
+  private async entryOf(entryContextId: string | undefined, placeId: string, userId: string | undefined) {
+    if (!entryContextId) return undefined;
+    const entry = await this.repo.entryRoom(entryContextId, placeId);
+    if (!entry) return undefined;
+    if (userId && entry.user_id && entry.user_id !== userId) return undefined;
+    return entry;
+  }
 
   /** Опубликованное место с включённым модулем; иначе 404 (C03: раздел недоступен). */
   private async publishedModule(placeId: string) {
@@ -499,8 +517,8 @@ export class HostService {
     },
   ): Promise<ServiceRequest> {
     const updated = await this.repo.updateStatus(row.id, row.status, { status: to, ...t.patch });
-    // Статус уже другой (гонка): 409 с текущим.
-    if (!updated) throw transitionError(row.status, to);
+    // Статус уже другой (гонка двух сотрудников): 409 с текущим статусом заявки.
+    if (!updated) throw transitionError((await this.repo.findRequest(row.id))?.status ?? row.status, to);
     await this.repo.insertEvent({
       service_request_id: row.id,
       from_status: row.status,
@@ -590,6 +608,14 @@ export class HostService {
 }
 
 // --- преобразования ---
+
+/** Изменения админки — только в контексте региона (SUPERADMIN без выбранного региона — 403, как в каталоге). */
+function requireRegion(): string {
+  const tenant = currentTenant();
+  if (tenant?.kind !== "region")
+    throw new ApiError("FORBIDDEN", { details: { reason: "region_context_required" } });
+  return tenant.regionId;
+}
 
 function bySort<T extends { sortOrder: number }>(a: T, b: T): number {
   return a.sortOrder - b.sortOrder;
@@ -733,7 +759,8 @@ function groupByRegion(places: readonly StaffPlace[]): Map<string, StaffPlace[]>
 function transitionError(from: ServiceRequestStatus, to: ServiceRequestStatus): ApiError {
   return new ApiError("CONFLICT", {
     messageKey: "errors.serviceRequests.invalidTransition",
-    details: { reason: "invalid_transition", from, to },
+    // from — текущий статус заявки (клиент обновляет карточку без перезапроса).
+    details: { reason: "invalid_transition", from, to, currentStatus: from },
   });
 }
 

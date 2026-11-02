@@ -69,11 +69,14 @@ SELECT app_enable_tenant_rls('host_modules');
 REVOKE ALL ON host_modules FROM app;
 GRANT SELECT, INSERT, UPDATE ON host_modules TO app;
 
+-- entry_contexts: цель составного FK service_requests → entry_contexts (до CREATE TABLE service_requests).
+ALTER TABLE entry_contexts ADD CONSTRAINT entry_contexts_region_id_key UNIQUE (region_id, id);
+
 -- tenant: заявка гостя отеля (S-03, states-and-rules §2). Статусы канонические; переходы проверяет api (409),
 -- каждый — строка service_request_events. Комната — из QR номера (room_source = qr) или введена гостем на общем
 -- QR (guest, пометка «введено гостем»), D-49. Вне часов приёма — принимается с outside_hours и process_from
 -- (D-55 вариант Б); SLA считается от process_from (или создания). Срок хранения (D-49) — функция ниже:
--- после него комната, комментарий и автор обезличиваются (anonymized_at).
+-- после него заявка закрывается (если открыта) и обезличивается (anonymized_at).
 CREATE TABLE service_requests (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
   region_id uuid NOT NULL REFERENCES regions(id) ON DELETE RESTRICT,
@@ -112,9 +115,6 @@ CREATE TABLE service_requests (
   CONSTRAINT service_requests_reject_reason CHECK (status <> 'rejected' OR status_reason IS NOT NULL)
 );
 
--- entry_contexts: цель составного FK.
-ALTER TABLE entry_contexts ADD CONSTRAINT entry_contexts_region_id_key UNIQUE (region_id, id);
-
 CREATE TRIGGER service_requests_set_updated_at BEFORE UPDATE ON service_requests
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -123,8 +123,7 @@ CREATE INDEX service_requests_place_status_idx ON service_requests (region_id, p
 CREATE INDEX service_requests_user_idx ON service_requests (user_id, created_at DESC) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX service_requests_active_key ON service_requests (user_id, place_id, service_code)
   WHERE status IN ('new', 'accepted', 'in_progress') AND user_id IS NOT NULL;
-CREATE INDEX service_requests_retention_idx ON service_requests (closed_at)
-  WHERE anonymized_at IS NULL AND closed_at IS NOT NULL;
+CREATE INDEX service_requests_retention_idx ON service_requests (created_at) WHERE anonymized_at IS NULL;
 CREATE INDEX service_requests_entry_context_idx ON service_requests (region_id, entry_context_id)
   WHERE entry_context_id IS NOT NULL;
 CREATE INDEX service_requests_assigned_idx ON service_requests (assigned_to) WHERE assigned_to IS NOT NULL;
@@ -188,42 +187,80 @@ SELECT app_enable_tenant_rls('notifications');
 REVOKE ALL ON notifications FROM app;
 GRANT SELECT, INSERT, UPDATE ON notifications TO app;
 
--- Срок хранения заявок (D-49, рекомендация: параметр, по умолчанию 90 дней): закрытые заявки старше срока —
--- комната, комментарий, автор и тексты уведомлений обезличиваются. Сама заявка (тип, статус, время) остаётся для
--- SLA-статистики. Вызывает worker раз в час (задача service-requests.anonymize-expired) в режиме SYSTEM.
+-- Срок хранения заявок (D-49, рекомендация: параметр, по умолчанию 90 дней; отсчёт — от создания заявки). Вызывает
+-- worker раз в час (задача service-requests.anonymize-expired). За один вызов — до p_batch заявок:
+-- 1) незакрытые заявки старше срока закрываются: rejected с причиной expired и системным событием истории;
+-- 2) закрытые заявки старше срока обезличиваются полностью: комната, комментарий, автор, контекст входа, причины
+--    (свободный текст) в заявке и истории, автор-гость в истории; уведомления гостю удаляются, тексты уведомлений
+--    персоналу заменяются на «—». Остаются тип, статус и время — для SLA-статистики.
+-- SECURITY DEFINER: у app нет UPDATE истории и DELETE уведомлений (append-only для приложения); search_path
+-- зафиксирован, имена — со схемой. RLS: на время работы app.actor = 'system'.
 CREATE FUNCTION service_requests_anonymize_expired(p_retention_days integer, p_batch integer DEFAULT 1000)
 RETURNS integer
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   prev_actor text := coalesce(current_setting('app.actor', true), '');
-  affected integer;
+  cutoff timestamptz;
+  ids uuid[];
 BEGIN
-  IF p_retention_days IS NULL OR p_retention_days < 1 THEN
-    RAISE EXCEPTION 'service_requests_anonymize_expired: срок хранения — дней >= 1' USING ERRCODE = '22023';
+  IF p_retention_days IS NULL OR p_retention_days < 1 OR p_batch IS NULL OR p_batch < 1 THEN
+    RAISE EXCEPTION 'service_requests_anonymize_expired: срок (дней) и пачка — >= 1' USING ERRCODE = '22023';
   END IF;
+  cutoff := now() - make_interval(days => p_retention_days);
   PERFORM set_config('app.actor', 'system', true);
-  WITH expired AS (
-    SELECT sr.id FROM public.service_requests sr
-    WHERE sr.anonymized_at IS NULL AND sr.closed_at IS NOT NULL
-      AND sr.closed_at < now() - make_interval(days => p_retention_days)
-    ORDER BY sr.closed_at
+
+  WITH stale AS (
+    SELECT sr.id, sr.status FROM public.service_requests sr
+    WHERE sr.status IN ('new', 'accepted', 'in_progress') AND sr.created_at < cutoff
+    ORDER BY sr.created_at
     LIMIT p_batch
     FOR UPDATE SKIP LOCKED
-  ), done AS (
+  ), closed AS (
     UPDATE public.service_requests sr
-    SET room_label = NULL, room_source = NULL, comment = NULL, user_id = NULL, entry_context_id = NULL,
-      anonymized_at = now()
-    FROM expired WHERE sr.id = expired.id
-    RETURNING sr.id
-  ), notes AS (
-    UPDATE public.notifications n SET body = '—'
-    FROM done WHERE n.entity_type = 'service_request' AND n.entity_id = done.id
-    RETURNING n.id
+    SET status = 'rejected', status_reason = 'expired', closed_at = now()
+    FROM stale WHERE sr.id = stale.id
+    RETURNING sr.id, sr.region_id, stale.status AS from_status
   )
-  SELECT count(*) INTO affected FROM done;
+  INSERT INTO public.service_request_events (region_id, service_request_id, from_status, to_status, actor_type, reason)
+  SELECT closed.region_id, closed.id, closed.from_status, 'rejected', 'system', 'expired' FROM closed;
+
+  SELECT array_agg(t.id) INTO ids FROM (
+    SELECT sr.id FROM public.service_requests sr
+    WHERE sr.anonymized_at IS NULL AND sr.created_at < cutoff
+      AND sr.status IN ('done', 'rejected', 'cancelled_by_guest')
+    ORDER BY sr.created_at
+    LIMIT p_batch
+    FOR UPDATE SKIP LOCKED
+  ) t;
+
+  IF ids IS NOT NULL THEN
+    -- Уведомления: по (region_id, entity_type, entity_id) — индекс notifications_entity_idx.
+    DELETE FROM public.notifications n
+    USING public.service_requests sr
+    WHERE sr.id = ANY (ids) AND n.region_id = sr.region_id AND n.entity_type = 'service_request'
+      AND n.entity_id = sr.id AND n.recipient_user_id = sr.user_id;
+    UPDATE public.notifications n SET body = '—', last_error = NULL
+    FROM public.service_requests sr
+    WHERE sr.id = ANY (ids) AND n.region_id = sr.region_id AND n.entity_type = 'service_request'
+      AND n.entity_id = sr.id;
+    UPDATE public.service_request_events e
+    SET actor_user_id = CASE WHEN e.actor_type = 'guest' THEN NULL ELSE e.actor_user_id END,
+      reason = CASE WHEN e.actor_type = 'system' THEN e.reason ELSE NULL END
+    FROM public.service_requests sr
+    WHERE sr.id = ANY (ids) AND e.region_id = sr.region_id AND e.service_request_id = sr.id;
+    UPDATE public.service_requests
+    SET room_label = NULL, room_source = NULL, comment = NULL, user_id = NULL, entry_context_id = NULL,
+      -- rejected требует причину (CHECK): свободный текст заменяется прочерком.
+      status_reason = CASE WHEN status = 'rejected' THEN '—' ELSE NULL END,
+      anonymized_at = now()
+    WHERE id = ANY (ids);
+  END IF;
+
   PERFORM set_config('app.actor', prev_actor, true);
-  RETURN affected;
+  RETURN coalesce(cardinality(ids), 0);
 END
 $$;
 

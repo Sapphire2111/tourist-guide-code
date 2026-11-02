@@ -94,13 +94,18 @@ export class HostModuleController {
     summary: "«Про заклад» (C03): правила, Wi-Fi, контакты, часы приёма, услуги-заявки",
     description:
       "Без аутентификации. 404 — места нет в регионе, оно не опубликовано или модуль не настроен/выключен. " +
-      "С entryContextId входа по QR этого места — пароль Wi-Fi и номер комнаты QR номера (D-49).",
+      "С entryContextId входа по QR этого отеля (точка hotel этого места, активна, контекст не старше 30 дней; с " +
+      "сессией — только свой контекст) — пароль Wi-Fi и номер комнаты QR номера (D-49).",
   })
   @ApiParam({ name: "placeId", type: String, format: "uuid" })
   @ApiOkResponse({ type: HostModuleDto })
   @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
-  get(@Param("placeId", uuid) placeId: string, @Query() q: HostModuleQueryDto): Promise<HostModuleDto> {
-    return this.host.guestModule(q.regionId, placeId, q.entryContextId);
+  get(
+    @Param("placeId", uuid) placeId: string,
+    @Query() q: HostModuleQueryDto,
+    @Req() req: RbacRequest,
+  ): Promise<HostModuleDto> {
+    return this.host.guestModule(q.regionId, placeId, q.entryContextId, req.principal?.userId);
   }
 }
 
