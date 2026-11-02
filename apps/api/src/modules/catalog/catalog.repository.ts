@@ -40,7 +40,8 @@ export type LocalityRecord = WithLocation<Locality>;
  */
 export const STAY_CATEGORY_CODES = ["stay", "hotels", "sadyby"] as const;
 
-export type PlaceRecord = WithLocation<Place>;
+/** Без полей импорта Google (0016: source, google_place_id, last_synced_at) — админке и API они пока не нужны. */
+export type PlaceRecord = WithLocation<Omit<Place, "source" | "google_place_id" | "last_synced_at">>;
 
 /** Запись места: точка — долгота/широта (null — убрать), остальное — как в таблице. */
 export type PlaceWrite = Omit<NewPlace, "location" | "region_id"> & { location?: LonLat | null };
