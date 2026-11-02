@@ -1,4 +1,5 @@
 /* global window, document */
+/* eslint-disable @typescript-eslint/no-unused-vars -- catch (e): старые WebView (до ES2019) не знают catch без привязки. */
 // Сезон темы до загрузки бандла: data-season на <html> (по месяцу или сохранённому выбору) и цвета окна Telegram —
 // первый кадр уже в цветах сезона. Отдельный файл, а не inline: CSP сайта не разрешает inline-скрипты.
 // Логика — как в src/design/season.ts (readSeason, WINDOW_COLORS); менять вместе.
@@ -10,7 +11,7 @@
     var saved = JSON.parse(window.localStorage.getItem("tg.season") || "null");
     if (saved && saved.auto === auto && /^(winter|spring|summer|autumn)$/.test(saved.season))
       season = saved.season;
-  } catch {
+  } catch (e) {
     // Хранилище недоступно — сезон по дате.
   }
   document.documentElement.setAttribute("data-season", season);
@@ -28,12 +29,12 @@
   // Каждый вызов отдельно: отказ одного (старый клиент) не отменяет другой. Шапка цветом #RRGGBB — с Bot API 6.9.
   try {
     if (at("6.1") && tg.setBackgroundColor) tg.setBackgroundColor(colors[0]);
-  } catch {
+  } catch (e) {
     // Старый клиент — стандартный фон окна.
   }
   try {
     if (at("6.9") && tg.setHeaderColor) tg.setHeaderColor(colors[1]);
-  } catch {
+  } catch (e) {
     // Старый клиент — стандартная шапка.
   }
 })();

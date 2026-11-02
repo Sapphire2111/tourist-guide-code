@@ -77,7 +77,8 @@ export function ResortPlaces() {
   useEffect(() => {
     if (!regionId) return;
     let alive = true;
-    setPlaces({ status: "loading" });
+    // Смена курорта: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
+    setPlaces((p) => (p.status === "ready" ? p : { status: "loading" }));
     // Быстрое листание свайпера — один запрос на остановку (первая загрузка — сразу).
     const delay = firstLoad.current ? 0 : RESORT_DEBOUNCE_MS;
     firstLoad.current = false;

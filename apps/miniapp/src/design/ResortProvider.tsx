@@ -56,19 +56,20 @@ export function ResortProvider({
   children?: ReactNode;
 }) {
   const [id, setId] = useState<ResortId>(readResort);
+  /** Курорт выбран в этом открытии (после входа по QR — выбор туриста важнее заведения). */
+  const [picked, setPicked] = useState(false);
+  // Эффективный курорт считается при рендере: первый же запрос при входе по QR — уже от заведения.
+  const effective: ResortId = !enabled || (venueEntry && !picked) ? "all" : id;
+  // Хранилище — вслед: сохранённый курорт не вернётся при следующем открытии того же QR.
   useEffect(() => {
-    if (!venueEntry) return;
-    storeResort("all");
-    setId("all");
-  }, [venueEntry]);
+    if (venueEntry && !picked) storeResort("all");
+  }, [venueEntry, picked]);
   const setResort = useCallback((next: ResortId) => {
     storeResort(next);
     setId(next);
+    setPicked(true);
   }, []);
-  const value = useMemo(
-    () => ({ resort: resortById(enabled ? id : "all"), setResort }),
-    [enabled, id, setResort],
-  );
+  const value = useMemo(() => ({ resort: resortById(effective), setResort }), [effective, setResort]);
   return <ResortContext.Provider value={value}>{children}</ResortContext.Provider>;
 }
 

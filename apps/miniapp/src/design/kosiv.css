@@ -108,7 +108,9 @@ html[data-season] :focus-visible {
   margin: 4px 0 2px;
 }
 /* Фокус на заголовке экрана не прячет его под липкой шапкой со свайпером. */
-.kosiv-content :is(h1, h2, h3) {
+.kosiv-content h1,
+.kosiv-content h2,
+.kosiv-content h3 {
   scroll-margin-top: 150px;
 }
 .kosiv-content h2 {
@@ -275,7 +277,6 @@ html[data-season] :focus-visible {
   -webkit-overflow-scrolling: touch;
   background: var(--app-bg);
   border-bottom: 1px solid var(--app-border);
-  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
 }
 .kosiv-resorts::-webkit-scrollbar {
   display: none;
@@ -317,7 +318,6 @@ html[data-season] :focus-visible {
   border-color: var(--app-accent);
   color: #ffffff;
   box-shadow: 0 6px 14px -6px rgba(60, 42, 20, 0.25);
-  box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--app-accent) 70%, transparent);
 }
 .kosiv-resort[aria-pressed="true"] .kosiv-resort-meta {
   color: #ffffff;
@@ -354,14 +354,7 @@ html[data-season] :focus-visible {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--app-surface); /* без color-mix */
-  background:
-    radial-gradient(
-      120% 90% at 100% 0%,
-      color-mix(in srgb, var(--app-pill-bg) 90%, transparent) 0%,
-      transparent 60%
-    ),
-    var(--app-surface);
+  background: var(--app-surface);
 }
 .kosiv-hero > * {
   position: relative;
@@ -523,19 +516,7 @@ html[data-season] :focus-visible {
 .kosiv-place-media {
   position: relative;
   aspect-ratio: 16 / 10;
-  background: var(--app-surface-2); /* без color-mix */
-  background:
-    radial-gradient(
-      circle at 30% 30%,
-      color-mix(in srgb, var(--app-accent-2) 22%, transparent),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 75% 70%,
-      color-mix(in srgb, var(--app-accent) 18%, transparent),
-      transparent 55%
-    ),
-    var(--app-surface-2);
+  background: var(--app-surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -689,7 +670,6 @@ html[data-season] :focus-visible {
   font-size: 1.02rem;
   text-decoration: none;
   box-shadow: 0 10px 22px -10px rgba(60, 42, 20, 0.25);
-  box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--app-accent) 80%, transparent);
 }
 .kosiv-action {
   display: inline-flex;
@@ -772,8 +752,7 @@ html[data-season] :focus-visible {
   padding: 6px max(8px, var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)))
     max(8px, var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))
     max(8px, var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px)));
-  background: var(--app-surface); /* без color-mix (старые WebView) */
-  background: color-mix(in srgb, var(--app-surface) 94%, transparent);
+  background: var(--app-surface);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border-top: 1.5px solid var(--app-border);
@@ -848,6 +827,46 @@ html[data-season] :focus-visible {
   padding: 24px 16px;
   text-align: center;
   color: var(--app-muted);
+}
+
+/* Полупрозрачные оттенки — только где есть color-mix (старые WebView берут обычные значения выше).
+   Запасное значение рядом с color-mix(var()) не сработало бы: такое объявление валидно при разборе. */
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .kosiv-resorts {
+    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+  }
+  .kosiv-resort[aria-pressed="true"] {
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--app-accent) 70%, transparent);
+  }
+  .kosiv-hero {
+    background:
+      radial-gradient(
+        120% 90% at 100% 0%,
+        color-mix(in srgb, var(--app-pill-bg) 90%, transparent) 0%,
+        transparent 60%
+      ),
+      var(--app-surface);
+  }
+  .kosiv-place-media {
+    background:
+      radial-gradient(
+        circle at 30% 30%,
+        color-mix(in srgb, var(--app-accent-2) 22%, transparent),
+        transparent 55%
+      ),
+      radial-gradient(
+        circle at 75% 70%,
+        color-mix(in srgb, var(--app-accent) 18%, transparent),
+        transparent 55%
+      ),
+      var(--app-surface-2);
+  }
+  .kosiv-cta {
+    box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--app-accent) 80%, transparent);
+  }
+  .kosiv-nav {
+    background: color-mix(in srgb, var(--app-surface) 94%, transparent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

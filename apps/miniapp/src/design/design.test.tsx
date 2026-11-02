@@ -168,8 +168,11 @@ describe("свайпер курортов", () => {
     const yaremche = RESORTS.find((r) => r.id === "yaremche")!;
     // Быстрое листание: Микуличин → Яремче — один запрос после паузы, по последнему выбору.
     const before = search.mock.calls.length;
+    const shown = screen.getByTestId("home-places");
     fireEvent.click(screen.getByRole("button", { name: /Микуличин/ }));
     fireEvent.click(screen.getByRole("button", { name: /Яремче/ }));
+    // Пока идёт запрос, прежняя лента на месте.
+    expect(screen.getByTestId("home-places")).toBe(shown);
     await act(async () => new Promise((r) => setTimeout(r, RESORT_DEBOUNCE_MS + 50)));
     expect(search.mock.calls.length).toBe(before + 1);
     expect(search).toHaveBeenLastCalledWith({
@@ -177,7 +180,7 @@ describe("свайпер курортов", () => {
       radius: yaremche.area!.radius,
       limit: HOME_PLACES,
     });
-    expect(screen.getByTestId("home-place").textContent).toContain("від центру Яремче");
+    expect(screen.getByTestId("home-place").textContent).toContain("центр: Яремче");
     expect(screen.getByText("Поблизу: Яремче (до 4,5 км від центру)")).toBeDefined();
     expect(localStorage.getItem("tg.resort")).toBe("yaremche");
   });
@@ -214,7 +217,12 @@ describe("свайпер курортов", () => {
 });
 
 function CurrentResort() {
-  return <p data-testid="current">{useResort().resort.id}</p>;
+  const { resort, setResort } = useResort();
+  return (
+    <button type="button" data-testid="current" onClick={() => setResort("yablunytsia")}>
+      {resort.id}
+    </button>
+  );
 }
 
 describe("курорт и контекст входа", () => {
@@ -233,6 +241,18 @@ describe("курорт и контекст входа", () => {
     );
     expect(screen.getByTestId("current").textContent).toBe("all");
     expect(localStorage.getItem("tg.resort")).toBeNull();
+    // После входа по QR турист выбирает курорт сам — выбор действует.
+    fireEvent.click(screen.getByTestId("current"));
+    expect(screen.getByTestId("current").textContent).toBe("yablunytsia");
+    cleanup();
+    // Первый же рендер при входе по QR — весь регион (без запроса от старого курорта).
+    localStorage.setItem("tg.resort", "tatariv");
+    render(
+      <ResortProvider venueEntry>
+        <CurrentResort />
+      </ResortProvider>,
+    );
+    expect(screen.getByTestId("current").textContent).toBe("all");
     cleanup();
     localStorage.setItem("tg.resort", "tatariv");
     render(

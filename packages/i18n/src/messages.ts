@@ -280,7 +280,7 @@ export const uk = {
   "miniapp.nearby.openSettings": "Відкрити налаштування геолокації",
   "miniapp.place.distance": "{n} м",
   "miniapp.place.distanceKm": "{n} км",
-  "miniapp.place.distanceFrom": "{d} від центру {from}",
+  "miniapp.place.distanceFrom": "{d} · центр: {from}",
   "miniapp.place.openNow": "Відкрито зараз",
   "miniapp.place.closedNow": "Зачинено",
   "miniapp.place.checkAvailability": "Уточнити доступність",
