@@ -514,6 +514,15 @@ export class ModerationCasesQueryDto {
   @IsOptional()
   @IsUUID()
   regionId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: "uuid",
+    description: "Только заявки этого места (карточка места в админке: статус модерации и история)",
+  })
+  @IsOptional()
+  @IsUUID()
+  placeId?: string;
 }
 
 export class ModerationCaseDto {

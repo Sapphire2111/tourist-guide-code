@@ -278,7 +278,7 @@ export class PartnerController {
     operationId: "submitPartnerPlace",
     summary: "«Надіслати на модерацію»: draft | changes_requested | rejected → pending_moderation",
     description:
-      "Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.fields — незаполненные поля шаблона) " +
+      "Только ORG_OWNER. 422 errors.partner.requiredFieldsMissing (details.missingFields — незаполненные поля шаблона) " +
       "или errors.place.notPublishable (details.problems); 422 errors.partner.termsRequired — без acceptTerms; " +
       "409 errors.partner.placeNotEditable — уже на модерации/опубликовано. Модераторам региона — уведомление ботом.",
   })

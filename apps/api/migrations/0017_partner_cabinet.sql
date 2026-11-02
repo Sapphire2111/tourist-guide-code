@@ -86,7 +86,11 @@ ALTER TABLE places
   ADD CONSTRAINT places_template_org CHECK (partner_template_id IS NULL OR organization_id IS NOT NULL),
   DROP CONSTRAINT places_status_check,
   ADD CONSTRAINT places_status_check CHECK (status IN ('draft', 'pending_moderation', 'changes_requested',
-    'rejected', 'published', 'suspended', 'archived'));
+    'rejected', 'published', 'suspended', 'archived')),
+  -- Статусы модерации — до первой публикации (как draft): first_published_at ещё нет.
+  DROP CONSTRAINT places_published_once,
+  ADD CONSTRAINT places_published_once CHECK (
+    status IN ('draft', 'pending_moderation', 'changes_requested', 'rejected') OR first_published_at IS NOT NULL);
 
 CREATE INDEX places_organization_idx ON places (region_id, organization_id) WHERE organization_id IS NOT NULL;
 CREATE INDEX places_partner_template_idx ON places (partner_template_id) WHERE partner_template_id IS NOT NULL;
