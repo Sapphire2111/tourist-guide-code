@@ -16,6 +16,8 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("«Про заклад» без ручного выбора, контекст запрошен один раз; a11y", async ({ page }) => {
     await page.goto("/");
+    await expect(page.getByTestId("venue-summary")).toHaveText("Ви відкрили гід: Тестовий готель");
+    await page.getByRole("link", { name: "Про заклад" }).click();
     const venue = page.getByTestId("venue");
     await expect(venue.getByRole("heading", { name: "Тестовий готель" })).toBeVisible();
     await expect(venue.getByRole("link", { name: "+380501234567" })).toHaveAttribute(
@@ -61,7 +63,8 @@ test.describe("деактивированный QR demoHotelOff1", () => {
   test("нейтральный контекст региона, без карточки заклада", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("neutral-context")).toContainText("Ви в регіоні: Тестовий регіон");
-    await expect(page.getByTestId("venue")).toHaveCount(0);
+    await expect(page.getByTestId("venue-summary")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Про заклад" })).toHaveCount(0);
     await expectNoSeriousA11yViolations(page);
   });
 });
@@ -92,7 +95,7 @@ test.describe("сбои и подтверждения", () => {
     await page.goto("/");
     await expect(page.getByTestId("context-unavailable")).toBeVisible();
     await page.getByRole("button", { name: "Повторити" }).click();
-    await expect(page.getByTestId("venue").getByRole("heading", { name: "Тестовий готель" })).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toHaveText("Ви відкрили гід: Тестовий готель");
   });
 
   test("профиль: удаление данных — после подтверждения, открытый запрос блокирует кнопку", async ({
