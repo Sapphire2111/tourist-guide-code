@@ -118,6 +118,30 @@ export async function writePlaces(
         await trx.selectFrom("categories").select(["id", "code"]).where("parent_id", "is", null).execute()
       ).map((r) => [r.code, r.id]),
     );
+    // Корневой раздел, которого ещё нет в регионе (seed старее кода — напр. «Сервіси», 0020), — по описанию seed.
+    for (const parent of new Set(IMPORT_EXTRA_CATEGORIES.map((c) => c.parent))) {
+      if (rootIds.has(parent)) continue;
+      const i = SEED_CATEGORIES.findIndex((r) => r.code === parent);
+      const root = SEED_CATEGORIES[i];
+      if (!root) continue;
+      const created = await trx
+        .insertInto("categories")
+        .values({
+          region_id: regionId,
+          code: root.code,
+          name_i18n: root.name,
+          icon: root.icon,
+          home_section: root.home,
+          sort_order: i * 10,
+        })
+        .onConflict((oc) => oc.columns(["region_id", "code"]).doNothing())
+        .returning("id")
+        .executeTakeFirst();
+      if (created) {
+        rootIds.set(parent, created.id);
+        stats.categoriesCreated++;
+      }
+    }
     for (const [i, c] of IMPORT_EXTRA_CATEGORIES.entries()) {
       const parentId = rootIds.get(c.parent);
       if (!parentId)

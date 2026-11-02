@@ -2424,7 +2424,17 @@ export interface components {
       active?: boolean;
     };
     /** @enum {string} */
-    HomeSection: "about" | "stay" | "eat" | "shop" | "relax" | "fun" | "nearby" | "transfer" | "help";
+    HomeSection:
+      | "about"
+      | "stay"
+      | "eat"
+      | "shop"
+      | "relax"
+      | "fun"
+      | "nearby"
+      | "transfer"
+      | "services"
+      | "help";
     CategoryDto: {
       /** Format: uuid */
       id: string;

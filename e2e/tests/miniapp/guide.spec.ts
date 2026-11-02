@@ -31,6 +31,7 @@ test.describe("QR отеля demoHotel01", () => {
       "Розваги",
       "Що поруч",
       "Трансфер",
+      "Сервіси",
       "Халепа?",
     ]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });

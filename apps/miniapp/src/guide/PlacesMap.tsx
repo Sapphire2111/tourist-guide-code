@@ -25,7 +25,7 @@ export type PlacesMapProps = {
 
 /** Группа маркера: раздел главной категории места или «інше». */
 export type MarkerGroup =
-  | Extract<HomeSection, "stay" | "eat" | "shop" | "relax" | "fun" | "transfer">
+  | Extract<HomeSection, "stay" | "eat" | "shop" | "relax" | "fun" | "transfer" | "services">
   | "other";
 
 /** Цвета групп (контраст ≥ 3:1 к светлой подложке карты — графический объект, WCAG 1.4.11). */
@@ -36,6 +36,7 @@ export const MARKER_COLORS: Record<MarkerGroup, string> = {
   relax: "#1d4ed8",
   fun: "#be185d",
   transfer: "#047857",
+  services: "#4d7c0f",
   other: "#57534e",
 };
 const BASE_COLOR = "#111827";

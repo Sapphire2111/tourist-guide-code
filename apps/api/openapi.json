@@ -11924,7 +11924,7 @@
       },
       "HomeSection": {
         "type": "string",
-        "enum": ["about", "stay", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"]
+        "enum": ["about", "stay", "eat", "shop", "relax", "fun", "nearby", "transfer", "services", "help"]
       },
       "CategoryDto": {
         "type": "object",

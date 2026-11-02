@@ -97,7 +97,7 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   department_store: "stores",
   jewelry_store: "stores",
   bicycle_store: "stores",
-  cell_phone_store: "stores",
+  cell_phone_store: "mobile",
   // Халепа
   pharmacy: "pharmacies",
   drugstore: "pharmacies",
@@ -111,7 +111,7 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   atm: "atm",
   bank: "atm",
   car_repair: "car-service",
-  car_wash: "car-service",
+  car_wash: "car-wash",
   auto_parts_store: "car-service",
   tire_shop: "car-service",
   // Транспорт
@@ -133,17 +133,17 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   tourist_information_center: "excursions",
   travel_agency: "excursions",
   tour_agency: "excursions",
-  amusement_park: "entertainment",
-  amusement_center: "entertainment",
-  bowling_alley: "entertainment",
-  water_park: "entertainment",
-  zoo: "entertainment",
-  aquarium: "entertainment",
+  amusement_park: "kids",
+  amusement_center: "kids",
+  bowling_alley: "adult-fun",
+  water_park: "kids",
+  zoo: "kids",
+  aquarium: "kids",
   movie_theater: "entertainment",
-  night_club: "entertainment",
-  casino: "entertainment",
-  video_arcade: "entertainment",
-  karaoke: "entertainment",
+  night_club: "adult-fun",
+  casino: "adult-fun",
+  video_arcade: "kids",
+  karaoke: "adult-fun",
   event_venue: "entertainment",
   ski_resort: "active",
   adventure_sports_center: "active",
@@ -183,10 +183,29 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   // Дополнения по первой выгрузке (02.11.2026): типы, которые встретились у мест пилота.
   hookah_bar: "cafes",
   pizza_delivery: "fast-food",
-  playground: "entertainment",
+  playground: "kids",
   florist: "stores",
   building_materials_store: "stores",
   medical_center: "hospitals",
+  // Для дітей / для дорослих / Сервіси (03.11.2026)
+  indoor_playground: "kids",
+  wildlife_park: "kids",
+  go_karting_venue: "adult-fun",
+  paintball_center: "adult-fun",
+  comedy_club: "adult-fun",
+  dance_hall: "adult-fun",
+  telecommunications_service_provider: "mobile",
+  electronics_repair_shop: "tech-repair",
+  post_office: "post",
+  laundry: "laundry",
+  laundromat: "laundry",
+  dry_cleaner: "laundry",
+  hair_salon: "beauty",
+  hair_care: "beauty",
+  barber_shop: "beauty",
+  beauty_salon: "beauty",
+  nail_salon: "beauty",
+  beautician: "beauty",
 };
 
 /** Категория по одному типу: таблица, затем общий суффикс *_restaurant. */
@@ -211,7 +230,23 @@ const GUIDE = new RegExp(`(^|${NOT_LETTER})гід(${NOT_LETTER}|$)`, "i");
  * «Слабые» категории: общие типы Google (tourist_attraction, hiking_area, store…), которые часто ставят чанам,
  * прокатам, турам и водоспадам. Для них (и для мест без категории по типам) название главнее типа.
  */
-const WEAK = new Set<string | undefined>([undefined, "active", "sights", "stores", "entertainment"]);
+const WEAK = new Set<string | undefined>([
+  undefined,
+  "active",
+  "sights",
+  "stores",
+  "entertainment",
+  // amusement_park/amusement_center ставят и прокатам квадроциклів, і зіплайнам — название уточняет.
+  "kids",
+  "adult-fun",
+]);
+
+const REPAIR = /ремонт|сервіс|service|repair|майстерн/i;
+const TECH = /телефон|смартфон|ноутбук|комп.ютер|техн|iphone|apple|gsm|побутов|electronics|пральн|холодильн/i;
+const OPERATOR = /київстар|kyivstar|vodafone|водафон|lifecell|лайфсел/i;
+const POST = /нова пошта|nova poshta|укрпошта|ukrposhta|meest|міст експрес|поштомат/i;
+const ADULT =
+  /більярд|billiard|боулінг|bowling|караоке|karaoke|квест|quest|escape|картинг|karting|пейнтбол|paintball|лазертаг|нічний клуб|night ?club/i;
 
 /** Правила по названию: первое совпавшее; `when` — к каким категориям по типам применимо. */
 const NAME_RULES: readonly {
@@ -251,6 +286,35 @@ const NAME_RULES: readonly {
     test: (n) => /зіплайн|zipline|тролей|родельбан|луна[ -]парк|rope ?jump|роуп|адреналін/i.test(n),
     code: "entertainment",
     when: (t) => WEAK.has(t),
+  },
+  // Сервіси: ремонт техніки (у Google часто cell_phone_store/electronics_store), оператори, пошта, шиномонтаж.
+  {
+    test: (n) => REPAIR.test(n) && TECH.test(n),
+    code: "tech-repair",
+    when: (t) => WEAK.has(t) || t === "mobile" || t === "laundry",
+  },
+  { test: (n) => OPERATOR.test(n), code: "mobile", when: (t) => WEAK.has(t) },
+  // Нова пошта у Google — courier_service, как и евакуатори й перевізники: «пошта» только по названию.
+  { test: (n) => POST.test(n), code: "post", when: (t) => WEAK.has(t) },
+  {
+    test: (n) => /шиномонтаж|вулканіз|tire/i.test(n),
+    code: "car-service",
+    when: (t) => WEAK.has(t) || t === "car-wash",
+  },
+  { test: (n) => /автомий|мийка|car ?wash/i.test(n), code: "car-wash", when: (t) => WEAK.has(t) },
+  { test: (n) => /перукар|барбер|barber|салон краси/i.test(n), code: "beauty", when: (t) => WEAK.has(t) },
+  { test: (n) => /пральн|хімчист|laundry/i.test(n), code: "laundry", when: (t) => WEAK.has(t) },
+  // Розваги за аудиторією: бар з більярдом/караоке — теж «для дорослих».
+  {
+    test: (n) => ADULT.test(n),
+    code: "adult-fun",
+    when: (t) => WEAK.has(t) || t === "cafes" || t === "kids",
+  },
+  {
+    // Дитячі табори (тижневі зміни) і дитячі магазини — не розвага для туриста.
+    test: (n) => /дитяч|для дітей|kids|батут|зоопарк/i.test(n) && !/табір|camp|магазин|одяг|іграш/i.test(n),
+    code: "kids",
+    when: (t) => WEAK.has(t) && t !== "stores",
   },
   { test: (n) => /таксі|такси|taxi|трансфер/i.test(n), code: "taxi", when: (t) => t === undefined },
   { test: (n) => /аптек/i.test(n), code: "pharmacies", when: (t) => t === undefined },

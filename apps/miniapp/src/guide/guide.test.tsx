@@ -90,16 +90,16 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("9 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
+  it("10 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
     const { rerender } = render(<HomeSections hasVenue />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(9);
+    expect(screen.getAllByRole("listitem")).toHaveLength(10);
     // «Де жити» — отдельная плитка с подписью (раньше раздел stay висел на «Про заклад» и плитки не было).
     expect(screen.getByRole("link", { name: /Де жити/ }).getAttribute("href")).toBe("#/section/stay");
     expect(screen.getByTestId("tile-hint-stay").textContent).toBe("Готелі, садиби");
     expect(screen.getByRole("link", { name: "Де поїсти" }).getAttribute("href")).toBe("#/section/eat");
     expect(screen.getByRole("link", { name: "Халепа?" }).getAttribute("href")).toBe("#/help");
     rerender(<HomeSections hasVenue={false} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.getAllByRole("listitem")).toHaveLength(9);
     expect(screen.queryByRole("link", { name: "Про заклад" })).toBeNull();
   });
 });

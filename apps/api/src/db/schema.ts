@@ -595,6 +595,7 @@ export const HOME_SECTIONS = [
   "fun",
   "nearby",
   "transfer",
+  "services",
   "help",
 ] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];

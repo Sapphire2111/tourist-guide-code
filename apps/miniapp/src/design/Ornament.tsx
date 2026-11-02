@@ -176,6 +176,11 @@ export const ICONS = {
       <circle cx="15.5" cy="14" r=".6" />
     </Icon>
   ),
+  services: (
+    <Icon>
+      <path d="M14.5 5.5a4 4 0 00-5 5L4 16l4 4 5.5-5.5a4 4 0 005-5l-2.5 2.5-2.5-.5-.5-2.5z" />
+    </Icon>
+  ),
   help: (
     <Icon>
       <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z" />

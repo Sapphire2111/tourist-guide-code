@@ -56,6 +56,58 @@ describe("таблица типов → категорий", () => {
     ["sauna", "chany"],
   ])("%s → %s", (type, code) => expect(categoryOfType(type)).toBe(code));
 
+  it.each([
+    ["playground", "kids"],
+    ["water_park", "kids"],
+    ["zoo", "kids"],
+    ["bowling_alley", "adult-fun"],
+    ["karaoke", "adult-fun"],
+    ["night_club", "adult-fun"],
+    ["cell_phone_store", "mobile"],
+    ["car_wash", "car-wash"],
+    ["tire_shop", "car-service"],
+    ["post_office", "post"],
+    ["laundry", "laundry"],
+    ["hair_salon", "beauty"],
+    ["barber_shop", "beauty"],
+  ])("сервіси й розваги: %s → %s", (type, code) => expect(categoryOfType(type)).toBe(code));
+
+  it("сервіси й розваги за назвою", () => {
+    expect(mapCategory({ primaryType: "cell_phone_store" }, "Ремонт телефонів «Майстер»")).toBe(
+      "tech-repair",
+    );
+    expect(mapCategory({ primaryType: "store" }, "Сервісний центр: ремонт ноутбуків")).toBe("tech-repair");
+    expect(mapCategory({ primaryType: "store" }, "Київстар")).toBe("mobile");
+    expect(mapCategory({}, "Нова пошта №1")).toBe("post");
+    expect(mapCategory({}, "Шиномонтаж")).toBe("car-service");
+    expect(mapCategory({ primaryType: "car_wash" }, "Шиномонтаж і мийка")).toBe("car-service");
+    expect(mapCategory({ primaryType: "bar" }, "Караоке-бар «Ніч»")).toBe("adult-fun");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Квест кімната")).toBe("adult-fun");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий майданчик")).toBe("kids");
+    expect(mapCategory({ primaryType: "bar" }, "Бар «Гуцул»")).toBe("cafes");
+    expect(mapCategory({ primaryType: "hospital" }, "Дитяча лікарня")).toBe("hospitals");
+    expect(mapCategory({ primaryType: "courier_service" }, "Нова Пошта №1")).toBe("post");
+    expect(mapCategory({ primaryType: "courier_service" }, "Евакуатор Яремче")).toBeUndefined();
+    expect(mapCategory({ primaryType: "laundry" }, "Ремонт пральних машин")).toBe("tech-repair");
+    expect(mapCategory({ primaryType: "amusement_park" }, "Прокат квадроциклів")).toBe("gear-rental");
+    expect(mapCategory({ primaryType: "store" }, "Дитячий магазин одягу")).toBe("stores");
+    expect(mapCategory({ primaryType: "childrens_camp" }, "Дитячий табір в Карпатах")).toBeUndefined();
+    expect(mapCategory({ primaryType: "amusement_park" }, "Roller Coaster Zipline")).toBe("entertainment");
+  });
+
+  it("корень «Сервіси» — в seed без подкатегорий, подкатегории заводит импорт", () => {
+    const services = SEED_CATEGORIES.find((c) => c.code === "services")!;
+    expect(services.home).toBe("services");
+    expect(IMPORT_EXTRA_CATEGORIES.filter((c) => c.parent === "services").map((c) => c.code)).toEqual([
+      "tech-repair",
+      "mobile",
+      "car-wash",
+      "post",
+      "laundry",
+      "beauty",
+    ]);
+  });
+
   it("служебные типы без категории", () => {
     for (const t of ["point_of_interest", "establishment", "locality", "political", "route"])
       expect(categoryOfType(t)).toBeUndefined();

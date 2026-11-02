@@ -108,6 +108,28 @@ export const IMPORT_QUERIES: readonly string[] = [
   "SPA",
   "чани",
   "сауна",
+  // Для дітей і для дорослих (03.11.2026)
+  "дитячий майданчик",
+  "дитячі розваги",
+  "зоопарк",
+  "аквапарк",
+  "боулінг",
+  "більярд",
+  "караоке",
+  "квест кімната",
+  "картинг",
+  "пейнтбол",
+  "нічний клуб",
+  // Сервіси (03.11.2026)
+  "ремонт телефонів",
+  "ремонт техніки",
+  "мобільний зв'язок",
+  "шиномонтаж",
+  "автомийка",
+  "Нова пошта",
+  "Укрпошта",
+  "пральня",
+  "перукарня",
   // Природа й пам'ятки
   "водоспад",
   "оглядовий майданчик",
@@ -150,4 +172,40 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
       icon: "ticket",
     },
     { code: "sights", parent: "nearby", name: { uk: "Пам'ятки", en: "Sights" }, icon: "landmark" },
+    // Розваги, розведені за аудиторією (03.11.2026); entertainment лишається для атракціонів «для всіх»
+    // (зіплайн, родельбан, кіно) — уже імпортовані місця переразмічаються при наступному імпорті.
+    { code: "kids", parent: "fun", name: { uk: "Для дітей", en: "For kids" }, icon: "baby" },
+    { code: "adult-fun", parent: "fun", name: { uk: "Для дорослих", en: "For adults" }, icon: "dice" },
+    // Розділ «Сервіси» (0020)
+    {
+      code: "tech-repair",
+      parent: "services",
+      name: { uk: "Ремонт техніки", en: "Electronics repair" },
+      icon: "wrench",
+    },
+    {
+      code: "mobile",
+      parent: "services",
+      name: { uk: "Мобільний зв'язок", en: "Mobile operators" },
+      icon: "smartphone",
+    },
+    { code: "car-wash", parent: "services", name: { uk: "Автомийки", en: "Car wash" }, icon: "droplets" },
+    {
+      code: "post",
+      parent: "services",
+      name: { uk: "Пошта й доставка", en: "Post and delivery" },
+      icon: "mail",
+    },
+    {
+      code: "laundry",
+      parent: "services",
+      name: { uk: "Пральні й хімчистки", en: "Laundry and dry cleaning" },
+      icon: "shirt",
+    },
+    {
+      code: "beauty",
+      parent: "services",
+      name: { uk: "Перукарні й салони краси", en: "Hair and beauty salons" },
+      icon: "scissors",
+    },
   ];

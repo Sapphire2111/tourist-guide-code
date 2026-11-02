@@ -11,13 +11,14 @@ export const HOME_SECTIONS = [
   "fun",
   "nearby",
   "transfer",
+  "services",
   "help",
 ] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 /** Разделы главной, открывающие каталог C04 по корневой категории. */
 /** Разделы, места которых не показываются в «Що поруч» и на общей карте главной (свой экран с картой). */
 export const OWN_MAP_SECTIONS: readonly HomeSection[] = ["stay"];
-export const CATALOG_SECTIONS = ["stay", "eat", "shop", "relax", "fun", "transfer"] as const;
+export const CATALOG_SECTIONS = ["stay", "eat", "shop", "relax", "fun", "transfer", "services"] as const;
 export type CatalogSection = (typeof CATALOG_SECTIONS)[number];
 
 export type Category = {
