@@ -462,6 +462,14 @@ export class PlaceDto {
       "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)",
   })
   hostCapable!: boolean;
+  @ApiProperty({
+    type: String,
+    format: "uuid",
+    nullable: true,
+    description:
+      "Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId=",
+  })
+  organizationId!: string | null;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) updatedAt!: string;
 }
@@ -485,6 +493,7 @@ export const toPlaceDto = (
   verifiedAt: p.verified_at?.toISOString() ?? null,
   tagIds: p.tagIds ?? [],
   hostCapable,
+  organizationId: p.organization_id ?? null,
   createdAt: p.created_at.toISOString(),
   updatedAt: p.updated_at.toISOString(),
 });

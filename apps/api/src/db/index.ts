@@ -207,3 +207,27 @@ export {
   type TagGroup,
   type TagUpdate,
 } from "./schema.js";
+// Кабинет партнёра (0017, ADR-0021).
+export {
+  MODERATION_CASE_STATUSES,
+  MODERATION_DECISIONS,
+  OFFER_STATUSES,
+  ORGANIZATION_STATUSES,
+  PARTNER_MODULES,
+  PARTNER_PLACE_FIELDS,
+  STAFF_INVITE_ROLES,
+  VERIFICATION_METHODS,
+  type ModerationCase,
+  type ModerationCaseStatus,
+  type ModerationDecision,
+  type Offer,
+  type OfferStatus,
+  type Organization,
+  type OrganizationStatus,
+  type PartnerModule,
+  type PartnerPlaceField,
+  type PartnerTemplate,
+  type StaffInvite,
+  type StaffInviteRole,
+  type VerificationMethod,
+} from "./schema.js";

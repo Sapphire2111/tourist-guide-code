@@ -624,7 +624,16 @@ export type Tag = Selectable<TagsTable>;
 export type NewTag = Insertable<TagsTable>;
 export type TagUpdate = Updateable<TagsTable>;
 
-export const PLACE_STATUSES = ["draft", "published", "suspended", "archived"] as const;
+/** Статусы места; pending_moderation, changes_requested, rejected — модерация мест партнёров (0017, блок 6). */
+export const PLACE_STATUSES = [
+  "draft",
+  "pending_moderation",
+  "changes_requested",
+  "rejected",
+  "published",
+  "suspended",
+  "archived",
+] as const;
 export type PlaceStatus = (typeof PLACE_STATUSES)[number];
 /** Источник места (0016). */
 export const PLACE_SOURCES = ["manual", "google"] as const;
@@ -653,6 +662,10 @@ export interface PlacesTable {
   google_place_id: Nullable<string>;
   /** Последняя сверка с Google (0016). */
   last_synced_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  /** Организация партнёра (0017); NULL — место админки/импорта. */
+  organization_id: ColumnType<string | null, string | null | undefined, never>;
+  /** Шаблон партнёра (0017), только у мест организации. */
+  partner_template_id: ColumnType<string | null, string | null | undefined, never>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -916,6 +929,125 @@ export interface UserPlansTable {
 }
 export type UserPlan = Selectable<UserPlansTable>;
 
+// --- Кабинет партнёра (tenant, кроме шаблонов; миграция 0017, блок 6, ADR-0021) ---
+
+/** Поля карточки, которые шаблон может требовать при отправке на модерацию (CHECK partner_templates). */
+export const PARTNER_PLACE_FIELDS = [
+  "name",
+  "category",
+  "description",
+  "address",
+  "location",
+  "phone",
+  "schedule",
+  "photo",
+] as const;
+export type PartnerPlaceField = (typeof PARTNER_PLACE_FIELDS)[number];
+/** Модули, доступные месту по шаблону. */
+export const PARTNER_MODULES = ["host_requests", "offers"] as const;
+export type PartnerModule = (typeof PARTNER_MODULES)[number];
+
+/** global: шаблон партнёра (D-03 А); у app — только чтение. */
+export interface PartnerTemplatesTable {
+  id: UuidPk;
+  code: string;
+  name_i18n: Jsonb<LocalizedText>;
+  description_i18n: Nullable<LocalizedText>;
+  category_codes: string[];
+  required_fields: PartnerPlaceField[];
+  modules: PartnerModule[];
+  sort_order: Generated<number>;
+  active: Generated<boolean>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type PartnerTemplate = Selectable<PartnerTemplatesTable>;
+
+export const ORGANIZATION_STATUSES = ["active", "blocked"] as const;
+export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
+
+export interface OrganizationsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  name: string;
+  status: ColumnType<OrganizationStatus, OrganizationStatus | undefined, OrganizationStatus>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Organization = Selectable<OrganizationsTable>;
+
+export const MODERATION_CASE_STATUSES = ["open", "decided"] as const;
+export type ModerationCaseStatus = (typeof MODERATION_CASE_STATUSES)[number];
+export const MODERATION_DECISIONS = ["approve", "reject", "changes_requested"] as const;
+export type ModerationDecision = (typeof MODERATION_DECISIONS)[number];
+/** Способ проверки права на заведение (D-47 А). */
+export const VERIFICATION_METHODS = ["phone_call", "document", "site_visit", "other"] as const;
+export type VerificationMethod = (typeof VERIFICATION_METHODS)[number];
+
+export interface ModerationCasesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  organization_id: ColumnType<string, string, never>;
+  status: ColumnType<ModerationCaseStatus, ModerationCaseStatus | undefined, ModerationCaseStatus>;
+  decision: Nullable<ModerationDecision>;
+  comment: Nullable<string>;
+  verification_method: Nullable<VerificationMethod>;
+  /** Комментарий партнёра при подаче (как связаться для подтверждения права, D-47). */
+  partner_note: ColumnType<string | null, string | null | undefined, never>;
+  /** Снимок карточки на момент подачи (jsonb-объект). */
+  place_snapshot: ColumnType<JsonObject, JsonObject | undefined, never>;
+  submitted_by: ColumnType<string, string, never>;
+  submitted_at: ColumnType<Date, Date | string | undefined, never>;
+  decided_by: Nullable<string>;
+  decided_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type ModerationCase = Selectable<ModerationCasesTable>;
+
+/** Роли, на которые приглашают сотрудников (владельца не приглашают). */
+export const STAFF_INVITE_ROLES = ["ORG_MANAGER", "ORG_STAFF"] as const;
+export type StaffInviteRole = (typeof STAFF_INVITE_ROLES)[number];
+
+export interface StaffInvitesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  organization_id: ColumnType<string, string, never>;
+  role: ColumnType<StaffInviteRole, StaffInviteRole, never>;
+  /** sha256 токена (bytea, 32 байта): pg отдаёт Buffer. Сам токен не хранится. */
+  token_hash: ColumnType<Buffer, Buffer, never>;
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_by: ColumnType<string, string, never>;
+  accepted_by: Nullable<string>;
+  accepted_at: ColumnType<Date | null, never, Date | string | null>;
+  role_assignment_id: Nullable<string>;
+  revoked_by: Nullable<string>;
+  revoked_at: ColumnType<Date | null, never, Date | string | null>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type StaffInvite = Selectable<StaffInvitesTable>;
+
+export const OFFER_STATUSES = ["active", "archived"] as const;
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
+
+export interface OffersTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  title_i18n: Jsonb<LocalizedText>;
+  description_i18n: Nullable<LocalizedText>;
+  starts_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  ends_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  status: ColumnType<OfferStatus, OfferStatus | undefined, OfferStatus>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Offer = Selectable<OffersTable>;
+
 export interface Database {
   app_meta: AppMetaTable;
   feature_flags: FeatureFlagsTable;
@@ -962,4 +1094,10 @@ export interface Database {
   scenarios: ScenariosTable;
   scenario_items: ScenarioItemsTable;
   user_plans: UserPlansTable;
+  // Кабинет партнёра (0017, ADR-0021).
+  partner_templates: PartnerTemplatesTable;
+  organizations: OrganizationsTable;
+  moderation_cases: ModerationCasesTable;
+  staff_invites: StaffInvitesTable;
+  offers: OffersTable;
 }

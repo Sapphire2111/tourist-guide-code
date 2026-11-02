@@ -149,6 +149,9 @@ export class PlacesController {
     operationId: "publishPlace",
     summary:
       "Опубликовать: нужны описание, адрес, точка, активная категория и alt text у всех фото (иначе 422)",
+    description:
+      "Место партнёра (organizationId не null), ни разу не опубликованное, — 409 errors.place.moderationRequired: " +
+      "первая публикация только решением модерации (POST /admin/moderation/cases/{id}/approve).",
   })
   @ApiOkResponse({ type: PlaceDto })
   @ApiErrors(...WRITE_ERRORS)

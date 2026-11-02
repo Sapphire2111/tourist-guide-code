@@ -11,7 +11,7 @@ import {
 import { PrincipalGuard, RbacTenantContextSource } from "./principal.guard.js";
 import { RbacService, RequestAccess } from "./rbac.service.js";
 import { RoleAssignmentsRepository } from "./role-assignments.repository.js";
-import { placeParentLoader } from "./scope-loaders.js";
+import { dbScopeParentLoaders } from "./scope-loaders.js";
 import { SCOPE_PARENT_LOADERS, ScopeHierarchy, type ScopeParentLoaders } from "./scope.js";
 
 /**
@@ -28,10 +28,10 @@ import { SCOPE_PARENT_LOADERS, ScopeHierarchy, type ScopeParentLoaders } from ".
       useFactory: (auth?: PrincipalSource): PrincipalSource => auth ?? new NoPrincipalSource(),
       inject: [{ token: AUTHENTICATION_PRINCIPAL_SOURCE, optional: true }],
     },
-    // PLACE → REGION (блок 5, ADR-0020: организаций пока нет); ORGANIZATION, RESOURCE — с блоками 6–7.
+    // PLACE → ORGANIZATION | REGION, ORGANIZATION → REGION (блоки 5–6, ADR-0020, ADR-0021); RESOURCE — блок 7.
     {
       provide: SCOPE_PARENT_LOADERS,
-      useFactory: (db: Db): ScopeParentLoaders => ({ PLACE: placeParentLoader(db) }),
+      useFactory: (db: Db): ScopeParentLoaders => dbScopeParentLoaders(db),
       inject: [DATABASE],
     },
     { provide: APP_GUARD, useClass: PrincipalGuard },

@@ -161,8 +161,13 @@ const REGION_ADMIN_ASSIGNS: ReadonlySet<string> = new Set([
   "MODERATOR",
   "AMBASSADOR",
   "ORG_STAFF",
+  "ORG_MANAGER",
   "ORG_OWNER",
 ]);
+/** Кого назначает владелец организации (S-06, блок 6): только сотрудников — менеджера и кассира, не владельца. */
+const ORG_OWNER_ASSIGNS: ReadonlySet<string> = new Set(["ORG_MANAGER", "ORG_STAFF"]);
+/** Роли партнёра без права назначать кого-либо (S-06: «ORG_MANAGER пытается выдать роль» — отказ). */
+const ORG_NON_ASSIGNERS: ReadonlySet<string> = new Set(["ORG_MANAGER", "ORG_STAFF"]);
 
 /**
  * Может ли актор с ролью actorRole назначить роль target. undefined — назначение актора не найдено: отказ
@@ -173,6 +178,8 @@ export function canAssignRole(actorRole: string | undefined, target: string): bo
   if (PLATFORM_ASSIGNERS.has(actorRole)) return true;
   if (PLATFORM_ASSIGNED_ROLES.has(target)) return false;
   if (actorRole === "REGION_ADMIN") return REGION_ADMIN_ASSIGNS.has(target);
+  if (actorRole === "ORG_OWNER") return ORG_OWNER_ASSIGNS.has(target);
+  if (ORG_NON_ASSIGNERS.has(actorRole)) return false;
   return true;
 }
 
