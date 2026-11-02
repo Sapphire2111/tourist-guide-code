@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { assertSeedAllowed, SeedNotAllowedError } from "./guard.js";
 import { seedUuid } from "./ids.js";
+import { EMERGENCY_PHONE_RE } from "../modules/emergency-contacts/index.js";
 import { checkStartParam } from "../modules/qr-context/index.js";
 import {
   assertVolumeAllowed,
   MAX_VOLUME,
   parseVolumeArgs,
+  SEED_EMERGENCY_CONTACTS,
   SEED_QR_POINTS,
   SEED_USERS,
   VOLUME_PRESETS,
@@ -116,5 +118,19 @@ describe("SEED_QR_POINTS", () => {
     for (const c of codes) expect(checkStartParam(c), c).toEqual({ valid: true, code: c });
     expect(SEED_QR_POINTS.some((p) => p.type === "hotel" && p.active && "venue" in p)).toBe(true);
     expect(SEED_QR_POINTS.some((p) => !p.active)).toBe(true);
+  });
+});
+
+describe("SEED_EMERGENCY_CONTACTS", () => {
+  it("112, 101, 102, 103 и горные спасатели; телефоны по формату CHECK; ключи и порядок уникальны", () => {
+    expect(SEED_EMERGENCY_CONTACTS.map((c) => c.phone)).toEqual(
+      expect.arrayContaining(["112", "101", "102", "103"]),
+    );
+    expect(SEED_EMERGENCY_CONTACTS.some((c) => c.kind === "mountain_rescue")).toBe(true);
+    for (const c of SEED_EMERGENCY_CONTACTS) expect(c.phone, c.key).toMatch(EMERGENCY_PHONE_RE);
+    expect(new Set(SEED_EMERGENCY_CONTACTS.map((c) => c.key)).size).toBe(SEED_EMERGENCY_CONTACTS.length);
+    expect(new Set(SEED_EMERGENCY_CONTACTS.map((c) => c.sortOrder)).size).toBe(
+      SEED_EMERGENCY_CONTACTS.length,
+    );
   });
 });

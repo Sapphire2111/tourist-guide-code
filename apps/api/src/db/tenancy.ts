@@ -46,6 +46,12 @@ export const TABLE_TENANCY = {
   entry_contexts: "tenant",
   qr_scan_events: "tenant-optional",
   attribution_touches: "tenant-optional",
+  // Ядро админки (0013, ADR-0018): учётка входа — человека (global), как сессия; экстренные контакты и
+  // платные размещения — региона.
+  admin_credentials: "global",
+  admin_login_failures: "global",
+  emergency_contacts: "tenant",
+  promotions: "tenant",
   // Каталог (0012, ADR-0017): справочники и места региона; категории и теги пока региональные (без глобальных).
   localities: "tenant",
   categories: "tenant",

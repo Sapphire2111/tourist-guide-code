@@ -19,7 +19,8 @@
     "test:load": "node load/run.mjs",
     "openapi": "tsc -p tsconfig.build.json && node dist/scripts/openapi.js",
     "db:migrate": "tsc -p tsconfig.build.json && node dist/db/migrate-cli.js",
-    "db:seed": "tsc -p tsconfig.build.json && node dist/seed/seed-cli.js"
+    "db:seed": "tsc -p tsconfig.build.json && node dist/seed/seed-cli.js",
+    "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/admin-create.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.8",
@@ -38,7 +39,8 @@
     "kysely": "0.29.7",
     "pg": "8.22.0",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "uqr": "0.1.3"
   },
   "devDependencies": {
     "@nestjs/testing": "11.2.8",

@@ -33,6 +33,7 @@ export class AuditController {
     // Лишняя запись — признак следующей страницы.
     const rows = await this.audit.search(
       {
+        action: q.action,
         entityType: q.entityType,
         entityId: q.entityId,
         actorUserId: q.actorUserId,

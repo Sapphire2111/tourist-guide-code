@@ -186,6 +186,17 @@ describe("GET /admin/audit-logs", () => {
       expect(body.nextCursor).toBe(encodeAuditCursor(row(99).id));
     });
 
+    it("фильтр по коду действия (action)", async () => {
+      await request(app!.getHttpServer())
+        .get("/admin/audit-logs")
+        .query({ action: "qr_point.create" })
+        .expect(200);
+      expect(selects(queries)[0]!.sql).toBe(
+        'select * from "audit_logs" where ("action" = $1) and "audit_logs"."region_id" = $2 order by "id" desc limit $3',
+      );
+      expect(selects(queries)[0]!.parameters).toEqual(["qr_point.create", A, 21]);
+    });
+
     it("курсор → условие id < курсора; последняя страница — nextCursor null", async () => {
       const cursor = encodeAuditCursor(row(50).id);
       const res = await request(app!.getHttpServer()).get("/admin/audit-logs").query({ cursor }).expect(200);

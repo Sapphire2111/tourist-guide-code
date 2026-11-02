@@ -174,7 +174,7 @@ describe.skipIf(!dockerAvailable)(`Фича-флаги (T1-22)${title}`, () => {
     expect(rows[0]).toEqual({ flags: "0", audits: "0" });
   });
 
-  it("prod: finance.live не включить без SUPERADMIN и отметок; отметки пишутся с аудитом", async () => {
+  it("prod: finance.live не включить без SUPERADMIN, отметок и второго фактора; отметки пишутся с аудитом", async () => {
     const flags = service("prod");
     const actor = { type: "user", userId: admin } as const;
     const err = await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
@@ -195,13 +195,24 @@ describe.skipIf(!dockerAvailable)(`Фича-флаги (T1-22)${title}`, () => {
       await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
         flags.markGate(trx, { decision, documentRef: `заключение ${decision}`, actor }),
       );
-    await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
+    // Роль и все отметки есть, но второго фактора нет (D-52): гейт закрыт; учётка с методом totp — тоже (метод
+    // ещё не поддержан).
+    const noMfa = await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
       flags.set(trx, { key: "finance.live", regionId: null, enabled: true, actor }),
+    ).catch((e: unknown) => e);
+    expect((noMfa as FeatureFlagError).reason).toBe("finance_gate_mfa");
+    await owner.query(
+      "INSERT INTO admin_credentials (user_id, login, password_hash, mfa_method) VALUES ($1, 'ff-sa', 'scrypt$1024$8$1$c2FsdHNhbHQ$a2V5a2V5a2V5a2V5a2V5a2V5', 'totp')",
+      [admin],
     );
+    const unsupported = await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
+      flags.set(trx, { key: "finance.live", regionId: null, enabled: true, actor }),
+    ).catch((e: unknown) => e);
+    expect((unsupported as FeatureFlagError).reason).toBe("finance_gate_mfa");
     const { rows } = await owner.query(
-      "SELECT enabled FROM feature_flags WHERE key = 'finance.live' AND target_region_id IS NULL",
+      "SELECT count(*)::int AS n FROM feature_flags WHERE key = 'finance.live'",
     );
-    expect(rows).toEqual([{ enabled: true }]);
+    expect(rows).toEqual([{ n: 0 }]);
     const marks = await owner.query(
       "SELECT count(*) AS n FROM audit_logs WHERE action = 'feature_flag.gate_mark'",
     );

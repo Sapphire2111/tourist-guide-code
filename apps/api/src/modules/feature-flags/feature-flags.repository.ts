@@ -5,6 +5,7 @@ import {
   type Db,
   type FeatureFlagGateMark,
   type FeatureFlagRow,
+  type AdminMfaMethod,
 } from "../../db/index.js";
 
 /**
@@ -83,6 +84,16 @@ export class FeatureFlagsRepository {
       .where("target_region_id", regionId === null ? "is" : "=", regionId)
       .returningAll()
       .executeTakeFirst();
+  }
+
+  /** Метод второго фактора учётки админа (admin_credentials, global); нет учётки — undefined. */
+  async mfaMethodOf(userId: string): Promise<AdminMfaMethod | null | undefined> {
+    const row = await currentDb(this.db)
+      .selectFrom("admin_credentials")
+      .select("mfa_method")
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return row?.mfa_method;
   }
 
   gateMarks(): Promise<FeatureFlagGateMark[]> {

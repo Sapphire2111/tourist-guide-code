@@ -1,7 +1,15 @@
 // Seed (T1-23): тестовый регион и второй tenant для проверок изоляции, пользователи с техническими ролями,
 // синтетический объём (ТЗ §13). Идемпотентность: записи имеют детерминированные id (seedUuid) или естественный
 // ключ (regions.code) и вставляются через ON CONFLICT DO NOTHING; назначения ролей проверяются заранее.
-import { SYSTEM_CONTEXT, withTenant, type Db, type NewQrPoint, type QrPointType } from "../db/index.js";
+import {
+  SYSTEM_CONTEXT,
+  withTenant,
+  type Db,
+  type EmergencyContactKind,
+  type LocalizedText,
+  type NewQrPoint,
+  type QrPointType,
+} from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import {
   PLATFORM_SCOPE,
@@ -23,14 +31,17 @@ export type SeedRegionKey = (typeof SEED_REGIONS)[number]["key"];
 
 type SeedAssignment = { role: RoleCode; scope: "platform" | SeedRegionKey };
 
-/** Пользователи с техническими и бизнес-ролями (roles.ts). TECH_ORG_EDITOR не назначается: таблиц организаций ещё нет. */
+/**
+ * Пользователи с ролями (roles.ts): технические и бизнес-роли админки. TECH_ORG_EDITOR не назначается: таблиц
+ * организаций ещё нет. Учёток входа по паролю seed не создаёт (пароль в коде недопустим) — CLI admin:create.
+ */
 export const SEED_USERS = [
   { key: "superuser", assignments: [{ role: "TECH_SUPERUSER", scope: "platform" }] },
   { key: "admin-a", assignments: [{ role: "TECH_REGION_ADMIN", scope: "a" }] },
   { key: "admin-b", assignments: [{ role: "TECH_REGION_ADMIN", scope: "b" }] },
   { key: "auditor-a", assignments: [{ role: "TECH_AUDITOR", scope: "a" }] },
   { key: "auditor-platform", assignments: [{ role: "TECH_AUDITOR", scope: "platform" }] },
-  // Бизнес-роли админки (блок 3): регион-админ и модератор; SUPERADMIN — CLI admin:create (ADR-0018).
+  // Бизнес-роли админки (блок 3) — для dev-входа в local; пароля нет: вход по паролю — учётка из CLI admin:create.
   { key: "region-admin-a", assignments: [{ role: "REGION_ADMIN", scope: "a" }] },
   { key: "region-admin-b", assignments: [{ role: "REGION_ADMIN", scope: "b" }] },
   { key: "moderator-a", assignments: [{ role: "MODERATOR", scope: "a" }] },
@@ -223,6 +234,76 @@ export async function seedQrPoints(
     }
   });
   return ids;
+}
+
+/**
+ * Экстренные контакты «Халепа?» тестового региона (блок 3/4). ДЕМО: общеукраинские номера служб (112, 101, 102,
+ * 103) настоящие, горные спасатели — вымышленный номер (+38000…, не выделен оператору); реальные контакты
+ * пилотного региона заводит ответственный OPS (D-53) в админке. Пометка «Демо» — в описании каждого контакта.
+ */
+export const SEED_EMERGENCY_CONTACTS = [
+  {
+    key: "general",
+    kind: "general",
+    phone: "112",
+    name: { uk: "Єдиний номер екстрених служб", en: "Emergency number" },
+    sortOrder: 10,
+  },
+  {
+    key: "rescue",
+    kind: "rescue",
+    phone: "101",
+    name: { uk: "Рятувальники (ДСНС)", en: "Rescue service" },
+    sortOrder: 20,
+  },
+  { key: "police", kind: "police", phone: "102", name: { uk: "Поліція", en: "Police" }, sortOrder: 30 },
+  {
+    key: "ambulance",
+    kind: "ambulance",
+    phone: "103",
+    name: { uk: "Швидка допомога", en: "Ambulance" },
+    sortOrder: 40,
+  },
+  {
+    key: "mountain-rescue",
+    kind: "mountain_rescue",
+    phone: "+380000000199",
+    name: { uk: "Гірські рятувальники", en: "Mountain rescue" },
+    sortOrder: 50,
+  },
+] as const satisfies readonly {
+  key: string;
+  kind: EmergencyContactKind;
+  phone: string;
+  name: LocalizedText;
+  sortOrder: number;
+}[];
+
+const DEMO_NOTE: LocalizedText = {
+  uk: "Демо-дані тестового регіону: перевірте номер перед пілотом.",
+  en: "Demo data of the test region: verify the number before the pilot.",
+};
+
+/** Экстренные контакты тестового региона a; повторный запуск ничего не меняет (ON CONFLICT по id). */
+export async function seedEmergencyContacts(db: Db, regions: Record<SeedRegionKey, string>): Promise<number> {
+  return withTenant(db, SYSTEM_CONTEXT, async (trx) => {
+    const res = await trx
+      .insertInto("emergency_contacts")
+      .values(
+        SEED_EMERGENCY_CONTACTS.map((c) => ({
+          id: seedUuid(`emergency:a:${c.key}`),
+          region_id: regions.a,
+          kind: c.kind,
+          phone: c.phone,
+          name_i18n: c.name,
+          description_i18n: DEMO_NOTE,
+          sort_order: c.sortOrder,
+        })),
+      )
+      .onConflict((oc) => oc.column("id").doNothing())
+      .execute();
+    return res.reduce((n, r) => n + Number(r.numInsertedOrUpdatedRows ?? 0), 0);
+  });
 }
 
 /** Масштаб ТЗ §13 (F-156): 100 тыс. пользователей, 1 млн событий в месяц. Мест (10 тыс.) пока нет — таблицы нет. */

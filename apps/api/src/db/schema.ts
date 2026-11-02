@@ -466,6 +466,92 @@ export interface AttributionTouchesTable {
 export type AttributionTouch = Selectable<AttributionTouchesTable>;
 export type NewAttributionTouch = Insertable<AttributionTouchesTable>;
 
+// --- admin_credentials (global), emergency_contacts, promotions (tenant); миграция 0013, блок 3, ADR-0018 ---
+
+export const ADMIN_MFA_METHODS = ["totp"] as const;
+export type AdminMfaMethod = (typeof ADMIN_MFA_METHODS)[number];
+
+export interface AdminCredentialsTable {
+  id: UuidPk;
+  user_id: ColumnType<string, string, never>;
+  /** Нижний регистр (CHECK admin_credentials_login_format). */
+  login: ColumnType<string, string, never>;
+  /** scrypt$N$r$p$соль$ключ (admin-auth/password-hash.ts). */
+  password_hash: string;
+  /** Неудачи по логину со всех адресов в окне 1 ч (порог 50 — блокировка учётки). */
+  failed_attempts: ColumnType<number, number | undefined, number>;
+  failure_window_started_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  locked_until: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_login_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  /** 2FA (D-52) — каркас: задан — вход отклоняется, пока метод не реализован. */
+  mfa_method: ColumnType<AdminMfaMethod | null, AdminMfaMethod | null | undefined, AdminMfaMethod | null>;
+  password_changed_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type AdminCredential = Selectable<AdminCredentialsTable>;
+export type NewAdminCredential = Insertable<AdminCredentialsTable>;
+export type AdminCredentialUpdate = Updateable<AdminCredentialsTable>;
+
+/** Неудачные входы по паре sha256(логин) + sha256(адрес клиента) — блокировка пары (5 за 15 мин). */
+export interface AdminLoginFailuresTable {
+  login_hash: ColumnType<Buffer, Buffer, never>;
+  client_hash: ColumnType<Buffer, Buffer, never>;
+  failed_attempts: number;
+  locked_until: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_failed_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+export type AdminLoginFailure = Selectable<AdminLoginFailuresTable>;
+
+export const EMERGENCY_CONTACT_KINDS = [
+  "general",
+  "police",
+  "ambulance",
+  "rescue",
+  "mountain_rescue",
+  "other",
+] as const;
+export type EmergencyContactKind = (typeof EMERGENCY_CONTACT_KINDS)[number];
+
+export interface EmergencyContactsTable {
+  id: UuidPk;
+  region_id: ColumnType<string, string | undefined, never>;
+  kind: EmergencyContactKind;
+  name_i18n: Jsonb<LocalizedText>;
+  /** E.164 или короткий номер службы (112, 101…). */
+  phone: string;
+  description_i18n: ColumnType<LocalizedText | null, LocalizedText | null | undefined, LocalizedText | null>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type EmergencyContact = Selectable<EmergencyContactsTable>;
+export type NewEmergencyContact = Insertable<EmergencyContactsTable>;
+export type EmergencyContactUpdate = Updateable<EmergencyContactsTable>;
+
+export const PROMOTION_AD_LABELS = ["advertising", "partner"] as const;
+export type PromotionAdLabel = (typeof PROMOTION_AD_LABELS)[number];
+export const PROMOTION_STATUSES = ["draft", "scheduled", "active", "paused", "ended", "cancelled"] as const;
+export type PromotionStatus = (typeof PROMOTION_STATUSES)[number];
+
+/** Платное размещение — только сущность: выдача и показ выключены до D-63 (ни один эндпоинт её не читает). */
+export interface PromotionsTable {
+  id: UuidPk;
+  region_id: ColumnType<string, string | undefined, never>;
+  place_id: ColumnType<string | null, string | null | undefined, string | null>;
+  title_i18n: Jsonb<LocalizedText>;
+  ad_label: ColumnType<PromotionAdLabel, PromotionAdLabel | undefined, PromotionAdLabel>;
+  starts_at: Timestamp;
+  ends_at: Timestamp;
+  status: ColumnType<PromotionStatus, PromotionStatus | undefined, PromotionStatus>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Promotion = Selectable<PromotionsTable>;
+export type NewPromotion = Insertable<PromotionsTable>;
+
 // --- Каталог (tenant; миграция 0012, ADR-0017): населённые пункты, категории, теги, места, график, фото, бейдж ---
 
 /** Изменяемая колонка с NULL: при вставке необязательна. */
@@ -644,6 +730,10 @@ export interface Database {
   qr_scan_events: QrScanEventsTable;
   entry_contexts: EntryContextsTable;
   attribution_touches: AttributionTouchesTable;
+  admin_credentials: AdminCredentialsTable;
+  admin_login_failures: AdminLoginFailuresTable;
+  emergency_contacts: EmergencyContactsTable;
+  promotions: PromotionsTable;
   // Каталог (0012, ADR-0017).
   localities: LocalitiesTable;
   categories: CategoriesTable;

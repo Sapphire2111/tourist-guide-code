@@ -128,6 +128,27 @@ export {
   type QrScanEvent,
   type QrScanResult,
 } from "./schema.js";
+// Ядро админки (0013, ADR-0018).
+export {
+  ADMIN_MFA_METHODS,
+  EMERGENCY_CONTACT_KINDS,
+  PROMOTION_AD_LABELS,
+  PROMOTION_STATUSES,
+  type AdminCredential,
+  type AdminCredentialUpdate,
+  type AdminLoginFailure,
+  type AdminMfaMethod,
+  type EmergencyContact,
+  type EmergencyContactKind,
+  type EmergencyContactUpdate,
+  type NewAdminCredential,
+  type NewEmergencyContact,
+  type NewPromotion,
+  type Promotion,
+  type PromotionAdLabel,
+  type PromotionStatus,
+} from "./schema.js";
+export { setLocalLockTimeout } from "./lock-timeout.js";
 // Каталог (0012, ADR-0017).
 export {
   BADGE_ACTIONS,

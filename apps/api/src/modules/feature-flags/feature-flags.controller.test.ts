@@ -35,7 +35,7 @@ function grant(id: string, role: string, scopeType: Grant["scopeType"], regionId
 }
 
 const SUPERUSER = grant(TECH_GRANT, "TECH_SUPERUSER", "PLATFORM", null);
-/** Бизнес-роль SUPERADMIN (реестр ролей, блок 3); для гейта finance.live проверяется по коду роли. */
+/** Назначение SUPERADMIN: для гейта finance.live проверяется по коду роли (права в тестах даёт TECH_SUPERUSER). */
 const SUPERADMIN = grant(SA_GRANT, "SUPERADMIN", "PLATFORM", null);
 const REGION_ADMIN_A = grant(TECH_GRANT, "TECH_REGION_ADMIN", "REGION", A);
 
@@ -433,7 +433,7 @@ describe("финансовый гейт finance.live (D-81)", () => {
     expect(s.flags).toEqual([]);
   });
 
-  it("prod: SUPERADMIN и все отметки — включение; в аудите назначение SUPERADMIN", async () => {
+  it("prod: SUPERADMIN и все отметки, но без второго фактора (D-52) — 403 finance_gate_mfa, ничего не записано", async () => {
     const s = await start({
       appEnv: "prod",
       principal: { userId: USER },
@@ -441,14 +441,16 @@ describe("финансовый гейт finance.live (D-81)", () => {
       marks: ["D-09", "D-10", "D-13", "D-17", "D-20", "D-24"],
     });
     app = s.app;
-    await request(app.getHttpServer())
+    const res = await request(app.getHttpServer())
       .put("/admin/feature-flags/finance.live")
       .send({ enabled: true })
-      .expect(200);
-    expect(s.flags).toEqual([
-      { key: "finance.live", target_region_id: null, enabled: true, updated_by: USER },
-    ]);
-    expect(audits(s.queries)[0]!.parameters.at(-1)).toBe(SA_GRANT);
+      .expect(403);
+    expect((res.body as ErrorEnvelope).error.details).toEqual({ reason: "finance_gate_mfa" });
+    expect(s.flags).toEqual([]);
+    expect(audits(s.queries)).toEqual([]);
+    expect(s.queries.some((q) => q.sql.startsWith('select "mfa_method" from "admin_credentials"'))).toBe(
+      true,
+    );
   });
 
   it("prod: выключить finance.live может любой с feature_flag.manage (аварийный выключатель)", async () => {
@@ -488,11 +490,13 @@ describe("финансовый гейт finance.live (D-81)", () => {
       marks: ["D-09", "D-10", "D-13", "D-17", "D-20", "D-24"],
     });
     app = s.app;
-    await request(app.getHttpServer())
+    // С ролью и отметками — всё равно закрыто без второго фактора (D-52).
+    const mfa = await request(app.getHttpServer())
       .put("/admin/feature-flags/finance.live")
       .send({ enabled: null, regionId: A })
-      .expect(200);
-    expect(s.flags).toEqual([flags[0]]);
+      .expect(403);
+    expect((mfa.body as ErrorEnvelope).error.details).toEqual({ reason: "finance_gate_mfa" });
+    expect(s.flags).toHaveLength(2);
     // Сброс переопределения окружения (значение по умолчанию — off) — без гейта.
     await app.close();
     s = await start({ appEnv: "prod", principal: { userId: USER }, grants: [SUPERUSER], flags: [flags[0]!] });

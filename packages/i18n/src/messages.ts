@@ -127,6 +127,10 @@ export const uk = {
   // Вход через Telegram и профиль (блок 2).
   "errors.auth.invalidInitData": "Не вдалося підтвердити вхід через Telegram. Відкрийте застосунок ще раз.",
   "errors.auth.userBlocked": "Обліковий запис заблоковано.",
+  // Вход в админку (блок 3, ADR-0018).
+  "errors.auth.invalidCredentials": "Невірний логін або пароль.",
+  "errors.qr.botUsernameMissing": "Не налаштовано ім’я бота: друк QR недоступний.",
+  "errors.qr.inactive": "QR-точку деактивовано — друк недоступний.",
   "errors.messaging.serviceConsentRequired": "Спершу дозвольте боту надсилати сервісні повідомлення.",
   // Каталог админки (блок 3): details.reason / details.problems уточняют причину.
   "errors.catalog.regionRequired": "Оберіть регіон, щоб працювати з каталогом.",
