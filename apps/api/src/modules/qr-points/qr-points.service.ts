@@ -46,6 +46,7 @@ export type CreateQrPointInput = {
   source?: string | null;
   placeId?: string | null;
   venue?: QrVenueInput | null;
+  roomLabel?: string | null;
 };
 
 export type UpdateQrPointInput = {
@@ -54,6 +55,7 @@ export type UpdateQrPointInput = {
   source?: string | null;
   placeId?: string | null;
   venue?: QrVenueInput | null;
+  roomLabel?: string | null;
 };
 
 /** Кто действует — для аудита (auditFromRequest). */
@@ -61,6 +63,7 @@ export type AuditMeta = Pick<AuditEntry, "actor" | "roleAssignmentId" | "request
 
 export type QrPointErrorReason =
   | "venue_hotel_only"
+  | "room_hotel_only"
   | "campaign_required"
   | "code_generation_failed"
   | "bot_username_not_configured"
@@ -98,7 +101,7 @@ export class QrPointsService {
   }
 
   async create(input: CreateQrPointInput, meta: AuditMeta): Promise<QrPoint> {
-    checkRules(input.type, input.campaign ?? null, Boolean(input.venue));
+    checkRules(input.type, input.campaign ?? null, Boolean(input.venue), Boolean(input.roomLabel));
     for (let i = 0; i < CODE_ATTEMPTS; i++) {
       const row = await this.repo.insertIfCodeFree({
         region_id: input.regionId,
@@ -109,6 +112,7 @@ export class QrPointsService {
         source: input.source ?? null,
         place_id: input.placeId ?? null,
         ...venueColumns(input.venue ?? null),
+        room_label: input.roomLabel?.trim() || null,
       });
       if (!row) continue;
       await this.record(meta, QR_POINT_AUDIT.create, row, null, snapshot(row));
@@ -127,10 +131,12 @@ export class QrPointsService {
     if (input.source !== undefined) patch.source = input.source;
     if (input.placeId !== undefined) patch.place_id = input.placeId;
     if (input.venue !== undefined) Object.assign(patch, venueColumns(input.venue));
+    if (input.roomLabel !== undefined) patch.room_label = input.roomLabel?.trim() || null;
     if (Object.keys(patch).length === 0) return before;
     const campaign = patch.campaign !== undefined ? patch.campaign : before.campaign;
     const hasVenue = input.venue !== undefined ? input.venue !== null : before.venue_name_i18n !== null;
-    checkRules(before.type, campaign ?? null, hasVenue);
+    const room = patch.room_label !== undefined ? patch.room_label : before.room_label;
+    checkRules(before.type, campaign ?? null, hasVenue, room !== null);
     const after = await this.repo.update(id, patch);
     if (!after) return undefined;
     const changed = diff(snapshot(before), snapshot(after));
@@ -199,8 +205,9 @@ export function renderQrSvg(text: string): string {
   return renderSVG(text, { ecc: "M", border: 4, pixelSize: 10 });
 }
 
-function checkRules(type: QrPointType, campaign: string | null, hasVenue: boolean): void {
+function checkRules(type: QrPointType, campaign: string | null, hasVenue: boolean, hasRoom = false): void {
   if (hasVenue && type !== "hotel") throw new QrPointError("venue_hotel_only");
+  if (hasRoom && type !== "hotel") throw new QrPointError("room_hotel_only");
   if (type === "campaign" && !campaign) throw new QrPointError("campaign_required");
 }
 
@@ -231,6 +238,7 @@ function snapshot(row: QrPoint): JsonObject {
     venuePhone: row.venue_phone,
     venueWebsite: row.venue_website,
     venueTelegram: row.venue_telegram,
+    roomLabel: row.room_label,
   };
 }
 

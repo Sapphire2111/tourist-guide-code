@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { DATABASE, type Db } from "../../db/index.js";
 import { APP_GUARD } from "@nestjs/core";
 import { PermissionGuard } from "./permission.guard.js";
 import {
@@ -10,7 +11,8 @@ import {
 import { PrincipalGuard, RbacTenantContextSource } from "./principal.guard.js";
 import { RbacService, RequestAccess } from "./rbac.service.js";
 import { RoleAssignmentsRepository } from "./role-assignments.repository.js";
-import { SCOPE_PARENT_LOADERS, ScopeHierarchy } from "./scope.js";
+import { placeParentLoader } from "./scope-loaders.js";
+import { SCOPE_PARENT_LOADERS, ScopeHierarchy, type ScopeParentLoaders } from "./scope.js";
 
 /**
  * Проверка прав (T1-12): принципал запроса (PRINCIPAL_SOURCE — сессия из глобального AuthModule, T1-26; без него —
@@ -26,7 +28,12 @@ import { SCOPE_PARENT_LOADERS, ScopeHierarchy } from "./scope.js";
       useFactory: (auth?: PrincipalSource): PrincipalSource => auth ?? new NoPrincipalSource(),
       inject: [{ token: AUTHENTICATION_PRINCIPAL_SOURCE, optional: true }],
     },
-    { provide: SCOPE_PARENT_LOADERS, useValue: {} },
+    // PLACE → REGION (блок 5, ADR-0020: организаций пока нет); ORGANIZATION, RESOURCE — с блоками 6–7.
+    {
+      provide: SCOPE_PARENT_LOADERS,
+      useFactory: (db: Db): ScopeParentLoaders => ({ PLACE: placeParentLoader(db) }),
+      inject: [DATABASE],
+    },
     { provide: APP_GUARD, useClass: PrincipalGuard },
     RoleAssignmentsRepository,
     ScopeHierarchy,
