@@ -14,6 +14,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateBy,
   ValidateIf,
   ValidateNested,
 } from "class-validator";
@@ -61,6 +62,17 @@ export type StaffTargetStatus = (typeof STAFF_TARGET_STATUSES)[number];
 /** Роли персонала заведения, которые назначает админ региона. */
 export const PLACE_STAFF_ROLES = ["ORG_STAFF", "ORG_OWNER"] as const;
 export type PlaceStaffRole = (typeof PLACE_STAFF_ROLES)[number];
+
+/** Строка-число не больше 2^53 − 1 (Telegram user id помещается в JS number без потери точности). */
+function MaxSafeIntegerString(): PropertyDecorator {
+  return ValidateBy({
+    name: "maxSafeInteger",
+    validator: {
+      validate: (v: unknown) => typeof v === "string" && Number(v) <= Number.MAX_SAFE_INTEGER,
+      defaultMessage: () => "telegramUserId больше 2^53 - 1",
+    },
+  });
+}
 
 // --- запросы ---
 
@@ -524,7 +536,8 @@ export class AssignPlaceStaffDto {
     description: "Telegram user id пользователя, уже входившего в Mini App (или username)",
   })
   @ValidateIf((o: AssignPlaceStaffDto) => o.username === undefined)
-  @Matches(/^[1-9][0-9]{0,19}$/)
+  @Matches(/^[1-9][0-9]{0,15}$/)
+  @MaxSafeIntegerString()
   telegramUserId?: string;
 
   @ApiPropertyOptional({ type: String, example: "hotel_staff", description: "Telegram username без @" })

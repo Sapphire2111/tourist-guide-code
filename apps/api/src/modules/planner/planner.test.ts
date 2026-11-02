@@ -8,7 +8,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
 import { configureApp } from "../../bootstrap/configure-app.js";
 import { TenancyModule } from "../../common/tenancy/index.js";
-import { DATABASE, DatabaseModule, type Scenario, type ScenarioItem, type UserPlan } from "../../db/index.js";
+import {
+  DATABASE,
+  DatabaseModule,
+  regionContext,
+  withTenant,
+  type Scenario,
+  type ScenarioItem,
+  type UserPlan,
+} from "../../db/index.js";
 import type { AuditService } from "../audit/index.js";
 import { FeatureFlagsModule, FeatureFlagsService } from "../feature-flags/index.js";
 import {
@@ -211,5 +219,24 @@ describe("PlannerService", () => {
     await expect(
       service.updatePlan(USER, PLAN, { regionId: REGION, replaceItem: { itemId, placeId: P(12) } }),
     ).rejects.toMatchObject({ code: "UNPROCESSABLE" });
+  });
+});
+
+describe("PlannerService: админка без контекста региона", () => {
+  it("SUPERADMIN без выбранного региона: правка и смена статуса — 403, а не 500", async () => {
+    const { service } = plannerService({});
+    const meta = { actor: { type: "system" as const } };
+    const input = { code: "x", title: { uk: "X" }, days: 1, items: [{ dayNo: 1, placeId: P(10) }] };
+    await expect(service.adminUpdate(SCEN, input, meta)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: { reason: "region_context_required" },
+    });
+    await expect(service.adminSetStatus(SCEN, "published", meta)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const { db } = recordingDb({});
+    await expect(
+      withTenant(db, regionContext(REGION), () => service.adminCreate(P(77), input, meta)),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

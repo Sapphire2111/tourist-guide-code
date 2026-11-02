@@ -159,9 +159,20 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
       [SEED_ROOM_QR.code, GUEST],
     );
     const entryContextId = rows[0].id as string;
-    const module = await host.guestModule(base.regions.a, HOTEL, entryContextId);
+    const module = await host.guestModule(base.regions.a, HOTEL, entryContextId, GUEST);
     expect(module.room).toEqual({ label: SEED_ROOM_QR.room, source: "qr" });
     expect(module.wifi?.password).not.toBeNull();
+    // Чужой контекст (привязан к другому пользователю), контекст другого места и устаревший — без пароля и номера.
+    const foreign = await host.guestModule(base.regions.a, HOTEL, entryContextId, OTHER_STAFF);
+    expect(foreign).toMatchObject({ room: null, wifi: { password: null } });
+    const { rows: oldCtx } = await sql(
+      `INSERT INTO entry_contexts (region_id, qr_point_id, place_id, entry_type, source, user_id, created_at)
+       SELECT region_id, id, place_id, 'hotel', 'qr', $2, now() - interval '31 days' FROM qr_points WHERE code = $1
+       RETURNING id`,
+      [SEED_ROOM_QR.code, GUEST],
+    );
+    const stale = await host.guestModule(base.regions.a, HOTEL, oldCtx[0].id as string, GUEST);
+    expect(stale).toMatchObject({ room: null, wifi: { password: null } });
     const dto = await host.createRequest(GUEST, {
       regionId: base.regions.a,
       placeId: HOTEL,
@@ -238,22 +249,93 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
     await expect(host.staffList(NEW_STAFF, {})).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("срок хранения: закрытая заявка старше срока обезличивается функцией БД (D-49)", async () => {
-    await sql(`UPDATE service_requests SET closed_at = now() - interval '91 days' WHERE id = $1`, [
-      requestId,
+  it("срок хранения (D-49): незакрытые старше срока закрываются, все поля ПДн и свободный текст обезличиваются", async () => {
+    const staff = seedHotelStaffUserId();
+    // Отклонённая с причиной (свободный текст) и незакрытая заявки того же гостя.
+    const rejected = await host.createRequest(GUEST, {
+      regionId: base.regions.a,
+      placeId: HOTEL,
+      serviceCode: "breakfast-room",
+      roomLabel: "305",
+      comment: "Без молока",
+    });
+    await host.staffUpdate(
+      staff,
+      rejected.id,
+      { status: "rejected", reason: "Кухня зачинена" },
+      staffMeta(staff),
+    );
+    const open = await host.createRequest(GUEST, {
+      regionId: base.regions.a,
+      placeId: HOTEL,
+      serviceCode: "cleaning",
+      roomLabel: "306",
+    });
+    // Дождаться фоновой отправки уведомлений, чтобы она не гонялась с обезличиванием.
+    await vi.waitFor(async () => {
+      const { rows } = await sql(`SELECT count(*)::int AS n FROM notifications WHERE status = 'pending'`);
+      expect(rows[0].n).toBe(0);
+    });
+    const ids = [requestId, rejected.id, open.id];
+    await sql(`UPDATE service_requests SET created_at = now() - interval '91 days' WHERE id = ANY($1)`, [
+      ids,
     ]);
-    // Под ролью приложения (как worker): у app есть EXECUTE, функция сама переходит в режим SYSTEM.
+    // Под ролью приложения (как worker): у app есть EXECUTE, функция — SECURITY DEFINER в режиме SYSTEM.
     const app = new pg.Client({ connectionString: appUrl });
     await app.connect();
     const { rows } = await app
       .query<{ n: number }>("SELECT service_requests_anonymize_expired(90) AS n")
       .finally(() => app.end());
-    expect(rows[0]!.n).toBe(1);
-    const { rows: after } = await sql(
-      `SELECT room_label, comment, user_id, anonymized_at IS NOT NULL AS done FROM service_requests WHERE id = $1`,
-      [requestId],
+    expect(rows[0]!.n).toBe(3);
+    const { rows: reqs } = await sql(
+      `SELECT id, status, status_reason, room_label, room_source, comment, user_id, entry_context_id,
+         anonymized_at IS NOT NULL AS anonymized
+       FROM service_requests WHERE id = ANY($1)`,
+      [ids],
     );
-    expect(after[0]).toEqual({ room_label: null, comment: null, user_id: null, done: true });
+    for (const r of reqs)
+      expect(r, r.id).toMatchObject({
+        room_label: null,
+        room_source: null,
+        comment: null,
+        user_id: null,
+        entry_context_id: null,
+        anonymized: true,
+      });
+    const byId = new Map(reqs.map((r) => [r.id, r]));
+    expect(byId.get(requestId)).toMatchObject({ status: "done", status_reason: null });
+    expect(byId.get(rejected.id)).toMatchObject({ status: "rejected", status_reason: "—" });
+    // Незакрытая — закрыта системой (rejected, expired) с событием истории.
+    expect(byId.get(open.id)).toMatchObject({ status: "rejected", status_reason: "—" });
+    const { rows: events } = await sql(
+      `SELECT service_request_id, actor_type, actor_user_id, reason, to_status
+       FROM service_request_events WHERE service_request_id = ANY($1)`,
+      [ids],
+    );
+    expect(events.filter((e) => e.actor_type === "guest").every((e) => e.actor_user_id === null)).toBe(true);
+    expect(events.filter((e) => e.actor_type !== "system").every((e) => e.reason === null)).toBe(true);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        service_request_id: open.id,
+        actor_type: "system",
+        to_status: "rejected",
+        reason: "expired",
+      }),
+    );
+    // Уведомления гостю удалены, персоналу — без текста.
+    const { rows: notes } = await sql(
+      `SELECT recipient_user_id, body FROM notifications WHERE entity_id = ANY($1)`,
+      [ids],
+    );
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes.every((n) => n.recipient_user_id !== GUEST && n.body === "—")).toBe(true);
+    // Повтор — ничего не меняет.
+    const again = new pg.Client({ connectionString: appUrl });
+    await again.connect();
+    const { rows: second } = await again
+      .query<{ n: number }>("SELECT service_requests_anonymize_expired(90) AS n")
+      .finally(() => again.end());
+    expect(second[0]!.n).toBe(0);
   });
 
   it("«Мій план»: копия сценария, замена пункта альтернативой, удаление пункта", async () => {

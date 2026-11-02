@@ -485,6 +485,7 @@ export const uk = {
   "errors.serviceRequests.duplicate": "Така заявка вже є — дочекайтеся її виконання.",
   "errors.serviceRequests.invalidTransition": "Статус заявки вже змінився — оновіть список.",
   "errors.serviceRequests.serviceUnavailable": "Ця послуга зараз недоступна. Зверніться на рецепцію.",
+  "errors.hostModule.hoursEmpty": "Години прийому: початок і кінець не можуть збігатися.",
   "errors.staff.userNotFound": "Користувача не знайдено: він має хоча б раз відкрити застосунок у Telegram.",
   "errors.staff.alreadyAssigned": "Цей користувач уже має таку роль у закладі.",
   "errors.plan.itemNotFound": "Пункту плану не знайдено — оновіть план.",
