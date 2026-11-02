@@ -210,7 +210,7 @@ html[data-season] :focus-visible {
 .kosiv-top {
   position: sticky;
   top: 0;
-  z-index: 900;
+  z-index: 1100; /* выше нижней навигации (1000): лист меню лежит внутри этого слоя */
   display: flex;
   justify-content: flex-end;
   /* Тонкая полоса: только маленькая кнопка меню справа. */
