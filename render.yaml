@@ -140,6 +140,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # Адрес api (вшивается в бандл); без него сборка на Render падает (vite.config.ts). Origin админки — в CORS_ORIGINS api.
+      - key: VITE_API_URL
+        value: https://tg-api-staging.onrender.com
       - key: NODE_VERSION
         value: 22.17.0
       - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS
