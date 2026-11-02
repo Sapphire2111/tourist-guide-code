@@ -1,0 +1,84 @@
+/* Ассистент на главной: поле «Що шукаєте?» с микрофоном, диалог, места с описаниями. Токены — сезона (--app-*),
+   запасные значения — для окружения без data-season (тесты). Цели касания — не меньше 44px. */
+
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.assistant-label {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.assistant-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.assistant-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 9999px;
+  padding-left: 18px;
+}
+.assistant-mic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border, #d6d3d1);
+  background: var(--app-surface, #fff);
+  color: var(--app-text, #1c1917);
+  cursor: pointer;
+}
+.assistant-mic[aria-pressed="true"] {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+.assistant-mic:disabled {
+  opacity: 0.5;
+}
+.assistant-status {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: 0.875rem;
+}
+.assistant-dialog,
+.assistant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.assistant-you,
+.assistant-reply {
+  margin: 0;
+}
+.assistant-reply {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--app-surface-2, #f5f5f4);
+}
+.assistant-stop {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+.assistant-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px 0;
+}
+.assistant-extra p {
+  margin: 0;
+}
+.assistant-source {
+  font-size: 0.8125rem;
+}

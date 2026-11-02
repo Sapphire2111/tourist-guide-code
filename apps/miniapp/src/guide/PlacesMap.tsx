@@ -21,6 +21,8 @@ export type PlacesMapProps = {
   radius?: number;
   /** Предел приближения при fitBounds (по умолчанию 17). */
   maxZoom?: number;
+  /** Маршрут экскурсии: линия через места в порядке списка (ассистент). */
+  route?: boolean;
 };
 
 /** Группа маркера: раздел главной категории места или «інше». */
@@ -77,7 +79,14 @@ export function popupNode(
   return box;
 }
 
-export default function PlacesMap({ places, center, centerLabel, radius, maxZoom = 17 }: PlacesMapProps) {
+export default function PlacesMap({
+  places,
+  center,
+  centerLabel,
+  radius,
+  maxZoom = 17,
+  route = false,
+}: PlacesMapProps) {
   const { t, locale } = useT();
   const [, navigate] = useRoute();
   const { api } = useGuide();
@@ -144,6 +153,14 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
       if (radius) L.circle([center.lat, center.lng], { radius, weight: 1, fillOpacity: 0.05 }).addTo(layer);
       bounds.push([center.lat, center.lng]);
     }
+    if (route) {
+      const line = places.flatMap((p) =>
+        p.location ? [[p.location.lat, p.location.lng] as L.LatLngTuple] : [],
+      );
+      // Под маркерами (добавлена раньше): порядок обхода — номера в списке под картой.
+      if (line.length > 1)
+        L.polyline(line, { color: BASE_COLOR, weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(layer);
+    }
     for (const p of places) {
       if (!p.location) continue;
       const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
@@ -176,7 +193,7 @@ export default function PlacesMap({ places, center, centerLabel, radius, maxZoom
     else map.setView([48.45, 24.55], 12);
     // Тексты подписей мест, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, center, centerLabel, radius, maxZoom]);
+  }, [places, center, centerLabel, radius, maxZoom, route]);
 
   // Пришёл справочник категорий — перекраска без пересоздания маркеров и без закрытия открытой подписи.
   useEffect(() => {
