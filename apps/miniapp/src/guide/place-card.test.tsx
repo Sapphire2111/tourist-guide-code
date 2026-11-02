@@ -1,0 +1,263 @@
+// Богатая картка місця: галерея с авторами фото и полноэкранным просмотром, тип и рейтинг Google, текст ШІ с
+// пометкой, «Що пропонує», отзывы Google, Вікіпедія с лицензией фото, подписи источников. Нет данных — блоков нет.
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ApiSchemas } from "@tg/api-client";
+import type { Analytics } from "./analytics.js";
+import { GuideProvider, type GuideEnv } from "./context.js";
+import { cardOf } from "./guide-api.js";
+import { PlaceCard } from "./PlaceCard.js";
+import type { GuideApi, PlaceDetail } from "./types.js";
+
+afterEach(cleanup);
+
+const P1 = "00000000-0000-4000-8000-000000000201";
+
+const base: PlaceDetail = {
+  id: P1,
+  name: { uk: "Wood Stone" },
+  categoryId: "c1",
+  location: { lat: 48.48, lng: 24.59 },
+  distanceMeters: null,
+  cover: null,
+  openNow: null,
+  recommended: false,
+  adLabel: null,
+  description: { uk: "Ресторан у Яремчі. Джерело: Google Maps." },
+  address: { uk: "вулиця Свободи, 59/3, Яремче" },
+  phone: "+380983001120",
+  website: "https://woodstone.example/",
+  telegram: null,
+  photos: [],
+  schedule: [{ weekday: 1, opens: "10:00", closes: "22:00" }],
+  tags: [],
+  verifiedAt: null,
+  openUntil: null,
+  favorite: null,
+};
+
+const rich: Partial<PlaceDetail> = {
+  typeLabel: "Ресторан",
+  priceLevel: 2,
+  rating: { value: 4.8, count: 792 },
+  aiSummary: {
+    text: "Ресторан у Яремчі з терасою. Відвідувачі хвалять краєвид.",
+    model: "claude-sonnet-5-5",
+  },
+  summary: null,
+  amenities: ["breakfast", "outdoor_seating", "kids_menu"],
+  googlePhotos: [
+    {
+      url: "https://api.example/places/p/google-photos/0?w=400",
+      largeUrl: "https://api.example/places/p/google-photos/0?w=1200",
+      authors: [{ name: "Олена", uri: "https://maps.google.com/contrib/1", photoUri: null }],
+    },
+    {
+      url: "https://api.example/places/p/google-photos/1?w=400",
+      largeUrl: "https://api.example/places/p/google-photos/1?w=1200",
+      authors: [{ name: "Тарас", uri: null, photoUri: null }],
+    },
+  ],
+  reviews: [
+    {
+      author: { name: "Іван", uri: null, photoUri: "https://lh3.googleusercontent.com/a/1" },
+      rating: 5,
+      text: "Дуже смачно! ".repeat(30),
+      relativeTime: "2 місяці тому",
+      uri: "https://www.google.com/maps/reviews/1",
+    },
+  ],
+  googleMapsUri: "https://maps.google.com/?cid=1",
+  wikipedia: null,
+};
+
+function renderCard(place: PlaceDetail) {
+  const env: GuideEnv = {
+    api: { place: vi.fn(async () => place) } as unknown as GuideApi,
+    analytics: {
+      track: vi.fn(),
+      flush: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    } as unknown as Analytics,
+    base: null,
+    regionId: "r",
+    signedIn: false,
+  };
+  render(
+    <GuideProvider value={env}>
+      <PlaceCard id={P1} />
+    </GuideProvider>,
+  );
+  return act(async () => new Promise((r) => setTimeout(r, 0)));
+}
+
+describe("богатая картка місця", () => {
+  it("тип, ціни, рейтинг Google, «Про місце» з пометкой ШІ, «Що пропонує», відгуки, атрибуція Google", async () => {
+    await renderCard({ ...base, ...rich });
+    expect(screen.getByTestId("place-type").textContent).toBe("Ресторан · Середні ціни");
+    expect(screen.getByTestId("place-rating").textContent).toContain("4.8");
+    expect(screen.getByTestId("place-rating").textContent).toContain("792 оцінок у Google");
+    const about = screen.getByTestId("place-about");
+    expect(about.textContent).toContain("Ресторан у Яремчі з терасою");
+    expect(screen.getByTestId("place-ai-label").textContent).toBe("Згенеровано ШІ");
+    expect(about.textContent).toContain("claude-sonnet-5-5");
+    // Автоописание импорта при содержательном тексте не дублируется.
+    expect(screen.queryByText("Ресторан у Яремчі. Джерело: Google Maps.")).toBeNull();
+    const offers = within(screen.getByTestId("place-offers"));
+    expect(offers.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Сніданки",
+      "Тераса",
+      "Дитяче меню",
+    ]);
+    const review = screen.getByTestId("place-review");
+    expect(review.textContent).toContain("Іван");
+    expect(review.textContent).toContain("2 місяці тому");
+    expect(within(review).getByRole("link", { name: "Відгук у Google" }).getAttribute("href")).toBe(
+      "https://www.google.com/maps/reviews/1",
+    );
+    const more = within(review).getByRole("button", { name: "Читати далі" });
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "Усі відгуки в Google Maps" })).toBeDefined();
+    expect(screen.getByTestId("place-google-attribution").textContent).toBe(
+      "Дані, фото й відгуки: Google Maps",
+    );
+  });
+
+  it("галерея: подпись автора со ссылкой, счётчик, полноэкранный просмотр 1200 px, Escape закрывает", async () => {
+    await renderCard({ ...base, ...rich });
+    const gallery = screen.getByTestId("place-photos");
+    expect(within(gallery).getByRole("link", { name: "Олена" }).getAttribute("href")).toBe(
+      "https://maps.google.com/contrib/1",
+    );
+    fireEvent.click(within(gallery).getByRole("button", { name: "Відкрити фото 2 з 2" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe(
+      "https://api.example/places/p/google-photos/1?w=1200",
+    );
+    expect(dialog.textContent).toContain("Тарас");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Наступне фото" }));
+    expect(dialog.textContent).toContain("Олена");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("фото не загрузилось — убирается из галереи", async () => {
+    await renderCard({ ...base, ...rich });
+    const imgs = screen.getByTestId("place-photos").querySelectorAll("img");
+    fireEvent.error(imgs[0]!);
+    expect(screen.getByTestId("place-photos").querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("Вікіпедія: опис, ссылка на статью, автор и лицензия фото Commons", async () => {
+    await renderCard({
+      ...base,
+      ...rich,
+      aiSummary: null,
+      wikipedia: {
+        title: "Пробій (водоспад)",
+        url: "https://uk.m.wikipedia.org/wiki/Пробій",
+        extract: "Пробій — водоспад на річці Прут.",
+        image: {
+          url: "https://upload.wikimedia.org/x.jpg",
+          author: "MSha",
+          license: "CC BY-SA 3.0",
+          sourceUrl: "https://commons.wikimedia.org/wiki/File:Probij-5.JPG",
+        },
+      },
+    });
+    const wiki = screen.getByTestId("place-wikipedia");
+    expect(wiki.textContent).toContain("Пробій — водоспад на річці Прут.");
+    expect(within(wiki).getByRole("link", { name: "Читати у Вікіпедії" }).getAttribute("href")).toBe(
+      "https://uk.m.wikipedia.org/wiki/Пробій",
+    );
+    expect(within(wiki).getByRole("link", { name: /MSha · CC BY-SA 3.0 · Wikimedia Commons/ })).toBeDefined();
+    expect(wiki.textContent).toContain("Джерело: Вікіпедія");
+  });
+
+  it("нет данных Google/Вікіпедії/ШІ — блоков нет, только описание и график (ничего не выдумываем)", async () => {
+    await renderCard(base);
+    for (const id of [
+      "place-photos",
+      "place-type",
+      "place-rating",
+      "place-about",
+      "place-ai-label",
+      "place-offers",
+      "place-reviews",
+      "place-wikipedia",
+      "place-google-attribution",
+    ])
+      expect(screen.queryByTestId(id), id).toBeNull();
+    expect(screen.getByText("Ресторан у Яремчі. Джерело: Google Maps.")).toBeDefined();
+  });
+});
+
+describe("cardOf — богатые поля", () => {
+  type CardDto = ApiSchemas["PlaceCardDto"];
+  const dto = {
+    id: P1,
+    regionId: "r",
+    categoryId: "c1",
+    category: { id: "c1", parentId: null, name: { uk: "Ресторани" }, icon: null },
+    name: { uk: "Wood Stone" },
+    address: null,
+    location: { lon: 24.59, lat: 48.48 },
+    distanceMeters: null,
+    recommended: false,
+    adLabel: null,
+    openNow: null,
+    phone: null,
+    cover: null,
+    description: null,
+    website: null,
+    telegram: null,
+    verifiedAt: null,
+    photos: [],
+    tags: [],
+    schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
+    openUntil: null,
+    favorite: null,
+  };
+
+  it("старый api без полей — пусто; небезопасные ссылки отбрасываются", () => {
+    expect(cardOf(dto as unknown as CardDto)).toMatchObject({
+      amenities: [],
+      reviews: [],
+      googlePhotos: [],
+      rating: null,
+      wikipedia: null,
+      aiSummary: null,
+    });
+    const card = cardOf({
+      ...dto,
+      typeLabel: "Ресторан",
+      summary: null,
+      aiSummary: null,
+      priceLevel: null,
+      amenities: [],
+      rating: { value: 4.8, count: 10, source: "google" },
+      reviews: [
+        {
+          author: { name: "X", uri: "javascript:alert(1)", photoUri: "data:image/png;base64,AAA" },
+          rating: 5,
+          text: "ok",
+          language: "uk",
+          publishTime: null,
+          relativeTime: null,
+          uri: "javascript:alert(2)",
+        },
+      ],
+      googlePhotos: [
+        { url: "javascript:x", largeUrl: "javascript:y", width: null, height: null, authors: [] },
+      ],
+      googleMapsUri: "http://maps.google.com",
+      wikipedia: null,
+    } as CardDto);
+    expect(card.reviews![0]!.author).toEqual({ name: "X", uri: null, photoUri: null });
+    expect(card.reviews![0]!.uri).toBeNull();
+    expect(card.googlePhotos).toEqual([]);
+    expect(card.googleMapsUri).toBeNull();
+    expect(card.rating).toEqual({ value: 4.8, count: 10 });
+  });
+});

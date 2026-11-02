@@ -1,12 +1,23 @@
-// C06 «Картка місця»: фото, бейджи, график, атрибуты, дата проверки; маршрут (OSM), звонок (tel:), сайт, обране.
+// C06 «Картка місця»: галерея (свои фото и фото Google с авторами), тип и рейтинг Google, бейджи, действия
+// (маршрут OSM, звонок tel:, сайт, Telegram, обране), «Про місце» (текст ШІ с пометкой или описание Google),
+// «Що пропонує», график, адрес и контакты, отзывы Google, блок Вікіпедії, подписи источников. Нет данных — блока нет.
 // «Доступно зараз» — блок 7; до него всегда «Уточнити доступність» (ТЗ §10.3).
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { routeUrl } from "./geo.js";
-import { Badge, card, PlaceBadges, useDistance } from "./parts.js";
-import { NotFoundError, UnauthorizedError, type PlaceDetail, type ScheduleInterval } from "./types.js";
+import { Badge, PlaceBadges, useDistance } from "./parts.js";
+import "./place-card.css";
+import {
+  NotFoundError,
+  UnauthorizedError,
+  type Author,
+  type PlaceDetail,
+  type Review,
+  type ScheduleInterval,
+} from "./types.js";
 
 export function PlaceCard({ id }: { id: string }) {
   const { t } = useT();
@@ -38,10 +49,64 @@ export function PlaceCard({ id }: { id: string }) {
   return <PlaceView place={place.data} />;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** Внешняя ссылка: в Telegram — openLink (внешний браузер), иначе новая вкладка. */
+function ExtLink({
+  href,
+  children,
+  className,
+  testId,
+  label,
+  variant,
+  onOpen,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+  testId?: string;
+  label?: string;
+  variant?: "ghost";
+  onOpen?: () => void;
+}) {
+  const { webApp } = useGuide();
   return (
-    <section style={card}>
-      <h2 style={{ fontSize: "1.2rem", margin: "0 0 6px" }}>{title}</h2>
+    <a
+      href={href}
+      className={className}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={testId}
+      data-variant={variant}
+      aria-label={label}
+      onClick={(e: MouseEvent) => {
+        onOpen?.();
+        if (webApp?.openLink) {
+          e.preventDefault();
+          webApp.openLink(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+function Section({
+  title,
+  children,
+  testId,
+  aside,
+}: {
+  title: string;
+  children: ReactNode;
+  testId?: string;
+  aside?: ReactNode;
+}) {
+  return (
+    <section className="pc-section" data-testid={testId}>
+      <header className="pc-section-head">
+        <h2 className="pc-h2">{title}</h2>
+        {aside}
+      </header>
       {children}
     </section>
   );
@@ -49,16 +114,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Schedule({ schedule }: { schedule: ScheduleInterval[] }) {
   const { t } = useT();
+  const today = ((new Date().getDay() + 6) % 7) + 1;
   return (
-    <table>
+    <table className="pc-schedule">
       <tbody>
         {[1, 2, 3, 4, 5, 6, 7].map((d) => {
           const day = schedule.filter((s) => s.weekday === d);
           return (
-            <tr key={d}>
-              <th scope="row" style={{ textAlign: "left", paddingRight: 12 }}>
-                {t(`miniapp.weekday.${d}` as MessageKey)}
-              </th>
+            <tr key={d} data-today={d === today || undefined}>
+              <th scope="row">{t(`miniapp.weekday.${d}` as MessageKey)}</th>
               <td>
                 {day.length ? day.map((s) => `${s.opens}–${s.closes}`).join(", ") : t("miniapp.place.dayOff")}
               </td>
@@ -69,6 +133,218 @@ function Schedule({ schedule }: { schedule: ScheduleInterval[] }) {
     </table>
   );
 }
+
+// --- галерея ---
+
+type Slide = { url: string; largeUrl: string; alt: string; authors: Author[] };
+
+function Credit({ authors, fallback }: { authors: Author[]; fallback?: string }) {
+  const { t } = useT();
+  if (!authors.length) return fallback ? <>{fallback}</> : null;
+  return (
+    <>
+      {t("miniapp.place.photoBy", { name: "" })}
+      {authors.map((a, i) => (
+        <span key={i}>
+          {i > 0 && ", "}
+          {a.uri ? <ExtLink href={a.uri}>{a.name}</ExtLink> : a.name}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function Lightbox({ slides, start, onClose }: { slides: Slide[]; start: number; onClose: () => void }) {
+  const { t } = useT();
+  const [i, setI] = useState(start);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const s = slides[i]!;
+  const go = useCallback(
+    (d: number) => setI((v) => (v + d + slides.length) % slides.length),
+    [slides.length],
+  );
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowLeft") go(-1);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [go, onClose]);
+  // В body: у предков экрана могут быть transform/overflow — fixed внутри них не накрыл бы шапку и навигацию.
+  return createPortal(
+    <div className="pc-lightbox" role="dialog" aria-modal="true" aria-label={t("miniapp.place.gallery")}>
+      <button ref={closeRef} type="button" className="pc-lb-close" onClick={onClose}>
+        <span aria-hidden="true">×</span>
+        <span className="pc-sr">{t("miniapp.place.photoClose")}</span>
+      </button>
+      <img src={s.largeUrl} alt={s.alt} referrerPolicy="no-referrer" />
+      <div className="pc-lb-bar">
+        {slides.length > 1 && (
+          <button type="button" className="pc-lb-nav" onClick={() => go(-1)}>
+            <span aria-hidden="true">‹</span>
+            <span className="pc-sr">{t("miniapp.place.photoPrev")}</span>
+          </button>
+        )}
+        <p className="pc-lb-credit">
+          <span>{t("miniapp.place.photoCounter", { n: i + 1, total: slides.length })}</span>{" "}
+          <Credit authors={s.authors} />
+        </p>
+        {slides.length > 1 && (
+          <button type="button" className="pc-lb-nav" onClick={() => go(1)}>
+            <span aria-hidden="true">›</span>
+            <span className="pc-sr">{t("miniapp.place.photoNext")}</span>
+          </button>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Gallery({ slides: all }: { slides: Slide[] }) {
+  const { t } = useT();
+  // Фото, которое не загрузилось (нет адреса у Google, сеть), из галереи убирается.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const [open, setOpen] = useState<number | null>(null);
+  const [active, setActive] = useState(0);
+  const slides = all.filter((s) => !failed.has(s.url));
+  if (!slides.length) return null;
+  return (
+    <section className="pc-gallery" aria-label={t("miniapp.place.gallery")} data-testid="place-photos">
+      <div
+        className="pc-track"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const w = el.firstElementChild?.clientWidth ?? el.clientWidth;
+          setActive(Math.min(slides.length - 1, Math.round(el.scrollLeft / Math.max(1, w))));
+        }}
+      >
+        {slides.map((s, i) => (
+          <figure className="pc-slide" key={s.url}>
+            <img
+              src={s.url}
+              alt={s.alt}
+              loading={i === 0 ? "eager" : "lazy"}
+              referrerPolicy="no-referrer"
+              onError={() => setFailed((f) => new Set(f).add(s.url))}
+            />
+            {/* Кнопка поверх фото (не обёртка): фото остаётся изображением с alt в дереве доступности. */}
+            <button
+              type="button"
+              className="pc-slide-open"
+              aria-label={t("miniapp.place.photoOpen", { n: i + 1, total: slides.length })}
+              onClick={() => setOpen(i)}
+            />
+            {s.authors.length > 0 && (
+              <figcaption className="pc-credit">
+                <Credit authors={s.authors} />
+              </figcaption>
+            )}
+          </figure>
+        ))}
+      </div>
+      {slides.length > 1 && (
+        <span className="pc-counter" aria-hidden="true">
+          {t("miniapp.place.photoCounter", { n: active + 1, total: slides.length })}
+        </span>
+      )}
+      {open !== null && <Lightbox slides={slides} start={open} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+// --- отзывы ---
+
+function Stars({ value }: { value: number }) {
+  const full = Math.round(value);
+  return (
+    <span className="pc-stars" aria-hidden="true">
+      {"★★★★★".slice(0, full)}
+      <span className="pc-stars-off">{"★★★★★".slice(full)}</span>
+    </span>
+  );
+}
+
+function ReviewItem({ review }: { review: Review }) {
+  const { t } = useT();
+  const long = review.text.length > 280;
+  const [expanded, setExpanded] = useState(false);
+  const a = review.author;
+  return (
+    <li className="pc-review" data-testid="place-review">
+      <div className="pc-review-head">
+        {a.photoUri ? (
+          <img className="pc-avatar" src={a.photoUri} alt="" referrerPolicy="no-referrer" loading="lazy" />
+        ) : (
+          <span className="pc-avatar" aria-hidden="true">
+            {a.name.slice(0, 1)}
+          </span>
+        )}
+        <span className="pc-review-who">
+          <strong>{a.uri ? <ExtLink href={a.uri}>{a.name}</ExtLink> : a.name}</strong>
+          <span className="pc-muted">
+            {review.rating !== null && (
+              <>
+                <Stars value={review.rating} />
+                <span className="pc-sr">{t("miniapp.place.rating", { rating: review.rating })}</span>{" "}
+              </>
+            )}
+            {review.relativeTime}
+          </span>
+        </span>
+      </div>
+      <p className="pc-review-text" data-clamped={long && !expanded ? true : undefined}>
+        {review.text}
+      </p>
+      <div className="pc-review-foot">
+        {long && (
+          <button
+            type="button"
+            className="pc-textbtn"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {t(expanded ? "miniapp.place.reviewLess" : "miniapp.place.reviewMore")}
+          </button>
+        )}
+        {review.uri && (
+          <ExtLink href={review.uri} className="pc-textlink">
+            {t("miniapp.place.reviewOnGoogle")}
+          </ExtLink>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Удобства чипами; длинный список свёрнут до первых OFFERS_SHOWN. */
+const OFFERS_SHOWN = 10;
+function Offers({ amenities }: { amenities: string[] }) {
+  const { t } = useT();
+  const [all, setAll] = useState(false);
+  const shown = all ? amenities : amenities.slice(0, OFFERS_SHOWN);
+  return (
+    <Section title={t("miniapp.place.offers")} testId="place-offers">
+      <ul className="pc-chips">
+        {shown.map((a) => (
+          <li key={a} className="pc-amenity">
+            {t(`miniapp.place.amenity.${a}` as MessageKey)}
+          </li>
+        ))}
+      </ul>
+      {amenities.length > OFFERS_SHOWN && (
+        <button type="button" className="pc-textbtn" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? t("miniapp.place.offersLess") : t("miniapp.place.offersAll", { count: amenities.length })}
+        </button>
+      )}
+    </Section>
+  );
+}
+
+// --- карточка ---
 
 function PlaceView({ place }: { place: PlaceDetail }) {
   const { t, locale } = useT();
@@ -98,20 +374,59 @@ function PlaceView({ place }: { place: PlaceDetail }) {
 
   const route = place.location ? routeUrl(place.location, base?.point) : null;
   const verified = place.verifiedAt ? new Date(place.verifiedAt).toLocaleDateString("uk-UA") : null;
+  const slides: Slide[] = [
+    ...place.photos.map((p) => ({
+      url: p.url,
+      largeUrl: p.url,
+      alt: p.alt ? pickLocalized(p.alt, locale) : name,
+      authors: [],
+    })),
+    ...(place.googlePhotos ?? []).map((p, i) => ({
+      url: p.url,
+      largeUrl: p.largeUrl,
+      alt: `${name} — ${t("miniapp.place.photoOpen", { n: i + 1, total: place.googlePhotos!.length })}`,
+      authors: p.authors,
+    })),
+  ];
+  const amenities = place.amenities ?? [];
+  const reviews = place.reviews ?? [];
+  const wiki = place.wikipedia ?? null;
+  const about = place.aiSummary?.text ?? place.summary ?? null;
+  // Автоописание импорта («Ресторан у Яремчі. Джерело: Google Maps.») не нужно, когда есть содержательный текст.
+  const description = place.description && !about && !wiki ? pickLocalized(place.description, locale) : null;
+  const hasGoogle = Boolean(place.rating || reviews.length || amenities.length || place.googlePhotos?.length);
+  const price =
+    place.priceLevel !== null &&
+    place.priceLevel !== undefined &&
+    place.priceLevel >= 0 &&
+    place.priceLevel <= 4
+      ? t(`miniapp.place.price.${place.priceLevel}` as MessageKey)
+      : null;
 
   return (
-    <article aria-labelledby="place-title">
+    <article aria-labelledby="place-title" className="pc">
       <Stack>
-        {place.photos.length > 0 && (
-          <div className="kosiv-photos" data-testid="place-photos">
-            {place.photos.map((p) => (
-              <img key={p.url} src={p.url} alt={p.alt ? pickLocalized(p.alt, locale) : ""} loading="lazy" />
-            ))}
-          </div>
-        )}
-        <h1 id="place-title" ref={titleRef} tabIndex={-1} style={{ margin: 0 }}>
-          {name}
-        </h1>
+        {slides.length > 0 && <Gallery slides={slides} />}
+        <header className="pc-head">
+          {(place.typeLabel || price) && (
+            <p className="pc-kicker" data-testid="place-type">
+              {[place.typeLabel, price].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          <h1 id="place-title" ref={titleRef} tabIndex={-1} className="pc-title">
+            {name}
+          </h1>
+          {place.rating && (
+            <p className="pc-rating" data-testid="place-rating">
+              <span className="pc-rating-value">{place.rating.value.toFixed(1)}</span>
+              <Stars value={place.rating.value} />
+              <span className="pc-sr">{t("miniapp.place.rating", { rating: place.rating.value })}</span>
+              <span className="pc-muted">
+                {t("miniapp.place.ratingCount", { count: place.rating.count.toLocaleString("uk-UA") })}
+              </span>
+            </p>
+          )}
+        </header>
         <span className="kosiv-place-meta">
           {distance && <span className="kosiv-chip">{distance}</span>}
           {place.openNow && place.openUntil && (
@@ -151,21 +466,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             </a>
           )}
           {place.website && (
-            <a
-              href={place.website}
-              className="kosiv-action"
-              data-variant="ghost"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                if (webApp?.openLink) {
-                  e.preventDefault();
-                  webApp.openLink(place.website!);
-                }
-              }}
-            >
+            <ExtLink href={place.website} className="kosiv-action" variant="ghost">
               {t("miniapp.place.website")}
-            </a>
+            </ExtLink>
           )}
           {place.telegram && (
             <a
@@ -195,34 +498,132 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             </Button>
           )}
         </div>
-        {!signedIn && <p>{t("miniapp.place.favoriteNeedsLogin")}</p>}
+        {!signedIn && <p className="pc-muted pc-small">{t("miniapp.place.favoriteNeedsLogin")}</p>}
         {favError && (
           <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
         )}
-        {place.description && <p>{pickLocalized(place.description, locale)}</p>}
-        {place.address && (
-          <Section title={t("miniapp.place.address")}>
-            <p style={{ margin: 0 }}>{pickLocalized(place.address, locale)}</p>
-            {place.phone && <p style={{ margin: "6px 0 0" }}>{place.phone}</p>}
+
+        {about && (
+          <Section
+            title={t("miniapp.place.about")}
+            testId="place-about"
+            aside={
+              place.aiSummary ? (
+                <span className="pc-ai-badge" data-testid="place-ai-label">
+                  {t("miniapp.place.aiLabel")}
+                </span>
+              ) : undefined
+            }
+          >
+            <p className="pc-lead">{about}</p>
+            <p className="pc-source">
+              {place.aiSummary
+                ? t("miniapp.place.aiNote", { model: place.aiSummary.model })
+                : t("miniapp.place.summarySource")}
+            </p>
           </Section>
         )}
+        {description && <p className="pc-lead">{description}</p>}
+
+        {amenities.length > 0 && <Offers amenities={amenities} />}
+
         <Section title={t("miniapp.place.schedule")}>
           {place.schedule.length ? (
             <Schedule schedule={place.schedule} />
           ) : (
-            <p style={{ margin: 0 }}>{t("miniapp.place.scheduleUnknown")}</p>
+            <p className="pc-muted pc-m0">{t("miniapp.place.scheduleUnknown")}</p>
           )}
         </Section>
+
+        {(place.address || place.phone || place.website || place.googleMapsUri) && (
+          <Section title={t("miniapp.place.contacts")} testId="place-contacts">
+            <dl className="pc-contacts">
+              {place.address && (
+                <>
+                  <dt>{t("miniapp.place.address")}</dt>
+                  <dd>{pickLocalized(place.address, locale)}</dd>
+                </>
+              )}
+              {place.phone && (
+                <>
+                  <dt>{t("miniapp.place.call")}</dt>
+                  <dd>
+                    <a href={`tel:${place.phone}`}>{place.phone}</a>
+                  </dd>
+                </>
+              )}
+              {place.website && (
+                <>
+                  <dt>{t("miniapp.place.website")}</dt>
+                  <dd>
+                    <ExtLink href={place.website}>
+                      {place.website.replace(/^https:\/\/(www\.)?/i, "").replace(/\/$/, "")}
+                    </ExtLink>
+                  </dd>
+                </>
+              )}
+            </dl>
+            {place.googleMapsUri && (
+              <ExtLink href={place.googleMapsUri} className="pc-textlink" testId="place-google-maps">
+                {t("miniapp.place.openInMaps")}
+              </ExtLink>
+            )}
+          </Section>
+        )}
+
+        {reviews.length > 0 && (
+          <Section title={t("miniapp.place.reviews")} testId="place-reviews">
+            <ul className="pc-reviews">
+              {reviews.map((r, i) => (
+                <ReviewItem key={i} review={r} />
+              ))}
+            </ul>
+            {place.googleMapsUri && (
+              <ExtLink href={place.googleMapsUri} className="pc-textlink">
+                {t("miniapp.place.reviewsAll")}
+              </ExtLink>
+            )}
+          </Section>
+        )}
+
+        {wiki && (
+          <Section title={t("miniapp.place.wikipedia")} testId="place-wikipedia">
+            {wiki.image && (
+              <figure className="pc-wiki-figure">
+                <img src={wiki.image.url} alt={wiki.title} loading="lazy" />
+                <figcaption className="pc-source">
+                  <ExtLink href={wiki.image.sourceUrl}>
+                    {wiki.image.author
+                      ? t("miniapp.place.wikiImage", {
+                          author: wiki.image.author,
+                          license: wiki.image.license ?? "",
+                        })
+                      : t("miniapp.place.wikiImageNoAuthor", { license: wiki.image.license ?? "" })}
+                  </ExtLink>
+                </figcaption>
+              </figure>
+            )}
+            <p className="pc-m0">{wiki.extract}</p>
+            <ExtLink href={wiki.url} className="pc-textlink">
+              {t("miniapp.place.wikiReadMore")}
+            </ExtLink>
+            <p className="pc-source">{t("miniapp.place.wikiSource", { title: wiki.title })}</p>
+          </Section>
+        )}
+
         {place.tags.length > 0 && (
           <Section title={t("miniapp.place.attributes")}>
-            <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <span className="pc-chips">
               {place.tags.map((tag, i) => (
                 <Badge key={i}>{pickLocalized(tag, locale)}</Badge>
               ))}
             </span>
           </Section>
         )}
-        {verified && <p data-testid="place-verified">{t("miniapp.place.verified", { date: verified })}</p>}
+        <footer className="pc-footer">
+          {verified && <p data-testid="place-verified">{t("miniapp.place.verified", { date: verified })}</p>}
+          {hasGoogle && <p data-testid="place-google-attribution">{t("miniapp.place.googleAttribution")}</p>}
+        </footer>
       </Stack>
     </article>
   );
