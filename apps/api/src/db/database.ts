@@ -51,6 +51,11 @@ export function onIdleClientError(err: Error): void {
   console.error("PostgreSQL: ошибка простаивающего соединения пула:", err.message);
 }
 
+/** Логирует обрыв соединения, выданного из пула (запрос/транзакция идёт), вместо падения процесса. */
+export function onActiveClientError(err: Error): void {
+  console.error("PostgreSQL: обрыв занятого соединения пула:", err.message);
+}
+
 /**
  * Kysely поверх pg.Pool с TenantGuardPlugin (фильтр region_id, ADR-005). Соединения открываются лениво —
  * при первом запросе. Закрыть: `await db.destroy()` (закрывает и пул).
@@ -65,6 +70,10 @@ export function createDatabase({
   // Ошибка простаивающего соединения (рестарт/обрыв БД) приходит событием пула; без обработчика
   // Node завершает процесс. Пул сам выбрасывает сломанное соединение и потом откроет новое.
   pool.on("error", onIdleClientError);
+  // Обрыв занятого соединения (Neon/рестарт БД посреди запроса) pool.on("error") не ловит — событие идёт на сам
+  // client, и без слушателя процесс падает (uncaughtException). Запрос и так получит ошибку, а pg-pool при release
+  // выбросит сломанное соединение.
+  pool.on("connect", (client) => client.on("error", onActiveClientError));
   return new Kysely<Database>({
     dialect: tenantGuardedDialect(new PostgresDialect({ pool })),
     plugins: [new TenantGuardPlugin({ tables: tenancy, defaultTenant })],

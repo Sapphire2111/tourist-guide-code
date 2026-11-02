@@ -17,6 +17,22 @@ describe("createDatabase", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("простаивающего"), "terminating connection");
     await db.destroy();
   });
+
+  it("обрыв занятого соединения (событие на client) логируется, а не роняет процесс", async () => {
+    const on = vi.spyOn(pg.Pool.prototype, "on");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = createDatabase({ connectionString: "postgres://u:p@127.0.0.1:1/db" });
+    const pool = on.mock.contexts.find((c) => c instanceof pg.Pool) as pg.Pool;
+    const client = new pg.Client();
+    pool.emit("connect", client);
+
+    expect(() => client.emit("error", new Error("Connection terminated unexpectedly"))).not.toThrow();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("занятого"),
+      "Connection terminated unexpectedly",
+    );
+    await db.destroy();
+  });
 });
 
 describe("migrationDatabaseUrl", () => {

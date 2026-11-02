@@ -2,6 +2,7 @@
 export { DATABASE, DatabaseModule, InjectDb } from "./database.module.js";
 export {
   createDatabase,
+  onActiveClientError,
   onIdleClientError,
   tenantGuardedDialect,
   type Db,

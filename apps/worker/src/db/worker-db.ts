@@ -20,6 +20,8 @@ export function createWorkerDb(connectionString: string): WorkerDb {
   const pool = new pg.Pool({ connectionString, max: 4 });
   // Ошибка простаивающего соединения (рестарт БД) не должна ронять процесс: пул пересоздаст соединение.
   pool.on("error", () => undefined);
+  // Обрыв занятого соединения приходит на сам client — без слушателя процесс падает; запрос и так получит ошибку.
+  pool.on("connect", (client) => client.on("error", () => undefined));
   return {
     purger: auditPiiPurger(pool),
     analytics: analyticsWriter(pool),
