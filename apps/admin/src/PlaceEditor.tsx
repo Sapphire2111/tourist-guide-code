@@ -4,6 +4,8 @@ import { Link, Stack, useRoute, useT } from "@tg/ui";
 import { call, type ApiError, type ApiSchemas } from "./api.js";
 import { formatDate } from "./dates.js";
 import { PlaceMedia } from "./PlaceMedia.js";
+import { PlaceHostModule } from "./HostModule.js";
+import { PlaceStaff } from "./PlaceStaff.js";
 import { PlaceSchedule } from "./PlaceSchedule.js";
 import {
   CheckboxField,
@@ -373,6 +375,8 @@ function Editor({ place }: { place?: Place }) {
           <PlaceBadge place={current} onChange={setCurrent} />
           <PlaceSchedule placeId={current.id} />
           <PlaceMedia placeId={current.id} />
+          {current.hostCapable && <PlaceHostModule placeId={current.id} />}
+          <PlaceStaff placeId={current.id} hostCapable={current.hostCapable} />
         </>
       )}
     </Stack>
