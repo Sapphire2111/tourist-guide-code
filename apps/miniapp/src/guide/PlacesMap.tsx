@@ -23,6 +23,8 @@ export type PlacesMapProps = {
   maxZoom?: number;
   /** Маршрут экскурсии: линия через места в порядке списка (ассистент). */
   route?: boolean;
+  /** Позиция устройства («Ви тут»), если геолокация уже получена. Карту не центрирует и границы не меняет. */
+  me?: LatLng | null;
 };
 
 /** Группа маркера: раздел главной категории места или «інше». */
@@ -86,6 +88,7 @@ export default function PlacesMap({
   radius,
   maxZoom = 17,
   route = false,
+  me,
 }: PlacesMapProps) {
   const { t, locale } = useT();
   const [, navigate] = useRoute();
@@ -94,6 +97,8 @@ export default function PlacesMap({
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  // Отдельный слой «Ви тут»: обновляется независимо от маркеров мест (и маршрута).
+  const meLayerRef = useRef<L.LayerGroup | null>(null);
   // Тексты подписи маркера читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
@@ -120,10 +125,12 @@ export default function PlacesMap({
     }).addTo(map);
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
+    meLayerRef.current = L.layerGroup().addTo(map);
     return () => {
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      meLayerRef.current = null;
     };
   }, []);
 
@@ -194,6 +201,43 @@ export default function PlacesMap({
     // Тексты подписей мест, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places, center, centerLabel, radius, maxZoom, route]);
+
+  // Значок «Ви тут»: перестраивается только слой позиции (карта, маркеры мест и границы не трогаются).
+  const meLat = me?.lat;
+  const meLng = me?.lng;
+  const meAccuracy = me?.accuracy;
+  const meLabel = t("miniapp.map.me");
+  useEffect(() => {
+    const layer = meLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (meLat === undefined || meLng === undefined) return;
+    if (meAccuracy) {
+      L.circle([meLat, meLng], {
+        radius: meAccuracy,
+        className: "kosiv-me-accuracy",
+        interactive: false,
+      }).addTo(layer);
+    }
+    const icon = L.divIcon({
+      className: "kosiv-me",
+      html: '<span class="kosiv-me-pulse"></span><span class="kosiv-me-dot"></span>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+    const marker = L.marker([meLat, meLng], {
+      icon,
+      title: meLabel,
+      alt: meLabel,
+      keyboard: false,
+      interactive: false,
+      zIndexOffset: 1000,
+    }).addTo(layer);
+    const node = marker.getElement();
+    node?.setAttribute("role", "img");
+    node?.setAttribute("aria-label", meLabel);
+    node?.setAttribute("data-testid", "map-me");
+  }, [meLat, meLng, meAccuracy, meLabel]);
 
   // Пришёл справочник категорий — перекраска без пересоздания маркеров и без закрытия открытой подписи.
   useEffect(() => {

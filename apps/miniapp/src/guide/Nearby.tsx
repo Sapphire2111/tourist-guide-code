@@ -113,9 +113,10 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
         <NearbyPlaces
           point={point}
           radius={queryRadius}
-          // Приватность: карта строится по местам и базовой точке, координаты устройства на неё не попадают.
+          // Карта строится по местам и базовой точке и на устройство не центрируется; позиция устройства — только значок «Ви тут» (me).
           base={geo.status === "granted" ? null : (base?.point ?? null)}
           baseLabel={caption ?? undefined}
+          me={geo.status === "granted" ? geo.point : null}
         />
       ) : (
         geo.status !== "locating" &&
@@ -130,11 +131,13 @@ function NearbyPlaces({
   radius,
   base,
   baseLabel,
+  me,
 }: {
   point: LatLng;
   radius: number;
   base: LatLng | null;
   baseLabel?: string;
+  me: LatLng | null;
 }) {
   const { t } = useT();
   const { api } = useGuide();
@@ -159,6 +162,8 @@ function NearbyPlaces({
             radius={base ? loaded : undefined}
             // По геолокации места окружают устройство: без базовой точки не приближаем карту до двора туриста.
             maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
+            // Позиция устройства: только если геолокация уже получена (отдельный запрос не делаем).
+            me={me}
           />
           {/* Статус обновления — под картой, в строке фиксированной высоты: карта не сдвигается. */}
           <p role="status" className="kosiv-muted kosiv-status-line" data-testid="nearby-status">

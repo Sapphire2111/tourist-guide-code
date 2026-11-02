@@ -6,7 +6,7 @@ import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
 import { HOME_PLACES, ResortPlaces, SeasonTags } from "./HomeParts.js";
 import { ResortProvider, useResort } from "./ResortProvider.js";
@@ -215,42 +215,91 @@ describe("курорты", () => {
     expect(screen.getByTestId("resort-caption").textContent).toBe("Поблизу: Буковель (до 5 км від центру)");
   });
 
-  it("шапка главной: без свайпера курортов; сезон — под шестерёнкой", () => {
+  it("главная: без свайпера курортов; сезон и профиль — в листе под кнопкой «Меню»", () => {
     const view = render(
       <SeasonProvider>
-        <AppTop path="/" profile={false} />
+        <AppTop path="/" profile />
       </SeasonProvider>,
     );
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
-    const gear = screen.getByRole("button", { name: "Налаштування" });
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(gear);
-    expect(gear.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByTestId("app-settings").hidden).toBe(false);
-    // Escape закрывает панель.
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    const menu = screen.getByRole("button", { name: "Меню" });
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(menu);
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    const dialog = screen.getByRole("dialog", { name: "Меню" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
+    // Фокус внутри листа; Escape закрывает и возвращает фокус на кнопку.
+    expect(dialog.contains(document.activeElement)).toBe(true);
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
-    // Выбор сезона применяется и закрывает панель.
-    fireEvent.click(gear);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(document.activeElement).toBe(menu);
+    // Тап вне листа закрывает.
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByTestId("menu-backdrop"));
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Тап внутри листа — не закрывает; кнопка «Закрити» закрывает.
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByTestId("app-settings"));
+    expect(screen.getByTestId("app-settings")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Закрити" }));
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Выбор сезона применяется и закрывает лист.
+    fireEvent.click(menu);
     fireEvent.click(screen.getByRole("button", { name: /Весна/ }));
     expect(document.documentElement.dataset.season).toBe("spring");
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    // Переход на другой экран закрывает панель.
-    fireEvent.click(gear);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Переход на другой экран закрывает лист.
+    fireEvent.click(menu);
     view.rerender(
       <SeasonProvider>
-        <AppTop path="/help" profile={false} />
+        <AppTop path="/help" profile />
       </SeasonProvider>,
     );
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
   });
 
-  it("шапка вне главной — ссылка на главную, без свайпера на экранах без фильтра", () => {
-    render(<AppTop path="/help" profile />);
+  it("лист меню: фон не прокручивается, «Назад» Telegram закрывает лист", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile />
+      </SeasonProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(document.body.style.overflow).toBe("hidden");
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(consumeBack()).toBe(false);
+  });
+
+  it("Tab в листе не выходит за его пределы", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile />
+      </SeasonProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    const link = screen.getByRole("link", { name: "Профіль" });
+    link.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Закрити" }));
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(link);
+  });
+
+  it("вне главной: нет h1 и нет ссылок в самой полосе; профиль — только в меню и только при profile", () => {
+    const view = render(<AppTop path="/help" profile={false} />);
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-    expect(screen.getByRole("link", { name: "Гід туриста — на головну" }).getAttribute("href")).toBe("#/");
+    expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
+    view.unmount();
+    render(<AppTop path="/help" profile />);
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
     expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
   });

@@ -19,7 +19,7 @@ test.describe("QR отеля demoHotel01", () => {
     // Сезон — под шестерёнкой, без декоративного героя и свайпера курортов.
     await expect(page.getByTestId("season-hero")).toHaveCount(0);
     await expect(page.getByTestId("resort-swiper")).toHaveCount(0);
-    await page.getByRole("button", { name: "Налаштування" }).click();
+    await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     const sections = page.getByTestId("home-sections").getByRole("link");
     await expect(sections).toHaveText([
@@ -219,6 +219,8 @@ test.describe("QR отеля demoHotel01", () => {
     const state = apiMockState.get(page)!;
     await expect.poll(() => state.searches.at(-1)?.lat).toBe("48.4535");
     await expect(page.getByTestId("place-item").first()).toContainText("Піцерія «Реклама»");
+    // Значок «Ви тут» на карте.
+    await expect(page.getByTestId("places-map").getByRole("img", { name: "Ви тут" })).toBeAttached();
   });
 
   test("«Халепа?»: 112 и контакты региона, звонок в одно нажатие; a11y", async ({ page }) => {

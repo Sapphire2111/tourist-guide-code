@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
 import { GuideRepository, GuideService } from "../../src/modules/guide/index.js";
+import { coverEtag } from "../../src/modules/guide/guide.service.js";
+import { GoogleQuota } from "../../src/places-enrich/quota.js";
 import type { MediaService } from "../../src/modules/media/index.js";
 import { RegionsRepository } from "../../src/modules/regions/index.js";
 import { seedCatalog } from "../../src/seed/seed-catalog.js";
@@ -433,5 +435,78 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     await service.removeFavorite(base.regions.a, user, placeId("north"));
     expect(await count(base.regions.a)).toBe(1);
     await sql(`UPDATE places SET status = 'published' WHERE id = $1`, [placeId("north")]);
+  });
+  it("google_api_usage: параллельные take() не превышают предел (INSERT … ON CONFLICT … WHERE count < предел)", async () => {
+    const quota = new GoogleQuota(appDb, () => new Date("2026-11-20T10:00:00Z"));
+    const taken = await Promise.all(
+      Array.from({ length: 25 }, () => quota.take("place_photos", { daily: 8, monthly: 10 })),
+    );
+    expect(taken.filter(Boolean)).toHaveLength(8);
+    const { rows } = await sql(`SELECT day::text AS day, kind, count FROM google_api_usage ORDER BY kind`);
+    // Сутки исчерпаны — месячный запрос возвращается: оба счётчика 8.
+    expect(rows).toEqual([
+      { day: "2026-11-20", kind: "place_photos", count: 8 },
+      { day: "2026-11-01", kind: "place_photos_month", count: 8 },
+    ]);
+    expect(await quota.used("place_photos")).toEqual({ month: 8, today: 8 });
+  });
+
+  it("place_cover_photos под RLS: обложка видна только в своём регионе; 304-путь без байтов", async () => {
+    const { rows: rls } = await sql(
+      `SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'place_cover_photos'`,
+    );
+    expect(rls).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
+    const fetchedAt = new Date("2026-11-03T00:00:00Z");
+    await sql(
+      `INSERT INTO place_cover_photos (region_id, place_id, bytes, mime, width, height, author_attributions,
+         license, source_url, source, photo_name, fetched_at)
+       VALUES ($1, $2, $3, 'image/webp', 400, 300, '[{"name":"MSha","uri":null,"photoUri":null}]', 'CC BY-SA 3.0',
+         'https://commons.wikimedia.org/wiki/File:P.jpg', 'wikimedia', 'https://upload.wikimedia.org/p.jpg', $4)`,
+      [base.regions.a, placeId("east"), Buffer.from("RIFFwebp"), fetchedAt],
+    );
+    const etag = coverEtag("https://upload.wikimedia.org/p.jpg", fetchedAt);
+    const c = await service.cover(base.regions.a, placeId("east"));
+    expect(c?.bytes?.toString()).toBe("RIFFwebp");
+    expect(c?.etag).toBe(etag);
+    expect(await service.cover(base.regions.a, placeId("east"), (v) => v === etag)).toEqual({
+      bytes: null,
+      mime: "image/webp",
+      etag,
+    });
+    // Чужой регион — 404 (место не найдено в контексте B).
+    expect(await service.cover(base.regions.b, placeId("east"))).toBeUndefined();
+    const count = async (regionId: string | null) => {
+      const client = new pg.Client({ connectionString: appUrl });
+      await client.connect();
+      try {
+        await client.query("BEGIN");
+        if (regionId) await client.query("SELECT set_config('app.region_id', $1, true)", [regionId]);
+        return (await client.query(`SELECT count(*)::int AS n FROM place_cover_photos`)).rows[0].n as number;
+      } finally {
+        await client.query("ROLLBACK").catch(() => {});
+        await client.end();
+      }
+    };
+    expect(await count(base.regions.a)).toBe(1);
+    expect(await count(base.regions.b)).toBe(0);
+    expect(await count(null)).toBe(0);
+    // Запись под app в контексте B строки региона A не создаёт (WITH CHECK).
+    const client = new pg.Client({ connectionString: appUrl });
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.region_id', $1, true)", [base.regions.b]);
+      await expect(
+        client.query(
+          `INSERT INTO place_cover_photos (region_id, place_id, bytes, mime, width, height, author_attributions,
+             source, photo_name, fetched_at)
+           VALUES ($1, $2, $3, 'image/webp', 1, 1, '[]', 'google', 'x', now())`,
+          [base.regions.a, placeId("north"), Buffer.from([0])],
+        ),
+      ).rejects.toThrow(/row-level security/);
+    } finally {
+      await client.query("ROLLBACK").catch(() => {});
+      await client.end();
+    }
   });
 });

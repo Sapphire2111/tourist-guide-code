@@ -819,7 +819,7 @@ export interface paths {
     };
     /**
      * Обложка места (WebP ~400 px, хранится у нас): списки и карточка
-     * @description Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.
+     * @description Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag (в т. ч. W/"…" и список) — 304. Источник, автор и лицензия — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет. Rate limit 600/мин.
      */
     get: operations["getGuidePlaceCover"];
     put?: never;

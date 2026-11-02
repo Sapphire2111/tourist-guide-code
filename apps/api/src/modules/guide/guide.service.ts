@@ -54,6 +54,10 @@ export type SearchParams = {
   offset: number;
 };
 
+/** Кэш байтов обложек в памяти процесса (LRU): повторные запросы /cover не читают bytea из БД. */
+export const COVER_CACHE_MAX_ENTRIES = 300;
+export const COVER_CACHE_MAX_BYTES = 20 * 1024 * 1024;
+
 /**
  * Публичный каталог туриста (блок 4, ADR-0019). Регион — из запроса (данные публичные): должен существовать и быть
  * active, иначе 404; чтение — в withTenant(regionContext) этого региона (RLS + TenantGuardPlugin). Туристу видны
@@ -62,6 +66,10 @@ export type SearchParams = {
  */
 @Injectable()
 export class GuideService {
+  /** `placeId|etag` → файл; порядок Map — давность использования. */
+  private readonly coverCache = new Map<string, { bytes: Buffer; mime: string }>();
+  private coverCacheBytes = 0;
+
   constructor(
     @InjectDb() private readonly db: Db,
     @Inject(GuideRepository) private readonly repo: GuideRepository,
@@ -369,16 +377,45 @@ export class GuideService {
     return `${base}/places/${placeId}/cover?regionId=${regionId}&v=${etag}`;
   }
 
-  /** Обложка места (байты) для GET /places/{id}/cover; undefined — места или обложки нет. */
+  /**
+   * Обложка места для GET /places/{id}/cover; undefined — места или обложки нет. notModified(etag) — у клиента та же
+   * версия (If-None-Match): байты из БД не читаются, bytes — null.
+   */
   async cover(
     regionId: string,
     id: string,
-  ): Promise<{ bytes: Buffer; mime: string; etag: string } | undefined> {
+    notModified: (etag: string) => boolean = () => false,
+  ): Promise<{ bytes: Buffer | null; mime: string; etag: string } | undefined> {
     return this.inRegion(regionId, async () => {
       if (!(await this.repo.findPublished(id, undefined))) return undefined;
+      const v = await this.repo.coverVersion(id);
+      if (!v) return undefined;
+      const etag = coverEtag(v.photo_name, v.fetched_at);
+      if (notModified(etag)) return { bytes: null, mime: v.mime, etag };
+      const cached = this.coverCache.get(`${id}|${etag}`);
+      if (cached) {
+        this.coverCache.delete(`${id}|${etag}`);
+        this.coverCache.set(`${id}|${etag}`, cached);
+        return { ...cached, etag };
+      }
       const c = await this.repo.coverBytes(id);
-      return c ? { bytes: c.bytes, mime: c.mime, etag: coverEtag(c.photo_name, c.fetched_at) } : undefined;
+      if (!c) return undefined;
+      // Обложку заменили между запросами — версия по прочитанной строке.
+      const actual = coverEtag(c.photo_name, c.fetched_at);
+      this.rememberCover(`${id}|${actual}`, c.bytes, c.mime);
+      return { bytes: c.bytes, mime: c.mime, etag: actual };
     });
+  }
+
+  private rememberCover(key: string, bytes: Buffer, mime: string): void {
+    if (bytes.length > COVER_CACHE_MAX_BYTES || this.coverCache.has(key)) return;
+    this.coverCache.set(key, { bytes, mime });
+    this.coverCacheBytes += bytes.length;
+    while (this.coverCache.size > COVER_CACHE_MAX_ENTRIES || this.coverCacheBytes > COVER_CACHE_MAX_BYTES) {
+      const [oldest, v] = this.coverCache.entries().next().value!;
+      this.coverCache.delete(oldest);
+      this.coverCacheBytes -= v.bytes.length;
+    }
   }
 
   private async photo(p: PhotoRow): Promise<PlacePhotoDto> {

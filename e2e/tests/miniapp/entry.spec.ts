@@ -41,6 +41,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByLabel("Погоджуюся з умовами користування").check();
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await next.click();
+    await page.getByRole("button", { name: "Меню" }).click();
     await page.getByRole("link", { name: "Профіль" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Профіль" })).toBeVisible();
     expect(await telegramCalls(page)).toContain("requestWriteAccess");
@@ -62,7 +63,7 @@ test.describe("деактивированный QR demoHotelOff1", () => {
 
   test("нейтральный контекст региона, без карточки заклада", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("neutral-context")).toContainText("Ви в регіоні: Тестовий регіон");
+    await expect(page.getByTestId("neutral-context")).toHaveText("Ви на Прикарпатті.");
     await expect(page.getByTestId("venue-summary")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Про заклад" })).toHaveCount(0);
     await expectNoSeriousA11yViolations(page);
@@ -76,7 +77,7 @@ test.describe("открытие без QR", () => {
     const paths: string[] = [];
     page.on("request", (r) => paths.push(new URL(r.url()).pathname));
     await page.goto("/");
-    await expect(page.getByTestId("neutral-context")).toContainText("Ви в регіоні: Тестовий регіон");
+    await expect(page.getByTestId("neutral-context")).toHaveText("Ви на Прикарпатті.");
     expect(apiMockState.get(page)!.contextCalls).toBe(1);
     expect(paths.filter((p) => p.startsWith("/context"))).toEqual(["/context"]);
   });
@@ -118,6 +119,7 @@ test.describe("сбои и подтверждения", () => {
     await page.getByLabel("Погоджуюся з умовами користування").check();
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await page.getByRole("button", { name: "Продовжити" }).click();
+    await page.getByRole("button", { name: "Меню" }).click();
     await page.getByRole("link", { name: "Профіль" }).click();
     await page.getByRole("button", { name: "Запросити видалення даних" }).click();
     expect(apiMockState.get(page)!.privacyRequests).toHaveLength(0);

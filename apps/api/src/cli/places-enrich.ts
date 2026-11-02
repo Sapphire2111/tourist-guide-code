@@ -28,7 +28,7 @@ import {
 import { EnrichArgsError, parseEnrichArgs } from "../places-enrich/args.js";
 import { DEFAULT_SKIP_DETAILS, enrich, GOOGLE_PRICING, googleCostUsd } from "../places-enrich/enrich.js";
 import { WikipediaClient } from "../places-enrich/wikipedia.js";
-import { writeEnrichment, type EnrichWriteItem } from "../places-enrich/writer.js";
+import { withSavedGoogle, writeEnrichment, type EnrichWriteItem } from "../places-enrich/writer.js";
 import { IMPORT_LOCALITIES } from "../places-import/config.js";
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
@@ -77,7 +77,7 @@ try {
   const wikipedia = args.wiki
     ? new WikipediaClient({ cacheDir: args.cacheDir, maxRequests: args.maxWikiRequests, planOnly: args.plan })
     : undefined;
-  const { places, stats } = await enrich(found.places, google, wikipedia, {
+  const enriched = await enrich(found.places, google, wikipedia, {
     categories: args.categories,
     skipCategories: args.skipCategories,
     limit: args.limit,
@@ -88,6 +88,12 @@ try {
     prioritize: true,
     log: console.log,
   });
+  const stats = enriched.stats;
+  // Из кэша импорта (беднее Details): слить с сохранённым до фактов ИИ; места с готовым текстом ИИ — без пакета.
+  const { places, withAi } =
+    db && regionId
+      ? await withSavedGoogle(db, regionId, enriched.places)
+      : { places: enriched.places, withAi: new Set<string>() };
   const report: Record<string, unknown> = { enrich: stats };
 
   // Месячный предел: сколько Place Details и фото уйдёт в этом месяце, сколько останется на следующие.
@@ -138,7 +144,8 @@ try {
     console.log(
       `Обложки: есть ${coverStats.existing}, нужно ${coverStats.needed + planCovers} (Wikimedia ${wikiCovers} — бесплатно; ` +
         `Google ${googleCovers}: в этом месяце до ${Math.min(googleCovers, remainingPhotos)}); записано ${coverStats.written} ` +
-        `(Wikimedia ${coverStats.wikimedia}, Google ${coverStats.google}), отложено пределом ${coverStats.deferred}, ` +
+        `(Wikimedia ${coverStats.wikimedia}, Google ${coverStats.google}), отложено пределом Google ${coverStats.deferred}, ` +
+        `Wikimedia недоступна (повторить позже) ${coverStats.wikiUnavailable}, ` +
         `ошибок ${coverStats.failed}.`,
     );
     report.covers = {
@@ -153,6 +160,7 @@ try {
   const store = new AiStore(args.cacheDir);
   const aiItems = new Map<string, AiItem>();
   for (const p of places) {
+    if (p.googleFromImport && withAi.has(p.googlePlaceId)) continue;
     const facts = buildFacts({
       name: p.name,
       category: CATEGORY_NAMES[p.categoryCode] ?? p.categoryCode,
