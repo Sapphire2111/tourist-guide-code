@@ -44,6 +44,11 @@ function fakeService() {
     ),
     removeFavorite: vi.fn(() => Promise.resolve()),
     emergencyContacts: vi.fn(() => Promise.resolve([])),
+    cover: vi.fn((_r: string, id: string) =>
+      Promise.resolve(
+        id === PLACE ? { bytes: Buffer.from("RIFFwebp"), mime: "image/webp", etag: "abc123" } : undefined,
+      ),
+    ),
     googlePhoto: vi.fn((_r: string, id: string, index: number) =>
       Promise.resolve(
         id === PLACE && index === 0 ? "https://lh3.googleusercontent.com/p/abc=w400" : undefined,
@@ -196,6 +201,25 @@ describe("GET /places/{id}", () => {
     const { http, service } = await start({ authenticated: true });
     await http().get(`/places/${PLACE}?regionId=${REGION}`).expect(200);
     expect(service.place).toHaveBeenCalledWith(REGION, PLACE, { origin: undefined, userId: USER });
+  });
+});
+
+describe("GET /places/{id}/cover", () => {
+  it("WebP с ETag и долгим публичным кэшем; If-None-Match — 304; нет обложки — 404", async () => {
+    const { http } = await start();
+    const res = await http().get(`/places/${PLACE}/cover?regionId=${REGION}&v=abc123`).expect(200);
+    expect(res.headers["content-type"]).toBe("image/webp");
+    expect(res.headers.etag).toBe('"abc123"');
+    expect(res.headers["cache-control"]).toBe("public, max-age=604800");
+    expect(Buffer.from(res.body as Buffer).toString()).toBe("RIFFwebp");
+    await http()
+      .get(`/places/${PLACE}/cover?regionId=${REGION}`)
+      .set("If-None-Match", '"abc123"')
+      .expect(304);
+    const missing = await http()
+      .get(`/places/0190f5c2-7d3e-7000-8000-0000000000b2/cover?regionId=${REGION}`)
+      .expect(404);
+    expect(missing.headers["cache-control"]).not.toContain("public");
   });
 });
 

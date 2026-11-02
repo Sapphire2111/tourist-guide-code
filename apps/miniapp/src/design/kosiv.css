@@ -419,6 +419,22 @@ html[data-season] :focus-visible {
   height: 100%;
   object-fit: cover;
 }
+/* Подпись автора обложки из Google/Wikimedia (обязательна). */
+.kosiv-place-credit {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: rgba(20, 16, 12, 0.72);
+  color: #ffffff;
+  font-size: 0.625rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .kosiv-place-body {
   display: flex;
   flex-direction: column;

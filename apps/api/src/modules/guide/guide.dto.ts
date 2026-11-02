@@ -174,6 +174,11 @@ export class GooglePhotoQueryDto extends RegionQueryDto {
   v?: string;
 }
 
+/** Обложка: v — версия из coverPhoto.url (кэш браузера), сервером не проверяется. */
+export class CoverQueryDto extends RegionQueryDto {
+  @ApiPropertyOptional({ type: String }) @IsOptional() @IsString() @MaxLength(32) v?: string;
+}
+
 export class AddFavoriteDto {
   @ApiProperty({ type: String, format: "uuid" })
   @IsUUID()
@@ -234,6 +239,26 @@ export class PlacePhotoDto {
   variants!: MediaLinkDto[];
 }
 
+/** Автор фото Google — показывать обязательно (правила Google Maps Platform). */
+export class CoverAuthorDto {
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, nullable: true }) uri!: string | null;
+  @ApiProperty({ type: String, nullable: true }) photoUri!: string | null;
+}
+
+/** Обложка у нас (0018): WebP ~400 px из Google или Wikimedia; подпись автора обязательна. */
+export class CoverPhotoDto {
+  @ApiProperty({ type: String, description: "GET /places/{id}/cover (ETag, длинный кэш)" }) url!: string;
+  @ApiProperty({ type: "integer" }) width!: number;
+  @ApiProperty({ type: "integer" }) height!: number;
+  @ApiProperty({ enum: ["google", "wikimedia"], enumName: "CoverSource" }) source!: "google" | "wikimedia";
+  @ApiProperty({ type: [CoverAuthorDto] }) authors!: CoverAuthorDto[];
+  @ApiProperty({ type: String, nullable: true, description: "Лицензия (Wikimedia)" }) license!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Страница файла (Wikimedia)" }) sourceUrl!:
+    | string
+    | null;
+}
+
 /** Место в выдаче (список, карта, избранное). */
 export class PlaceSummaryDto {
   @ApiProperty({ type: String, format: "uuid" }) id!: string;
@@ -268,6 +293,12 @@ export class PlaceSummaryDto {
   @ApiProperty({ type: String, nullable: true, example: "+380501234567" }) phone!: string | null;
   @ApiProperty({ type: PlacePhotoDto, nullable: true, description: "Обложка (или первое готовое фото)" })
   cover!: PlacePhotoDto | null;
+  @ApiProperty({
+    type: CoverPhotoDto,
+    nullable: true,
+    description: "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+  })
+  coverPhoto!: CoverPhotoDto | null;
 }
 
 export class PlaceSearchResultDto {

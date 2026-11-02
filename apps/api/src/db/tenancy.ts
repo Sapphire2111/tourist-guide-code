@@ -83,6 +83,7 @@ export const TABLE_TENANCY = {
   place_enrichments: "tenant",
   google_photo_uris: "global",
   google_api_usage: "global",
+  place_cover_photos: "tenant",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

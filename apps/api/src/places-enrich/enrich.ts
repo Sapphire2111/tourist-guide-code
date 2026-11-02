@@ -1,9 +1,13 @@
 // Сбор обогащения мест (places:enrich) без БД: Google Place Details по каждому месту (кэш ответов), Вікіпедія для
 // пам'яток. Общий для --plan (только оценка), --dry-run и записи. Запросы мимо кэша ограничены лимитами клиентов.
 import type { PlaceEnrichmentGoogle, PlaceEnrichmentWiki } from "../db/index.js";
-import { RequestLimitError, type GooglePlacesClient } from "../places-import/google-client.js";
-import type { MappedPlace } from "../places-import/mapping.js";
-import { hasGoogleData, normalizeDetails } from "./details.js";
+import {
+  MonthlyLimitError,
+  RequestLimitError,
+  type GooglePlacesClient,
+} from "../places-import/google-client.js";
+import type { GooglePlace, MappedPlace } from "../places-import/mapping.js";
+import { fromSearch, hasGoogleData, normalizeDetails } from "./details.js";
 import {
   findWikipedia,
   WIKI_CATEGORIES,
@@ -42,6 +46,12 @@ export type EnrichStats = {
   wikiUnavailable: number;
   /** Остановлено лимитом запросов Google / Вікіпедії. */
   googleLimitReached: boolean;
+  /** Исчерпан месячный предел Place Details (google_api_usage). */
+  monthlyLimitReached: boolean;
+  /** Мест, которым Details не достались из-за предела (продолжить в следующем месяце). */
+  detailsDeferred: number;
+  /** Мест с данными из кэша импорта (без платного Details). */
+  fromImport: number;
   wikiLimitReached: boolean;
   /** Пропущено по фильтру категорий. */
   skippedByCategory: number;
@@ -57,8 +67,43 @@ export type EnrichOptions = {
   /** Только эти места (google_place_id). */
   only?: ReadonlySet<string>;
   wiki?: boolean;
+  /** false — без Place Details вовсе (только кэш импорта). */
+  details?: boolean;
+  /** Категории без Place Details (утилитарные). */
+  skipDetails?: ReadonlySet<string>;
+  /** Ответы поиска импорта по id — данные без платного Details (--from-import-cache). */
+  rawById?: ReadonlyMap<string, GooglePlace>;
+  /** Фото с авторами бесплатным запросом «id,photos» (по умолчанию да). */
+  freePhotos?: boolean;
+  /** Порядок по приоритету: важные категории, затем по числу оценок Google. */
+  prioritize?: boolean;
   log?: (line: string) => void;
 };
+
+/** Категории, которым Place Details (отзывы, удобства) нужнее всего — первыми в месячном пределе. */
+export const DETAILS_PRIORITY: ReadonlySet<string> = new Set([
+  "restaurants",
+  "cafes",
+  "kolyby",
+  "hotels",
+  "sadyby",
+  "chany",
+  "spa",
+  "sights",
+  "nature",
+]);
+/** Без Place Details: банкоматы, АЗС, электрозарядки — отзывы и удобства туристу не нужны. */
+export const DEFAULT_SKIP_DETAILS: ReadonlySet<string> = new Set(["atm", "fuel", "ev-charging"]);
+
+/** Приоритет: важные категории, затем больше оценок Google; при равенстве — по id (стабильно между прогонами). */
+export function prioritized(places: readonly MappedPlace[]): MappedPlace[] {
+  return [...places].sort(
+    (a, b) =>
+      Number(DETAILS_PRIORITY.has(b.categoryCode)) - Number(DETAILS_PRIORITY.has(a.categoryCode)) ||
+      (b.ratingCount ?? 0) - (a.ratingCount ?? 0) ||
+      a.googlePlaceId.localeCompare(b.googlePlaceId),
+  );
+}
 
 export async function enrich(
   places: readonly MappedPlace[],
@@ -81,11 +126,14 @@ export async function enrich(
     wikiWithImage: 0,
     wikiUnavailable: 0,
     googleLimitReached: false,
+    monthlyLimitReached: false,
+    detailsDeferred: 0,
+    fromImport: 0,
     wikiLimitReached: false,
     skippedByCategory: 0,
   };
   const out: EnrichedPlace[] = [];
-  for (const p of places) {
+  for (const p of opts.prioritize ? prioritized(places) : places) {
     if (opts.limit !== undefined && out.length >= opts.limit) break;
     if (opts.only && !opts.only.has(p.googlePlaceId)) continue;
     if (
@@ -105,25 +153,46 @@ export async function enrich(
       google: null,
       wiki: undefined,
     };
-    if (!stats.googleLimitReached) {
+    // Платный Place Details (Atmosphere) — кроме утилитарных категорий; предел (месячный/запросов) — данные из
+    // кэша импорта, остальное — в следующем прогоне (ответы кэшируются, повтор продолжает с непройденных).
+    let g: PlaceEnrichmentGoogle | null = null;
+    if (opts.details !== false && !opts.skipDetails?.has(p.categoryCode)) {
       try {
         const raw = await google.placeDetails(p.googlePlaceId);
         if (raw) {
-          const g = normalizeDetails(raw);
-          item.google = g;
+          g = normalizeDetails(raw);
           stats.details++;
-          if (hasGoogleData(g)) stats.withData++;
-          if (g.photos.length) stats.withPhotos++;
-          if (g.reviews.length) stats.withReviews++;
-          if (g.amenities.length) stats.withAmenities++;
-          if (g.summary) stats.withSummary++;
-          if (g.rating !== null) stats.withRating++;
         }
       } catch (err) {
         if (!(err instanceof RequestLimitError)) throw err;
-        log(err.message);
+        if (!stats.googleLimitReached) log(err.message);
         stats.googleLimitReached = true;
+        if (err instanceof MonthlyLimitError) stats.monthlyLimitReached = true;
+        stats.detailsDeferred++;
       }
+    }
+    const fromImport = !g ? opts.rawById?.get(p.googlePlaceId) : undefined;
+    if (fromImport) {
+      // Бесплатно: тип, описание, рейтинг из кэша поиска + фото с авторами запросом «id,photos» (IDs Only).
+      let photos: Record<string, unknown> | null = null;
+      if (opts.freePhotos !== false) {
+        try {
+          photos = await google.placePhotos(p.googlePlaceId);
+        } catch (err) {
+          if (!(err instanceof RequestLimitError)) throw err;
+        }
+      }
+      g = fromSearch(fromImport, photos);
+      stats.fromImport++;
+    }
+    if (g) {
+      item.google = g;
+      if (hasGoogleData(g)) stats.withData++;
+      if (g.photos.length) stats.withPhotos++;
+      if (g.reviews.length) stats.withReviews++;
+      if (g.amenities.length) stats.withAmenities++;
+      if (g.summary) stats.withSummary++;
+      if (g.rating !== null) stats.withRating++;
     }
     if (wikipedia && opts.wiki !== false && WIKI_CATEGORIES.has(p.categoryCode) && !stats.wikiLimitReached) {
       try {

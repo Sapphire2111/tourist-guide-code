@@ -53,6 +53,8 @@ export type CollectResult = {
   closedIds: string[];
   /** Все id, которые Google вернул за прогон (для отчёта «пропали из выдачи»). */
   seenIds: string[];
+  /** Ответы Google по id (рейтинг, описание, тип, имена фото) — places:enrich --from-import-cache. */
+  rawById: ReadonlyMap<string, GooglePlace>;
 };
 
 const inc = (m: Record<string, number>, k: string, by = 1) => {
@@ -193,5 +195,5 @@ export async function collect(
   }
   stats.imported = places.length;
   places.sort((a, b) => a.googlePlaceId.localeCompare(b.googlePlaceId));
-  return { places, stats, closedIds, seenIds: [...raw.keys()] };
+  return { places, stats, closedIds, seenIds: [...raw.keys()], rawById: raw };
 }

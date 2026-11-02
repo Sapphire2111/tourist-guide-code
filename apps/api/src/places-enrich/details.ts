@@ -131,7 +131,7 @@ export function amenitiesOf(d: Record<string, unknown>): PlaceAmenity[] {
 
 const PHOTO_NAME = /^places\/[A-Za-z0-9_-]{1,255}\/photos\/[A-Za-z0-9_-]{1,1024}$/;
 
-function photos(v: unknown): PlaceEnrichmentPhoto[] {
+export function photosOf(v: unknown): PlaceEnrichmentPhoto[] {
   if (!Array.isArray(v)) return [];
   const out: PlaceEnrichmentPhoto[] = [];
   for (const p of v) {
@@ -192,8 +192,31 @@ export function normalizeDetails(d: Record<string, unknown>): PlaceEnrichmentGoo
     mapsUri: httpsUrl(d.googleMapsUri),
     amenities: amenitiesOf(d),
     reviews: reviews(d.reviews),
-    photos: photos(d.photos),
+    photos: photosOf(d.photos),
   };
+}
+
+/**
+ * Обогащение без платного Place Details (places:enrich --from-import-cache): тип, описание, рейтинг — из ответа Text
+ * Search импорта (кэш), фото с авторами — из бесплатного запроса «id,photos» (без него фото нет: подпись автора
+ * обязательна). Отзывов, удобств и цены здесь нет.
+ */
+export function fromSearch(
+  p: {
+    primaryTypeDisplayName?: { text?: string };
+    editorialSummary?: { text?: string };
+    rating?: number;
+    userRatingCount?: number;
+  },
+  photosResponse: Record<string, unknown> | null,
+): PlaceEnrichmentGoogle {
+  const base = normalizeDetails({
+    primaryTypeDisplayName: p.primaryTypeDisplayName,
+    editorialSummary: p.editorialSummary,
+    rating: p.rating,
+    userRatingCount: p.userRatingCount,
+  });
+  return { ...base, photos: photosResponse ? photosOf(photosResponse.photos) : [] };
 }
 
 /** Есть ли в обогащении хоть что-то для карточки. */

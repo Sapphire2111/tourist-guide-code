@@ -12,6 +12,7 @@ import {
   Query,
   Redirect,
   Req,
+  Res,
 } from "@nestjs/common";
 import {
   ApiCreatedResponse,
@@ -43,6 +44,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import {
   AddFavoriteDto,
+  CoverQueryDto,
   GooglePhotoQueryDto,
   OriginQueryDto,
   RegionQueryDto,
@@ -66,6 +68,15 @@ export const SEARCH_RATE_LIMIT = { limit: 60, windowSec: 60 } as const;
 export const GOOGLE_PHOTO_RATE_LIMIT = { limit: 120, windowSec: 60 } as const;
 /** Сколько браузер кэширует редирект на файл фото (адрес Google живёт дольше). */
 export const GOOGLE_PHOTO_CACHE_SEC = 6 * 3600;
+
+/** Обложка меняется только вместе с версией v в ссылке — кэш на неделю. */
+export const COVER_CACHE_SEC = 7 * 24 * 3600;
+
+type BinaryResponse = {
+  status(code: number): unknown;
+  setHeader(name: string, value: string): unknown;
+  end(body?: Buffer): unknown;
+};
 
 const photoIndex = new ParseIntPipe({
   exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_index" } }),
@@ -140,6 +151,42 @@ export class GuidePlacesController {
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,
     });
+  }
+
+  @Get(":id/cover")
+  @RateLimit(GOOGLE_PHOTO_RATE_LIMIT)
+  @ApiOperation({
+    operationId: "getGuidePlaceCover",
+    summary: "Обложка места (WebP ~400 px, хранится у нас): списки и карточка",
+    description:
+      "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и " +
+      "автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiResponse({ status: 200, description: "image/webp" })
+  @ApiResponse({ status: 304, description: "Не изменилась" })
+  @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
+  async cover(
+    @Param("id", uuid) id: string,
+    @Query() q: CoverQueryDto,
+    @Req() req: RbacRequest & { headers: Record<string, string | string[] | undefined> },
+    @Res() res: BinaryResponse,
+  ): Promise<void> {
+    const c = await this.guide.cover(q.regionId, id);
+    if (!c) throw new ApiError("NOT_FOUND");
+    const etag = `"${c.etag}"`;
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", `public, max-age=${COVER_CACHE_SEC}`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304);
+      res.end();
+      return;
+    }
+    res.status(200);
+    res.setHeader("Content-Type", c.mime);
+    res.setHeader("Content-Length", String(c.bytes.length));
+    res.end(c.bytes);
   }
 
   @Get(":id/google-photos/:index")

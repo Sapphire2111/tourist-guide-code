@@ -5,7 +5,7 @@ import { Button, Link, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useMaybeGuide, type Async } from "./context.js";
-import type { PlaceSummary } from "./types.js";
+import type { Photo, PlaceSummary } from "./types.js";
 
 /** Список без маркеров с отступом между пунктами (li — прямые потомки ul). */
 export const listStyle: CSSProperties = {
@@ -78,10 +78,36 @@ export function useDistance(): (meters: number | null) => string | null {
 }
 
 /** Обложка места: фото (декор — название рядом) или керамическая подложка с иконкой. */
+/** Подпись обложки из Google/Wikimedia: автор (и лицензия Commons) — обязательна. */
+export function CoverCredit({
+  credit,
+  className,
+}: {
+  credit: NonNullable<Photo["credit"]>;
+  className?: string;
+}) {
+  const { t } = useT();
+  const names = credit.authors.map((a) => a.name).join(", ");
+  const text =
+    credit.source === "wikimedia"
+      ? names
+        ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
+        : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
+      : names
+        ? t("miniapp.place.photoBy", { name: names })
+        : t("miniapp.place.photoSource");
+  return (
+    <span className={className} data-testid="cover-credit">
+      {text}
+    </span>
+  );
+}
+
 export function PlaceMedia({ place }: { place: PlaceSummary }) {
   return (
     <div className="kosiv-place-media">
       {place.cover ? <img src={place.cover.url} alt="" loading="lazy" decoding="async" /> : ICONS.nearby}
+      {place.cover?.credit && <CoverCredit credit={place.cover.credit} className="kosiv-place-credit" />}
     </div>
   );
 }

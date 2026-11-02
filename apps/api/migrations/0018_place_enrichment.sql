@@ -67,3 +67,31 @@ CREATE TABLE google_api_usage (
 
 REVOKE ALL ON google_api_usage FROM app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON google_api_usage TO app;
+
+-- tenant: обложка места у нас (решение владельца 03.11.2026, тестовый режим): одно фото ~400 px WebP — карточка и
+-- списки без запросов к Google при каждом просмотре. Источник — Google Place Photos (одно фото на место, в месячном
+-- пределе) или Wikimedia Commons (пам'ятки, бесплатно). authors — подпись автора (обязательна), license — у Commons.
+-- Пишет CLI places:enrich --covers; api отдаёт GET /places/{id}/cover (ETag).
+CREATE TABLE place_cover_photos (
+  region_id uuid NOT NULL REFERENCES regions(id) ON DELETE RESTRICT,
+  place_id uuid NOT NULL,
+  bytes bytea NOT NULL CONSTRAINT place_cover_photos_bytes_check CHECK (octet_length(bytes) BETWEEN 1 AND 1048576),
+  mime text NOT NULL CONSTRAINT place_cover_photos_mime_check CHECK (mime IN ('image/webp', 'image/jpeg')),
+  width integer NOT NULL CONSTRAINT place_cover_photos_width_check CHECK (width BETWEEN 1 AND 4000),
+  height integer NOT NULL CONSTRAINT place_cover_photos_height_check CHECK (height BETWEEN 1 AND 4000),
+  author_attributions jsonb NOT NULL DEFAULT '[]'
+    CONSTRAINT place_cover_photos_authors_check CHECK (jsonb_typeof(author_attributions) = 'array'),
+  license text CONSTRAINT place_cover_photos_license_check CHECK (license IS NULL OR char_length(license) <= 100),
+  source_url text CONSTRAINT place_cover_photos_source_url_check
+    CHECK (source_url IS NULL OR (source_url ~ '^https://' AND char_length(source_url) <= 2048)),
+  source text NOT NULL CONSTRAINT place_cover_photos_source_check CHECK (source IN ('google', 'wikimedia')),
+  photo_name text NOT NULL CONSTRAINT place_cover_photos_photo_name_check CHECK (char_length(photo_name) BETWEEN 1 AND 2048),
+  fetched_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT place_cover_photos_pkey PRIMARY KEY (region_id, place_id),
+  CONSTRAINT place_cover_photos_place_fk FOREIGN KEY (region_id, place_id)
+    REFERENCES places (region_id, id) ON DELETE CASCADE
+);
+
+SELECT app_enable_tenant_rls('place_cover_photos');
+REVOKE ALL ON place_cover_photos FROM app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON place_cover_photos TO app;

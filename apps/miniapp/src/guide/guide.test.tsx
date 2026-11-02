@@ -321,6 +321,7 @@ describe("адаптер api и аналитика", () => {
       adLabel: "partner",
       openNow: null,
       phone: null,
+      coverPhoto: null,
       cover: {
         mediaAssetId: P1,
         alt: { uk: "Фасад" },

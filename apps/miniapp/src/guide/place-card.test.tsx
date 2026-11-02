@@ -248,33 +248,78 @@ describe("картка: устойчивость и описание", () => {
   });
 });
 
-describe("cardOf — богатые поля", () => {
-  type CardDto = ApiSchemas["PlaceCardDto"];
-  const dto = {
-    id: P1,
-    regionId: "r",
-    categoryId: "c1",
-    category: { id: "c1", parentId: null, name: { uk: "Ресторани" }, icon: null },
-    name: { uk: "Wood Stone" },
-    address: null,
-    location: { lon: 24.59, lat: 48.48 },
-    distanceMeters: null,
-    recommended: false,
-    adLabel: null,
-    openNow: null,
-    phone: null,
-    cover: null,
-    description: null,
-    website: null,
-    telegram: null,
-    verifiedAt: null,
-    photos: [],
-    tags: [],
-    schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
-    openUntil: null,
-    favorite: null,
+type CardDto = ApiSchemas["PlaceCardDto"];
+const dto = {
+  id: P1,
+  regionId: "r",
+  categoryId: "c1",
+  category: { id: "c1", parentId: null, name: { uk: "Ресторани" }, icon: null },
+  name: { uk: "Wood Stone" },
+  address: null,
+  location: { lon: 24.59, lat: 48.48 },
+  distanceMeters: null,
+  recommended: false,
+  adLabel: null,
+  openNow: null,
+  phone: null,
+  cover: null,
+  coverPhoto: null,
+  description: null,
+  website: null,
+  telegram: null,
+  verifiedAt: null,
+  photos: [],
+  tags: [],
+  schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
+  openUntil: null,
+  favorite: null,
+};
+
+describe("обложка у нас (Google/Wikimedia)", () => {
+  const cover = {
+    url: "https://api.example/places/p/cover?regionId=r&v=abc",
+    alt: null,
+    credit: {
+      authors: [{ name: "Олена", uri: "https://maps.google.com/contrib/1", photoUri: null }],
+      license: null,
+      sourceUrl: null,
+      source: "google" as const,
+    },
   };
 
+  it("галерея Google недоступна (предел) — в карточке обложка с подписью автора", async () => {
+    await renderCard({ ...base, cover, googlePhotos: [] });
+    const gallery = screen.getByTestId("place-photos");
+    expect(gallery.querySelector("img")?.getAttribute("src")).toBe(cover.url);
+    expect(within(gallery).getByRole("link", { name: "Олена" })).toBeDefined();
+  });
+
+  it("нет обложки и фото — без галереи", async () => {
+    await renderCard({ ...base, cover: null, googlePhotos: [] });
+    expect(screen.queryByTestId("place-photos")).toBeNull();
+  });
+
+  it("cardOf/summaryOf: coverPhoto → cover с подписью; Wikimedia — автор и лицензия", () => {
+    const card = cardOf({
+      ...dto,
+      coverPhoto: {
+        url: "https://api.example/places/p/cover?regionId=r&v=1",
+        width: 400,
+        height: 300,
+        source: "wikimedia",
+        authors: [{ name: "MSha", uri: null, photoUri: null }],
+        license: "CC BY-SA 3.0",
+        sourceUrl: "https://commons.wikimedia.org/wiki/File:X.jpg",
+      },
+    } as unknown as CardDto);
+    expect(card.cover).toMatchObject({
+      url: "https://api.example/places/p/cover?regionId=r&v=1",
+      credit: { source: "wikimedia", license: "CC BY-SA 3.0", authors: [{ name: "MSha" }] },
+    });
+  });
+});
+
+describe("cardOf — богатые поля", () => {
   it("старый api без полей — пусто; небезопасные ссылки отбрасываются", () => {
     expect(cardOf(dto as unknown as CardDto)).toMatchObject({
       amenities: [],

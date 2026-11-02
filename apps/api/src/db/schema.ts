@@ -1182,6 +1182,22 @@ export interface GooglePhotoUrisTable {
   fetched_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** Обложка места у нас (0018): WebP ~400 px из Google Place Photos или Wikimedia Commons. */
+export interface PlaceCoverPhotosTable {
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  bytes: Buffer;
+  mime: string;
+  width: number;
+  height: number;
+  author_attributions: ColumnType<GoogleAuthor[], string, string>;
+  license: Nullable<string>;
+  source_url: Nullable<string>;
+  source: "google" | "wikimedia";
+  photo_name: string;
+  fetched_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /** Суточный счётчик платных запросов к Google из api (0018). day — "YYYY-MM-DD" (UTC). */
 export interface GoogleApiUsageTable {
   day: ColumnType<string, string, never>;
@@ -1245,4 +1261,5 @@ export interface Database {
   place_enrichments: PlaceEnrichmentsTable;
   google_photo_uris: GooglePhotoUrisTable;
   google_api_usage: GoogleApiUsageTable;
+  place_cover_photos: PlaceCoverPhotosTable;
 }

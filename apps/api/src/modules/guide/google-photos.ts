@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { sql } from "kysely";
 import { InjectDb, type Db } from "../../db/index.js";
+import { GOOGLE_FREE_MONTHLY, GoogleQuota } from "../../places-enrich/quota.js";
 import { isAllowedPhotoUrl } from "../../places-import/google-client.js";
 
 /** Допустимые ширины: превью галереи и полноэкранный просмотр. */
@@ -24,6 +25,8 @@ export type GooglePhotosConfig = {
   apiBaseUrl?: string;
   /** Запросов к Google Place Photos в сутки (UTC) не больше. */
   dailyLimit?: number;
+  /** И в месяц не больше (общий счётчик с CLI; по умолчанию — бесплатный объём Google, 1000). */
+  monthlyLimit?: number;
   /** Срок жизни закэшированного адреса, ч. */
   ttlHours?: number;
   fetch?: typeof fetch;
@@ -33,8 +36,6 @@ export const GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT = 300;
 export const GOOGLE_PHOTO_TTL_HOURS_DEFAULT = 24;
 /** Сколько помнить ошибку Google по фото (без повторных запросов). */
 export const GOOGLE_PHOTO_FAILURE_TTL_MS = 6 * 3600_000;
-/** Вид счётчика в google_api_usage. */
-const USAGE_KIND = "place_photos";
 const MEMORY_MAX = 5000;
 const TIMEOUT_MS = 8000;
 const PHOTO_NAME = /^places\/[A-Za-z0-9_-]{1,255}\/photos\/[A-Za-z0-9_-]{1,1024}$/;
@@ -46,7 +47,9 @@ export class GooglePhotosService {
   private readonly inflight = new Map<string, Promise<string | null>>();
   /** Ошибки Google по `name|w` до момента повтора. */
   private readonly failures = new Map<string, number>();
-  private readonly cfg: GooglePhotosConfig & { dailyLimit: number; ttlHours: number };
+  private exhaustedCache: { value: boolean; until: number } | null = null;
+  private readonly quota: GoogleQuota;
+  private readonly cfg: GooglePhotosConfig & { dailyLimit: number; monthlyLimit: number; ttlHours: number };
 
   constructor(
     @InjectDb() private readonly db: Db,
@@ -55,12 +58,19 @@ export class GooglePhotosService {
     this.cfg = {
       ...config,
       dailyLimit: config?.dailyLimit ?? GOOGLE_PHOTO_DAILY_LIMIT_DEFAULT,
+      monthlyLimit: config?.monthlyLimit ?? GOOGLE_FREE_MONTHLY,
       ttlHours: config?.ttlHours ?? GOOGLE_PHOTO_TTL_HOURS_DEFAULT,
     };
+    this.quota = new GoogleQuota(db, () => this.now());
   }
 
   /** Часы (подменяются в тестах). */
   now: () => Date = () => new Date();
+
+  /** Публичный адрес api без завершающего «/» (ссылки на прокси и обложки). */
+  get apiBaseUrl(): string {
+    return (this.cfg.apiBaseUrl ?? "").replace(/\/+$/, "");
+  }
 
   /** Фото Google в карточке только при ключе: без него прокси не сможет получить новые адреса. */
   get enabled(): boolean {
@@ -149,31 +159,28 @@ export class GooglePhotosService {
     return uri;
   }
 
+  /** Занять запрос Place Photos: суточный и месячный предел (общий с CLI places:enrich --covers). */
+  takeDailyQuota(): Promise<boolean> {
+    return this.quota.take("place_photos", { daily: this.cfg.dailyLimit, monthly: this.cfg.monthlyLimit });
+  }
+
   /**
-   * Атомарно занять запрос из суточного предела (счётчик в БД): строка дня увеличивается, только пока count < limit.
-   * Нет строки в ответе — предел исчерпан; ошибка БД — тоже отказ (бюджет важнее фото).
+   * Предел запросов фото на сегодня/месяц исчерпан: карточка не отдаёт галерею Google (только обложку). Проверка
+   * кэшируется на минуту — не лишний запрос к БД на каждую карточку.
    */
-  async takeDailyQuota(now: number): Promise<boolean> {
-    const day = new Date(now).toISOString().slice(0, 10);
+  async exhausted(): Promise<boolean> {
+    const now = this.now().getTime();
+    if (this.exhaustedCache && this.exhaustedCache.until > now) return this.exhaustedCache.value;
+    let value = true;
     try {
-      const row = await this.db
-        .insertInto("google_api_usage")
-        .values({ day, kind: USAGE_KIND, count: 1 })
-        .onConflict((oc) =>
-          oc
-            .columns(["day", "kind"])
-            .doUpdateSet({ count: sql`google_api_usage.count + 1` })
-            .where("google_api_usage.count", "<", this.cfg.dailyLimit),
-        )
-        .returning("count")
-        .executeTakeFirst();
-      if (row && row.count <= this.cfg.dailyLimit) return true;
-      this.log.warn(`Суточный предел запросов фото Google исчерпан: ${this.cfg.dailyLimit}`);
-      return false;
+      const u = await this.quota.used("place_photos");
+      value = u.today >= this.cfg.dailyLimit || u.month >= this.cfg.monthlyLimit;
     } catch (err) {
-      this.log.warn(`Счётчик запросов Google недоступен: ${err instanceof Error ? err.message : "ошибка"}`);
-      return false;
+      this.log.warn(`Учёт запросов Google недоступен: ${err instanceof Error ? err.message : "ошибка"}`);
+      value = true;
     }
+    this.exhaustedCache = { value, until: now + 60_000 };
+    return value;
   }
 
   /** Адрес файла у Google; "limit" — предел на сутки (не ошибка фото); null — ошибка Google/ответа. */
@@ -184,7 +191,11 @@ export class GooglePhotosService {
   ): Promise<string | null | "limit"> {
     const apiKey = this.cfg.apiKey;
     if (!apiKey) return "limit";
-    if (this.cfg.dailyLimit <= 0 || !(await this.takeDailyQuota(now))) return "limit";
+    if (!(await this.takeDailyQuota())) {
+      this.exhaustedCache = { value: true, until: now + 60_000 };
+      this.log.warn("Предел запросов фото Google (сутки/месяц) исчерпан");
+      return "limit";
+    }
     try {
       const res = await (this.cfg.fetch ?? fetch)(
         `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${width}&skipHttpRedirect=true`,

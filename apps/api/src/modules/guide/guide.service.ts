@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import { ApiError } from "../../common/http/index.js";
 import {
@@ -16,6 +17,7 @@ import { EmergencyContactsRepository } from "../emergency-contacts/index.js";
 import { MediaService } from "../media/index.js";
 import { RegionsRepository } from "../regions/index.js";
 import type {
+  CoverPhotoDto,
   FavoriteDto,
   FavoriteListDto,
   GuideCategoryListDto,
@@ -35,6 +37,11 @@ import { localMoment, openState, type LocalMoment, type ScheduleRows } from "./o
  */
 export function isAutoDescription(source: string | undefined, d: { uk: string } | null): boolean {
   return source === "google" && Boolean(d && /Джерело: Google Maps\.\s*$/.test(d.uk));
+}
+
+/** Версия обложки (ETag и параметр v ссылки): меняется вместе с файлом. */
+export function coverEtag(photoName: string, fetchedAt: Date): string {
+  return createHash("sha256").update(`${photoName}|${fetchedAt.toISOString()}`).digest("hex").slice(0, 16);
 }
 
 export type SearchParams = {
@@ -114,6 +121,9 @@ export class GuideService {
     id: string,
     opts: { origin?: LonLat; userId?: string },
   ): Promise<PlaceCardDto | undefined> {
+    // До транзакции региона: учёт запросов Google — на корневом соединении. Предел исчерпан — галерея Google не
+    // отдаётся, остаётся обложка у нас.
+    const exhausted = this.googlePhotos ? await this.googlePhotos.exhausted() : true;
     return this.inRegion(regionId, async (region) => {
       const row = await this.repo.findPublished(id, opts.origin);
       if (!row) return undefined;
@@ -130,8 +140,15 @@ export class GuideService {
       const schedule = schedules.get(id) ?? { weekly: [], exceptions: [] };
       const state = openState(schedule, at);
       const photoDtos = await Promise.all(photos.map((p) => this.photo(p)));
+      const external = await this.coverPhotos(region.id, [id]);
       return {
-        ...this.summary(row, labels.get(id) ?? null, state.openNow, photoDtos[0] ?? null),
+        ...this.summary(
+          row,
+          labels.get(id) ?? null,
+          state.openNow,
+          photoDtos[0] ?? null,
+          external.get(id) ?? null,
+        ),
         regionId: row.region_id,
         category: {
           id: row.category_id,
@@ -163,7 +180,7 @@ export class GuideService {
         }),
         openUntil: state.openUntil,
         favorite,
-        ...this.enriched(region.id, id, enrichment),
+        ...this.enriched(region.id, id, enrichment, exhausted),
       };
     });
   }
@@ -194,6 +211,7 @@ export class GuideService {
     e:
       | Pick<PlaceEnrichment, "google" | "wiki" | "ai_summary_uk" | "ai_model" | "ai_generated_at">
       | undefined,
+    photosExhausted = false,
   ): Pick<
     PlaceCardDto,
     | "typeLabel"
@@ -223,15 +241,16 @@ export class GuideService {
           ? { value: g.rating, count: g.ratingCount, source: "google" }
           : null,
       reviews: g?.reviews ?? [],
-      googlePhotos: this.googlePhotos?.enabled
-        ? (g?.photos ?? []).map((p, i) => ({
-            url: this.googlePhotos!.proxyUrl(regionId, placeId, i, 400, p.name),
-            largeUrl: this.googlePhotos!.proxyUrl(regionId, placeId, i, 1200, p.name),
-            width: p.width,
-            height: p.height,
-            authors: p.authors,
-          }))
-        : [],
+      googlePhotos:
+        this.googlePhotos?.enabled && !photosExhausted
+          ? (g?.photos ?? []).map((p, i) => ({
+              url: this.googlePhotos!.proxyUrl(regionId, placeId, i, 400, p.name),
+              largeUrl: this.googlePhotos!.proxyUrl(regionId, placeId, i, 1200, p.name),
+              width: p.width,
+              height: p.height,
+              authors: p.authors,
+            }))
+          : [],
       googleMapsUri: g?.mapsUri ?? null,
       wikipedia: w ? { ...w, truncated: w.truncated ?? false } : null,
     };
@@ -281,16 +300,23 @@ export class GuideService {
   private async summaries(region: Region, rows: readonly PlaceRow[]): Promise<PlaceSummaryDto[]> {
     const ids = rows.map((r) => r.id);
     const at: LocalMoment = localMoment(this.now(), region.timezone);
-    const [covers, labels, schedules] = await Promise.all([
+    const [covers, labels, schedules, external] = await Promise.all([
       this.repo.covers(ids),
       this.repo.adLabels(ids),
       this.repo.schedules(ids, { in: [at.previousDate, at.date] }),
+      this.coverPhotos(region.id, ids),
     ]);
     const coverOf = new Map<string, PlacePhotoDto>();
     await Promise.all(covers.map(async (c) => coverOf.set(c.place_id, await this.photo(c))));
     return rows.map((r) => {
       const s: ScheduleRows = schedules.get(r.id) ?? { weekly: [], exceptions: [] };
-      return this.summary(r, labels.get(r.id) ?? null, openState(s, at).openNow, coverOf.get(r.id) ?? null);
+      return this.summary(
+        r,
+        labels.get(r.id) ?? null,
+        openState(s, at).openNow,
+        coverOf.get(r.id) ?? null,
+        external.get(r.id) ?? null,
+      );
     });
   }
 
@@ -299,6 +325,7 @@ export class GuideService {
     adLabel: PromotionAdLabel | null,
     openNow: boolean | null,
     cover: PlacePhotoDto | null,
+    coverPhoto: CoverPhotoDto | null,
   ): PlaceSummaryDto {
     return {
       id: r.id,
@@ -314,7 +341,44 @@ export class GuideService {
       openNow,
       phone: r.phone,
       cover,
+      coverPhoto,
     };
+  }
+
+  /** Обложки у нас (0018) по местам: ссылка на GET /places/{id}/cover с версией (ETag) и подписью автора. */
+  private async coverPhotos(regionId: string, ids: readonly string[]): Promise<Map<string, CoverPhotoDto>> {
+    const rows = await this.repo.coverMeta(ids);
+    return new Map(
+      rows.map((c) => [
+        c.place_id,
+        {
+          url: this.coverUrl(regionId, c.place_id, coverEtag(c.photo_name, c.fetched_at)),
+          width: c.width,
+          height: c.height,
+          source: c.source,
+          authors: c.author_attributions,
+          license: c.license,
+          sourceUrl: c.source_url,
+        },
+      ]),
+    );
+  }
+
+  private coverUrl(regionId: string, placeId: string, etag: string): string {
+    const base = this.googlePhotos?.apiBaseUrl ?? "";
+    return `${base}/places/${placeId}/cover?regionId=${regionId}&v=${etag}`;
+  }
+
+  /** Обложка места (байты) для GET /places/{id}/cover; undefined — места или обложки нет. */
+  async cover(
+    regionId: string,
+    id: string,
+  ): Promise<{ bytes: Buffer; mime: string; etag: string } | undefined> {
+    return this.inRegion(regionId, async () => {
+      if (!(await this.repo.findPublished(id, undefined))) return undefined;
+      const c = await this.repo.coverBytes(id);
+      return c ? { bytes: c.bytes, mime: c.mime, etag: coverEtag(c.photo_name, c.fetched_at) } : undefined;
+    });
   }
 
   private async photo(p: PhotoRow): Promise<PlacePhotoDto> {

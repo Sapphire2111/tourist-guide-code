@@ -60,6 +60,7 @@ export class AppModule {
           | "TELEGRAM_INIT_DATA_MAX_AGE_HOURS"
           | "GOOGLE_MAPS_API_KEY"
           | "GOOGLE_PHOTO_DAILY_LIMIT"
+          | "GOOGLE_PHOTO_MONTHLY_LIMIT"
         >
       >,
   ): DynamicModule {
@@ -110,6 +111,7 @@ export class AppModule {
         GuideModule.forRoot({
           apiKey: env.GOOGLE_MAPS_API_KEY,
           dailyLimit: env.GOOGLE_PHOTO_DAILY_LIMIT,
+          monthlyLimit: env.GOOGLE_PHOTO_MONTHLY_LIMIT,
           apiBaseUrl: env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4300}`,
         }),
         // Заявки гостиницы, «Про заклад», персонал и планировщик (блок 5, ADR-0020).

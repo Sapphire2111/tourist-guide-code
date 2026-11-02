@@ -425,17 +425,31 @@ function PlaceView({ place }: { place: PlaceDetail }) {
 
   const route = place.location ? routeUrl(place.location, base?.point) : null;
   const verified = place.verifiedAt ? new Date(place.verifiedAt).toLocaleDateString("uk-UA") : null;
+  // Своих фото нет, галереи Google нет (предел запросов) — обложка у нас с подписью автора.
+  const googlePhotos = place.googlePhotos ?? [];
+  const coverSlide: Slide[] =
+    !place.photos.length && !googlePhotos.length && place.cover?.credit
+      ? [
+          {
+            url: place.cover.url,
+            largeUrl: place.cover.url,
+            alt: name,
+            authors: place.cover.credit.authors,
+          },
+        ]
+      : [];
   const slides: Slide[] = [
+    ...coverSlide,
     ...place.photos.map((p) => ({
       url: p.url,
       largeUrl: p.url,
       alt: p.alt ? pickLocalized(p.alt, locale) : name,
       authors: [],
     })),
-    ...(place.googlePhotos ?? []).map((p, i) => ({
+    ...googlePhotos.map((p, i) => ({
       url: p.url,
       largeUrl: p.largeUrl,
-      alt: `${name} — ${t("miniapp.place.photoOpen", { n: i + 1, total: place.googlePhotos!.length })}`,
+      alt: `${name} — ${t("miniapp.place.photoOpen", { n: i + 1, total: googlePhotos.length })}`,
       authors: p.authors,
     })),
   ];

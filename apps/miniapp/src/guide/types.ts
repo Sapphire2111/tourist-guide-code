@@ -15,7 +15,17 @@ export type Category = {
   homeSection: HomeSection | null;
 };
 
-export type Photo = { url: string; alt: LocalizedText | null };
+export type Photo = {
+  url: string;
+  alt: LocalizedText | null;
+  /** Обложка из Google/Wikimedia (хранится у нас): авторы и лицензия — подпись обязательна. */
+  credit?: {
+    authors: Author[];
+    license: string | null;
+    sourceUrl: string | null;
+    source: "google" | "wikimedia";
+  };
+};
 
 export type PlaceSummary = {
   id: string;

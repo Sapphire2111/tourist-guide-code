@@ -5620,6 +5620,72 @@
         "tags": ["guide"]
       }
     },
+    "/places/{id}/cover": {
+      "get": {
+        "description": "Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.",
+        "operationId": "getGuidePlaceCover",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          { "name": "v", "required": false, "in": "query", "schema": { "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "image/webp" },
+          "304": { "description": "Не изменилась" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Обложка места (WebP ~400 px, хранится у нас): списки и карточка",
+        "tags": ["guide"]
+      }
+    },
     "/places/{id}/google-photos/{index}": {
       "get": {
         "description": "Без аутентификации. index — номер в googlePhotos карточки, w — 400 (превью) или 1200. Файл не копируется: api получает адрес у Google Place Photos (кэш в памяти и БД) и отвечает редиректом. 404 — места, фото нет или Google недоступен (суточный предел запросов). Rate limit 120/мин.",
@@ -12451,6 +12517,29 @@
         },
         "required": ["mediaAssetId", "alt", "width", "height", "isCover", "variants"]
       },
+      "CoverSource": { "type": "string", "enum": ["google", "wikimedia"] },
+      "CoverAuthorDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "uri": { "type": "string", "nullable": true },
+          "photoUri": { "type": "string", "nullable": true }
+        },
+        "required": ["name", "uri", "photoUri"]
+      },
+      "CoverPhotoDto": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "description": "GET /places/{id}/cover (ETag, длинный кэш)" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "source": { "allOf": [{ "$ref": "#/components/schemas/CoverSource" }] },
+          "authors": { "type": "array", "items": { "$ref": "#/components/schemas/CoverAuthorDto" } },
+          "license": { "type": "string", "nullable": true, "description": "Лицензия (Wikimedia)" },
+          "sourceUrl": { "type": "string", "nullable": true, "description": "Страница файла (Wikimedia)" }
+        },
+        "required": ["url", "width", "height", "source", "authors", "license", "sourceUrl"]
+      },
       "PlaceSummaryDto": {
         "type": "object",
         "properties": {
@@ -12491,6 +12580,12 @@
             "description": "Обложка (или первое готовое фото)",
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
+          },
+          "coverPhoto": {
+            "nullable": true,
+            "description": "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
           }
         },
         "required": [
@@ -12504,7 +12599,8 @@
           "adLabel",
           "openNow",
           "phone",
-          "cover"
+          "cover",
+          "coverPhoto"
         ]
       },
       "PlaceSearchResultDto": {
@@ -12718,6 +12814,12 @@
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PlacePhotoDto" }]
           },
+          "coverPhoto": {
+            "nullable": true,
+            "description": "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
+          },
           "regionId": { "type": "string", "format": "uuid" },
           "category": { "$ref": "#/components/schemas/GuideCategoryRefDto" },
           "description": {
@@ -12831,6 +12933,7 @@
           "openNow",
           "phone",
           "cover",
+          "coverPhoto",
           "regionId",
           "category",
           "description",

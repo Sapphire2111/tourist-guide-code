@@ -810,6 +810,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/places/{id}/cover": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Обложка места (WebP ~400 px, хранится у нас): списки и карточка
+     * @description Без аутентификации. ETag и Cache-Control public на неделю; If-None-Match с тем же ETag — 304. Источник и автор — в coverPhoto выдачи (подпись обязательна). 404 — места или обложки нет.
+     */
+    get: operations["getGuidePlaceCover"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/places/{id}/google-photos/{index}": {
     parameters: {
       query?: never;
@@ -2755,6 +2775,25 @@ export interface components {
       /** @description Варианты по ширине; выбирать по размеру экрана */
       variants: components["schemas"]["MediaLinkDto"][];
     };
+    /** @enum {string} */
+    CoverSource: "google" | "wikimedia";
+    CoverAuthorDto: {
+      name: string;
+      uri: string | null;
+      photoUri: string | null;
+    };
+    CoverPhotoDto: {
+      /** @description GET /places/{id}/cover (ETag, длинный кэш) */
+      url: string;
+      width: number;
+      height: number;
+      source: components["schemas"]["CoverSource"];
+      authors: components["schemas"]["CoverAuthorDto"][];
+      /** @description Лицензия (Wikimedia) */
+      license: string | null;
+      /** @description Страница файла (Wikimedia) */
+      sourceUrl: string | null;
+    };
     PlaceSummaryDto: {
       /** Format: uuid */
       id: string;
@@ -2776,6 +2815,8 @@ export interface components {
       phone: string | null;
       /** @description Обложка (или первое готовое фото) */
       cover: components["schemas"]["PlacePhotoDto"] | null;
+      /** @description Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover */
+      coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
     };
     PlaceSearchResultDto: {
       /** @description Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет */
@@ -2928,6 +2969,8 @@ export interface components {
       phone: string | null;
       /** @description Обложка (или первое готовое фото) */
       cover: components["schemas"]["PlacePhotoDto"] | null;
+      /** @description Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover */
+      coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
       /** Format: uuid */
       regionId: string;
       category: components["schemas"]["GuideCategoryRefDto"];
@@ -9976,6 +10019,84 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PlaceSearchResultDto"];
         };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getGuidePlaceCover: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+        v?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description image/webp */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Не изменилась */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Ошибка */
       400: {

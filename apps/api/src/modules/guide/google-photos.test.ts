@@ -3,6 +3,7 @@
 // Картка місця с обогащением и без («нет данных — пусто»).
 import { describe, expect, it, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
+import { usageDb } from "../../../test/support/usage-db.js";
 import type { EmergencyContactsRepository } from "../emergency-contacts/index.js";
 import type { MediaService } from "../media/index.js";
 import type { RegionsRepository } from "../regions/index.js";
@@ -15,33 +16,26 @@ const URI = "https://lh3.googleusercontent.com/places/abc=w400";
 
 const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
 
-/** usage — счётчик дня в «БД» (google_api_usage): общий между экземплярами сервиса, как после рестарта api. */
 function photos(
   opts: {
     apiKey?: string;
     dailyLimit?: number;
+    monthlyLimit?: number;
     dbRow?: { photo_uri: string; fetched_at: Date };
-    usage?: { count: number };
+    usage?: Map<string, number>;
     usageFails?: boolean;
   } = {},
 ) {
-  const usage = opts.usage ?? { count: 0 };
-  const limit = opts.dailyLimit ?? 300;
-  const { db, queries } = recordingDb({}, (q) => {
-    if (q.sql.startsWith('insert into "google_api_usage"')) {
-      if (opts.usageFails) throw new Error("db down");
-      // ON CONFLICT … WHERE count < limit RETURNING count: исчерпан — строки нет.
-      expect(q.sql).toContain('"google_api_usage"."count" < $');
-      if (usage.count >= limit) return [];
-      usage.count++;
-      return [{ count: usage.count }];
-    }
-    return q.sql.startsWith("select") && opts.dbRow ? [opts.dbRow] : [];
+  const usage = opts.usage ?? new Map<string, number>();
+  const { db, queries } = usageDb(usage, {
+    fails: opts.usageFails,
+    extra: (q) => (q.sql.startsWith("select") && opts.dbRow ? [opts.dbRow] : []),
   });
   const fetchMock = vi.fn(() => Promise.resolve(ok({ photoUri: URI, name: NAME })));
   const svc = new GooglePhotosService(db, {
     apiKey: "apiKey" in opts ? opts.apiKey : "secret-key",
     dailyLimit: opts.dailyLimit,
+    monthlyLimit: opts.monthlyLimit,
     apiBaseUrl: "https://api.example/",
     fetch: fetchMock as typeof fetch,
   });
@@ -91,7 +85,7 @@ describe("GooglePhotosService", () => {
   });
 
   it("суточный предел — счётчик в БД: переживает рестарт api (новый экземпляр сервиса)", async () => {
-    const usage = { count: 0 };
+    const usage = new Map<string, number>();
     const first = photos({ dailyLimit: 1, usage });
     expect(await first.svc.uri(NAME, 400)).toBe(URI);
     expect(await first.svc.uri(NAME, 1200)).toBeNull();
@@ -99,7 +93,23 @@ describe("GooglePhotosService", () => {
     expect(await restarted.svc.uri(NAME, 1200)).toBeNull();
     expect(first.fetchMock).toHaveBeenCalledTimes(1);
     expect(restarted.fetchMock).not.toHaveBeenCalled();
-    expect(usage.count).toBe(1);
+    expect([...usage.entries()].sort()).toEqual([
+      [`${new Date().toISOString().slice(0, 7)}-01|place_photos_month`, 1],
+      [`${new Date().toISOString().slice(0, 10)}|place_photos`, 1],
+    ]);
+    expect(await restarted.svc.exhausted()).toBe(true);
+  });
+
+  it("месячный предел (общий с CLI): исчерпан — без запросов, и сутки не тратятся", async () => {
+    const usage = new Map<string, number>([
+      [`${new Date().toISOString().slice(0, 7)}-01|place_photos_month`, 5],
+    ]);
+    const p = photos({ monthlyLimit: 5, usage });
+    expect(await p.svc.uri(NAME, 400)).toBeNull();
+    expect(p.fetchMock).not.toHaveBeenCalled();
+    expect(await p.svc.exhausted()).toBe(true);
+    const fresh = photos({ monthlyLimit: 5 });
+    expect(await fresh.svc.exhausted()).toBe(false);
   });
 
   it("ошибка Google по фото запоминается на 6 ч: повтор в окне — без запроса, после — снова", async () => {
@@ -152,6 +162,7 @@ function guide(enrichment: unknown, photosSvc?: GooglePhotosService) {
     schedules: () => Promise.resolve(new Map()),
     adLabels: () => Promise.resolve(new Map()),
     isFavorite: () => Promise.resolve(false),
+    coverMeta: () => Promise.resolve([]),
     enrichment: () => Promise.resolve(enrichment as never),
   };
   return new GuideService(
@@ -234,6 +245,35 @@ describe("GuideService.place — богатая карточка", () => {
     const svc = guide(enrichment, photos().svc);
     expect(await svc.googlePhoto(REGION, PLACE, 0, 400)).toBe(URI);
     expect(await svc.googlePhoto(REGION, PLACE, 3, 400)).toBeUndefined();
+  });
+});
+
+describe("обложка у нас в выдаче", () => {
+  it("coverPhoto: ссылка на /cover с версией, подпись автора; нет обложки — null", async () => {
+    const svc = guide(undefined, photos().svc);
+    (svc as unknown as { repo: Partial<GuideRepository> }).repo.coverMeta = () =>
+      Promise.resolve([
+        {
+          place_id: PLACE,
+          width: 400,
+          height: 300,
+          author_attributions: [{ name: "Олена", uri: null, photoUri: null }],
+          license: null,
+          source_url: null,
+          source: "google" as const,
+          photo_name: NAME,
+          fetched_at: new Date("2026-11-03T00:00:00Z"),
+        },
+      ]);
+    const card = await svc.place(REGION, PLACE, {});
+    expect(card?.coverPhoto).toMatchObject({
+      url: expect.stringMatching(
+        /^https:\/\/api\.example\/places\/.+\/cover\?regionId=.+&v=[0-9a-f]{16}$/,
+      ) as unknown,
+      source: "google",
+      authors: [{ name: "Олена" }],
+    });
+    expect((await guide(undefined, photos().svc).place(REGION, PLACE, {}))?.coverPhoto).toBeNull();
   });
 });
 

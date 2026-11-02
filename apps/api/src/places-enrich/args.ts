@@ -31,6 +31,14 @@ export type EnrichArgs = {
   /** Не обогащать эти категории. */
   skipCategories: Set<string>;
   report: string | undefined;
+  /** Бесплатный режим: тип, рейтинг, описание — из кэша Text Search импорта; фото — запросом «id,photos». */
+  fromImportCache: boolean;
+  /** Платный Place Details (Atmosphere) вовсе не запрашивать. */
+  details: boolean;
+  /** Месячный предел платных запросов на SKU (google_api_usage; бесплатный объём Google — 1000). */
+  monthlyLimit: number;
+  /** Скачать обложки (одна на место) в place_cover_photos. */
+  covers: boolean;
 };
 
 export class EnrichArgsError extends Error {
@@ -66,6 +74,10 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
     categories: new Set(),
     skipCategories: new Set(),
     report: undefined,
+    fromImportCache: false,
+    details: true,
+    monthlyLimit: 1000,
+    covers: false,
   };
   let maxAiSet = false;
   for (let i = 0; i < argv.length; i++) {
@@ -94,6 +106,18 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
         break;
       case "--no-wiki":
         args.wiki = false;
+        break;
+      case "--from-import-cache":
+        args.fromImportCache = true;
+        break;
+      case "--no-details":
+        args.details = false;
+        break;
+      case "--covers":
+        args.covers = true;
+        break;
+      case "--monthly-limit":
+        args.monthlyLimit = int(0);
         break;
       case "--ai":
         args.ai = true;

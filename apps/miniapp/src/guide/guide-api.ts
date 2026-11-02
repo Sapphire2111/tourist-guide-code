@@ -25,6 +25,23 @@ export function photoOf(dto: PhotoDto | null): Photo | null {
   return { url: v.url, alt: dto.alt };
 }
 
+/** Обложка у нас (Google/Wikimedia) — с подписью автора; api без поля — null. */
+export function coverPhotoOf(dto: SummaryDto["coverPhoto"] | undefined): Photo | null {
+  if (!dto) return null;
+  const url = https(dto.url) ?? (dto.url.startsWith("/") ? dto.url : null);
+  if (!url) return null;
+  return {
+    url,
+    alt: null,
+    credit: {
+      authors: dto.authors.map(authorOf),
+      license: dto.license,
+      sourceUrl: https(dto.sourceUrl),
+      source: dto.source,
+    },
+  };
+}
+
 export function summaryOf(dto: SummaryDto): PlaceSummary {
   return {
     id: dto.id,
@@ -33,7 +50,7 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     address: dto.address ?? null,
     location: dto.location ? { lat: dto.location.lat, lng: dto.location.lon } : null,
     distanceMeters: dto.distanceMeters,
-    cover: photoOf(dto.cover),
+    cover: photoOf(dto.cover) ?? coverPhotoOf((dto as Partial<SummaryDto>).coverPhoto),
     openNow: dto.openNow,
     recommended: dto.recommended,
     adLabel: dto.adLabel,

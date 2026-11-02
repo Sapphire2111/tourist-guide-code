@@ -88,6 +88,11 @@ export const apiEnvSchema = z
       blankToUndefined,
       z.coerce.number().int().min(0).max(100_000).default(300),
     ),
+    // И в месяц (общий счётчик с CLI places:enrich --covers): по умолчанию бесплатный объём Google — 1000.
+    GOOGLE_PHOTO_MONTHLY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(1_000_000).default(1000),
+    ),
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),
   })

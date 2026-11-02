@@ -66,6 +66,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "offers",
       "organizations",
       "place_badge_events",
+      "place_cover_photos",
       "place_enrichments",
       "place_media",
       "place_schedule_exceptions",

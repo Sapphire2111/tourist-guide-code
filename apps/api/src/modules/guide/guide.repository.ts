@@ -239,6 +239,35 @@ export class GuideRepository {
   }
 
   /** Обложка (или первое готовое фото) каждого места. */
+  /** Обложки у нас (0018) для выдачи: без байтов — подпись, размеры, версия. */
+  coverMeta(placeIds: readonly string[]) {
+    if (placeIds.length === 0) return Promise.resolve([]);
+    return this.q
+      .selectFrom("place_cover_photos")
+      .select([
+        "place_id",
+        "width",
+        "height",
+        "author_attributions",
+        "license",
+        "source_url",
+        "source",
+        "photo_name",
+        "fetched_at",
+      ])
+      .where("place_id", "in", placeIds)
+      .execute();
+  }
+
+  /** Байты обложки (GET /places/{id}/cover). */
+  coverBytes(placeId: string) {
+    return this.q
+      .selectFrom("place_cover_photos")
+      .select(["bytes", "mime", "photo_name", "fetched_at"])
+      .where("place_id", "=", placeId)
+      .executeTakeFirst();
+  }
+
   covers(placeIds: readonly string[]): Promise<PhotoRow[]> {
     if (placeIds.length === 0) return Promise.resolve([]);
     return (
