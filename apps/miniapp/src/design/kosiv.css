@@ -843,3 +843,49 @@ html[data-season] :focus-visible {
   min-height: 1.4em;
   margin: 0;
 }
+
+/* Значок «Ви тут» на карте: круг в цветах сезона с пульсирующим ореолом; погрешность: полупрозрачный круг. */
+.kosiv-me {
+  position: relative;
+  background: transparent;
+  border: 0;
+}
+.kosiv-me-dot {
+  position: absolute;
+  inset: 5px;
+  border-radius: 9999px;
+  background: var(--app-accent);
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+.kosiv-me-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--app-accent);
+  opacity: 0.35;
+  animation: kosiv-me-pulse 2s ease-out infinite;
+}
+@keyframes kosiv-me-pulse {
+  from {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+path.kosiv-me-accuracy {
+  stroke: var(--app-accent);
+  stroke-width: 1px;
+  fill: var(--app-accent);
+  fill-opacity: 0.12;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kosiv-me-pulse {
+    animation: none;
+    transform: scale(1.2);
+    opacity: 0.25;
+  }
+}

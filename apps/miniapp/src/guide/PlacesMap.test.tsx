@@ -4,7 +4,16 @@ import { act, cleanup, render } from "@testing-library/react";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
 
-const calls = vi.hoisted(() => ({ map: 0, remove: 0, clear: 0, fit: 0, markers: 0 }));
+const calls = vi.hoisted(() => ({
+  map: 0,
+  remove: 0,
+  clear: 0,
+  fit: 0,
+  markers: 0,
+  me: 0,
+  meCircles: 0,
+  layers: 0,
+}));
 
 vi.mock("leaflet", () => {
   const chain = () => {
@@ -24,16 +33,26 @@ vi.mock("leaflet", () => {
     },
     control: { zoom: () => chain() },
     tileLayer: () => chain(),
+    // Первый слой — маркеры мест (его очистки считаем), второй — «Ви тут».
     layerGroup: () => {
       const o = chain();
-      o.clearLayers = () => calls.clear++;
+      if (++calls.layers % 2 === 1) o.clearLayers = () => calls.clear++;
+      else o.clearLayers = () => undefined;
       return o;
     },
     circleMarker: () => {
       calls.markers++;
       return chain();
     },
-    circle: () => chain(),
+    circle: (_c: unknown, o: { className?: string }) => {
+      if (o?.className === "kosiv-me-accuracy") calls.meCircles++;
+      return chain();
+    },
+    divIcon: (o: unknown) => o,
+    marker: () => {
+      calls.me++;
+      return chain();
+    },
     latLngBounds: (b: unknown) => b,
   };
   return { default: L };
@@ -88,5 +107,37 @@ describe("PlacesMap", () => {
     expect(calls.fit).toBe(2);
     // Легенда без справочника: группа «Інше».
     expect(view.getByTestId("map-legend").textContent).toContain("Інше");
+    // Без позиции значок «Ви тут» не создаётся.
+    expect(calls.me).toBe(0);
+  });
+
+  it("позиция устройства: значок и круг точности: только слой «Ви тут», карта не пересоздаётся", async () => {
+    Object.assign(calls, { map: 0, remove: 0, clear: 0, fit: 0, markers: 0, me: 0, meCircles: 0, layers: 0 });
+    const e = env(vi.fn(async () => Promise.reject(new Error("net"))));
+    const places = [place("a")];
+    const view = render(
+      <GuideProvider value={e}>
+        <PlacesMap places={places} center={null} me={null} />
+      </GuideProvider>,
+    );
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(calls.me).toBe(0);
+    view.rerender(
+      <GuideProvider value={e}>
+        <PlacesMap places={places} center={null} me={{ lat: 48.4, lng: 24.5, accuracy: 30 }} />
+      </GuideProvider>,
+    );
+    expect(calls.me).toBe(1);
+    expect(calls.meCircles).toBe(1);
+    // Новая позиция: слой обновляется, карта и маркеры мест остаются.
+    view.rerender(
+      <GuideProvider value={e}>
+        <PlacesMap places={places} center={null} me={{ lat: 48.41, lng: 24.5 }} />
+      </GuideProvider>,
+    );
+    expect(calls.me).toBe(2);
+    expect(calls.map).toBe(1);
+    expect(calls.fit).toBe(0);
+    expect(calls.markers).toBe(1);
   });
 });

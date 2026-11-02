@@ -52,7 +52,11 @@ export type TelegramLocationManager = {
   isInited?: boolean;
   isLocationAvailable?: boolean;
   init?(cb?: () => void): void;
-  getLocation?(cb: (location: { latitude: number; longitude: number } | null) => void): void;
+  getLocation?(
+    cb: (
+      location: { latitude: number; longitude: number; horizontal_accuracy?: number | null } | null,
+    ) => void,
+  ): void;
   /** Настройки доступа к геолокации бота в Telegram (после отказа). */
   openSettings?(): void;
 };

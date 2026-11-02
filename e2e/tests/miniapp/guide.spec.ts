@@ -219,6 +219,8 @@ test.describe("QR отеля demoHotel01", () => {
     const state = apiMockState.get(page)!;
     await expect.poll(() => state.searches.at(-1)?.lat).toBe("48.4535");
     await expect(page.getByTestId("place-item").first()).toContainText("Піцерія «Реклама»");
+    // Значок «Ви тут» на карте.
+    await expect(page.getByTestId("places-map").getByRole("img", { name: "Ви тут" })).toBeAttached();
   });
 
   test("«Халепа?»: 112 и контакты региона, звонок в одно нажатие; a11y", async ({ page }) => {
