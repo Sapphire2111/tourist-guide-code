@@ -181,7 +181,6 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   landmark: "sights",
   scenic_spot: "nature",
   // Дополнения по первой выгрузке (02.11.2026): типы, которые встретились у мест пилота.
-  finance: "atm",
   hookah_bar: "cafes",
   pizza_delivery: "fast-food",
   playground: "entertainment",
