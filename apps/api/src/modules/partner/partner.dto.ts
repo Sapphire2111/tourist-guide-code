@@ -296,7 +296,8 @@ export class PartnerOnboardingResultDto {
 
 /**
  * Правка карточки (P06): поля как в админке, без verifiedAt. ORG_MANAGER не меняет поля личности места (categoryId,
- * name, address, location) — 403 details.reason = identity_fields_forbidden.
+ * localityId, name, address, location) — 403 identity_fields_forbidden; у опубликованного места их не меняет никто —
+ * 409 errors.partner.identityChangeRequiresModeration.
  */
 export class UpdatePartnerPlaceDto extends OmitType(UpdatePlaceDto, ["verifiedAt"] as const) {}
 
@@ -534,6 +535,8 @@ export class ModerationCaseDto {
   @ApiProperty({ type: String, format: "uuid" }) organizationId!: string;
   @ApiProperty({ type: String }) organizationName!: string;
   @ApiProperty({ type: String, nullable: true, example: "hotel" }) templateCode!: string | null;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true, description: "Название шаблона" })
+  templateName!: LocalizedTextDto | null;
   @ApiProperty({ enum: MODERATION_CASE_STATUSES, enumName: "ModerationCaseStatus" })
   status!: ModerationCaseStatus;
   @ApiProperty({ enum: MODERATION_DECISIONS, enumName: "ModerationDecision", nullable: true })
@@ -547,11 +550,37 @@ export class ModerationCaseDto {
   @ApiProperty({ type: String, format: "date-time" }) submittedAt!: string;
   @ApiProperty({ type: String, format: "uuid", nullable: true }) decidedBy!: string | null;
   @ApiProperty({ type: String, format: "date-time", nullable: true }) decidedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Кто решил: имя или логин админки" })
+  decidedByName!: string | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Заявка организации, где у модератора есть роль (BR-12): решить нельзя — 403 own_organization",
+  })
+  ownOrganization!: boolean;
 }
 
 export class ModerationCaseListDto {
   @ApiProperty({ type: [ModerationCaseDto], description: "Старые сверху (возраст заявки)" })
   items!: ModerationCaseDto[];
+}
+
+export class PossibleDuplicateDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: ShortTextDto }) name!: ShortTextDto;
+  @ApiProperty({ enum: PLACE_STATUSES, enumName: "PlaceStatus" }) status!: PlaceStatus;
+  @ApiProperty({
+    type: String,
+    enum: ["manual", "google"],
+    description: "google — место из импорта Google Places",
+  })
+  source!: "manual" | "google";
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: "Расстояние до места заявки, м (null — нет точки)",
+  })
+  distanceMeters!: number | null;
 }
 
 export class ModerationOwnerDto {
@@ -579,6 +608,18 @@ export class ModerationCaseDetailDto extends ModerationCaseDto {
     description: "Что мешает публикации сейчас (PublishProblem каталога) — пусто: можно одобрять",
   })
   publishProblems!: string[];
+  @ApiProperty({
+    type: [PossibleDuplicateDto],
+    description:
+      "Возможные дубли: места региона в радиусе ~150 м или с похожим названием (до 5; источник google — импорт)",
+  })
+  possibleDuplicates!: PossibleDuplicateDto[];
+  @ApiProperty({
+    type: "object",
+    additionalProperties: { type: "string" },
+    description: "Превью фото снимка: mediaAssetId → ссылка w320 (строится при чтении)",
+  })
+  snapshotMediaPreview!: Record<string, string>;
 }
 
 export class ApproveModerationDto {

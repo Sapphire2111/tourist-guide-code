@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAssignRole } from "../role-assignments/index.js";
+import { organizationName } from "./partner.service.js";
 import {
   abilitiesOf,
   DECISION_PLACE_STATUS,
@@ -94,10 +95,9 @@ describe("правила кабинета партнёра (блок 6)", () => 
     });
     expect(Object.values(abilitiesOf("ORG_OWNER")).every(Boolean)).toBe(true);
     expect(higherRole("ORG_STAFF", "ORG_OWNER")).toBe("ORG_OWNER");
-    expect(touchedIdentityFields({ name: { uk: "x" }, phone: "+1", location: null })).toEqual([
-      "name",
-      "location",
-    ]);
+    expect(
+      touchedIdentityFields({ name: { uk: "x" }, phone: "+1", location: null, localityId: null }),
+    ).toEqual(["localityId", "name", "location"]);
   });
 
   it("назначение ролей: владелец — только менеджера и кассира; менеджер и кассир — никого", () => {
@@ -122,6 +122,12 @@ describe("правила кабинета партнёра (блок 6)", () => 
     expect(normalizeInviteToken(`inv_${token}`, "inv_")).toBe(token);
     expect(normalizeInviteToken("short", "inv_")).toBeUndefined();
     expect(normalizeInviteToken(`${token}!`, "inv_")).toBeUndefined();
+  });
+
+  it("название организации: до 200 символов по кодпоинтам, пробелы по краям убираются", () => {
+    expect(organizationName("  Хата  ")).toBe("Хата");
+    expect(organizationName("Ї".repeat(250))).toBe("Ї".repeat(200));
+    expect(Array.from(organizationName("😀".repeat(201))).length).toBe(200);
   });
 
   it("период акции: конец позже начала, края необязательны", () => {

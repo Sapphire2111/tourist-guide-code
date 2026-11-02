@@ -98,6 +98,14 @@ export const PARTNER_AUDIT = {
 } as const;
 
 export const MODERATION_CASE_ENTITY = "moderation_case";
+/** Версия условий для партнёров, с которыми соглашаются при отправке на модерацию (acceptTerms). */
+export const PARTNER_TERMS_VERSION = "2026-11-02";
+/** organizations.name: 1–200 символов (CHECK 0017); название места может быть до 300 — обрезаем по кодпоинтам. */
+export const ORGANIZATION_NAME_MAX = 200;
+
+export function organizationName(raw: string): string {
+  return Array.from(raw.trim()).slice(0, ORGANIZATION_NAME_MAX).join("").trim();
+}
 export const NOTIFICATION_TEMPLATE_CASE_OPENED = "moderation.case_opened";
 
 /** Доступ к месту партнёра: организация и регион — из иерархии на сервере; назначение — в аудит. */
@@ -195,7 +203,7 @@ export class PartnerService {
         });
       const name = { ...input.name, uk: input.name.uk.trim() };
       const org = await this.repo.createOrganization({
-        name: (input.organizationName ?? name.uk).trim(),
+        name: organizationName(input.organizationName ?? name.uk),
         created_by: userId,
       });
       const place = await this.catalogRepo.createPlace({
@@ -313,6 +321,13 @@ export class PartnerService {
       });
     return this.inPlace(access, async (place, template) => {
       if (!isPartnerEditable(place.status)) throw notEditable(place.status);
+      // Опубликованное место: поля личности — только через админа региона (без PlaceRevision, §1.6), иначе
+      // модерацию можно было бы обойти правкой после одобрения.
+      if (place.status === "published" && identity.length > 0)
+        throw new ApiError("CONFLICT", {
+          messageKey: "errors.partner.identityChangeRequiresModeration",
+          details: { reason: "identity_change_requires_moderation", identityFields: identity },
+        });
       if (input.categoryId !== undefined) await this.checkTemplateCategory(template, input.categoryId);
       await this.catalog
         .updatePlace(this.meta(meta, access), placeId, placeInput({ ...input, verifiedAt: undefined }))
@@ -422,6 +437,7 @@ export class PartnerService {
         messageKey: "errors.partner.termsRequired",
         details: { reason: "terms_required" },
       });
+    const acceptedAt = this.now();
     const { dto, notify } = await this.inPlace(access, async (place) => {
       if (!isSubmittable(place.status)) throw notEditable(place.status);
       const before = await this.placeDto(access);
@@ -442,7 +458,10 @@ export class PartnerService {
           organization_id: access.organizationId,
           submitted_by: userId,
           partner_note: input.note?.trim() || null,
-          place_snapshot: placeSnapshot(before),
+          place_snapshot: {
+            ...placeSnapshot(before),
+            terms: { version: PARTNER_TERMS_VERSION, acceptedAt: acceptedAt.toISOString() },
+          },
         })
         .catch((e: unknown) => {
           if (isUniqueViolation(e, "moderation_cases_open_key")) throw notEditable("pending_moderation");
@@ -454,7 +473,12 @@ export class PartnerService {
         entityType: "place",
         entityId: placeId,
         oldValues: { status: place.status },
-        newValues: { status: "pending_moderation", caseId: created.id },
+        newValues: {
+          status: "pending_moderation",
+          caseId: created.id,
+          termsVersion: PARTNER_TERMS_VERSION,
+          termsAcceptedAt: acceptedAt.toISOString(),
+        },
         regionId: access.regionId,
       });
       const moderators = (await this.repo.regionModerators(access.regionId)).filter((u) => u !== userId);
@@ -1022,7 +1046,6 @@ function placeSnapshot(p: PartnerPlaceDto): JsonObject {
     tagIds: p.tagIds,
     schedule: { weekly: p.schedule.weekly, exceptions: p.schedule.exceptions } as unknown as JsonObject,
     media: p.media.map((m) => ({ mediaAssetId: m.mediaAssetId, isCover: m.isCover, alt: m.alt })),
-    mediaPreview: p.mediaPreview,
   };
 }
 

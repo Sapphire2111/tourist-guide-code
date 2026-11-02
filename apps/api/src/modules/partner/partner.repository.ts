@@ -1,8 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import { sql } from "kysely";
+import { sql, type Expression, type ExpressionBuilder } from "kysely";
 import {
   currentDb,
   InjectDb,
+  type Database,
   type Db,
   type ModerationCase,
   type ModerationCaseStatus,
@@ -11,7 +12,17 @@ import {
   type Organization,
   type PartnerTemplate,
   type StaffInvite,
+  distanceMeters,
+  point,
+  withinMeters,
+  type Geometry,
+  type LonLat,
 } from "../../db/index.js";
+import { likePattern } from "../catalog/index.js";
+
+/** Колонка точки места как geometry (для PostGIS-хелперов db/geo). */
+const geomOf = (eb: ExpressionBuilder<Database & { p: Database["places"] }, "p">) =>
+  eb.ref("p.location") as Expression<Geometry>;
 
 /** Открытые заявки гостей (как экран персонала, блок 5). */
 const OPEN_REQUEST_STATUSES = ["new", "accepted", "in_progress"] as const;
@@ -33,7 +44,18 @@ export type ModerationCaseRow = ModerationCase & {
   place_status: string;
   organization_name: string;
   template_code: string | null;
+  template_name: { uk: string; en?: string } | null;
   submitted_by_name: string | null;
+  decided_by_name: string | null;
+};
+
+/** Возможный дубль места (AD02): рядом по точке или похожее название. */
+export type DuplicateRow = {
+  id: string;
+  name_i18n: { uk: string; en?: string };
+  status: string;
+  source: string;
+  distance: number | null;
 };
 
 /**
@@ -270,14 +292,65 @@ export class PartnerRepository {
       )
       .leftJoin("partner_templates as t", "t.id", "p.partner_template_id")
       .leftJoin("users as u", "u.id", "c.submitted_by")
+      .leftJoin("users as du", "du.id", "c.decided_by")
+      .leftJoin("admin_credentials as ac", "ac.user_id", "c.decided_by")
       .selectAll("c")
       .select([
         "p.name_i18n as place_name",
         "p.status as place_status",
         "o.name as organization_name",
         "t.code as template_code",
+        "t.name_i18n as template_name",
         "u.display_name as submitted_by_name",
+        (eb) => eb.fn.coalesce("du.display_name", "ac.login").as("decided_by_name"),
       ]);
+  }
+
+  /**
+   * Возможные дубли места (D-47, места Google): другие места региона (кроме архива) в радиусе radiusMeters от точки
+   * или с похожим названием (uk, ILIKE в обе стороны; pg_trgm не подключён). Ближние — первыми.
+   */
+  possibleDuplicates(
+    placeId: string,
+    name: string,
+    location: LonLat | null,
+    radiusMeters: number,
+    limit: number,
+  ): Promise<DuplicateRow[]> {
+    const nameUk = sql<string>`p.name_i18n->>'uk'`;
+    const target = location ? point(location) : null;
+    // Экранирование % _ \ для ILIKE (chr(92) — обратная косая черта).
+    const escaped = sql<string>`replace(replace(replace(${nameUk}, chr(92), chr(92) || chr(92)), '%', chr(92) || '%'), '_', chr(92) || '_')`;
+    return this.q
+      .selectFrom("places as p")
+      .select([
+        "p.id",
+        "p.name_i18n",
+        "p.status",
+        "p.source",
+        (eb) =>
+          (target
+            ? sql<
+                number | null
+              >`CASE WHEN p.location IS NULL THEN NULL ELSE ${distanceMeters(geomOf(eb), target)} END`
+            : sql<number | null>`NULL::float8`
+          ).as("distance"),
+      ])
+      .where("p.id", "<>", placeId)
+      .where("p.status", "<>", "archived")
+      .where((eb) =>
+        eb.or([
+          ...(target
+            ? [eb.and([eb("p.location", "is not", null), withinMeters(geomOf(eb), target, radiusMeters)])]
+            : []),
+          sql<boolean>`${nameUk} ILIKE ${likePattern(name)}`,
+          sql<boolean>`${name} ILIKE ('%' || ${escaped} || '%')`,
+        ]),
+      )
+      .orderBy(sql`distance NULLS LAST`)
+      .orderBy("p.id")
+      .limit(limit)
+      .execute() as Promise<DuplicateRow[]>;
   }
 
   // --- сотрудники ---

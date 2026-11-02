@@ -595,6 +595,8 @@ export const uk = {
   "errors.partner.placeNotEditable":
     "Зараз заклад не можна змінити: він на модерації, призупинений або в архіві.",
   "errors.partner.requiredFieldsMissing": "Заповніть обов’язкові поля шаблону перед відправкою на модерацію.",
+  "errors.partner.identityChangeRequiresModeration":
+    "Назву, категорію, адресу чи точку на мапі опублікованого закладу можна змінити через адміністратора регіону.",
   "errors.partner.termsRequired": "Потрібна згода з умовами для партнерів.",
   "errors.partner.offerArchived": "Акцію вже перенесено в архів — її не можна змінити.",
   "errors.partner.offerPeriod": "Кінець акції має бути пізніше за початок.",
@@ -603,6 +605,7 @@ export const uk = {
   "errors.staffInvite.revoked": "Запрошення відкликано. Попросіть нове.",
   "errors.staffInvite.alreadyMember": "Ви вже працюєте в цьому закладі.",
   "errors.moderation.alreadyDecided": "Рішення за заявкою вже ухвалено.",
+  "errors.place.moderationRequired": "Заклад партнера публікується лише через модерацію.",
   "errors.moderation.notPending": "Заклад уже не очікує модерації — оновіть чергу.",
   "errors.scenario.notPublishable": "Сценарій не можна опублікувати: немає жодного опублікованого місця.",
   "errors.catalog.codeTaken": "Такий код уже є в регіоні.",

@@ -30,6 +30,7 @@ export {
 } from "./catalog.service.js";
 export {
   canTransition,
+  likePattern,
   PLACE_TRANSITIONS,
   PUBLISH_PROBLEMS,
   publishProblems,

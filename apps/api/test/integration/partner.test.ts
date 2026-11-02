@@ -5,7 +5,7 @@
 // сотрудников и акции, менеджер — без полей личности места и без сотрудников (не удаляет владельца), смена роли —
 // AuditLog, акции, изоляция регионов. Без Docker — пропуск (CI).
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createDatabase, type Db } from "../../src/db/index.js";
+import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../../src/modules/audit/index.js";
 import { CatalogRepository, CatalogService } from "../../src/modules/catalog/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
@@ -15,6 +15,7 @@ import type { MediaService } from "../../src/modules/media/index.js";
 import {
   ModerationService,
   PartnerRepository,
+  PARTNER_TERMS_VERSION,
   PartnerService,
   type PartnerAuditMeta,
 } from "../../src/modules/partner/index.js";
@@ -69,6 +70,9 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
   let partner: PartnerService;
   let moderation: ModerationService;
   let guide: GuideService;
+  let catalogService: CatalogService;
+  /** Опубликованное место демо-каталога, рядом с которым ставим точку заявки (проверка дублей). */
+  let neighbour: { id: string; lon: number; lat: number };
   const sent: { chatId: string; text: string }[] = [];
   const sql = (text: string, params: unknown[] = []) => tdb!.client.query(text, params);
 
@@ -143,7 +147,8 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
       media,
       { botUsername: "tourist_guide_bot" },
     );
-    moderation = new ModerationService(appDb, repo, catalogRepo, catalog, rbac, audit, notifications);
+    moderation = new ModerationService(appDb, repo, catalogRepo, catalog, rbac, audit, notifications, media);
+    catalogService = catalog;
     guide = new GuideService(
       appDb,
       new GuideRepository(appDb),
@@ -241,13 +246,19 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
       status: 422,
       reason: "required_fields_missing",
     });
+    const near = await sql(
+      `SELECT id, ST_X(location) AS lon, ST_Y(location) AS lat FROM places
+       WHERE region_id = $1 AND status = 'published' AND location IS NOT NULL ORDER BY id LIMIT 1`,
+      [base.regions.a],
+    );
+    neighbour = { id: near.rows[0].id, lon: Number(near.rows[0].lon), lat: Number(near.rows[0].lat) };
     await partner.updatePlace(
       OWNER,
       placeId,
       {
         description: { uk: "Садиба серед смерек" },
         address: { uk: "вул. Лісова, 1" },
-        location: { lon: 24.56, lat: 48.45 },
+        location: { lon: neighbour.lon + 0.0005, lat: neighbour.lat },
         phone: "+380501112233",
       },
       meta(OWNER),
@@ -279,6 +290,15 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
     ).toMatchObject({ status: 409 });
     await invisibleToTourist();
     await expect.poll(() => sent.some((s) => s.text.includes("Нова заявка на модерацію"))).toBe(true);
+    // Согласие с условиями — версия и время в AuditLog и в снимке заявки; подписанных ссылок в снимке нет.
+    const audit = await sql(
+      `SELECT new_values FROM audit_logs WHERE action = 'place.submit' AND entity_id = $1`,
+      [placeId],
+    );
+    expect(audit.rows[0].new_values).toMatchObject({ termsVersion: PARTNER_TERMS_VERSION });
+    const snap = await sql(`SELECT place_snapshot FROM moderation_cases WHERE place_id = $1`, [placeId]);
+    expect(snap.rows[0].place_snapshot.terms).toMatchObject({ version: PARTNER_TERMS_VERSION });
+    expect(snap.rows[0].place_snapshot).not.toHaveProperty("mediaPreview");
   });
 
   it("приглашения: одноразовые, с TTL; повтор и истёкшее — 409; принятие — AuditLog", async () => {
@@ -377,6 +397,13 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
     expect(detail.partnerNote).toBe("Дзвоніть");
     expect(detail.owners.map((o) => o.userId)).toEqual([OWNER]);
     expect(detail.publishProblems).toEqual([]);
+    expect(detail).toMatchObject({ templateName: { uk: "Готель / садиба" }, ownOrganization: false });
+    const dup = detail.possibleDuplicates.find((d) => d.id === neighbour.id);
+    expect(dup).toBeDefined();
+    expect(dup!.distanceMeters).toBeLessThan(150);
+    expect(detail.possibleDuplicates.length).toBeLessThanOrEqual(5);
+    expect(detail.possibleDuplicates.map((d) => d.id)).not.toContain(placeId);
+    expect(queue.items.every((c) => c.ownOrganization === false)).toBe(true);
 
     const returned = await moderation.decide(
       MODERATOR_A,
@@ -417,7 +444,9 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
       { decision: "approve", verificationMethod: "phone_call" },
       meta(MODERATOR_A),
     );
+    expect(approved.decidedByName).not.toBeUndefined();
     expect(approved).toMatchObject({
+      decidedBy: MODERATOR_A,
       decision: "approve",
       verificationMethod: "phone_call",
       placeStatus: "published",
@@ -435,12 +464,55 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
     expect(decisions.rows.every((r) => r.role_assignment_id)).toBe(true);
     await expect.poll(() => sent.some((s) => s.text.includes("схвалено"))).toBe(true);
 
+    // Опубликованное место: поля личности — 409 (только через админа региона), описание и телефон — сразу.
+    expect(
+      await failure(partner.updatePlace(OWNER, placeId, { name: { uk: "Нова назва" } }, meta(OWNER))),
+    ).toMatchObject({ status: 409, reason: "identity_change_requires_moderation" });
+    expect(
+      await failure(
+        partner.updatePlace(OWNER, placeId, { localityId: null, phone: "+380501112200" }, meta(OWNER)),
+      ),
+    ).toMatchObject({ status: 409 });
+    const live = await partner.updatePlace(OWNER, placeId, { phone: "+380501112200" }, meta(OWNER));
+    expect(live).toMatchObject({ status: "published", phone: "+380501112200" });
+
     const me = await partner.me(OWNER);
     expect(me.organizations[0]!.places[0]).toMatchObject({
       status: "published",
       moderation: { decision: "approve" },
       openServiceRequests: 0,
     });
+  });
+
+  it("онбординг с длинным названием — организация обрезается до 200 символов; админ не публикует черновик партнёра", async () => {
+    const long = "Ї".repeat(250);
+    const result = await partner.onboard(
+      OTHER,
+      {
+        regionId: base.regions.a,
+        templateCode: "food",
+        categoryId: seedUuid("catalog:a:category:cafes"),
+        name: { uk: long },
+      },
+      meta(OTHER),
+    );
+    expect(result.organization.name).toBe("Ї".repeat(200));
+    expect(result.place.name.uk).toBe(long);
+    const denied = await withTenant(appDb, regionContext(base.regions.a), () =>
+      catalogService.transition(
+        {
+          actor: { type: "user", userId: seedUserId("region-admin-a") },
+          roleAssignmentId: null,
+          requestId: "it",
+        },
+        result.place.id,
+        "publish",
+        null,
+      ),
+    ).catch((e: unknown) => e as { reason?: string });
+    expect(denied).toMatchObject({ reason: "moderation_required" });
+    const status = await sql(`SELECT status FROM places WHERE id = $1`, [result.place.id]);
+    expect(status.rows[0].status).toBe("draft");
   });
 
   it("смена роли и деактивация сотрудника — AuditLog; акции менеджера; изоляция регионов", async () => {
