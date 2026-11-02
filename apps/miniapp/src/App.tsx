@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
@@ -263,8 +263,7 @@ function Routes(props: RoutesProps) {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onStaffScreen, api]);
+  }, [onStaffScreen, api, onMe]);
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
   if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))
@@ -407,7 +406,7 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
     };
   }, [startup]);
   const session = state.status === "ready" ? state : undefined;
-  const onMe = (me: Me) => setState((s) => (s.status === "ready" ? { ...s, me } : s));
+  const onMe = useCallback((me: Me) => setState((s) => (s.status === "ready" ? { ...s, me } : s)), []);
   const retryContext = async () => {
     const startParam = session?.contextFailed;
     if (!startParam) return true;
