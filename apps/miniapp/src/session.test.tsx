@@ -204,7 +204,7 @@ describe("поток старта", () => {
     expect(state).not.toHaveProperty("contextFailed");
     const paths = calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"));
     expect(paths).toEqual(["/context"]);
-    expect((await screen.findByTestId("neutral-context")).textContent).toContain("Тестовий регіон");
+    expect((await screen.findByTestId("neutral-context")).textContent).toBe("Ви на Прикарпатті.");
   });
 
   it("start_param inv_<токен> — приглашение (P14): контекст по умолчанию, токен в состоянии старта", async () => {
@@ -296,7 +296,7 @@ describe("поток старта", () => {
     render(<App api={api} role="guest" webApp={app} startup={createStartup(api, app)} />);
     expect(await screen.findByTestId("context-unavailable")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Повторити" }));
-    expect((await screen.findByTestId("neutral-context")).textContent).toContain("Тестовий регіон");
+    expect((await screen.findByTestId("neutral-context")).textContent).toBe("Ви на Прикарпатті.");
     expect(calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"))).toEqual([
       "/context",
       "/context",
@@ -359,10 +359,27 @@ describe("поток старта", () => {
       "GET /me": () => Response.json(meWith(true)),
     });
     render(<App api={api} role="guest" startup={createStartup(api, webApp())} />);
-    expect((await screen.findByTestId("neutral-context")).textContent).toContain(
-      "Ви в регіоні: Тестовий регіон",
-    );
+    expect((await screen.findByTestId("neutral-context")).textContent).toBe("Ви на Прикарпатті.");
     expect(screen.queryByTestId("venue")).toBeNull();
+  });
+
+  it("регион без записи падежа — запасная строка «Ви в регіоні: …»; QR заведения — без строки региона", async () => {
+    const { api } = fakeApi({
+      "POST /auth/telegram": login("demoHotelOff1"),
+      "GET /context/*": () =>
+        Response.json({
+          ...hotelContext,
+          status: "default",
+          entryType: "default",
+          qrPoint: null,
+          venue: null,
+          region: { ...REGION, code: "other", name: { uk: "Інший край" } },
+        }),
+      "GET /me": () => Response.json(meWith(true)),
+    });
+    render(<App api={api} role="guest" startup={createStartup(api, webApp())} />);
+    expect((await screen.findByTestId("neutral-context")).textContent).toBe("Ви в регіоні: Інший край");
+    cleanup();
   });
 });
 
@@ -388,6 +405,7 @@ describe("C01 онбординг", () => {
     fireEvent.click(screen.getByLabelText("Погоджуюся з політикою конфіденційності"));
     fireEvent.click(screen.getByLabelText(/Отримувати новини/));
     fireEvent.click(button);
+    fireEvent.click(await screen.findByRole("button", { name: "Меню" }));
     expect(await screen.findByRole("link", { name: "Профіль" })).toBeDefined();
     const bodies = async (path: string) =>
       Promise.all(calls.filter((r) => new URL(r.url).pathname === path).map((r) => r.json()));
@@ -521,6 +539,7 @@ describe("находки ревью", () => {
     );
     expect(bodies).toEqual([{ purpose: "service", granted: false, source: "request_write_access" }]);
     fireEvent.click(screen.getByRole("button", { name: "Продовжити" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Меню" }));
     expect(await screen.findByRole("link", { name: "Профіль" })).toBeDefined();
   });
 

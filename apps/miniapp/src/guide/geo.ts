@@ -2,7 +2,14 @@
 // Запрашивается только по нажатию («Що поруч зі мною зараз», «Поділитися геолокацією»), не при открытии экрана.
 import type { TelegramWebApp } from "../telegram.js";
 
-export type LatLng = { lat: number; lng: number };
+/** accuracy: радиус погрешности устройства, м (если платформа сообщила). */
+export type LatLng = { lat: number; lng: number; accuracy?: number };
+
+function withAccuracy(lat: number, lng: number, accuracy: number | null | undefined): LatLng {
+  return typeof accuracy === "number" && Number.isFinite(accuracy) && accuracy > 0
+    ? { lat, lng, accuracy }
+    : { lat, lng };
+}
 
 /** Таймаут запроса: без ответа платформы — считаем, что геолокации нет. */
 const TIMEOUT_MS = 10_000;
@@ -17,7 +24,9 @@ function fromTelegram(webApp: TelegramWebApp): Promise<LatLng | null> | null {
   return new Promise((resolve) => {
     const read = () => {
       if (!lm.isLocationAvailable) return resolve(null);
-      getLocation.call(lm, (loc) => resolve(loc ? { lat: loc.latitude, lng: loc.longitude } : null));
+      getLocation.call(lm, (loc) =>
+        resolve(loc ? withAccuracy(loc.latitude, loc.longitude, loc.horizontal_accuracy) : null),
+      );
     };
     try {
       // Повторный init() колбэк не вызывает — после инициализации читаем сразу.
@@ -35,7 +44,7 @@ function fromBrowser(): Promise<LatLng | null> {
   return new Promise((resolve) => {
     try {
       geo.getCurrentPosition(
-        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        (p) => resolve(withAccuracy(p.coords.latitude, p.coords.longitude, p.coords.accuracy)),
         () => resolve(null),
         { enableHighAccuracy: false, timeout: TIMEOUT_MS, maximumAge: 60_000 },
       );
