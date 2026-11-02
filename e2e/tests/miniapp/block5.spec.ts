@@ -105,6 +105,20 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("staff-forbidden")).toBeVisible();
   });
 
+  test("роль персонала назначили при открытом Mini App — ссылка появляется при возврате на главную", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("staff-link")).toHaveCount(0);
+    apiMockState.get(page)!.staff = true;
+    await page.getByTestId("home-sections").getByRole("link", { name: "Про заклад" }).click();
+    await expect(page.getByTestId("venue-name")).toBeVisible();
+    await page.goBack();
+    await page.getByTestId("staff-link").click();
+    await expect(page.getByTestId("staff-forbidden")).toHaveCount(0);
+  });
+
   test("флаг module.host_requests выключен: нет «Мій план», заявок и режима персонала", async ({ page }) => {
     apiMockState.get(page)!.staff = true;
     await page.route("**/feature-flags*", (route) =>

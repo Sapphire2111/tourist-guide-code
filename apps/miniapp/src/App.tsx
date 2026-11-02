@@ -248,11 +248,11 @@ function Routes(props: RoutesProps) {
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
-  // Режим персонала — снимок /me на старте; при входе на экран персонала перечитываем, чтобы назначение
-  // или снятие роли в админке подхватывалось без перезапуска.
-  const onStaffScreen = hostRequests && path === "/staff";
+  // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
+  // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
+  const refreshMe = Boolean(session) && hostRequests && (path === "/" || path === "/staff");
   useEffect(() => {
-    if (!onStaffScreen) return;
+    if (!refreshMe) return;
     let alive = true;
     api
       .GET("/me")
@@ -263,7 +263,7 @@ function Routes(props: RoutesProps) {
     return () => {
       alive = false;
     };
-  }, [onStaffScreen, api, onMe]);
+  }, [refreshMe, path, api, onMe]);
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
   if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))

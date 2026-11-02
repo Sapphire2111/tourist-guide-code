@@ -7,7 +7,7 @@ import { Button, Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { uuidv7 } from "../guide/analytics.js";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
-import { NotFoundError } from "../guide/types.js";
+import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "./context.js";
 import { isMessageKey, useErrorText } from "./errors.js";
 import { formatTime } from "./format.js";
@@ -279,7 +279,13 @@ function RequestForm({
         setError(t("miniapp.request.uncertain"));
       } else {
         setLocked(false);
-        setIdempotencyKey(uuidv7());
+        // Окончательный 4xx: сервер сохранил ответ под ключом — повтор с тем же ключом вернул бы его же. Прочие
+        // ошибки (например, неожиданная форма ответа 2xx) — исход неизвестен, ключ прежний, повтор идемпотентен.
+        const final =
+          (err instanceof ApiCallError && err.status >= 400 && err.status < 500) ||
+          err instanceof NotFoundError ||
+          err instanceof UnauthorizedError;
+        if (final) setIdempotencyKey(uuidv7());
         const known = err instanceof ApiCallError && isMessageKey(err.messageKey);
         setError(
           !known && err instanceof ApiCallError && err.status === 409
