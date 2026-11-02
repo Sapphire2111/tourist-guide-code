@@ -7,7 +7,7 @@ test("модуль готелю: правила, Wi-Fi, часы приёма и
 }) => {
   const state = adminMockState.get(page)!;
   await login(page, "/#/places");
-  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
   const host = page.getByRole("region", { name: "Модуль готелю" });
   await expect(host.getByText("Модуль ще не налаштовано")).toBeVisible();
   const form = host.getByRole("form", { name: "Модуль готелю" });
@@ -65,7 +65,7 @@ test("модуль готелю: правила, Wi-Fi, часы приёма и
 test("модуль готелю: часы приёма только парой", async ({ page }) => {
   const state = adminMockState.get(page)!;
   await login(page, "/#/places");
-  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
   const form = page.getByRole("form", { name: "Модуль готелю" });
   await form.getByLabel("Прийом заявок з").fill("08:00");
   await form.getByRole("button", { name: "Зберегти модуль готелю" }).click();
@@ -77,7 +77,7 @@ test("персонал: назначить по username и по Telegram id, д
   page,
 }) => {
   await login(page, "/#/places");
-  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
   const staff = page.getByRole("region", { name: "Персонал закладу" });
   await expect(staff.getByText("Персоналу ще не призначено.")).toBeVisible();
   const form = staff.getByRole("form", { name: "Призначити співробітника" });
@@ -117,6 +117,14 @@ test("персонал: назначить по username и по Telegram id, д
   await staff.getByRole("button", { name: /^Зняти: .*@hotel_staff/ }).click();
   await expect(staff.getByRole("row", { name: /@hotel_staff/ })).toHaveCount(0);
   await expect(staff.getByRole("row", { name: /123456789/ })).toBeVisible();
+});
+
+test("обычное место (не готель): секций модуля и персонала нет", async ({ page }) => {
+  await login(page, "/#/places");
+  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Графік роботи" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Модуль готелю" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);
 });
 
 test("сценарии: создание с пунктами по дням и альтернативой, правка, публикация", async ({ page }) => {
@@ -207,7 +215,7 @@ test("сценарии: публикация пустого сценария —
 test("модератор без прав на модуль и персонал: секций и красных ошибок нет", async ({ page }) => {
   adminMockState.get(page)!.noHostAccess = true;
   await login(page, "/#/places");
-  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
   await expect(page.getByRole("heading", { level: 2, name: "Графік роботи" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Модуль готелю" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Персонал закладу" })).toHaveCount(0);

@@ -45,7 +45,7 @@ test("карточка места и печать QR: нет нарушений 
 
 test("карточка места: модуль готелю и персонал без нарушений a11y", async ({ page }) => {
   await login(page, "/#/places");
-  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  await page.getByRole("link", { name: "Готель Карпати" }).click();
   const host = page.getByRole("form", { name: "Модуль готелю" });
   await host.getByRole("button", { name: "Додати розділ" }).click();
   await host.getByRole("button", { name: "Додати послугу" }).click();

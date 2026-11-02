@@ -375,8 +375,12 @@ function Editor({ place }: { place?: Place }) {
           <PlaceBadge place={current} onChange={setCurrent} />
           <PlaceSchedule placeId={current.id} />
           <PlaceMedia placeId={current.id} />
-          <PlaceHostModule placeId={current.id} />
-          <PlaceStaff placeId={current.id} />
+          {current.hostCapable && (
+            <>
+              <PlaceHostModule placeId={current.id} />
+              <PlaceStaff placeId={current.id} />
+            </>
+          )}
         </>
       )}
     </Stack>
