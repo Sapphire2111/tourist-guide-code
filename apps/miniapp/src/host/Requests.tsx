@@ -217,7 +217,7 @@ function StaffActions({
 
 export function StaffRequests() {
   const { t } = useT();
-  const { api, staff, retryStaff } = useHost();
+  const { api, staff } = useHost();
   const errorText = useErrorText();
   const [filter, setFilter] = useState<RequestStatus | "">("");
   const [list, retry] = useLiveAsync(
@@ -226,24 +226,6 @@ export function StaffRequests() {
   );
   const [message, setMessage] = useState<Message>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Роль ещё проверяется — не показываем «нет доступа» раньше ответа.
-  if (staff === "loading")
-    return (
-      <Stack>
-        <h1>{t("miniapp.staff.title")}</h1>
-        <p role="status">{t("miniapp.guide.loading")}</p>
-      </Stack>
-    );
-  if (staff === "error")
-    return (
-      <Stack>
-        <h1>{t("miniapp.staff.title")}</h1>
-        <p role="alert" data-testid="staff-role-error">
-          {t("miniapp.staff.roleError")}
-        </p>
-        <Button onClick={retryStaff}>{t("miniapp.guide.retry")}</Button>
-      </Stack>
-    );
   if (staff === "no")
     return (
       <Stack>

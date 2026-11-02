@@ -279,6 +279,7 @@ function RequestForm({
         setError(t("miniapp.request.uncertain"));
       } else {
         setLocked(false);
+        setIdempotencyKey(uuidv7());
         const known = err instanceof ApiCallError && isMessageKey(err.messageKey);
         setError(
           !known && err instanceof ApiCallError && err.status === 409

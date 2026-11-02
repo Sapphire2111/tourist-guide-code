@@ -107,7 +107,6 @@ export const uk = {
   "miniapp.request.edit": "Змінити заявку",
   "miniapp.requests.cancelConflict":
     "Заявку вже взято в роботу або закрито — скасувати не можна. Статус оновлено.",
-  "miniapp.staff.roleError": "Не вдалося перевірити доступ персоналу.",
   "miniapp.about.contacts": "Контакти рецепції",
   "miniapp.about.call": "Подзвонити",
   "miniapp.about.intake": "Заявки приймаються з {from} до {to}",
@@ -714,7 +713,6 @@ export const en: Messages = {
   "miniapp.request.edit": "Edit request",
   "miniapp.requests.cancelConflict":
     "The request is already in progress or closed and can't be cancelled. Status updated.",
-  "miniapp.staff.roleError": "Could not check staff access.",
   "miniapp.about.contacts": "Reception contacts",
   "miniapp.about.call": "Call",
   "miniapp.about.intake": "Requests are accepted from {from} to {to}",

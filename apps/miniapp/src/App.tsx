@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import {
@@ -248,6 +248,23 @@ function Routes(props: RoutesProps) {
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
+  // Режим персонала — снимок /me на старте; при входе на экран персонала перечитываем, чтобы назначение
+  // или снятие роли в админке подхватывалось без перезапуска.
+  const onStaffScreen = hostRequests && path === "/staff";
+  useEffect(() => {
+    if (!onStaffScreen) return;
+    let alive = true;
+    api
+      .GET("/me")
+      .then((res) => {
+        if (alive && res.data) onMe(res.data);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onStaffScreen, api]);
   if (path === "/") return <Home {...props} />;
   const section = /^\/section\/([a-z]+)$/.exec(path)?.[1];
   if (section && (CATALOG_SECTIONS as readonly string[]).includes(section))
@@ -441,17 +458,15 @@ export function App({ locale = DEFAULT_LOCALE, startup, guideApi, analytics, hos
   // включённом module.host_requests. Отдельный запрос не нужен — «нет доступа» не мелькает до ответа.
   const hostRequests = flags?.["module.host_requests"] === true;
   const staff: StaffRole = session && hostRequests && session.me.staffMode ? "yes" : "no";
-  const retryStaff = useCallback(() => undefined, []);
   const host = useMemo<HostEnv>(
     () => ({
       api: hApi,
       hotelPlaceId: venue ? (context?.qrPoint?.placeId ?? null) : null,
       entryContextId: context?.entryContextId ?? null,
       staff,
-      retryStaff,
       timeZone: context?.region?.timezone ?? null,
     }),
-    [hApi, venue, context, staff, retryStaff],
+    [hApi, venue, context, staff],
   );
   return (
     <I18nProvider locale={effectiveLocale}>

@@ -71,7 +71,6 @@ function setup(
     hotelPlaceId: PLACE,
     entryContextId: null,
     staff: "no",
-    retryStaff: () => undefined,
     timeZone: "Europe/Kyiv",
     ...env,
   };
@@ -192,6 +191,21 @@ describe("C03: идемпотентность и флаг", () => {
     expect(new Set(keys).size).toBe(3);
   });
 
+  it("окончательный 4xx (409) — следующая отправка с новым ключом", async () => {
+    const keys: string[] = [];
+    const createRequest = vi.fn<HostApi["createRequest"]>().mockImplementation(async (r) => {
+      keys.push(r.idempotencyKey);
+      throw new ApiCallError(409, "errors.unknown", "CONFLICT");
+    });
+    setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module(), createRequest });
+    fireEvent.click(await screen.findByRole("button", { name: "Замовити: Прибирання" }));
+    fireEvent.change(screen.getByLabelText("Номер кімнати"), { target: { value: "12" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Надіслати заявку" })));
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
   it("флаг module.host_requests выключен — услуг и «Мої заявки» нет", async () => {
     setup(<About header={<h1>Готель</h1>} />, { hostModule: async () => module() }, {}, true, {});
     expect(await screen.findByRole("heading", { name: "Правила" })).toBeTruthy();
@@ -236,16 +250,6 @@ describe("заявки", () => {
     expect(setStatus).toHaveBeenLastCalledWith("r1", "rejected", "Немає вільного персоналу");
     fireEvent.change(screen.getByTestId("staff-filter"), { target: { value: "done" } });
     expect(staffRequests).toHaveBeenLastCalledWith("done");
-  });
-
-  it("роль персонала проверяется — без «нет доступа»; ошибка — повтор", () => {
-    const retryStaff = vi.fn();
-    setup(<StaffRequests />, {}, { staff: "loading" });
-    expect(screen.queryByRole("alert")).toBeNull();
-    cleanup();
-    setup(<StaffRequests />, {}, { staff: "error", retryStaff });
-    fireEvent.click(screen.getByRole("button", { name: "Спробувати ще раз" }));
-    expect(retryStaff).toHaveBeenCalled();
   });
 
   it("гость: 409 при отмене — свой текст", async () => {

@@ -8,15 +8,13 @@ export type HostEnv = {
   /** Заведение из QR отеля (placeId точки), иначе null — «Про заклад» недоступен. */
   hotelPlaceId: string | null;
   entryContextId: string | null;
-  /** Режим персонала (D-50): роль ещё загружается, есть/нет, ошибка проверки. */
+  /** Режим персонала (D-50): признак staffMode из /me. */
   staff: StaffRole;
-  /** Повторить проверку роли персонала после ошибки. */
-  retryStaff: () => void;
   /** Часовой пояс региона (IANA) — время «буде оброблено з …»; null — устройства. */
   timeZone: string | null;
 };
 
-export type StaffRole = "loading" | "yes" | "no" | "error";
+export type StaffRole = "yes" | "no";
 
 const HostContext = createContext<HostEnv | null>(null);
 
