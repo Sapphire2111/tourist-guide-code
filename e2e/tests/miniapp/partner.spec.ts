@@ -65,9 +65,9 @@ test("онбординг → редактор → отправка на моде
     .setInputFiles({ name: "facade.jpg", mimeType: "image/jpeg", buffer: JPEG });
   await page.getByRole("button", { name: "Завантажити фото" }).click();
   await expect(page.getByTestId("photos").getByRole("img", { name: "Фасад садиби" })).toBeVisible();
-  await expect(page.getByTestId("missing-fields")).toHaveText("Усі обов’язкові поля заповнено.");
+  await expect(page.getByTestId("missing-fields")).toHaveText("Усі обов'язкові поля заповнено.");
 
-  await page.getByLabel("Погоджуюсь з умовами для партнерів").check();
+  await page.getByLabel("Погоджуюся з умовами для партнерів").check();
   await page
     .getByLabel("Коментар для модератора (як підтвердити право керувати закладом)")
     .fill("Телефонуйте");

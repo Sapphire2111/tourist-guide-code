@@ -470,7 +470,7 @@ describe("находки ревью", () => {
     });
     render(<App api={api} role="guest" startup={createStartup(api, webApp())} />);
     expect(await screen.findByTestId("context-unavailable")).toBeDefined();
-    expect(screen.queryByText("Регіони ще не підключені.")).toBeNull();
+    expect(screen.queryByText("Регіонів ще не додано.")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Повторити" }));
     expect((await screen.findByTestId("venue-summary")).textContent).toBe("Ви відкрили гід: Тестовий готель");
     expect(calls.filter((r) => r.url.includes("/context/"))).toHaveLength(2);

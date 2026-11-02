@@ -233,9 +233,9 @@ describe("«Що поруч» C05", () => {
     );
     await flush();
     expect(screen.getByTestId("geo-off").textContent).toBe(
-      "Геолокацію вимкнено. Показуємо місця біля Тестовий готель.",
+      "Геолокацію вимкнено. Показуємо місця поруч: Тестовий готель.",
     );
-    expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із Тестовий готель");
+    expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч: Тестовий готель");
     expect(env.api.search).toHaveBeenCalledWith({ point: env.base!.point, radius: 500, limit: 50 });
   });
 
@@ -285,7 +285,7 @@ describe("«Що поруч»: ползунок радиуса и категор
 });
 
 describe("«Що поруч»: строка статуса", () => {
-  it("50 мест — «Показано 50 найближчих.»; меньше — строка пустая, но на месте", async () => {
+  it("50 мест — «Найближчих місць: 50.»; меньше — строка пустая, но на месте", async () => {
     const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
     const search = vi.fn(async () => many);
     const { env } = setup({ api: fakeApi({ search }) });
@@ -295,7 +295,7 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("Показано 50 найближчих.");
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчих місць: 50.");
     cleanup();
     const { env: env2 } = setup();
     render(
