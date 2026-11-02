@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@tg/shared": "workspace:*",
-    "bullmq": "6.3.16"
+    "bullmq": "6.5.2"
   },
   "devDependencies": {
     "@tg/config": "workspace:*",
