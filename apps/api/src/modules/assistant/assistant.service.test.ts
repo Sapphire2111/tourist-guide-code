@@ -15,6 +15,8 @@ const EAT = "0190f5c2-7d3e-7000-8000-000000000101";
 const CAFES = "0190f5c2-7d3e-7000-8000-000000000102";
 const MUSEUMS = "0190f5c2-7d3e-7000-8000-000000000103";
 const EMPTY = "0190f5c2-7d3e-7000-8000-000000000104";
+const STAY = "0190f5c2-7d3e-7000-8000-000000000105";
+const HOTELS = "0190f5c2-7d3e-7000-8000-000000000106";
 
 const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto => ({
   id: `0190f5c2-7d3e-7000-8000-0000000002${String(n).padStart(2, "0")}`,
@@ -82,6 +84,8 @@ function setup(
           { id: CAFES, parentId: EAT, code: "cafes", name: { uk: "Кафе" }, placeCount: 3 },
           { id: MUSEUMS, parentId: null, code: "museums", name: { uk: "Музеї" }, placeCount: 2 },
           { id: EMPTY, parentId: null, code: "empty", name: { uk: "Порожня" }, placeCount: 0 },
+          { id: STAY, parentId: null, code: "stay", name: { uk: "Де жити" }, placeCount: 2 },
+          { id: HOTELS, parentId: STAY, code: "hotels", name: { uk: "Готелі" }, placeCount: 2 },
         ],
       }),
     ),
@@ -273,6 +277,27 @@ describe("AssistantService.query", () => {
     service.now = () => new Date("2026-11-04T00:00:01Z");
     await service.query(REGION, ask());
     expect(llm.create).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("проживання", () => {
+  it("«готель поруч»: категории проживания — в модель из каталога, поиск — по коду модели (hotels)", async () => {
+    const hotel = place(1, { categoryId: HOTELS, name: { uk: "Готель «Карпати»" } });
+    const create = vi.fn((_p: Anthropic.MessageCreateParamsNonStreaming) =>
+      Promise.resolve(reply(intent({ categories: ["hotels"], radiusMeters: 1000 }))),
+    );
+    const { service, guide } = setup({ places: [hotel], llm: { create } });
+    const res = await service.query(REGION, ask("готель поруч", { origin: { lon: 24.5, lat: 48.4 } }));
+    const params = create.mock.calls[0]![0];
+    const schema = JSON.stringify((params.tools![0] as Anthropic.Tool).input_schema);
+    expect(schema).toContain('"stay"');
+    expect(schema).toContain('"hotels"');
+    expect(String(params.messages[0]!.content)).toContain("- hotels: Готелі (розділ «Де жити»)");
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ categoryId: HOTELS, radius: 1000, origin: { lon: 24.5, lat: 48.4 } }),
+    );
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Готель «Карпати»"]);
   });
 });
 
