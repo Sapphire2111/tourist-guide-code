@@ -42,6 +42,14 @@ export type AdminMockState = {
   scenarios: Obj[];
   /** Тела PUT/POST /admin/scenarios. */
   scenarioWrites: unknown[];
+  /** Заявки модерации партнёров (блок 6). */
+  moderationCases: Obj[];
+  /** Тела решений: { id, decision, body }. */
+  moderationDecisions: { id: string; decision: string; body: unknown }[];
+  /** Роль без права place.moderate: 403 на модерацию. */
+  noModeration: boolean;
+  /** Возможные дубли в карточке заявки. */
+  moderationDuplicates: Obj[];
 };
 
 export const adminMockState = new WeakMap<Page, AdminMockState>();
@@ -207,6 +215,33 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
     staff: {},
     scenarios: [],
     scenarioWrites: [],
+    moderationCases: [
+      {
+        id: "00000000-0000-4000-8000-000000000901",
+        regionId: REGION_ID,
+        placeId: "00000000-0000-4000-8000-000000000902",
+        placeName: { uk: "Кафе Говерла" },
+        placeStatus: "pending_moderation",
+        organizationId: "00000000-0000-4000-8000-000000000903",
+        organizationName: "ФОП Іваненко",
+        templateCode: "cafe",
+        templateName: { uk: "Кафе" },
+        decidedByName: null,
+        ownOrganization: false,
+        status: "open",
+        decision: null,
+        comment: null,
+        verificationMethod: null,
+        submittedBy: "00000000-0000-4000-8000-000000000904",
+        submittedByName: "Олена",
+        submittedAt: NOW,
+        decidedBy: null,
+        decidedAt: null,
+      },
+    ],
+    moderationDecisions: [],
+    noModeration: false,
+    moderationDuplicates: [],
   };
   adminMockState.set(page, state);
 
@@ -405,6 +440,9 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (sub === "publish-check") return json(route, { problems: publishProblems(place) });
         if (sub === "publish") {
           state.publishCalls += 1;
+          // Место партнёра, ни разу не опубликованное: первая публикация только решением модерации.
+          if (place.organizationId && !place.firstPublishedAt)
+            return error(route, 409, "CONFLICT", "errors.place.moderationRequired");
           const problems = publishProblems(place);
           if (problems.length)
             return error(route, 422, "UNPROCESSABLE", "errors.place.notPublishable", {
@@ -528,6 +566,61 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           if (i < 0) return error(route, 404, "NOT_FOUND", "errors.notFound");
           staffList.splice(i, 1);
           return json(route, null, 204);
+        }
+      }
+
+      // Модерація партнерів (блок 6).
+      if (path.startsWith("/admin/moderation/cases")) {
+        if (state.noModeration) return error(route, 403, "FORBIDDEN", "errors.forbidden");
+        if (path === "/admin/moderation/cases" && method === "GET") {
+          const status = query.get("status") ?? "open";
+          const placeId = query.get("placeId");
+          return json(route, {
+            items: state.moderationCases.filter(
+              (c) => c.status === status && (!placeId || c.placeId === placeId),
+            ),
+          });
+        }
+        const m = /^\/admin\/moderation\/cases\/([^/]+)(?:\/(approve|reject|return))?$/.exec(path);
+        const found = m && state.moderationCases.find((c) => c.id === m[1]);
+        if (!found) return error(route, 404, "NOT_FOUND", "errors.notFound");
+        if (!m[2] && method === "GET")
+          return json(route, {
+            ...found,
+            placeSnapshot: {
+              name: found.placeName,
+              address: { uk: "вул. Гірська, 1" },
+              location: { lat: 48.45, lon: 24.55 },
+              schedule: {
+                weekly: [{ dayOfWeek: 1, opensAt: "09:00", closesAt: "18:00" }],
+                exceptions: [],
+              },
+              media: [{ mediaAssetId: "m1", isCover: true, alt: { uk: "Фасад кафе" } }],
+            },
+            snapshotMediaPreview: { m1: "https://example.test/m1.jpg" },
+            possibleDuplicates: state.moderationDuplicates,
+            partnerNote: null,
+            owners: [{ userId: found.submittedBy, displayName: "Олена", username: "olena_cafe" }],
+            history: [],
+            publishProblems: [],
+          });
+        if (m[2] && method === "POST") {
+          if (found.status === "decided")
+            return error(route, 409, "CONFLICT", "errors.moderation.alreadyDecided");
+          const decision =
+            m[2] === "approve" ? "approve" : m[2] === "reject" ? "reject" : "changes_requested";
+          if (m[2] === "approve" ? !body.verificationMethod : !body.reason)
+            return error(route, 400, "VALIDATION_FAILED", "errors.validation.failed");
+          state.moderationDecisions.push({ id: found.id, decision, body });
+          Object.assign(found, {
+            status: "decided",
+            decision,
+            comment: (body.reason ?? body.comment ?? null) as string | null,
+            verificationMethod: body.verificationMethod ?? null,
+            decidedAt: NOW,
+            decidedByName: "admin@example.com",
+          });
+          return json(route, found);
         }
       }
 

@@ -13,6 +13,7 @@ for (const [path, heading] of [
   ["/#/taxonomy", "Категорії та теги"],
   ["/#/places", "Місця"],
   ["/#/places/new", "Місця"],
+  ["/#/moderation", "Модерація"],
   ["/#/qr", "QR-коди"],
   ["/#/scenarios", "Сценарії «Мій план»"],
   ["/#/scenarios/new", "Сценарії «Мій план»"],

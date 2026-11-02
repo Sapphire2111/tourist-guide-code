@@ -17,7 +17,15 @@ import {
 } from "./ui.js";
 
 type Place = ApiSchemas["PlaceDto"];
-export const PLACE_STATUSES = ["draft", "published", "suspended", "archived"] as const;
+export const PLACE_STATUSES = [
+  "draft",
+  "pending_moderation",
+  "changes_requested",
+  "rejected",
+  "published",
+  "suspended",
+  "archived",
+] as const;
 
 export function PlacesScreen() {
   const { api } = useAdmin();

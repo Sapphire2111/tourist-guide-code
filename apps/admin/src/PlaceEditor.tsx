@@ -29,6 +29,12 @@ import {
 } from "./ui.js";
 
 type Place = ApiSchemas["PlaceDto"];
+/** Статусы партнёрской модерации (блок 6): у места есть заявка. */
+const MODERATION_STATUSES: readonly Place["status"][] = [
+  "pending_moderation",
+  "changes_requested",
+  "rejected",
+];
 
 type PlaceForm = {
   name: LocalizedValue;
@@ -228,17 +234,18 @@ function PlaceStatus({ place, onChange }: { place: Place; onChange: (p: Place) =
         </h2>
         <Field label={t("admin.reason")} value={reason} onChange={setReason} />
         <div style={row}>
-          {(s === "draft" || s === "suspended" || s === "archived") && (
-            <SmallButton disabled={acting} onClick={() => act(() => transition("publish"))}>
-              {t("admin.place.publish")}
-            </SmallButton>
-          )}
+          {(s === "draft" || s === "suspended" || s === "archived") &&
+            !(s === "draft" && place.organizationId) && (
+              <SmallButton disabled={acting} onClick={() => act(() => transition("publish"))}>
+                {t("admin.place.publish")}
+              </SmallButton>
+            )}
           {s === "published" && (
             <SmallButton disabled={acting} onClick={() => act(() => transition("suspend"))}>
               {t("admin.place.suspend")}
             </SmallButton>
           )}
-          {s !== "archived" && (
+          {s !== "archived" && !MODERATION_STATUSES.includes(s) && (
             <SmallButton disabled={acting} onClick={() => act(() => transition("archive"))}>
               {t("admin.place.archive")}
             </SmallButton>
@@ -359,6 +366,12 @@ function Editor({ place }: { place?: Place }) {
           {t("admin.field.status")}: {tDynamic(`admin.placeStatus.${current.status}`)}
         </p>
       )}
+      {current && MODERATION_STATUSES.includes(current.status) && (
+        <p role="note" style={{ margin: 0 }}>
+          {t("admin.place.moderationNote", { status: tDynamic(`admin.placeStatus.${current.status}`) })}{" "}
+          <ModerationLink placeId={current.id} />
+        </p>
+      )}
       <Form
         label={t("admin.place.form")}
         onSubmit={save}
@@ -380,6 +393,26 @@ function Editor({ place }: { place?: Place }) {
         </>
       )}
     </Stack>
+  );
+}
+
+/** Ссылка на последнюю заявку места (открытая, иначе решённая); нет доступа или заявок — на очередь. */
+function ModerationLink({ placeId }: { placeId: string }) {
+  const { api } = useAdmin();
+  const { t } = useT();
+  const [found] = useLoad(async () => {
+    for (const status of ["open", "decided"] as const) {
+      const res = await call(api.GET("/admin/moderation/cases", { params: { query: { status, placeId } } }));
+      if (!res.ok) return res;
+      if (res.data.items.length > 0) return res;
+    }
+    return { ok: true as const, data: { items: [] } };
+  }, [placeId]);
+  const first = found?.ok ? found.data.items[0] : undefined;
+  return first ? (
+    <Link to={`/moderation/${first.id}`}>{t("admin.place.moderationCase")}</Link>
+  ) : (
+    <Link to="/moderation">{t("admin.place.moderationLink")}</Link>
   );
 }
 
