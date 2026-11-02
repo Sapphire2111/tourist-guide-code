@@ -93,6 +93,15 @@ export const apiEnvSchema = z
       blankToUndefined,
       z.coerce.number().int().min(0).max(1_000_000).default(1000),
     ),
+    // Ассистент на главной (POST /assistant/query): ключ Claude API для разбора запроса туриста. Не задан — ассистент
+    // отвечает 503 errors.assistant.unavailable (не 500). Голос (POST /assistant/transcribe) — Google Speech-to-Text
+    // по GOOGLE_MAPS_API_KEY (в проекте Google должен быть включён Speech-to-Text API).
+    ANTHROPIC_API_KEY: optionalString(),
+    // Предел обращений ассистента к Claude и Speech-to-Text в сутки на процесс (страховка бюджета). По умолчанию 500.
+    ASSISTANT_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(100_000).default(500),
+    ),
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),
   })

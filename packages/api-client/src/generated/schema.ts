@@ -928,6 +928,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/assistant/query": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ассистент: реплика туриста → намерение и реальные места каталога (или маршрут экскурсии)
+     * @description Текст до 300 символов. Модель (Claude, tool use) выбирает только коды категорий и фильтры; места, цены и описания — из каталога и обогащения. Контекст диалога (history, previous) присылает клиент. intent.clarify — запрос непонятен (мест нет). 503 errors.assistant.unavailable — нет ключа Claude или исчерпан суточный предел; 502/504 — сбой Claude. Rate limit 12/мин. 404 — флаг module.assistant выключен, региона нет или он не активен.
+     */
+    post: operations["assistantQuery"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/assistant/transcribe": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ассистент: голос → текст (Google Speech-to-Text, uk-UA)
+     * @description Тело — запись MediaRecorder (Opus в audio/webm или audio/ogg), до 512 КиБ (больше — 413). Аудио не сохраняется. Пустой text — речь не распознана. 415 — другой формат (например, audio/mp4 из iOS) — ввести текстом. 503 — нет ключа Google или исчерпан суточный предел. Rate limit 6/мин.
+     */
+    post: operations["assistantTranscribe"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/host/{placeId}/module": {
     parameters: {
       query?: never;
@@ -3039,6 +3079,96 @@ export interface components {
       /** Format: date-time */
       createdAt: string;
     };
+    /**
+     * @description places — места, tour — маршрут
+     * @enum {string}
+     */
+    AssistantKind: "places" | "tour";
+    /** @enum {string} */
+    AssistantSuggestion:
+      | "cheaper"
+      | "pricier"
+      | "closer"
+      | "farther"
+      | "kids"
+      | "open_now"
+      | "tour"
+      | "places";
+    AssistantIntentDto: {
+      /** @description places — места, tour — маршрут */
+      kind: components["schemas"]["AssistantKind"];
+      /** @description Коды категорий каталога */
+      categories: string[];
+      nameQuery: string | null;
+      radiusMeters: number | null;
+      /** @description Ценовой уровень Google */
+      priceMin: number | null;
+      priceMax: number | null;
+      withKids: boolean;
+      openNow: boolean;
+      /** @description Запрос непонятен — уточнить (мест нет) */
+      clarify: boolean;
+      suggestions: components["schemas"]["AssistantSuggestion"][];
+    };
+    AssistantQueryDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)
+       */
+      regionId: string;
+      /**
+       * @description Широта
+       * @example 48.4475
+       */
+      lat?: number;
+      /**
+       * @description Долгота (вместе с lat)
+       * @example 24.5626
+       */
+      lng?: number;
+      /** @description Реплика туриста */
+      text: string;
+      /** @description Прежние реплики диалога (контекст хранит клиент) */
+      history?: string[];
+      /** @description Намерение прошлого ответа (для уточнений) */
+      previous?: components["schemas"]["AssistantIntentDto"];
+    };
+    /** @enum {string} */
+    AssistantDescriptionSource: "ai" | "wikipedia" | "google";
+    AssistantPlaceDto: {
+      place: components["schemas"]["PlaceSummaryDto"];
+      /** @description Ценовой уровень Google 0–4; null — неизвестен */
+      priceLevel: number | null;
+      /** @description По данным Google: подходит для детей или есть дитяче меню */
+      kidsFriendly: boolean;
+      /** @description Описание из обогащения (ИИ-текст, Вікіпедія, Google) */
+      description: string | null;
+      descriptionSource: components["schemas"]["AssistantDescriptionSource"] | null;
+      /** @description Статья Вікіпедії (для wikipedia — ссылка обязательна) */
+      descriptionUrl: string | null;
+    };
+    AssistantRouteDto: {
+      /** @description Длина маршрута между остановками по прямой, м */
+      lengthMeters: number;
+    };
+    /**
+     * @description Пояснения выдачи
+     * @enum {string}
+     */
+    AssistantNote: "price_unknown" | "none_open" | "no_origin";
+    AssistantResultDto: {
+      intent: components["schemas"]["AssistantIntentDto"];
+      /** @description Только места каталога; для tour — в порядке обхода */
+      items: components["schemas"]["AssistantPlaceDto"][];
+      /** @description Маршрут — только для tour */
+      route: components["schemas"]["AssistantRouteDto"] | null;
+      /** @description Пояснения выдачи */
+      notes: components["schemas"]["AssistantNote"][];
+    };
+    AssistantTranscriptDto: {
+      /** @description Распознанный текст; пусто — речь не распознана */
+      text: string;
+    };
     HostWifiDto: {
       ssid: string;
       /** @description Только при входе с QR этого места (entryContextId), иначе null */
@@ -4295,7 +4425,8 @@ export interface components {
       | "module.bookings"
       | "module.qr_transactions"
       | "module.reviews"
-      | "module.ambassadors";
+      | "module.ambassadors"
+      | "module.assistant";
     FeatureFlagValueDto: {
       key: components["schemas"]["FeatureFlagKey"];
       enabled: boolean;
@@ -10733,6 +10864,249 @@ export interface operations {
       };
       /** @description Ошибка */
       500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  assistantQuery: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AssistantQueryDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AssistantResultDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      502: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      503: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      504: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  assistantTranscribe: {
+    parameters: {
+      query: {
+        /** @description Регион туриста (uuid) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "audio/webm": string;
+        "audio/ogg": string;
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AssistantTranscriptDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      502: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      503: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      504: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

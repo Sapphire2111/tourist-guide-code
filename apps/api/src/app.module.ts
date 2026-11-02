@@ -4,6 +4,7 @@ import { TenancyModule } from "./common/tenancy/index.js";
 import { DatabaseModule } from "./db/index.js";
 import { AdminAuthModule } from "./modules/admin-auth/index.js";
 import { AnalyticsModule } from "./modules/analytics/index.js";
+import { AssistantModule } from "./modules/assistant/index.js";
 import { AuditModule } from "./modules/audit/index.js";
 import { AuthModule } from "./modules/auth/index.js";
 import { EmergencyContactsModule } from "./modules/emergency-contacts/index.js";
@@ -61,9 +62,18 @@ export class AppModule {
           | "GOOGLE_MAPS_API_KEY"
           | "GOOGLE_PHOTO_DAILY_LIMIT"
           | "GOOGLE_PHOTO_MONTHLY_LIMIT"
+          | "ANTHROPIC_API_KEY"
+          | "ASSISTANT_DAILY_LIMIT"
         >
       >,
   ): DynamicModule {
+    // Один объект GuideModule для AppModule и ассистента — один экземпляр GuideService.
+    const guide = GuideModule.forRoot({
+      apiKey: env.GOOGLE_MAPS_API_KEY,
+      dailyLimit: env.GOOGLE_PHOTO_DAILY_LIMIT,
+      monthlyLimit: env.GOOGLE_PHOTO_MONTHLY_LIMIT,
+      apiBaseUrl: env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4300}`,
+    });
     return {
       module: AppModule,
       imports: [
@@ -108,12 +118,16 @@ export class AppModule {
         CatalogModule,
         // Публичный каталог туриста (блок 4, ADR-0019): категории, поиск, картка місця, избранное, «Халепа?»;
         // фото Google в карточке — через прокси api (ключ только на сервере).
-        GuideModule.forRoot({
-          apiKey: env.GOOGLE_MAPS_API_KEY,
-          dailyLimit: env.GOOGLE_PHOTO_DAILY_LIMIT,
-          monthlyLimit: env.GOOGLE_PHOTO_MONTHLY_LIMIT,
-          apiBaseUrl: env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4300}`,
-        }),
+        guide,
+        // Ассистент на главной (флаг module.assistant): Claude (разбор запроса) и Speech-to-Text; места — из гида.
+        AssistantModule.forRoot(
+          {
+            anthropicApiKey: env.ANTHROPIC_API_KEY,
+            googleApiKey: env.GOOGLE_MAPS_API_KEY,
+            dailyLimit: env.ASSISTANT_DAILY_LIMIT,
+          },
+          guide,
+        ),
         // Заявки гостиницы, «Про заклад», персонал и планировщик (блок 5, ADR-0020).
         HostRequestsModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN }),
         PlannerModule,

@@ -44,6 +44,7 @@ export const FEATURE_FLAG_KEYS = [
   "module.qr_transactions",
   "module.reviews",
   "module.ambassadors",
+  "module.assistant",
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -69,6 +70,10 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   "module.qr_transactions": flag("QR-транзакции и взаиморасчёты (блок 9)", ALWAYS, ["finance.engine"]),
   "module.reviews": flag("Подтверждённые отзывы (блок 10)", ALWAYS, ["release.mvp"]),
   "module.ambassadors": flag("Амбассадоры (блок 11)", ALWAYS, ["release.mvp"]),
+  // ИИ-ассистент: внешние платные API (Claude, Google Speech-to-Text) — в prod выключен до отдельного решения.
+  "module.assistant": flag("Голосовий/текстовий асистент на головній (Claude, Speech-to-Text)", ON, [
+    "release.r1",
+  ]),
 });
 
 export function isFeatureFlagKey(key: string): key is FeatureFlagKey {
