@@ -76,7 +76,7 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
 });
 
 /** Ответ api: data при 2xx; 404/401/409 — свои ошибки; прочее — ApiCallError с messageKey сервера. */
-async function ok<T>(p: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
+export async function ok<T>(p: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   let res: Awaited<typeof p>;
   try {
     res = await p;

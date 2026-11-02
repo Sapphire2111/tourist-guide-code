@@ -206,6 +206,27 @@ describe("поток старта", () => {
     expect((await screen.findByTestId("neutral-context")).textContent).toContain("Тестовий регіон");
   });
 
+  it("start_param inv_<токен> — приглашение (P14): контекст по умолчанию, токен в состоянии старта", async () => {
+    const token = "B".repeat(43);
+    const { api, calls } = fakeApi({
+      "POST /auth/telegram": login(`inv_${token}`),
+      "GET /context": () =>
+        Response.json({
+          ...hotelContext,
+          status: "default",
+          entryType: "default",
+          qrPoint: null,
+          venue: null,
+        }),
+      "GET /me": () => Response.json(meWith(true)),
+    });
+    const app = webApp({ initData: `query_id=x&start_param=inv_${token}&hash=y`, initDataUnsafe: {} });
+    const state = await createStartup(api, app)();
+    expect(state).toMatchObject({ status: "ready", invite: token });
+    const paths = calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"));
+    expect(paths).toEqual(["/context"]);
+  });
+
   it("без start_param сбой /context — «Повторити» снова вызывает GET /context", async () => {
     let attempts = 0;
     const { api, calls } = fakeApi({
