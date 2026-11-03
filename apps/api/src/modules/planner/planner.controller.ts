@@ -82,13 +82,14 @@ export class ScenariosController {
   @PublicCache(300)
   @ApiOperation({
     operationId: "listScenarios",
-    summary: "Готовые сценарии региона (C09): опубликованные, фильтр по тегу и числу дней (без AI)",
+    summary:
+      "Готовые сценарии региона (C09): опубликованные, текущего сезона (или season), фильтр по тегу и числу дней",
     description: "Без аутентификации. 404 — региона нет или он не активен.",
   })
   @ApiOkResponse({ type: ScenarioListDto })
   @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
   list(@Query() q: ScenariosQueryDto): Promise<ScenarioListDto> {
-    return this.planner.scenarios(q.regionId, { tag: q.tag, days: q.days });
+    return this.planner.scenarios(q.regionId, { tag: q.tag, days: q.days, season: q.season });
   }
 
   @Get(":id")
@@ -200,7 +201,7 @@ export class AdminScenariosController {
   @ApiOkResponse({ type: AdminScenarioListDto })
   @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN")
   list(@Query() q: AdminScenariosQueryDto): Promise<AdminScenarioListDto> {
-    return this.planner.adminList(q.status);
+    return this.planner.adminList({ status: q.status, season: q.season, tag: q.tag });
   }
 
   @Post()

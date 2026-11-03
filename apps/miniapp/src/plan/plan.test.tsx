@@ -8,7 +8,7 @@ import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
 import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
-import { createHostApi } from "../host/host-api.js";
+import { createHostApi, seasonOfDate } from "../host/host-api.js";
 import { ConflictError, type HostApi, type PlanOption, type UserPlan } from "../host/types.js";
 import { MyPlan, NewPlanScreen, SavedPlanScreen } from "./MyPlan.js";
 import { markPlanPartial } from "./partial-notice.js";
@@ -461,5 +461,22 @@ describe("адаптер host-api: «Мій план»", () => {
       { regionId: "reg", addItem: { dayNo: 1, slot: "rain", placeId: "p1" } },
       { regionId: "reg", days: 3, withCar: false },
     ]);
+  });
+});
+
+describe("Мій план: сценарії за датою поїздки", () => {
+  it("дата поїздки → сценарии её сезона; сезон даты — как в api", async () => {
+    const scenarios = vi.fn(async (_d?: string | null) => []);
+    setup(<MyPlan tab="scenarios" />, { scenarios });
+    await act(async () => {});
+    expect(scenarios).toHaveBeenLastCalledWith(null);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("scenarios-date"), { target: { value: "2027-07-10" } });
+    });
+    expect(scenarios).toHaveBeenLastCalledWith("2027-07-10");
+    expect(seasonOfDate("2027-07-10")).toBe("summer");
+    expect(seasonOfDate("2026-12-01")).toBe("winter");
+    expect(seasonOfDate("2027-03-31")).toBe("spring");
+    expect(seasonOfDate("2027-11-30")).toBe("autumn");
   });
 });

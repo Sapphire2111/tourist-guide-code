@@ -333,8 +333,39 @@ describe("C09 Мій план", () => {
     });
     expect(await screen.findByTestId("plan-item-unavailable")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти як план" })));
-    expect(savePlan).toHaveBeenCalledWith("sc1");
+    expect(savePlan).toHaveBeenCalledWith("sc1", null);
     expect(window.location.hash).toBe(`#/plan/saved/${plan().id}`);
+  });
+
+  it("дата поездки со списка → в ссылку сценария и в «Зберегти як план» (startDate)", async () => {
+    setup(<MyPlan tab="scenarios" />, {
+      scenarios: async () => [
+        { id: "sc1", title: { uk: "Один день" }, description: null, days: 1, adLabel: null },
+      ],
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("scenarios-date"), { target: { value: "2027-07-10" } });
+    });
+    expect((await screen.findByRole("link", { name: "Один день" })).getAttribute("href")).toContain(
+      "/plan/scenario/sc1?date=2027-07-10",
+    );
+    cleanup();
+    window.location.hash = "#/plan/scenario/sc1?date=2027-07-10";
+    const savePlan = vi.fn(async () => plan());
+    setup(<ScenarioScreen id="sc1" />, {
+      scenario: async () => ({
+        id: "sc1",
+        title: { uk: "Один день" },
+        description: null,
+        days: 1,
+        adLabel: null,
+        schedule: days("a"),
+      }),
+      savePlan,
+    });
+    expect(await screen.findByTestId("plan-item-unavailable")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти як план" })));
+    expect(savePlan).toHaveBeenCalledWith("sc1", "2027-07-10");
   });
 
   it("сохранённый план: замена и снятие галочки с пункта — PATCH", async () => {

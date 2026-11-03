@@ -85,6 +85,9 @@ describe("HTTP планировщика", () => {
     const { http, service } = await start();
     await http().get(`/scenarios?regionId=${REGION}&tag=kids&days=1`).expect(200);
     expect(service.scenarios).toHaveBeenCalledWith(REGION, { tag: "kids", days: 1 });
+    await http().get(`/scenarios?regionId=${REGION}&season=winter`).expect(200);
+    expect(service.scenarios).toHaveBeenLastCalledWith(REGION, { season: "winter" });
+    await http().get(`/scenarios?regionId=${REGION}&season=monsoon`).expect(400);
     await http().get(`/scenarios?regionId=${REGION}&tag=space`).expect(400);
     await http().get(`/scenarios/${SCEN}?regionId=${REGION}`).expect(200);
     await http().get(`/me/plan?regionId=${REGION}`).expect(401);
@@ -135,6 +138,7 @@ const scenario = (over: Partial<Scenario> = {}): Scenario => ({
   description_i18n: null,
   days: 1,
   tags: ["one_day"],
+  seasons: [],
   status: "published",
   version: 2,
   is_sponsored: false,
@@ -202,6 +206,22 @@ function plannerService(
 }
 
 describe("PlannerService", () => {
+  it("список туриста — сезон из запроса или текущий по поясу региона; seasons в ответе", async () => {
+    const listScenarios = vi.fn(() => Promise.resolve([scenario({ seasons: ["summer", "autumn"] })]));
+    const { service } = plannerService({ listScenarios });
+    const out = await service.scenarios(REGION, { season: "summer" });
+    expect(listScenarios).toHaveBeenLastCalledWith({ status: "published", season: "summer" });
+    expect(out.items[0]).toMatchObject({ seasons: ["summer", "autumn"] });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-15T12:00:00Z"));
+    try {
+      await service.scenarios(REGION, { tag: "kids" });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(listScenarios).toHaveBeenLastCalledWith({ status: "published", tag: "kids", season: "winter" });
+  });
+
   it("сценарий: недоступный пункт — place null; альтернативы — только опубликованные; черновик — 404", async () => {
     const { service } = plannerService({});
     const s = await service.scenario(REGION, SCEN);

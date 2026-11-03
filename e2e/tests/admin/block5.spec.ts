@@ -228,6 +228,7 @@ test("сценарии: публикация пустого сценария —
     description: null,
     days: 1,
     tags: [],
+    seasons: [],
     status: "draft",
     version: 1,
     adLabel: null,

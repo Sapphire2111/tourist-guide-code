@@ -7607,6 +7607,13 @@
             "schema": { "minimum": 1, "maximum": 5, "type": "integer" }
           },
           {
+            "name": "season",
+            "required": false,
+            "in": "query",
+            "description": "Сезон; по умолчанию — текущий по часовому поясу региона (Europe/Kyiv). Сценарии без сезонов — всегда",
+            "schema": { "$ref": "#/components/schemas/ScenarioSeason" }
+          },
+          {
             "name": "X-Request-Id",
             "in": "header",
             "description": "Correlation id; иначе генерируется",
@@ -7658,7 +7665,7 @@
             }
           }
         },
-        "summary": "Готовые сценарии региона (C09): опубликованные, фильтр по тегу и числу дней (без AI)",
+        "summary": "Готовые сценарии региона (C09): опубликованные, текущего сезона (или season), фильтр по тегу и числу дней",
         "tags": ["planner"]
       }
     },
@@ -8145,6 +8152,20 @@
             "required": false,
             "in": "query",
             "schema": { "$ref": "#/components/schemas/ScenarioStatus" }
+          },
+          {
+            "name": "season",
+            "required": false,
+            "in": "query",
+            "description": "Уместные в этот сезон (и круглогодичные)",
+            "schema": { "$ref": "#/components/schemas/ScenarioSeason" }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "description": "Только с этим тегом",
+            "schema": { "$ref": "#/components/schemas/ScenarioTag" }
           },
           {
             "name": "X-Request-Id",
@@ -15785,10 +15806,17 @@
           "active",
           "budget",
           "premium",
-          "winter",
-          "summer"
+          "hiking",
+          "mountains",
+          "waterfalls",
+          "culture",
+          "gastro",
+          "relax",
+          "ski",
+          "excursion"
         ]
       },
+      "ScenarioSeason": { "type": "string", "enum": ["winter", "spring", "summer", "autumn"] },
       "ScenarioSummaryDto": {
         "type": "object",
         "properties": {
@@ -15802,6 +15830,11 @@
           },
           "days": { "type": "integer" },
           "tags": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioTag" } },
+          "seasons": {
+            "type": "array",
+            "description": "Когда уместен; пусто — круглый год",
+            "items": { "$ref": "#/components/schemas/ScenarioSeason" }
+          },
           "adLabel": {
             "nullable": true,
             "description": "Платное участие: метка «Реклама/Партнер» (C-02)",
@@ -15809,7 +15842,7 @@
           },
           "itemCount": { "type": "integer", "description": "Доступных пунктов" }
         },
-        "required": ["id", "code", "title", "description", "days", "tags", "adLabel", "itemCount"]
+        "required": ["id", "code", "title", "description", "days", "tags", "seasons", "adLabel", "itemCount"]
       },
       "ScenarioListDto": {
         "type": "object",
@@ -15906,6 +15939,11 @@
           },
           "days": { "type": "integer" },
           "tags": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioTag" } },
+          "seasons": {
+            "type": "array",
+            "description": "Когда уместен; пусто — круглый год",
+            "items": { "$ref": "#/components/schemas/ScenarioSeason" }
+          },
           "adLabel": {
             "nullable": true,
             "description": "Платное участие: метка «Реклама/Партнер» (C-02)",
@@ -15922,6 +15960,7 @@
           "description",
           "days",
           "tags",
+          "seasons",
           "adLabel",
           "itemCount",
           "version",
@@ -16352,6 +16391,7 @@
           },
           "days": { "type": "integer" },
           "tags": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioTag" } },
+          "seasons": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioSeason" } },
           "status": { "allOf": [{ "$ref": "#/components/schemas/ScenarioStatus" }] },
           "version": { "type": "integer" },
           "adLabel": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/AdLabel" }] },
@@ -16367,6 +16407,7 @@
           "description",
           "days",
           "tags",
+          "seasons",
           "status",
           "version",
           "adLabel",
@@ -16414,6 +16455,11 @@
           },
           "days": { "type": "integer", "minimum": 1, "maximum": 5 },
           "tags": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioTag" } },
+          "seasons": {
+            "type": "array",
+            "description": "Когда уместен (Europe/Kyiv); пусто или не задано — круглый год",
+            "items": { "$ref": "#/components/schemas/ScenarioSeason" }
+          },
           "adLabel": {
             "nullable": true,
             "description": "Платное участие — только с меткой (C-02)",
@@ -16482,6 +16528,7 @@
           },
           "days": { "type": "integer" },
           "tags": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioTag" } },
+          "seasons": { "type": "array", "items": { "$ref": "#/components/schemas/ScenarioSeason" } },
           "status": { "allOf": [{ "$ref": "#/components/schemas/ScenarioStatus" }] },
           "version": { "type": "integer" },
           "adLabel": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/AdLabel" }] },
@@ -16498,6 +16545,7 @@
           "description",
           "days",
           "tags",
+          "seasons",
           "status",
           "version",
           "adLabel",

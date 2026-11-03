@@ -1,5 +1,6 @@
 // Сценарии «Мій план» (блок 5, C09, D-53): готовые маршруты региона по дням — список со статусами,
-// редактор (название, описание, теги, пункты по дням с местом и альтернативами), публикация.
+// редактор (название, описание, теги, сезоны, пункты по дням с местом и альтернативами), публикация. Список —
+// с фильтром по сезону, тегу и статусу (сценариев 100–200: генератор scenarios:generate).
 import { useEffect, useState } from "react";
 import { Link, Stack, useRoute, useT } from "@tg/ui";
 import { call, type ApiError, type ApiSchemas, type Result } from "./api.js";
@@ -30,6 +31,7 @@ type Summary = ApiSchemas["AdminScenarioDto"];
 type Detail = ApiSchemas["AdminScenarioDetailDto"];
 type Status = Summary["status"];
 type Tag = Summary["tags"][number];
+type Season = Summary["seasons"][number];
 type AdLabel = NonNullable<Summary["adLabel"]>;
 type Body = ApiSchemas["ScenarioInputDto"];
 
@@ -43,9 +45,16 @@ export const SCENARIO_TAGS = [
   "active",
   "budget",
   "premium",
-  "winter",
-  "summer",
+  "hiking",
+  "mountains",
+  "waterfalls",
+  "culture",
+  "gastro",
+  "relax",
+  "ski",
+  "excursion",
 ] as const satisfies readonly Tag[];
+export const SCENARIO_SEASONS = ["winter", "spring", "summer", "autumn"] as const satisfies readonly Season[];
 const AD_LABELS = ["advertising", "partner"] as const satisfies readonly AdLabel[];
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -63,6 +72,7 @@ type ScenarioForm = {
   description: LocalizedValue;
   days: string;
   tags: Tag[];
+  seasons: Season[];
   adLabel: string;
   sortOrder: string;
   items: ItemForm[];
@@ -74,6 +84,7 @@ const emptyForm = (): ScenarioForm => ({
   description: emptyLocalized(),
   days: "1",
   tags: [],
+  seasons: [],
   adLabel: "",
   sortOrder: "0",
   items: [],
@@ -86,6 +97,7 @@ function toForm(s: Detail): ScenarioForm {
     description: fromLocalized(s.description),
     days: String(s.days),
     tags: s.tags,
+    seasons: s.seasons ?? [],
     adLabel: s.adLabel ?? "",
     sortOrder: String(s.sortOrder),
     items: [...s.items]
@@ -120,6 +132,7 @@ export function scenarioBody(f: ScenarioForm): Body {
     description: toLocalized(f.description),
     days,
     tags: f.tags,
+    seasons: SCENARIO_SEASONS.filter((x) => f.seasons.includes(x)),
     adLabel: (f.adLabel || null) as Body["adLabel"],
     sortOrder: Number.isFinite(sort) ? sort : 0,
     items: f.items
@@ -219,17 +232,65 @@ export function ScenarioStatusButtons({
   );
 }
 
+/** Сезоны сценария для таблицы: «Зима, Літо» или «Круглий рік». */
+export function seasonsLabel(seasons: readonly Season[], tDynamic: (key: string) => string, allYear: string) {
+  return seasons.length ? seasons.map((x) => tDynamic(`admin.scenario.season.${x}`)).join(", ") : allYear;
+}
+
 function ScenarioList() {
   const { api } = useAdmin();
   const { t, tDynamic } = useT();
   const l = useLocalized();
-  const [result, reload] = useLoad(() => call(api.GET("/admin/scenarios", { params: { query: {} } })), []);
+  const [season, setSeason] = useState("");
+  const [tag, setTag] = useState("");
+  const [status, setStatus] = useState("");
+  const [result, reload] = useLoad(
+    () =>
+      call(
+        api.GET("/admin/scenarios", {
+          params: {
+            query: {
+              ...(season ? { season: season as Season } : {}),
+              ...(tag ? { tag: tag as Tag } : {}),
+              ...(status ? { status: status as Status } : {}),
+            },
+          },
+        }),
+      ),
+    [season, tag, status],
+  );
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   return (
     <Stack gap={2}>
       <div>
         <Link to="/scenarios/new">{t("admin.scenario.new")}</Link>
+      </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "end" }}>
+        <SelectField
+          label={t("admin.scenario.filterSeason")}
+          value={season}
+          empty={t("admin.scenario.filterAll")}
+          options={SCENARIO_SEASONS.map((x) => ({ value: x, label: tDynamic(`admin.scenario.season.${x}`) }))}
+          onChange={setSeason}
+        />
+        <SelectField
+          label={t("admin.scenario.filterTag")}
+          value={tag}
+          empty={t("admin.scenario.filterAll")}
+          options={SCENARIO_TAGS.map((x) => ({ value: x, label: tDynamic(`admin.scenario.tag.${x}`) }))}
+          onChange={setTag}
+        />
+        <SelectField
+          label={t("admin.scenario.filterStatus")}
+          value={status}
+          empty={t("admin.scenario.filterAll")}
+          options={(["draft", "published", "archived"] as const).map((x) => ({
+            value: x,
+            label: tDynamic(`admin.scenario.status.${x}`),
+          }))}
+          onChange={setStatus}
+        />
       </div>
       <Notice text={notice} />
       <ErrorBox error={error} />
@@ -238,41 +299,48 @@ function ScenarioList() {
           data.items.length === 0 ? (
             <p>{t("admin.empty")}</p>
           ) : (
-            <Table
-              caption={t("admin.scenarios")}
-              head={[
-                t("admin.field.name"),
-                t("admin.field.code"),
-                t("admin.scenario.days"),
-                t("admin.scenario.itemCount"),
-                t("admin.field.status"),
-                t("admin.actions"),
-              ]}
-            >
-              {data.items.map((s) => (
-                <tr key={s.id}>
-                  <Td>
-                    <Link to={`/scenarios/${s.id}`}>{l(s.title)}</Link>
-                  </Td>
-                  <Td>{s.code}</Td>
-                  <Td>{s.days}</Td>
-                  <Td>{s.itemCount}</Td>
-                  <Td>{tDynamic(`admin.scenario.status.${s.status}`)}</Td>
-                  <Td>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <ScenarioStatusButtons
-                        scenario={s}
-                        onError={setError}
-                        onChanged={() => {
-                          setNotice(t("admin.saved"));
-                          reload();
-                        }}
-                      />
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </Table>
+            <>
+              <p style={{ margin: 0 }}>{t("admin.scenario.shown", { n: data.items.length })}</p>
+              <Table
+                caption={t("admin.scenarios")}
+                head={[
+                  t("admin.field.name"),
+                  t("admin.field.code"),
+                  t("admin.scenario.days"),
+                  t("admin.scenario.seasons"),
+                  t("admin.scenario.tags"),
+                  t("admin.scenario.itemCount"),
+                  t("admin.field.status"),
+                  t("admin.actions"),
+                ]}
+              >
+                {data.items.map((s) => (
+                  <tr key={s.id}>
+                    <Td>
+                      <Link to={`/scenarios/${s.id}`}>{l(s.title)}</Link>
+                    </Td>
+                    <Td>{s.code}</Td>
+                    <Td>{s.days}</Td>
+                    <Td>{seasonsLabel(s.seasons ?? [], tDynamic, t("admin.scenario.allYear"))}</Td>
+                    <Td>{s.tags.map((x) => tDynamic(`admin.scenario.tag.${x}`)).join(", ")}</Td>
+                    <Td>{s.itemCount}</Td>
+                    <Td>{tDynamic(`admin.scenario.status.${s.status}`)}</Td>
+                    <Td>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <ScenarioStatusButtons
+                          scenario={s}
+                          onError={setError}
+                          onChanged={() => {
+                            setNotice(t("admin.saved"));
+                            reload();
+                          }}
+                        />
+                      </div>
+                    </Td>
+                  </tr>
+                ))}
+              </Table>
+            </>
           )
         }
       </Loaded>
@@ -441,6 +509,23 @@ function ScenarioEditor({ scenario }: { scenario?: Detail }) {
                 checked={form.tags.includes(tag)}
                 onChange={(on) =>
                   patch({ tags: on ? [...form.tags, tag] : form.tags.filter((x) => x !== tag) })
+                }
+              />
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset style={{ border: "1px solid #c4c7cc", borderRadius: 6, margin: 0 }}>
+          <legend>{t("admin.scenario.seasons")}</legend>
+          <p style={{ margin: "0 0 8px" }}>{t("admin.scenario.seasonsHint")}</p>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {SCENARIO_SEASONS.map((x) => (
+              <CheckboxField
+                key={x}
+                label={tDynamic(`admin.scenario.season.${x}`)}
+                checked={form.seasons.includes(x)}
+                onChange={(on) =>
+                  patch({ seasons: on ? [...form.seasons, x] : form.seasons.filter((y) => y !== x) })
                 }
               />
             ))}

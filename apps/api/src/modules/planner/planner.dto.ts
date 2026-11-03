@@ -19,9 +19,11 @@ import { LocalizedDescriptionDto, LocalizedNameDto, LocalizedTextDto } from "../
 import {
   PLAN_SLOTS,
   PROMOTION_AD_LABELS,
+  SCENARIO_SEASONS,
   SCENARIO_STATUSES,
   type PlanSlot,
   type PromotionAdLabel,
+  type ScenarioSeason,
   type ScenarioStatus,
 } from "../../db/index.js";
 import { LonLatDto } from "../catalog/index.js";
@@ -31,7 +33,10 @@ import { PLAN_DAYS_MAX, type OptionReason, type Travel } from "./plan-options.js
 // DTO планировщика (блок 5, C09, S-04; ADR-0020): готовые сценарии региона, «Мій план» пользователя, CRUD сценариев
 // в админке. Регион туриста — regionId (как в каталоге гида, ADR-0019).
 
-/** Теги сценариев (C09: 1 день, з дітьми, дощ, без авто, романтичний…) — справочник в коде. */
+/**
+ * Теги сценариев (C09: 1 день, з дітьми, дощ, без авто, романтичний…; 0025: гори, водоспади, гастро, релакс, лижі…) —
+ * справочник в коде. Время года — не тег, а seasons (0025; прежние теги winter/summer переехали туда).
+ */
 export const SCENARIO_TAGS = [
   "one_day",
   "multi_day",
@@ -42,10 +47,17 @@ export const SCENARIO_TAGS = [
   "active",
   "budget",
   "premium",
-  "winter",
-  "summer",
+  "hiking",
+  "mountains",
+  "waterfalls",
+  "culture",
+  "gastro",
+  "relax",
+  "ski",
+  "excursion",
 ] as const;
 export type ScenarioTag = (typeof SCENARIO_TAGS)[number];
+export { SCENARIO_SEASONS, type ScenarioSeason };
 
 export const SCENARIO_DAYS_MAX = 5;
 export const SCENARIO_ITEMS_MAX = 40;
@@ -76,6 +88,16 @@ export class ScenariosQueryDto extends PlannerRegionQueryDto {
   @Min(1)
   @Max(SCENARIO_DAYS_MAX)
   days?: number;
+
+  @ApiPropertyOptional({
+    enum: SCENARIO_SEASONS,
+    enumName: "ScenarioSeason",
+    description:
+      "Сезон; по умолчанию — текущий по часовому поясу региона (Europe/Kyiv). Сценарии без сезонов — всегда",
+  })
+  @IsOptional()
+  @IsIn(SCENARIO_SEASONS)
+  season?: ScenarioSeason;
 }
 
 export const PLAN_PEOPLE_MAX = 20;
@@ -274,6 +296,13 @@ export class ScenarioSummaryDto {
   @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedTextDto | null;
   @ApiProperty({ type: "integer" }) days!: number;
   @ApiProperty({ enum: SCENARIO_TAGS, enumName: "ScenarioTag", isArray: true }) tags!: ScenarioTag[];
+  @ApiProperty({
+    enum: SCENARIO_SEASONS,
+    enumName: "ScenarioSeason",
+    isArray: true,
+    description: "Когда уместен; пусто — круглый год",
+  })
+  seasons!: ScenarioSeason[];
 
   @ApiProperty({
     enum: PROMOTION_AD_LABELS,
@@ -519,6 +548,18 @@ export class ScenarioInputDto {
   tags?: ScenarioTag[];
 
   @ApiPropertyOptional({
+    enum: SCENARIO_SEASONS,
+    enumName: "ScenarioSeason",
+    isArray: true,
+    description: "Когда уместен (Europe/Kyiv); пусто или не задано — круглый год",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(SCENARIO_SEASONS.length)
+  @IsIn(SCENARIO_SEASONS, { each: true })
+  seasons?: ScenarioSeason[];
+
+  @ApiPropertyOptional({
     enum: PROMOTION_AD_LABELS,
     enumName: "AdLabel",
     nullable: true,
@@ -555,6 +596,20 @@ export class AdminScenariosQueryDto {
   @IsOptional()
   @IsIn(SCENARIO_STATUSES)
   status?: ScenarioStatus;
+
+  @ApiPropertyOptional({
+    enum: SCENARIO_SEASONS,
+    enumName: "ScenarioSeason",
+    description: "Уместные в этот сезон (и круглогодичные)",
+  })
+  @IsOptional()
+  @IsIn(SCENARIO_SEASONS)
+  season?: ScenarioSeason;
+
+  @ApiPropertyOptional({ enum: SCENARIO_TAGS, enumName: "ScenarioTag", description: "Только с этим тегом" })
+  @IsOptional()
+  @IsIn(SCENARIO_TAGS)
+  tag?: ScenarioTag;
 }
 
 export class AdminScenarioItemDto {
@@ -580,6 +635,8 @@ export class AdminScenarioDto {
   @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedTextDto | null;
   @ApiProperty({ type: "integer" }) days!: number;
   @ApiProperty({ enum: SCENARIO_TAGS, enumName: "ScenarioTag", isArray: true }) tags!: ScenarioTag[];
+  @ApiProperty({ enum: SCENARIO_SEASONS, enumName: "ScenarioSeason", isArray: true })
+  seasons!: ScenarioSeason[];
   @ApiProperty({ enum: SCENARIO_STATUSES, enumName: "ScenarioStatus" }) status!: ScenarioStatus;
   @ApiProperty({ type: "integer" }) version!: number;
   @ApiProperty({ enum: PROMOTION_AD_LABELS, enumName: "AdLabel", nullable: true })
