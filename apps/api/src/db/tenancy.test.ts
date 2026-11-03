@@ -56,6 +56,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "audit_logs",
       "availability_rules",
       "booking_events",
+      "booking_reminders",
       "bookings",
       "categories",
       "emergency_contacts",

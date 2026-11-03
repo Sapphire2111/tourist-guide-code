@@ -8,7 +8,7 @@ import {
 import { createStorage } from "@tg/media";
 import { createErrorTracker, type ErrorTracker } from "@tg/server-config";
 import type { WorkerEnv } from "../config.js";
-import { createWorkerDb, type WorkerDb } from "../db/worker-db.js";
+import { createWorkerDb, type WorkerDb, type WorkerDbOptions } from "../db/worker-db.js";
 import { deadLetterPurger } from "./dead-letter.js";
 import { createHandlers } from "./handlers.js";
 import { startQueueRuntime, type QueueRuntime, type QueueRuntimeOptions } from "./runtime.js";
@@ -25,7 +25,7 @@ export const QUEUE_RUNTIME_FACTORY = Symbol("QUEUE_RUNTIME_FACTORY");
 export const WORKER_DB_FACTORY = Symbol("WORKER_DB_FACTORY");
 export type QueueRuntimeFactory = (options: QueueRuntimeOptions) => Promise<QueueRuntime>;
 /** Доступ к БД по строке подключения (очистка ПДн аудита, запись событий); тесты подменяют. */
-export type WorkerDbFactory = (databaseUrl: string, serviceRequestRetentionDays?: number) => WorkerDb;
+export type WorkerDbFactory = (databaseUrl: string, options?: WorkerDbOptions) => WorkerDb;
 
 /**
  * Запускает воркеры при старте приложения и закрывает их при остановке (SIGTERM → app.close()).
@@ -57,7 +57,10 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
     // Задачи с БД (очистка ПДн аудита, запись событий) — только при DATABASE_URL; без него расписание очистки
     // не ставится, а задачи analytics.record падают без ретраев в dead-letter.
     const db = this.env.DATABASE_URL
-      ? this.dbFactory(this.env.DATABASE_URL, this.env.SERVICE_REQUEST_RETENTION_DAYS)
+      ? this.dbFactory(this.env.DATABASE_URL, {
+          serviceRequestRetentionDays: this.env.SERVICE_REQUEST_RETENTION_DAYS,
+          telegramBotToken: this.env.TELEGRAM_BOT_TOKEN,
+        })
       : undefined;
     if (!db)
       this.logger.warn(

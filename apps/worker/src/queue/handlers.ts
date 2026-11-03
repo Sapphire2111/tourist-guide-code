@@ -65,10 +65,22 @@ export interface ServiceRequestsAnonymizer {
   anonymizeExpired(): Promise<number>;
 }
 
-/** Сроки броней (функции БД bookings_expire_due, bookings_auto_complete, миграция api 0022). */
+/** Итог задачи сроков броней: числа броней и строк outbox, отправленных воркером. */
+export type BookingsDueResult = {
+  expired: number;
+  completed: number;
+  /** Поставленные отметки напоминаний (туристу и партнёру). */
+  reminded: number;
+  notifications: { sent: number; failed: number; skipped: number };
+};
+
+/**
+ * Сроки броней (функции БД bookings_expire_due, bookings_auto_complete — миграция api 0022; напоминания и отправка
+ * outbox воркера — 0023).
+ */
 export interface BookingsDueProcessor {
-  /** expired по SLA ответа (D-43, D-66) и автозавершение (C-27); возвращает числа обработанных броней. */
-  processDue(): Promise<{ expired: number; completed: number }>;
+  /** expired по SLA ответа (D-43, D-66), автозавершение (C-27), напоминания и отправка их уведомлений. */
+  processDue(): Promise<BookingsDueResult>;
 }
 
 /** Очистка dead-letter от записей с истёкшим сроком хранения (dead-letter.ts, DEAD_LETTER_RETENTION_MS). */
@@ -167,8 +179,19 @@ export function createHandlers(deps: HandlerDeps = {}): JobHandlers {
       if (!deps.bookings)
         throw new UnrecoverableError("Сроки броней: у воркера нет подключения к БД (DATABASE_URL)");
       const result = await deps.bookings.processDue();
-      if (result.expired > 0 || result.completed > 0)
-        logger.log(`Брони: истекло по сроку — ${result.expired}, автозавершено — ${result.completed}`);
+      const n = result.notifications;
+      if (
+        result.expired > 0 ||
+        result.completed > 0 ||
+        result.reminded > 0 ||
+        n.sent + n.failed + n.skipped > 0
+      )
+        logger.log(
+          `Брони: истекло по сроку — ${result.expired}, автозавершено — ${result.completed}, напоминаний — ` +
+            `${result.reminded}; уведомления: отправлено ${n.sent}, ошибок ${n.failed}, пропущено ${n.skipped}`,
+        );
+      if (n.failed > 0)
+        logger.warn(`Брони: не отправлено уведомлений — ${n.failed} (строки notifications failed)`);
       return result;
     },
     "audit.purge-expired-pii": async (_payload, { logger }) => {

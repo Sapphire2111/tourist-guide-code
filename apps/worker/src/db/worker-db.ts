@@ -9,7 +9,7 @@ import type {
 } from "../queue/handlers.js";
 import { analyticsWriter } from "./analytics-writer.js";
 import { auditPiiPurger } from "./audit-pii-purger.js";
-import { bookingsDueProcessor } from "./bookings-due.js";
+import { BotApiTelegramSender, bookingsDueProcessor } from "./bookings-due.js";
 import { mediaAssetStore } from "./media-assets-store.js";
 import { serviceRequestsAnonymizer } from "./service-requests-anonymizer.js";
 
@@ -23,8 +23,14 @@ export interface WorkerDb {
   close(): Promise<void>;
 }
 
+export type WorkerDbOptions = {
+  serviceRequestRetentionDays?: number;
+  /** TELEGRAM_BOT_TOKEN: уведомления броней от воркера (outbox); не задан — строки помечаются skipped. */
+  telegramBotToken?: string;
+};
+
 /** Пул соединений воркера (ленивый: соединение — при первой задаче) и операции поверх него. */
-export function createWorkerDb(connectionString: string, serviceRequestRetentionDays?: number): WorkerDb {
+export function createWorkerDb(connectionString: string, options: WorkerDbOptions = {}): WorkerDb {
   // max 4: очистка ПДн (раз в час) + запись событий (concurrency очереди analytics — 5, запрос короткий) + ресайз
   // фото (короткие вызовы функций между операциями с файлами).
   // keepAlive и таймаут подключения — как в api (Neon может «тихо» потерять сокет или долго просыпаться).
@@ -38,8 +44,10 @@ export function createWorkerDb(connectionString: string, serviceRequestRetention
     purger: auditPiiPurger(pool),
     analytics: analyticsWriter(pool),
     media: mediaAssetStore(pool),
-    serviceRequests: serviceRequestsAnonymizer(pool, serviceRequestRetentionDays),
-    bookings: bookingsDueProcessor(pool),
+    serviceRequests: serviceRequestsAnonymizer(pool, options.serviceRequestRetentionDays),
+    bookings: bookingsDueProcessor(pool, {
+      sender: options.telegramBotToken ? new BotApiTelegramSender(options.telegramBotToken) : null,
+    }),
     close: () => pool.end(),
   };
 }

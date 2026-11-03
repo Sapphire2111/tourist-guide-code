@@ -1233,6 +1233,15 @@ export interface BookingEventsTable {
 }
 export type BookingEvent = Selectable<BookingEventsTable>;
 
+/** Отметка отправленного напоминания брони (0023; пишет только воркер — функция bookings_send_reminders). */
+export interface BookingRemindersTable {
+  id: UuidPk;
+  region_id: RegionId;
+  booking_id: ColumnType<string, string, never>;
+  kind: ColumnType<string, string, never>;
+  created_at: InsertedAt;
+}
+
 // --- Богатая картка місця (0018): обогащение Google / Вікіпедія / ИИ (tenant) и кэш адресов фото Google (global) ---
 
 /** Удобство места по данным Google Place Details (только «да»; нет данных или «нет» — не пишется). */
@@ -1454,4 +1463,5 @@ export interface Database {
   partner_phone_consents: PartnerPhoneConsentsTable;
   bookings: BookingsTable;
   booking_events: BookingEventsTable;
+  booking_reminders: BookingRemindersTable;
 }

@@ -50,6 +50,8 @@ import { BookingsService } from "./bookings.service.js";
 
 // Блок 7: бронирования. Турист — регион из запроса (regionId, как каталог гида); партнёр — права из назначений ORG_*
 // на место/организацию (RBAC на сервере). Модуль — за флагом module.bookings (по умолчанию выключен): выключен — 404.
+// Турист — флаг региона из запроса (guard); партнёр (/partner/*, regionId нет) — флаг по регионам его назначений
+// (BookingsService.partnerGrants): включён хотя бы в одном — доступ к местам только этих регионов.
 
 /** Онлайн-брони: пользователь за час — не больше (защита партнёра от спама, BR-14). */
 export const BOOKING_RATE_LIMIT = { limit: 10, windowSec: 3600 } as const;
@@ -60,7 +62,7 @@ const uuid = new ParseUUIDPipe({
   exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_id" } }),
 });
 
-/** Регион флага: query/body regionId (турист); у партнёра его нет — значение окружения. */
+/** Регион флага: query/body regionId (турист и смена статуса брони). */
 const requestRegion: FeatureRegionResolver = ({ request }) => {
   const q = request.query?.regionId;
   if (typeof q === "string") return q;
@@ -204,7 +206,7 @@ export class BookingsController {
 @Controller("partner")
 @RequireAuth()
 @WithoutTenantContext()
-@RequireFeature("module.bookings", { region: requestRegion })
+// Флаг module.bookings — в сервисе по регионам назначений партнёра (не guard: regionId в запросах нет).
 export class PartnerBookingsController {
   constructor(@Inject(BookingsService) private readonly bookings: BookingsService) {}
 

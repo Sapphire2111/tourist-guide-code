@@ -1,5 +1,6 @@
 import {
   baseEnvShape,
+  optionalString,
   optionalUrl,
   requireInEnvs,
   storageEnvRefine,
@@ -21,6 +22,9 @@ export const workerEnvSchema = z
     REDIS_URL: urlWith("redis", "rediss"),
     // Срок хранения заявок гостиницы, дней (D-49, ADR-0020): после него комната, комментарий и автор обезличиваются.
     SERVICE_REQUEST_RETENTION_DAYS: z.preprocess(blank, z.coerce.number().int().min(1).max(3650).default(90)),
+    // Токен бота (тот же, что у api): уведомления и напоминания броней от воркера (outbox notifications, блок 7).
+    // Не задан — строки помечаются skipped (как в api без бота).
+    TELEGRAM_BOT_TOKEN: optionalString(),
     // Снимок длины очередей в метрики и лог (T1-18), мс; 0 — выключено. По умолчанию 10 мин:
     // каждый снимок — несколько команд Redis, а у Upstash free лимит команд.
     QUEUE_METRICS_INTERVAL_MS: z.preprocess(
