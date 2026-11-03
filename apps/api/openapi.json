@@ -7429,6 +7429,157 @@
         "tags": ["admin"]
       }
     },
+    "/weather": {
+      "get": {
+        "description": "Без аутентификации. Прогноз хранится у нас по точкам (центры населённых пунктов, горные точки); источник — Google Weather, запасной — Open-Meteo. Нет точки рядом или прогноза — 200 с available: false и пустыми days (не 500). Подпись источника — по полю source. 404 — флаг module.weather выключен.",
+        "operationId": "getWeather",
+        "parameters": [
+          {
+            "name": "lat",
+            "required": true,
+            "in": "query",
+            "description": "Широта",
+            "schema": { "minimum": -90, "maximum": 90, "example": 48.31, "type": "number" }
+          },
+          {
+            "name": "lng",
+            "required": true,
+            "in": "query",
+            "description": "Долгота",
+            "schema": { "minimum": -180, "maximum": 180, "example": 25.09, "type": "number" }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Дней прогноза, начиная с сегодняшнего (по местному времени точки)",
+            "schema": { "minimum": 1, "maximum": 7, "default": 7, "type": "integer" }
+          },
+          {
+            "name": "regionId",
+            "required": false,
+            "in": "query",
+            "description": "Регион туриста (GET /context) — для флага module.weather региона",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/WeatherForecastDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Прогноз погоды на 1–7 дней с предупреждениями — из ближайшей точки прогноза (не дальше 30 км)",
+        "tags": ["weather"]
+      }
+    },
+    "/weather/icons/{file}": {
+      "get": {
+        "description": "Без аутентификации. SVG с maps.gstatic.com через api — Mini App к Google не ходит. Cache-Control public на неделю. 404 — иконки нет.",
+        "operationId": "getWeatherIcon",
+        "parameters": [
+          {
+            "name": "file",
+            "required": true,
+            "in": "path",
+            "schema": { "example": "cloudy.svg", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "image/svg+xml" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Иконка погоды Google (прокси): адрес — iconUrl прогноза",
+        "tags": ["weather"]
+      }
+    },
     "/scenarios": {
       "get": {
         "description": "Без аутентификации. 404 — региона нет или он не активен.",
@@ -15472,6 +15623,158 @@
           "role": { "default": "ORG_STAFF", "allOf": [{ "$ref": "#/components/schemas/PlaceStaffRole" }] }
         }
       },
+      "WeatherSource": {
+        "type": "string",
+        "enum": ["google", "open-meteo"],
+        "description": "google — подпись «Includes weather data from Google»; open-meteo — «Дані: Open-Meteo»"
+      },
+      "WeatherPointDto": {
+        "type": "object",
+        "properties": {
+          "lat": { "type": "number" },
+          "lng": { "type": "number" },
+          "elevation": {
+            "type": "number",
+            "nullable": true,
+            "description": "Высота точки по рельефу источника, м (Google — null)"
+          }
+        },
+        "required": ["lat", "lng", "elevation"]
+      },
+      "WeatherCondition": {
+        "type": "string",
+        "enum": [
+          "clear",
+          "partly_cloudy",
+          "cloudy",
+          "fog",
+          "drizzle",
+          "rain",
+          "heavy_rain",
+          "showers",
+          "thunderstorm",
+          "snow",
+          "heavy_snow",
+          "sleet",
+          "freezing_rain",
+          "hail",
+          "windy"
+        ],
+        "description": "Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl"
+      },
+      "WeatherNowDto": {
+        "type": "object",
+        "properties": {
+          "time": { "type": "string", "nullable": true, "description": "Время замера (ISO)" },
+          "temperature": { "type": "number", "nullable": true, "description": "°C" },
+          "condition": {
+            "nullable": true,
+            "description": "Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherCondition" }]
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Описание источника на украинском (Google); Open-Meteo — null"
+          },
+          "iconUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
+          },
+          "windSpeed": { "type": "number", "nullable": true, "description": "км/ч" },
+          "isDay": { "type": "boolean", "nullable": true }
+        },
+        "required": ["time", "temperature", "condition", "description", "iconUrl", "windSpeed", "isDay"]
+      },
+      "WeatherWarning": {
+        "type": "string",
+        "enum": ["thunderstorm", "heavy_rain", "strong_wind", "frost", "heavy_snow", "ice", "heat"],
+        "description": "Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C"
+      },
+      "WeatherDayDto": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "Местная дата точки" },
+          "condition": {
+            "nullable": true,
+            "description": "Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherCondition" }]
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Описание источника на украинском (Google); Open-Meteo — null"
+          },
+          "iconUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
+          },
+          "temperatureMax": { "type": "number", "nullable": true, "description": "°C" },
+          "temperatureMin": { "type": "number", "nullable": true, "description": "°C" },
+          "precipitationSum": { "type": "number", "nullable": true, "description": "Осадки за сутки, мм" },
+          "precipitationProbabilityMax": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Вероятность осадков, %"
+          },
+          "snowfallSum": { "type": "number", "nullable": true, "description": "Снег за сутки, см" },
+          "windSpeedMax": { "type": "number", "nullable": true, "description": "Ветер, км/ч" },
+          "windGustsMax": { "type": "number", "nullable": true, "description": "Порывы ветра, км/ч" },
+          "rainy": {
+            "type": "boolean",
+            "description": "Ожидается дождь — показать запасной план «якщо дощ»"
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C",
+            "items": { "$ref": "#/components/schemas/WeatherWarning" }
+          }
+        },
+        "required": [
+          "date",
+          "condition",
+          "description",
+          "iconUrl",
+          "temperatureMax",
+          "temperatureMin",
+          "precipitationSum",
+          "precipitationProbabilityMax",
+          "snowfallSum",
+          "windSpeedMax",
+          "windGustsMax",
+          "rainy",
+          "warnings"
+        ]
+      },
+      "WeatherForecastDto": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "false — источник недоступен: прогноза нет (клиент ничего не показывает)"
+          },
+          "source": {
+            "nullable": true,
+            "description": "google — подпись «Includes weather data from Google»; open-meteo — «Дані: Open-Meteo»",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherSource" }]
+          },
+          "point": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherPointDto" }]
+          },
+          "timezone": { "type": "string", "nullable": true, "example": "Europe/Kyiv" },
+          "current": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherNowDto" }]
+          },
+          "days": { "type": "array", "items": { "$ref": "#/components/schemas/WeatherDayDto" } }
+        },
+        "required": ["available", "source", "point", "timezone", "current", "days"]
+      },
       "ScenarioTag": {
         "type": "string",
         "enum": [
@@ -15693,7 +15996,12 @@
             "description": "Часть дня: выбранная галочкой или по timeHint (до 12 — ранок, до 17 — день; без времени — как у предыдущего пункта); rain — «якщо дощ»",
             "allOf": [{ "$ref": "#/components/schemas/PlanSlot" }]
           },
-          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" }
+          "replaced": { "type": "boolean", "description": "Пункт заменён пользователем" },
+          "weatherWarnings": {
+            "type": "array",
+            "description": "Горный поход в день с опасной погодой у вершины/места (гроза, сильный ветер, снегопад, гололёд, мороз): предупредить туриста; пусто — нет предупреждений или прогноза",
+            "items": { "$ref": "#/components/schemas/WeatherWarning" }
+          }
         },
         "required": [
           "id",
@@ -15706,7 +16014,8 @@
           "alternatives",
           "distanceFromPreviousMeters",
           "slot",
-          "replaced"
+          "replaced",
+          "weatherWarnings"
         ]
       },
       "UserPlanDayDto": {
@@ -15802,6 +16111,69 @@
         },
         "required": ["dayNo", "slots"]
       },
+      "PlanDayWeatherDto": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "Местная дата точки" },
+          "condition": {
+            "nullable": true,
+            "description": "Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherCondition" }]
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Описание источника на украинском (Google); Open-Meteo — null"
+          },
+          "iconUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
+          },
+          "temperatureMax": { "type": "number", "nullable": true, "description": "°C" },
+          "temperatureMin": { "type": "number", "nullable": true, "description": "°C" },
+          "precipitationSum": { "type": "number", "nullable": true, "description": "Осадки за сутки, мм" },
+          "precipitationProbabilityMax": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Вероятность осадков, %"
+          },
+          "snowfallSum": { "type": "number", "nullable": true, "description": "Снег за сутки, см" },
+          "windSpeedMax": { "type": "number", "nullable": true, "description": "Ветер, км/ч" },
+          "windGustsMax": { "type": "number", "nullable": true, "description": "Порывы ветра, км/ч" },
+          "rainy": {
+            "type": "boolean",
+            "description": "Ожидается дождь — показать запасной план «якщо дощ»"
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C",
+            "items": { "$ref": "#/components/schemas/WeatherWarning" }
+          },
+          "dayNo": { "type": "integer" },
+          "noMountains": {
+            "type": "boolean",
+            "description": "Погода опасна для гор: горные походы в вариантах дня не предлагаются"
+          }
+        },
+        "required": [
+          "date",
+          "condition",
+          "description",
+          "iconUrl",
+          "temperatureMax",
+          "temperatureMin",
+          "precipitationSum",
+          "precipitationProbabilityMax",
+          "snowfallSum",
+          "windSpeedMax",
+          "windGustsMax",
+          "rainy",
+          "warnings",
+          "dayNo",
+          "noMountains"
+        ]
+      },
       "UserPlanDto": {
         "type": "object",
         "properties": {
@@ -15826,6 +16198,16 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/PlanDayOptionsDto" }
           },
+          "weather": {
+            "description": "Прогноз по дням плана (только в пределах прогноза, 7 дней, и при startDate; в списке GET /me/plan — пусто). rainy — раскрыть «якщо дощ»",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlanDayWeatherDto" }
+          },
+          "weatherSource": {
+            "nullable": true,
+            "description": "Источник прогноза для подписи; null — прогноза нет",
+            "allOf": [{ "$ref": "#/components/schemas/WeatherSource" }]
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -15840,6 +16222,8 @@
           "trip",
           "plan",
           "options",
+          "weather",
+          "weatherSource",
           "createdAt",
           "updatedAt"
         ]
@@ -17778,7 +18162,8 @@
           "module.qr_transactions",
           "module.reviews",
           "module.ambassadors",
-          "module.assistant"
+          "module.assistant",
+          "module.weather"
         ]
       },
       "FeatureFlagValueDto": {

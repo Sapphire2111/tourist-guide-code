@@ -104,6 +104,16 @@ const BAR_RE = word(
 );
 /** Ночная жизнь — не для детей в любой категории. */
 const NIGHTLIFE_RE = /нічн\p{L}*\s+клуб|night\s*club|кальян|hookah|стрип|strip/iu;
+/**
+ * Поход в горы / на вершину (по названию из Google): гора, вершина, полонина, хребет, перевал, известные вершины
+ * Карпат, peak/summit/trail. Погода: в грозу, сильный ветер, снегопад, гололёд такие места не предлагаем.
+ */
+const MOUNTAIN_RE = word(
+  "гор[аиуі]|вершин\\p{L}*|полонин\\p{L}*|хреб\\p{L}*|перевал\\p{L}*|говерл\\p{L}*|хом['’]?як\\p{L}*|" +
+    "петрос\\p{L}*|піп\\s+іван\\p{L}*|чорногор\\p{L}*|peak|summit|mountain|mount|ridge|trail|hiking|" +
+    "стежк\\p{L}*|похід\\p{L}*",
+);
+const MOUNTAIN_CATEGORIES = new Set(["nature", "active", "excursions", "sights"]);
 /** ТРЦ/ТЦ — под крышей; прочие магазины в «якщо дощ» не предлагаем. */
 const MALL_RE = word("трц|тц|mall|торгов\\p{L}*\\s+центр");
 
@@ -112,6 +122,11 @@ export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKin
     return "waterfall";
   if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n))) return "bar";
   return p.category;
+}
+
+/** Горный поход: природа/активный отдых/экскурсии/пам'ятки с горным названием. */
+export function isMountainHike(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
+  return categoriesOf(p).some((c) => MOUNTAIN_CATEGORIES.has(c)) && p.names.some((n) => MOUNTAIN_RE.test(n));
 }
 
 /** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
@@ -190,9 +205,9 @@ function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
 }
 
 /** Место с признаками, посчитанными один раз (вид, «не для детей»). */
-type Prepared = CatalogPlace & { kind: PlaceKind; adultsOnly: boolean };
+type Prepared = CatalogPlace & { kind: PlaceKind; adultsOnly: boolean; mountain: boolean };
 const prepare = (p: CatalogPlace | Prepared): Prepared =>
-  "kind" in p ? p : { ...p, kind: placeKind(p), adultsOnly: adultsOnly(p) };
+  "kind" in p ? p : { ...p, kind: placeKind(p), adultsOnly: adultsOnly(p), mountain: isMountainHike(p) };
 
 type Scored = { p: Prepared; d: number | null };
 
@@ -207,6 +222,8 @@ export function slotOptions(
   places: readonly (CatalogPlace | Prepared)[],
   trip: TripParams,
   exclude: ReadonlySet<string>,
+  /** Погода опасна для гор (гроза, ветер, снегопад, гололёд): горные походы не предлагаются. */
+  noMountains = false,
 ): PlanOption[] {
   const kids = trip.children > 0;
   const pool: Scored[] = [];
@@ -214,6 +231,7 @@ export function slotOptions(
     if (exclude.has(raw.id) || !fitsSlot(raw, slot)) continue;
     const p = prepare(raw);
     if (kids && p.adultsOnly) continue;
+    if (noMountains && p.mountain) continue;
     const d = from ? sphericalMeters(from, p.location) : null;
     if (d === null || d <= CAR_MAX_M) pool.push({ p, d });
   }
@@ -293,6 +311,8 @@ export function planOptions(input: {
   places: readonly CatalogPlace[];
   trip: TripParams;
   base: LonLat | null;
+  /** Дни, когда погода опасна для гор (прогноз): горные походы в эти дни не предлагаются. */
+  noMountainDays?: ReadonlySet<number>;
 }): DayOptions[] {
   const places = input.places.map(prepare);
   const inPlan = new Set(input.items.map((i) => i.placeId));
@@ -306,7 +326,14 @@ export function planOptions(input: {
     for (const slot of SLOT_ORDER) {
       const before = slot === "rain" ? [] : day.filter((i) => slotRank(i.slot) < slotRank(slot));
       const from = before.at(-1)?.location ?? input.base ?? day[0]?.location ?? null;
-      const options = slotOptions(slot, from, places, input.trip, slot === "rain" ? inPlan : offered);
+      const options = slotOptions(
+        slot,
+        from,
+        places,
+        input.trip,
+        slot === "rain" ? inPlan : offered,
+        input.noMountainDays?.has(dayNo) ?? false,
+      );
       if (slot !== "rain") for (const o of options) offered.add(o.placeId);
       slots.push({ slot, options });
     }

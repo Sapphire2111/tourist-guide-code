@@ -1,6 +1,7 @@
 // Модель блока 5 на стороне Mini App: «Про заклад» (HostModule), сервисные заявки, сценарии и «Мій план».
 // Экраны работают с ней, адаптер поверх @tg/api-client — host-api.ts.
 import type { LocalizedText } from "@tg/i18n";
+import type { WeatherDay, WeatherSource, WeatherWarning } from "../weather/weather-api.js";
 
 export type HostService = {
   /** Код услуги (serviceCode). */
@@ -99,7 +100,12 @@ export type PlanItem = {
   distanceMeters: number | null;
   /** Часть дня (у пунктов сценария — по времени). */
   slot: PlanSlot;
+  /** Горный поход в день с опасной погодой (только у пунктов плана); пусто — нет предупреждений. */
+  weatherWarnings?: WeatherWarning[];
 };
+
+/** Погода дня плана: rainy — раскрыть «якщо дощ», noMountains — горные походы не предлагаются. */
+export type PlanDayWeather = WeatherDay & { day: number; noMountains: boolean };
 
 /** Почему вариант подходит (ключ текста miniapp.plan.reason.*). */
 export type PlanOptionReason =
@@ -157,6 +163,9 @@ export type UserPlan = {
   base: LocalizedText | null;
   /** Варианты на выбор (только у одного плана; в списке — пусто). */
   options: PlanDayOptions[];
+  /** Погода по дням (только у одного плана, при дате начала и в пределах прогноза). */
+  weather: PlanDayWeather[];
+  weatherSource: WeatherSource | null;
 };
 
 export type PlanChange =

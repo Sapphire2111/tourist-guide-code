@@ -6,6 +6,7 @@ import {
   itemSlots,
   adultsOnly,
   CAR_MAX_M,
+  isMountainHike,
   OPTIONS_PER_SLOT,
   placeKind,
   planOptions,
@@ -233,5 +234,20 @@ describe("planOptions", () => {
     const afternoon = day!.slots.find((s) => s.slot === "afternoon")!.options;
     expect(afternoon.find((o) => o.placeId === P(1))!.distanceMeters).toBe(0);
     expect(afternoon.find((o) => o.placeId === P(2))!.distanceMeters).toBeGreaterThan(4900);
+  });
+});
+
+describe("горные походы (погода)", () => {
+  const m = (category: string, name: string) => ({ category, names: [name] });
+  it("гора, вершина, полонина, известные вершины — поход; кафе, музей и водоспад — нет", () => {
+    expect(isMountainHike(m("nature", "Гора Хом'як"))).toBe(true);
+    expect(isMountainHike(m("active", "Похід на Говерлу"))).toBe(true);
+    expect(isMountainHike(m("sights", "Полонина Перці"))).toBe(true);
+    expect(isMountainHike(m("nature", "Hoverla peak"))).toBe(true);
+    expect(isMountainHike(m("nature", "Водоспад Пробій"))).toBe(false);
+    expect(isMountainHike(m("cafes", "Кафе Гора"))).toBe(false);
+    expect(isMountainHike(m("museums", "Музей Говерли"))).toBe(false);
+    // «Горіховий» — не «гора».
+    expect(isMountainHike(m("nature", "Горіховий гай"))).toBe(false);
   });
 });

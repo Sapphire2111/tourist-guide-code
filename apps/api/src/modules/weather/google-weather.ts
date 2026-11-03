@@ -1,0 +1,240 @@
+// Google Weather API (основной источник прогноза): currentConditions:lookup и forecast/days:lookup → общая модель
+// (weather-rules.ts). Ключ — серверный GOOGLE_MAPS_API_KEY (в заголовке X-Goog-Api-Key, в ответ клиенту не попадает).
+// Описания — на украинском (languageCode=uk), иконки — iconBaseUri + ".svg" с maps.gstatic.com. Без Nest и сети.
+// Подпись у клиента по условиям Google: «Includes weather data from Google».
+import {
+  dayWarnings,
+  isRainyCondition,
+  maxOf,
+  num,
+  THRESHOLDS,
+  type Forecast,
+  type WeatherCondition,
+  type WeatherDay,
+  type WeatherNow,
+} from "./weather-rules.js";
+
+export const GOOGLE_WEATHER_URL = "https://weather.googleapis.com/v1";
+
+export function googleCurrentUrl(base: string, lat: number, lng: number, lang: string): string {
+  const q = new URLSearchParams({
+    "location.latitude": String(lat),
+    "location.longitude": String(lng),
+    languageCode: lang,
+    unitsSystem: "METRIC",
+  });
+  return `${base}/currentConditions:lookup?${q.toString()}`;
+}
+
+export function googleDaysUrl(base: string, lat: number, lng: number, days: number, lang: string): string {
+  const q = new URLSearchParams({
+    "location.latitude": String(lat),
+    "location.longitude": String(lng),
+    days: String(days),
+    pageSize: String(days),
+    languageCode: lang,
+    unitsSystem: "METRIC",
+  });
+  return `${base}/forecast/days:lookup?${q.toString()}`;
+}
+
+/** Тип погоды Google с сильным ветром: ветер, ветер с дождём, метель. */
+export function googleWindy(type: unknown): boolean {
+  return typeof type === "string" && /WINDY|WIND_AND_RAIN|BLOWING_SNOW|BLIZZARD/.test(type);
+}
+
+/** Тип погоды Google (weatherCondition.type) → погода одним словом. */
+export function googleCondition(type: unknown): WeatherCondition | null {
+  if (typeof type !== "string") return null;
+  if (/THUNDER/.test(type)) return "thunderstorm";
+  if (/HAIL/.test(type)) return "hail";
+  if (type === "RAIN_AND_SNOW") return "sleet";
+  // Метель (BLOWING_SNOW) — по смыслу сильный снег с ветром (ветер — в googleWindy).
+  if (/HEAVY_SNOW|SNOWSTORM|MODERATE_TO_HEAVY_SNOW|SNOW_PERIODICALLY_HEAVY|BLIZZARD|BLOWING_SNOW/.test(type))
+    return "heavy_snow";
+  if (/SNOW/.test(type)) return "snow";
+  if (/HEAVY_RAIN|MODERATE_TO_HEAVY_RAIN|RAIN_PERIODICALLY_HEAVY/.test(type)) return "heavy_rain";
+  if (/SHOWERS/.test(type)) return "showers";
+  if (/RAIN/.test(type)) return "rain";
+  if (type === "WINDY") return "windy";
+  if (type === "CLEAR" || type === "MOSTLY_CLEAR") return "clear";
+  if (type === "PARTLY_CLOUDY") return "partly_cloudy";
+  if (type === "MOSTLY_CLOUDY" || type === "CLOUDY") return "cloudy";
+  if (/FOG|HAZE/.test(type)) return "fog";
+  return null;
+}
+
+type Obj = Record<string, unknown>;
+const obj = (v: unknown): Obj | undefined => (v && typeof v === "object" ? (v as Obj) : undefined);
+const path = (v: unknown, ...keys: string[]): unknown => keys.reduce<unknown>((o, k) => obj(o)?.[k], v);
+
+/** Иконки Google Weather: https://maps.gstatic.com/weather/v1/<имя> (+ ".svg"). */
+export const GOOGLE_ICON_BASE = "https://maps.gstatic.com/weather/v1/";
+export const ICON_NAME = /^[a-z0-9_]{1,60}$/;
+
+/**
+ * Иконка Google: только iconBaseUri вида GOOGLE_ICON_BASE + имя → адрес .svg. Клиенту api отдаёт её через свой прокси
+ * (GET /weather/icons/{имя}.svg): Mini App к Google напрямую не ходит.
+ */
+export function googleIcon(cond: unknown): string | null {
+  const base = path(cond, "iconBaseUri");
+  if (typeof base !== "string" || !base.startsWith(GOOGLE_ICON_BASE)) return null;
+  return ICON_NAME.test(base.slice(GOOGLE_ICON_BASE.length)) ? `${base}.svg` : null;
+}
+
+/** Имя иконки Google из её адреса; не наш формат — null. */
+export function googleIconName(url: string | null): string | null {
+  if (!url?.startsWith(GOOGLE_ICON_BASE) || !url.endsWith(".svg")) return null;
+  const name = url.slice(GOOGLE_ICON_BASE.length, -4);
+  return ICON_NAME.test(name) ? name : null;
+}
+
+const text = (cond: unknown): string | null => {
+  const t = path(cond, "description", "text");
+  return typeof t === "string" && t.length <= 200 ? t : null;
+};
+
+/** Скорость в км/ч (METRIC — KILOMETERS_PER_HOUR; иное — не утверждаем). */
+const kmh = (v: unknown): number | null => {
+  const value = num(path(v, "value"));
+  const unit = path(v, "unit");
+  return unit === undefined || unit === "KILOMETERS_PER_HOUR" ? value : null;
+};
+const celsius = (v: unknown): number | null => {
+  const unit = path(v, "unit");
+  return unit === undefined || unit === "CELSIUS" ? num(path(v, "degrees")) : null;
+};
+const mm = (v: unknown): number | null => {
+  const unit = path(v, "unit");
+  return unit === undefined || unit === "MILLIMETERS" ? num(path(v, "quantity")) : null;
+};
+
+/** День и ночь прогноза дня Google → признаки части суток. */
+function part(p: unknown) {
+  const cond = path(p, "weatherCondition");
+  const precipType = path(p, "precipitation", "probability", "type");
+  return {
+    cond,
+    condition: googleCondition(path(cond, "type")),
+    windy: googleWindy(path(cond, "type")),
+    /** Все осадки в воде, мм (снег — тоже в воде). */
+    qpf: mm(path(p, "precipitation", "qpf")),
+    /** Снег слоем, мм (в ответе Google ~10× больше qpf того же снега — это высота, а не вода). */
+    snowQpf: mm(path(p, "precipitation", "snowQpf")),
+    snowy: typeof precipType === "string" && precipType === "SNOW",
+    ice: mm({ quantity: num(path(p, "iceThickness", "thickness")), unit: path(p, "iceThickness", "unit") }),
+    probability: num(path(p, "precipitation", "probability", "percent")),
+    thunder: num(path(p, "thunderstormProbability")),
+    wind: kmh(path(p, "wind", "speed")),
+    gust: kmh(path(p, "wind", "gust")),
+  };
+}
+
+function dateOf(v: unknown): string | null {
+  const y = num(path(v, "year"));
+  const m = num(path(v, "month"));
+  const d = num(path(v, "day"));
+  if (!y || !m || !d) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** forecast/days:lookup → дни. Неверная форма — null. */
+export function parseGoogleDays(body: unknown): { days: WeatherDay[]; timezone: string | null } | null {
+  const list = path(body, "forecastDays");
+  if (!Array.isArray(list)) return null;
+  const days: WeatherDay[] = [];
+  for (const fd of list) {
+    const date = dateOf(path(fd, "displayDate"));
+    if (!date) continue;
+    const day = part(path(fd, "daytimeForecast"));
+    const night = part(path(fd, "nighttimeForecast"));
+    const precipitationSum =
+      day.qpf === null && night.qpf === null ? null : (day.qpf ?? 0) + (night.qpf ?? 0);
+    // Осадки части суток с типом SNOW — снег, не дождь.
+    const liquid =
+      day.qpf === null && night.qpf === null
+        ? null
+        : (day.snowy ? 0 : (day.qpf ?? 0)) + (night.snowy ? 0 : (night.qpf ?? 0));
+    const temperatureMax = celsius(path(fd, "maxTemperature"));
+    const temperatureMin = celsius(path(fd, "minTemperature"));
+    const windSpeedMax = maxOf(day.wind, night.wind);
+    const windGustsMax = maxOf(day.gust, night.gust);
+    const d = {
+      date,
+      condition: day.condition ?? night.condition,
+      description: text(day.cond) ?? text(night.cond),
+      iconUrl: googleIcon(day.cond) ?? googleIcon(night.cond),
+      temperatureMax,
+      temperatureMin,
+      precipitationSum,
+      precipitationProbabilityMax: maxOf(day.probability, night.probability),
+      snowfallSum:
+        day.snowQpf === null && night.snowQpf === null
+          ? null
+          : Math.round(((day.snowQpf ?? 0) + (night.snowQpf ?? 0)) * 10) / 100,
+      windSpeedMax,
+      windGustsMax,
+    };
+    // «Якщо дощ» — по дневной части (днём турист в пути): дождливая погода, вероятность дождя от 50 % или от 2 мм.
+    const dayLiquid = day.snowy ? 0 : day.qpf;
+    days.push({
+      ...d,
+      rainy:
+        isRainyCondition(day.condition) ||
+        (!day.snowy && (day.probability ?? 0) >= THRESHOLDS.rainPercent) ||
+        (dayLiquid !== null && dayLiquid >= THRESHOLDS.rainMm),
+      warnings: dayWarnings({
+        conditions: [day.condition, night.condition, ...(day.windy || night.windy ? ["windy" as const] : [])],
+        temperatureMax,
+        temperatureMin,
+        liquidMm: liquid,
+        snowfallCm: d.snowfallSum,
+        windSpeedMax,
+        windGustsMax,
+        thunderProbability: maxOf(day.thunder, night.thunder),
+        iceMm: maxOf(day.ice, night.ice),
+      }),
+    });
+  }
+  const tz = path(body, "timeZone", "id");
+  return { days, timezone: typeof tz === "string" ? tz : null };
+}
+
+/** currentConditions:lookup → сейчас. Неверная форма — null. */
+export function parseGoogleCurrent(body: unknown): { now: WeatherNow; timezone: string | null } | null {
+  const b = obj(body);
+  if (!b) return null;
+  const cond = b.weatherCondition;
+  const temperature = celsius(b.temperature);
+  if (temperature === null && !cond) return null;
+  const tz = path(b, "timeZone", "id");
+  return {
+    now: {
+      time: typeof b.currentTime === "string" ? b.currentTime : null,
+      temperature,
+      condition: googleCondition(path(cond, "type")),
+      description: text(cond),
+      iconUrl: googleIcon(cond),
+      windSpeed: kmh(path(b, "wind", "speed")),
+      isDay: typeof b.isDaytime === "boolean" ? b.isDaytime : null,
+    },
+    timezone: typeof tz === "string" ? tz : null,
+  };
+}
+
+export function googleForecast(
+  lat: number,
+  lng: number,
+  current: ReturnType<typeof parseGoogleCurrent>,
+  days: NonNullable<ReturnType<typeof parseGoogleDays>>,
+): Forecast {
+  return {
+    source: "google",
+    latitude: lat,
+    longitude: lng,
+    elevation: null,
+    timezone: days.timezone ?? current?.timezone ?? null,
+    current: current?.now ?? null,
+    days: days.days,
+  };
+}

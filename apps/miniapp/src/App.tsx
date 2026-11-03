@@ -61,6 +61,9 @@ import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
 import { ModeSwitch } from "./partner/parts.js";
 import type { Role } from "./role.js";
 import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
+import { API_URL } from "./api.js";
+import { WeatherChip } from "./weather/Weather.js";
+import { createWeatherApi, type WeatherApi } from "./weather/weather-api.js";
 
 // Бронирования (блок 7, флаг module.bookings) — ленивые чанки (в первый экран не входят) с повтором при сбое загрузки.
 const BookingFlow = lazyScreen(() => import("./bookings/TouristScreens.js").then((m) => m.BookingFlow));
@@ -135,6 +138,8 @@ export type AppProps = {
   assistantApi?: AssistantApi;
   /** API бронирований (блок 7; тесты подменяют); по умолчанию — поверх api. */
   bookingsApi?: BookingsApi;
+  /** Погода (флаг module.weather; тесты подменяют); по умолчанию — GET /weather нашего api. */
+  weatherApi?: WeatherApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
@@ -277,6 +282,22 @@ function HomeAssistant(props: RoutesProps) {
   );
 }
 
+/** Погода рядом с «Локація» (флаг module.weather): только регион гида; прогноза нет — ничего. */
+function HomeWeather(props: RoutesProps) {
+  const { regionId } = useGuide();
+  const { api, weatherApi } = props;
+  const wx = useMemo(
+    () => weatherApi ?? createWeatherApi(api, regionId, API_URL),
+    [weatherApi, api, regionId],
+  );
+  if (!regionId) return null;
+  return (
+    <Feature flag="module.weather">
+      <WeatherChip api={wx} />
+    </Feature>
+  );
+}
+
 function Home(props: RoutesProps) {
   const { design } = useDesign();
   const { api, role, user, webApp, session, onMe, retryContext } = props;
@@ -286,7 +307,10 @@ function Home(props: RoutesProps) {
   return (
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
-      <LocationChip />
+      <div className="home-loc-row">
+        <LocationChip />
+        <HomeWeather {...props} />
+      </div>
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
           <Onboarding api={api} webApp={webApp} onDone={onMe} />
