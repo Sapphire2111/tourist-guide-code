@@ -15,7 +15,16 @@ import type { PartnerApi, PartnerRole } from "../partner/partner-api.js";
 import type { TelegramWebApp } from "../telegram.js";
 import type { BookingsApi, PartnerBooking, PartnerResource, Resource, SlotList } from "./bookings-api.js";
 import { BookingsProvider } from "./context.js";
-import { addDays, localTime, normalizePhone, reasonText, today, zonedIso } from "./format.js";
+import {
+  addDays,
+  localDate,
+  localTime,
+  normalizePhone,
+  reasonText,
+  REASON_CODES,
+  today,
+  zonedIso,
+} from "./format.js";
 import { PartnerBookings, PartnerResources, rulesBody, weeklyOf } from "./PartnerScreens.js";
 import { lazyScreen } from "./lazy.js";
 import { BookingFlow, MyBookings, sortBookings } from "./TouristScreens.js";
@@ -92,12 +101,17 @@ const booking = (over: Partial<PartnerBooking> = {}): PartnerBooking => ({
   resourceName: { uk: "Чан №1" },
   status: "pending_partner",
   statusReason: null,
+  statusReasonCode: null,
+  timezone: TZ,
   startsAt: at("10:00"),
   endsAt: at("11:00"),
   peopleCount: 2,
   comment: null,
   alternative: null,
   partnerResponseDueAt: null,
+  cancelDeadline: null,
+  cancelTooLate: false,
+  cancelBeforeStartHours: 2,
   allowedTransitions: ["cancelled_by_user"],
   history: [],
   createdAt: "2026-11-03T08:00:00Z",
@@ -120,6 +134,7 @@ function fakeApi(over: Partial<BookingsApi> = {}): BookingsApi {
     partnerBookings: vi.fn(async () => []),
     createManual: vi.fn(fail),
     partnerResources: vi.fn(async () => []),
+    partnerSlots: vi.fn(async () => slots()),
     createResource: vi.fn(fail),
     updateResource: vi.fn(fail),
     putAvailability: vi.fn(fail),
@@ -136,12 +151,14 @@ function renderWith(
     signedIn = true,
     webApp,
     partner,
+    entryContextId,
   }: {
     api?: BookingsApi;
     flag?: boolean;
     signedIn?: boolean;
     webApp?: TelegramWebApp;
     partner?: { role: PartnerRole };
+    entryContextId?: string;
   } = {},
 ) {
   const guide: GuideEnv = {
@@ -163,13 +180,20 @@ function renderWith(
               name: "ТОВ",
               role: partner.role,
               assignmentId: "a1",
+              // Права — как abilitiesOf сервера: кассир — без ресурсов, правил и телефона клиента.
               abilities: {
-                editPlace: true,
-                editIdentity: false,
-                submit: false,
-                manageStaff: false,
-                manageOffers: true,
+                editPlace: partner.role !== "ORG_STAFF",
+                editIdentity: partner.role === "ORG_OWNER",
+                submit: partner.role === "ORG_OWNER",
+                manageStaff: partner.role === "ORG_OWNER",
+                manageOffers: partner.role !== "ORG_STAFF",
                 serviceRequests: true,
+                bookings: true,
+                manualBooking: true,
+                manageResources: partner.role !== "ORG_STAFF",
+                editAvailability: partner.role !== "ORG_STAFF",
+                manualAvailability: true,
+                customerPhone: partner.role !== "ORG_STAFF",
               },
               places: [
                 {
@@ -193,7 +217,7 @@ function renderWith(
       <FeatureFlagsProvider flags={{ "module.bookings": flag }}>
         <GuideProvider value={guide}>
           <PartnerProvider api={partnerApi} regionId={REGION} enabled={Boolean(partner)}>
-            <BookingsProvider value={{ api, timeZone: TZ }}>{ui}</BookingsProvider>
+            <BookingsProvider value={{ api, timeZone: TZ, entryContextId }}>{ui}</BookingsProvider>
           </PartnerProvider>
         </GuideProvider>
       </FeatureFlagsProvider>
@@ -225,11 +249,32 @@ describe("format", () => {
     expect(normalizePhone("+38050123456")).toBeNull();
   });
 
-  it("служебные коды причин — человеческим текстом; неизвестная причина и текст партнёра — как есть", () => {
-    expect(reasonText("alternative_declined", t)).toBe("відмова від запропонованого часу");
-    expect(reasonText("customer_timeout", t)).toBe("не було відповіді на запропонований час");
-    expect(reasonText("closed", t)).toBe("closed");
-    expect(reasonText("Немає вільних столів", t)).toBe("Немає вільних столів");
+  it("служебные коды причин (statusReasonCode, reasonCode) — переводом; текст туриста/партнёра — как есть", () => {
+    expect(reasonText(null, "alternative_declined", t)).toBe("відмова від запропонованого часу");
+    expect(reasonText(null, "customer_timeout", t)).toBe("не було відповіді на запропонований час");
+    expect(reasonText(null, "partner_sla", t)).toBe("заклад не відповів вчасно");
+    expect(reasonText(null, "auto_complete", t)).toBe("завершено автоматично");
+    expect(reasonText("Не підходить час", "alternative_declined", t)).toBe(
+      "відмова від запропонованого часу — Не підходить час",
+    );
+    expect(reasonText("Немає вільних столів", null, t)).toBe("Немає вільних столів");
+    expect(reasonText("  ", null, t)).toBeNull();
+    // Записи до разделения полей: код в тексте — тоже переводом.
+    expect(reasonText("customer_timeout", null, t)).toBe("не було відповіді на запропонований час");
+  });
+
+  it("коды причин — ровно enum сервера BookingReasonCode, у каждого есть перевод", () => {
+    expect(Object.keys(REASON_CODES).sort()).toEqual(
+      [
+        "alternative_declined",
+        "auto_complete",
+        "auto_confirm",
+        "customer_timeout",
+        "delivered_to_partner",
+        "partner_sla",
+      ].sort(),
+    );
+    for (const key of Object.values(REASON_CODES)) expect(t(key)).not.toBe(key);
   });
 });
 
@@ -372,6 +417,35 @@ describe("C07/C08: бронирование", () => {
     );
   });
 
+  it("имя для закладу (по умолчанию из Telegram) и контекст входа (QR) уходят в заявку", async () => {
+    const webApp = {
+      ready() {},
+      expand() {},
+      initDataUnsafe: { user: { id: 1, first_name: "Олена", last_name: "Коваль" } },
+    } as unknown as TelegramWebApp;
+    const api = renderWith(<BookingFlow placeId={PLACE} />, {
+      webApp,
+      entryContextId: "00000000-0000-4000-8000-0000000000e1",
+      api: fakeApi({ create: vi.fn(async () => booking()) }),
+    });
+    await toForm();
+    const name = screen.getByLabelText("Імʼя для закладу") as HTMLInputElement;
+    expect(name.value).toBe("Олена Коваль");
+    fireEvent.change(name, { target: { value: "  Олена К. " } });
+    fireEvent.change(screen.getByLabelText("Телефон для підтвердження"), {
+      target: { value: "+380501234567" },
+    });
+    fireEvent.click(screen.getByTestId("phone-consent"));
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(api.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerName: "Олена К.",
+        entryContextId: "00000000-0000-4000-8000-0000000000e1",
+      }),
+      expect.any(String),
+    );
+  });
+
   it("без входа отправить нельзя", async () => {
     renderWith(<BookingFlow placeId={PLACE} />, { signedIn: false });
     await toForm();
@@ -392,10 +466,16 @@ describe("C21: Мої бронювання", () => {
           booking({
             id: "b-old",
             status: "cancelled_by_user",
-            statusReason: "alternative_declined",
+            statusReasonCode: "alternative_declined",
             allowedTransitions: [],
           }),
-          booking({ id: "b-exp", status: "expired", statusReason: null, allowedTransitions: [] }),
+          booking({
+            id: "b-exp",
+            status: "expired",
+            statusReason: null,
+            statusReasonCode: "partner_sla",
+            allowedTransitions: [],
+          }),
           booking({ id: "b-new", status: "pending_partner" }),
         ]),
       }),
@@ -409,8 +489,11 @@ describe("C21: Мої бронювання", () => {
     expect(within(items[1]!).getByTestId("booking-reason").textContent).toBe(
       "Причина: відмова від запропонованого часу",
     );
-    expect(within(items[2]!).queryByTestId("booking-reason")).toBeNull();
+    expect(within(items[2]!).getByTestId("booking-reason").textContent).toBe(
+      "Причина: заклад не відповів вчасно",
+    );
     expect(document.body.textContent).not.toContain("alternative_declined");
+    expect(document.body.textContent).not.toContain("partner_sla");
   });
 
   it("отмена: подтверждение, cancel_too_late — понятный текст с часами", async () => {
@@ -433,12 +516,33 @@ describe("C21: Мої бронювання", () => {
     );
   });
 
-  it("подтверждённая бронь менее чем за 2 год — кнопки отмены нет, подсказка позвонить", async () => {
+  it("подтверждённая бронь после срока отмены (сервер: cancelTooLate) — кнопки нет, подсказка позвонить", async () => {
     const soon = new Date(Date.now() + 30 * 60_000).toISOString();
+    const deadline = new Date(Date.parse(soon) - 2 * 3_600_000).toISOString();
     renderWith(<MyBookings />, {
-      api: fakeApi({ mine: vi.fn(async () => [booking({ status: "confirmed", startsAt: soon })]) }),
+      api: fakeApi({
+        mine: vi.fn(async () => [
+          booking({ status: "confirmed", startsAt: soon, cancelDeadline: deadline, cancelTooLate: true }),
+        ]),
+      }),
     });
     expect((await screen.findByTestId("cancel-rule")).textContent).toContain("зателефонуйте закладу");
+    expect(screen.queryByRole("button", { name: "Скасувати бронювання" })).toBeNull();
+  });
+
+  it("срок отмены прошёл, пока экран открыт (cancelDeadline в прошлом), — кнопки нет; часы правила — с сервера", async () => {
+    renderWith(<MyBookings />, {
+      api: fakeApi({
+        mine: vi.fn(async () => [
+          booking({
+            status: "confirmed",
+            cancelDeadline: new Date(Date.now() - 1000).toISOString(),
+            cancelBeforeStartHours: 3,
+          }),
+        ]),
+      }),
+    });
+    expect((await screen.findByTestId("cancel-rule")).textContent).toContain("за 3 год");
     expect(screen.queryByRole("button", { name: "Скасувати бронювання" })).toBeNull();
   });
 
@@ -529,6 +633,37 @@ describe("P04/P05: бронирования партнёра", () => {
       status: "cancelled_by_partner",
       reason: "Чан на ремонті",
     });
+  });
+
+  it("P05: альтернатива — слоты партнёра (место может быть не опубликовано); история — коды переводом", async () => {
+    const api = renderWith(<PartnerBookings placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [partnerResource()]),
+        partnerBookings: vi.fn(async () => [
+          booking({
+            startsAt: at("10:00", today(TZ)),
+            allowedTransitions: ["confirmed", "alternative_proposed", "cancelled_by_partner"],
+            history: [
+              {
+                fromStatus: "new",
+                toStatus: "pending_partner",
+                actor: "system",
+                reason: null,
+                reasonCode: "delivered_to_partner",
+                at: "2026-11-03T08:00:00Z",
+              },
+            ],
+          }),
+        ]),
+      }),
+    });
+    fireEvent.click(await screen.findByTestId("pbooking-row"));
+    expect(document.body.textContent).toContain("заявку передано закладу");
+    expect(document.body.textContent).not.toContain("delivered_to_partner");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Запропонувати інший час" })));
+    expect(api.partnerSlots).toHaveBeenCalledWith(RES, localDate(at("10:00", today(TZ)), TZ), 1);
+    expect(api.slots).not.toHaveBeenCalled();
   });
 
   it("кассир: телефона нет — пояснение; статус уже сменился — предложить обновить", async () => {
@@ -638,6 +773,30 @@ describe("Ресурсы партнёра", () => {
     fireEvent.change(screen.getByLabelText("Діє"), { target: { value: "30" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Є вільні місця" })));
     expect(putManual).toHaveBeenCalledWith(RES, "available_now", 30);
+  });
+
+  it("менеджер: правила и настройки по abilities; снять ручной статус — без TTL", async () => {
+    const putManual = vi.fn(async () => partnerResource());
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [
+          partnerResource({
+            manualAvailability: "busy",
+            availability: { availableNow: false, source: null, manualExpiresAt: at("12:00") },
+          }),
+        ]),
+        putManual,
+      }),
+    });
+    await screen.findByTestId("manual-status");
+    expect(screen.getByRole("button", { name: "Налаштування" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Доступність по днях" })).toBeTruthy();
+    const clear = within(screen.getByTestId("manual-status")).getByRole("button", {
+      name: t("miniapp.pres.clear"),
+    });
+    await act(async () => fireEvent.click(clear));
+    expect(putManual).toHaveBeenCalledWith(RES, "unknown", undefined);
   });
 });
 
