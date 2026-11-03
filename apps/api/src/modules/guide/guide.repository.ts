@@ -49,6 +49,8 @@ export type SearchQuery = {
   origin?: LonLat;
   radius?: number;
   categoryId?: string;
+  /** Населённые пункты (places.locality_id); пусто или нет — весь регион. */
+  localityIds?: readonly string[];
   /** Текст без экранирования (экранирует репозиторий). */
   text?: string;
   /** Не показывать места разделов главной (корень категории — с этим home_section): «Що поруч» и карты без «Де жити». */
@@ -139,6 +141,31 @@ export class GuideRepository {
     return new Map(rows.map((r) => [r.category_id, Number(r.n)]));
   }
 
+  // --- населённые пункты ---
+
+  /** Активные населённые пункты (kind settlement) по порядку, точка — долгота/широта. */
+  activeLocalities() {
+    return this.q
+      .selectFrom("localities")
+      .select(["localities.id", "localities.code", "localities.name_i18n", "localities.sort_order"])
+      .select((eb) => lonLatOf(eb.ref("localities.location")).as("location"))
+      .where("localities.active", "=", true)
+      .where("localities.kind", "=", "settlement")
+      .orderBy("localities.sort_order")
+      .orderBy("localities.code")
+      .execute();
+  }
+
+  /** Число опубликованных мест в активных категориях по населённому пункту. */
+  async publishedCountByLocality(): Promise<Map<string, number>> {
+    const rows = await this.published()
+      .where("places.locality_id", "is not", null)
+      .select(["places.locality_id", (eb) => eb.fn.countAll<string>().as("n")])
+      .groupBy("places.locality_id")
+      .execute();
+    return new Map(rows.map((r) => [r.locality_id!, Number(r.n)]));
+  }
+
   // --- поиск и карточка ---
 
   /** Страница выдачи (limit + 1 строка — признак следующей). Порядок — BR-10, C-02 (README «Публичный каталог»). */
@@ -195,6 +222,7 @@ export class GuideRepository {
             ),
           ),
         );
+    if (s.localityIds?.length) query = query.where("places.locality_id", "in", [...s.localityIds]);
     const pattern = text === undefined ? undefined : likeContains(text);
     if (pattern !== undefined)
       query = query.where(

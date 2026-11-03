@@ -1,12 +1,12 @@
-// Главная в стиле «Сучасна Косівщина»: места региона (курорта), быстрый поиск сезона.
+// Главная в стиле «Сучасна Косівщина»: места региона (выбранных локаций), быстрый поиск сезона.
 // Только реальные данные мест (GET /places/search); сезонные слоганы — общий текст спецификации.
 import { Link, useT } from "@tg/ui";
 import { useEffect, useState } from "react";
 import { useGuide, type Async } from "../guide/context.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary } from "../guide/types.js";
+import { useLocationCaption, useLocations } from "../guide/LocationProvider.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { ICONS } from "./Ornament.js";
-import { useResort, useResortCaption } from "./ResortProvider.js";
 import { SEASON_CONFIG } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
@@ -44,22 +44,21 @@ export function SeasonTags() {
   );
 }
 
-/** Лента мест выбранного курорта (весь регион — рекомендованные первыми, порядок сервера). */
-export function ResortPlaces() {
+/** Лента мест выбранных локаций (весь регион — рекомендованные первыми, порядок сервера). */
+export function HomePlaces() {
   const { t } = useT();
   const { api, regionId } = useGuide();
-  const { resort } = useResort();
-  const caption = useResortCaption();
-  const area = resort.area;
+  const { selected } = useLocations();
+  const caption = useLocationCaption();
   const [places, setPlaces] = useState<Async<PlaceSummary[]>>({ status: "loading" });
   useEffect(() => {
     if (!regionId) return;
     let alive = true;
-    // Смена курорта: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
+    // Смена локаций: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
     setPlaces((p) => (p.status === "ready" ? p : { status: "loading" }));
     api
       .search({
-        ...(area ? { point: area.center, radius: area.radius } : {}),
+        ...(selected.length ? { localityIds: selected } : {}),
         excludeSections: OWN_MAP_SECTIONS,
         limit: HOME_PLACES,
       })
@@ -70,9 +69,7 @@ export function ResortPlaces() {
     return () => {
       alive = false;
     };
-    // area определяется resort.id.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, regionId, resort.id]);
+  }, [api, regionId, selected]);
   if (!regionId) return null;
   // Сбой ленты не мешает главной: разделы ниже работают, лента просто не показывается.
   if (places.status === "error") return null;
@@ -86,7 +83,7 @@ export function ResortPlaces() {
         </Link>
       </div>
       {caption && (
-        <p className="kosiv-muted" style={{ fontSize: "0.875rem" }}>
+        <p className="kosiv-muted" style={{ fontSize: "0.875rem" }} data-testid="location-caption">
           {caption}
         </p>
       )}
@@ -101,13 +98,7 @@ export function ResortPlaces() {
       ) : (
         <ul className="kosiv-rail" data-testid="home-places">
           {places.data.map((p) => (
-            <PlaceSummaryCard
-              key={p.id}
-              place={p}
-              layout="tile"
-              testId="home-place"
-              distanceFrom={area ? t(resort.name) : undefined}
-            />
+            <PlaceSummaryCard key={p.id} place={p} layout="tile" testId="home-place" />
           ))}
         </ul>
       )}

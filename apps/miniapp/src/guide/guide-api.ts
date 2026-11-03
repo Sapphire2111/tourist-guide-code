@@ -172,11 +172,16 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       return data.items.map((c) => ({
         id: c.id,
         parentId: c.parentId,
+        code: c.code,
         name: c.name,
         homeSection: c.homeSection,
       }));
     },
-    search: async ({ point, radius, categoryId, q, excludeSections, limit, max }) => {
+    localities: async () => {
+      const data = await ok(api.GET("/localities", { params: { query: { regionId: region() } } }));
+      return data.items.map((l) => ({ id: l.id, name: l.name, placeCount: l.placeCount }));
+    },
+    search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
@@ -184,6 +189,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         ...(categoryId ? { category: categoryId } : {}),
         ...(q ? { q } : {}),
         ...(excludeSections?.length ? { exclude_section: [...excludeSections] } : {}),
+        ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
         limit: limit ?? 50,
       };
       // max — догрузка страниц (api отдаёт не больше 50 за раз) до max мест: карта «Де жити» со всеми местами.

@@ -22,11 +22,13 @@ import type {
   FavoriteDto,
   FavoriteListDto,
   GuideCategoryListDto,
+  GuideLocalityListDto,
   PlaceCardDto,
   PlacePhotoDto,
   PlaceSearchResultDto,
   PlaceSummaryDto,
 } from "./guide.dto.js";
+import { localityAliases } from "./locality-aliases.js";
 import { SEARCH_OFFSET_MAX } from "./guide.dto.js";
 import { GooglePhotosService, type GooglePhotoWidth } from "./google-photos.js";
 import { FAVORITES_MAX, GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
@@ -50,6 +52,8 @@ export type SearchParams = {
   /** Радиус, м — только с origin. */
   radius?: number;
   categoryId?: string;
+  /** Населённые пункты; пусто или нет — весь регион. */
+  localityIds?: string[];
   text?: string;
   /** Разделы главной, места которых не нужны (по умолчанию — никакие). */
   excludeSections?: readonly HomeSection[];
@@ -106,6 +110,27 @@ export class GuideService {
           homeSection: c.home_section,
           sortOrder: c.sort_order,
           placeCount: total.get(c.id) ?? 0,
+        })),
+      };
+    });
+  }
+
+  /** Населённые пункты региона для «Локація» и ассистента: с синонимами и числом опубликованных мест. */
+  async localities(regionId: string): Promise<GuideLocalityListDto> {
+    return this.inRegion(regionId, async () => {
+      const [rows, counts] = await Promise.all([
+        this.repo.activeLocalities(),
+        this.repo.publishedCountByLocality(),
+      ]);
+      return {
+        items: rows.map((l) => ({
+          id: l.id,
+          code: l.code,
+          name: l.name_i18n,
+          aliases: localityAliases(l.code),
+          location: l.location,
+          sortOrder: l.sort_order,
+          placeCount: counts.get(l.id) ?? 0,
         })),
       };
     });

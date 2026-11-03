@@ -1,32 +1,6 @@
-// SVG-мотивы косівської кераміки: «Косівська хвиля» под шапкой, оберег-вазон, розетка героя, иконки.
+// SVG-мотивы косівської кераміки: оберег-вазон, розетка героя, иконки.
 // Декор: aria-hidden, цвета — токены сезона.
 import type { ReactNode } from "react";
-
-const WAVE_DOTS = [25, 75, 125, 175, 225, 275, 325, 375];
-
-/** «Косівська хвиля» (14px): волна accent-2 и точки accent. */
-export function KosivWave({ className = "kosiv-wave" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 400 14"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M0 7 Q 12 1, 25 7 T 50 7 T 75 7 T 100 7 T 125 7 T 150 7 T 175 7 T 200 7 T 225 7 T 250 7 T 275 7 T 300 7 T 325 7 T 350 7 T 375 7 T 400 7"
-        fill="none"
-        stroke="var(--app-accent-2)"
-        strokeWidth="2"
-        vectorEffect="non-scaling-stroke"
-      />
-      {WAVE_DOTS.map((cx) => (
-        <circle key={cx} cx={cx} cy="7" r="2.5" fill="var(--app-accent)" />
-      ))}
-    </svg>
-  );
-}
 
 /** Оберег «Керамічний вазон / смерека». */
 export function VaseIcon({ size = 28 }: { size?: number }) {

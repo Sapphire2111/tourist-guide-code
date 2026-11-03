@@ -69,6 +69,27 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.sql).toMatch(/NULL::float8 as "distance"/);
   });
 
+  it("локации: фильтр locality_id IN (…) вместе с регионом; пустой список — без фильтра", async () => {
+    const L1 = "0190f5c2-7d3e-7000-8000-0000000000c1";
+    const L2 = "0190f5c2-7d3e-7000-8000-0000000000c2";
+    const [q] = await capture((r) => r.search({ localityIds: [L1, L2], limit: 10, offset: 0 }));
+    expect(q!.sql).toMatch(/"places"\."locality_id" in \(\$\d+, \$\d+\)/);
+    expect(q!.params).toEqual(expect.arrayContaining([L1, L2, A]));
+    const [none] = await capture((r) => r.search({ localityIds: [], limit: 10, offset: 0 }));
+    expect(none!.sql).not.toMatch(/locality_id/);
+  });
+
+  it("населённые пункты: активные settlement, регион; счёт мест — published по locality_id", async () => {
+    const [list] = await capture((r) => r.activeLocalities());
+    expect(list!.sql).toMatch(/"localities"\."active" = \$/);
+    expect(list!.sql).toMatch(/"localities"\."kind" = \$/);
+    expect(list!.sql).toMatch(/"localities"\."region_id" = \$/);
+    expect(list!.params).toContain("settlement");
+    const [count] = await capture((r) => r.publishedCountByLocality());
+    expect(count!.sql).toMatch(/group by "places"\."locality_id"/);
+    expect(count!.params).toContain("published");
+  });
+
   it("категории: подкатегории выключенного раздела отсекаются, регион — и на псевдониме parent", async () => {
     const [q] = await capture((r) => r.activeCategories());
     expect(q!.sql).toMatch(/"parent"\."active" = \$/);

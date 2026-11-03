@@ -20,6 +20,7 @@ export const test = base.extend<{ telegram: TelegramWebAppOptions | null }>({
           items: [
             { key: "module.partner_cabinet", enabled: true },
             { key: "module.host_requests", enabled: true },
+            { key: "module.assistant", enabled: true },
           ],
         }),
       }),

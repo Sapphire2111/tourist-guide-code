@@ -13,6 +13,9 @@ import {
   useRoute,
   useT,
 } from "@tg/ui";
+import { Assistant } from "./assistant/Assistant.js";
+import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
+import { AssistantBox } from "./assistant/AssistantBox.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -20,13 +23,13 @@ import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash } from "./design/Chrome.js";
-import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
-import { ICONS } from "./design/Ornament.js";
-import { ResortProvider } from "./design/ResortProvider.js";
+import { LocationChip } from "./guide/LocationPicker.js";
+import { LocationProvider } from "./guide/LocationProvider.js";
+import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
-import { GuideProvider, RequireRegion, type GuideEnv } from "./guide/context.js";
+import { GuideProvider, RequireRegion, useGuide, type GuideEnv } from "./guide/context.js";
 import { Favorites } from "./guide/Favorites.js";
 import { createGuideApi } from "./guide/guide-api.js";
 import { Help } from "./guide/Help.js";
@@ -73,6 +76,8 @@ export type AppProps = {
   hostApi?: HostApi;
   /** API кабинета партнёра (блок 6; тесты подменяют); по умолчанию — поверх api. */
   partnerApi?: PartnerApi;
+  /** API ассистента (тесты подменяют); по умолчанию — поверх api. */
+  assistantApi?: AssistantApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
@@ -138,40 +143,52 @@ function venueOf(session?: Session) {
   return c?.status === "ok" && c.entryType === "hotel" ? c.venue : null;
 }
 
-/** Шапка главной: «Ви відкрили гід: <заклад>» или регион; полная карточка заведения — «Про заклад» (/about). */
-function ContextSummary({ context }: { context: Session["context"] }) {
-  const { t, locale } = useT();
-  const venue = context?.status === "ok" && context.entryType === "hotel" ? context.venue : null;
-  if (venue)
-    return (
-      <p data-testid="venue-summary">
-        {t("miniapp.venue.opened", { name: pickLocalized(venue.name, locale) })}
-      </p>
-    );
-  return <ContextView context={context} />;
+/** Одна строка о регионе: «Ви на Прикарпатті.» (место с предлогом по коду региона) или «Ви в регіоні: …». */
+function regionLine(
+  context: Session["context"],
+  t: (key: string, params?: Record<string, string | number>) => string,
+  locale: Locale,
+): string | null {
+  const region = context?.region;
+  if (!region) return null;
+  const key = `miniapp.region.in.${region.code}`;
+  const place = t(key);
+  return place !== key
+    ? t("miniapp.context.in", { place })
+    : t("miniapp.context.region", { region: pickLocalized(region.name, locale) });
 }
 
-/** Приветствие и контекст входа (заведение QR или регион) — под героем. */
+/**
+ * Приветствие и контекст входа в одну строку: «Вітаємо, {name}! Ви на Прикарпатті.» При входе по QR заведения —
+ * приветствие и «Ви відкрили гід: <заклад>» (регион не нужен).
+ */
 function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "session" | "retryContext">) {
-  const { t } = useT();
+  const { t, tDynamic, locale } = useT();
+  const context = session && !session.contextFailed ? session.context : null;
+  const venue = context?.status === "ok" && context.entryType === "hotel" ? context.venue : null;
+  const where = venue ? null : regionLine(context, tDynamic, locale);
+  const hello = user ? t("miniapp.greeting", { name: user.first_name }) : null;
   return (
     <div className="kosiv-welcome">
-      {user && (
-        <p data-testid="tg-user" className="kosiv-welcome-hello">
-          {t("miniapp.greeting", { name: user.first_name })}
+      {(hello || where) && (
+        <p className="kosiv-welcome-hello">
+          {hello && <span data-testid="tg-user">{hello}</span>}
+          {hello && where ? " " : null}
+          {where && <span data-testid="neutral-context">{where}</span>}
         </p>
       )}
       {session ? (
         session.contextFailed ? (
           <ContextUnavailable retry={retryContext} />
-        ) : (
-          <div className="kosiv-context">
-            <span className="kosiv-context-icon">{ICONS.nearby}</span>
-            <ContextSummary context={session.context} />
-          </div>
-        )
+        ) : venue ? (
+          <p data-testid="venue-summary" className="kosiv-welcome-sub">
+            {t("miniapp.venue.opened", { name: pickLocalized(venue.name, locale) })}
+          </p>
+        ) : !context?.region ? (
+          <p className="kosiv-welcome-sub">{t("miniapp.context.noRegion")}</p>
+        ) : null
       ) : (
-        <p data-testid="browser-notice" className="kosiv-context">
+        <p data-testid="browser-notice" className="kosiv-welcome-sub">
           {t("miniapp.browser.notice")}
         </p>
       )}
@@ -179,13 +196,40 @@ function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "se
   );
 }
 
-function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
+/** API ассистента: из пропсов (тесты) или поверх api с регионом гида. */
+function useAssistantApi(props: RoutesProps): AssistantApi {
+  const { regionId } = useGuide();
+  const { api, assistantApi } = props;
+  return useMemo(() => assistantApi ?? createAssistantApi(api, regionId), [assistantApi, api, regionId]);
+}
+
+/**
+ * «Що шукаєте?» на главной (флаг module.assistant): только с регионом и сессией (каждый запрос стоит денег, api —
+ * только с входом через Telegram). Реплика ведёт на экран ассистента.
+ */
+function HomeAssistant(props: RoutesProps) {
+  const [, navigate] = useRoute();
+  const { regionId } = useGuide();
+  const api = useAssistantApi(props);
+  if (!regionId || !props.session) return null;
+  return (
+    <Feature flag="module.assistant">
+      <div className="kosiv-card kosiv-panel">
+        <AssistantBox api={api} onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
+      </div>
+    </Feature>
+  );
+}
+
+function Home(props: RoutesProps) {
+  const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
   const partnerOrgs = usePartnerOrgs();
   return (
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
+      <LocationChip />
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
           <Onboarding api={api} webApp={webApp} onDone={onMe} />
@@ -196,9 +240,10 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {t("miniapp.staff.open")}
         </Link>
       )}
+      <HomeAssistant {...props} />
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      <ResortPlaces />
+      <HomePlaces />
       <SeasonTags />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
@@ -339,6 +384,8 @@ function Routes(props: RoutesProps) {
   useInviteRedirect(session?.invite, partnerCabinet);
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
+  const assistantOn = useFeatureFlag("module.assistant");
+  const assistantApi = useAssistantApi(props);
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
   // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
   const refreshMe = Boolean(session) && hostRequests && (path === "/" || path === "/staff");
@@ -372,6 +419,16 @@ function Routes(props: RoutesProps) {
       <Screen webApp={webApp}>
         <RequireRegion>
           <PlaceSearch key={q} initialQuery={q.slice(0, 100)} />
+        </RequireRegion>
+      </Screen>
+    );
+  }
+  if (path === "/assistant" && assistantOn && session) {
+    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q") ?? "";
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Assistant api={assistantApi} initialQuery={q.slice(0, 300)} />
         </RequireRegion>
       </Screen>
     );
@@ -637,13 +694,12 @@ export function App({
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          {/* Свайпера курортов нет — выдача от QR-контекста / всего региона (сохранённый курорт не фильтрует незаметно). */}
-          <ResortProvider enabled={false} venueEntry={venue !== null}>
-            <main className="kosiv-shell" lang={effectiveLocale}>
-              {state.status === "loading" || state.status === "error" ? (
-                <StartupStatus state={state} />
-              ) : (
-                <GuideProvider value={guide}>
+          <main className="kosiv-shell" lang={effectiveLocale}>
+            {state.status === "loading" || state.status === "error" ? (
+              <StartupStatus state={state} />
+            ) : (
+              <GuideProvider value={guide}>
+                <LocationProvider venueEntry={venue !== null}>
                   <HostProvider value={host}>
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
@@ -654,10 +710,10 @@ export function App({
                       />
                     </PartnerProvider>
                   </HostProvider>
-                </GuideProvider>
-              )}
-            </main>
-          </ResortProvider>
+                </LocationProvider>
+              </GuideProvider>
+            )}
+          </main>
         </SeasonProvider>
       </FeatureFlagsProvider>
     </I18nProvider>

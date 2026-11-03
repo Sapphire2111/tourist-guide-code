@@ -6,11 +6,11 @@ import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
-import { HOME_PLACES, ResortPlaces, SeasonTags } from "./HomeParts.js";
-import { ResortProvider, useResort } from "./ResortProvider.js";
-import { RESORTS } from "./resorts.js";
+import { LocationChip } from "../guide/LocationPicker.js";
+import { LOCATION_STORAGE_KEY, LocationProvider, useLocations } from "../guide/LocationProvider.js";
+import { HOME_PLACES, HomePlaces, SeasonTags } from "./HomeParts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
 import {
   readSeason,
@@ -116,13 +116,26 @@ describe("сезон", () => {
   });
 });
 
-function env(search: GuideApi["search"]): GuideEnv {
+const YAREMCHE = "00000000-0000-4000-8000-0000000000d1";
+const TATARIV = "00000000-0000-4000-8000-0000000000d2";
+const EMPTY_LOC = "00000000-0000-4000-8000-0000000000d3";
+const LOCALITIES = [
+  { id: YAREMCHE, name: { uk: "Яремче" }, placeCount: 5 },
+  { id: TATARIV, name: { uk: "Татарів" }, placeCount: 2 },
+  { id: EMPTY_LOC, name: { uk: "Ворохта" }, placeCount: 0 },
+];
+
+function env(
+  search: GuideApi["search"],
+  localities: GuideApi["localities"] = vi.fn(async () => LOCALITIES),
+): GuideEnv {
   const fail = () => Promise.reject(new Error("x"));
   return {
     api: {
       categories: vi.fn(async () => [
         { id: "eat", parentId: null, name: { uk: "Де поїсти" }, homeSection: "eat" as const },
       ]),
+      localities,
       search,
       place: fail,
       favorites: fail,
@@ -150,158 +163,355 @@ const place = {
   adLabel: null,
 };
 
-function PickYaremche() {
-  const { setResort } = useResort();
-  return (
-    <button type="button" onClick={() => setResort("yaremche")}>
-      pick
-    </button>
-  );
-}
-
-describe("курорты", () => {
-  it("главная: весь регион; курорт — поиск в радиусе от его центра, прежняя лента до ответа", async () => {
+describe("локації", () => {
+  it("главная: весь регион; кнопка «Локація» — мультивыбор, лента только по выбранным, выбор запоминается", async () => {
     const search = vi.fn(async () => [place]);
     render(
       <GuideProvider value={env(search)}>
-        <ResortProvider>
+        <LocationProvider>
           <AppTop path="/" profile={false} />
-          <PickYaremche />
-          <ResortPlaces />
-        </ResortProvider>
+          <LocationChip />
+          <HomePlaces />
+        </LocationProvider>
       </GuideProvider>,
     );
     await flush();
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
-    expect(screen.getByTestId("home-place").textContent).toContain("Яремче, вул. Свободи, 1");
-    const yaremche = RESORTS.find((r) => r.id === "yaremche")!;
-    const before = search.mock.calls.length;
+    const chip = screen.getByTestId("location-chip");
+    expect(chip.textContent).toContain("Усі локації");
+    fireEvent.click(chip);
+    const sheet = screen.getByRole("dialog", { name: "Локація" });
+    // Пункт без мест не предлагается.
+    expect(sheet.textContent).not.toContain("Ворохта");
     const shown = screen.getByTestId("home-places");
-    fireEvent.click(screen.getByRole("button", { name: "pick" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Татарів" }));
     // Пока идёт запрос, прежняя лента на месте.
     expect(screen.getByTestId("home-places")).toBe(shown);
     await flush();
-    expect(search.mock.calls.length).toBe(before + 1);
     expect(search).toHaveBeenLastCalledWith({
-      point: yaremche.area!.center,
-      radius: yaremche.area!.radius,
+      localityIds: [TATARIV],
       excludeSections: ["stay"],
       limit: HOME_PLACES,
     });
-    expect(screen.getByTestId("home-place").textContent).toContain("центр: Яремче");
-    expect(screen.getByText("Поблизу: Яремче (до 4,5 км від центру)")).toBeDefined();
-    expect(localStorage.getItem("tg.resort")).toBe("yaremche");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Яремче" }));
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({
+      localityIds: [TATARIV, YAREMCHE],
+      excludeSections: ["stay"],
+      limit: HOME_PLACES,
+    });
+    expect((screen.getByRole("checkbox", { name: "Усі локації" }) as HTMLInputElement).checked).toBe(false);
+    expect(JSON.parse(localStorage.getItem(LOCATION_STORAGE_KEY)!)).toEqual({
+      regionId: "region",
+      ids: [TATARIV, YAREMCHE],
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(chip.textContent).toContain("Яремче +1");
+    expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Яремче, Татарів");
+    // «Усі локації» — без фильтра, хранилище очищено.
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Усі локації" }));
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Готово" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("каталог: курорт из сохранённого выбора — места в его радиусе вместо базовой точки QR", async () => {
-    localStorage.setItem("tg.resort", "bukovel");
+  it("каталог: сохранённый выбор — места пунктов вместо радиуса от точки QR; чужой регион не фильтрует", async () => {
+    localStorage.setItem(
+      LOCATION_STORAGE_KEY,
+      JSON.stringify({ regionId: "region", ids: [YAREMCHE, "gone"] }),
+    );
     const search = vi.fn(async () => [place]);
     render(
       <GuideProvider value={env(search)}>
-        <ResortProvider>
+        <LocationProvider>
           <Catalog section="eat" />
-        </ResortProvider>
+        </LocationProvider>
       </GuideProvider>,
     );
     await flush();
     await flush();
-    const bukovel = RESORTS.find((r) => r.id === "bukovel")!;
+    // Исчезнувший пункт отброшен.
     expect(search).toHaveBeenLastCalledWith({
       categoryId: "eat",
       q: undefined,
-      point: bukovel.area!.center,
-      radius: bukovel.area!.radius,
+      point: { lat: 48.4, lng: 24.5 },
+      localityIds: [YAREMCHE],
     });
-    expect(screen.getByTestId("resort-caption").textContent).toBe("Поблизу: Буковель (до 5 км від центру)");
+    expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Яремче");
+    cleanup();
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "other", ids: [YAREMCHE] }));
+    const again = vi.fn(async () => [place]);
+    render(
+      <GuideProvider value={env(again)}>
+        <LocationProvider>
+          <Catalog section="eat" />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(again).toHaveBeenLastCalledWith({
+      categoryId: "eat",
+      q: undefined,
+      point: { lat: 48.4, lng: 24.5 },
+    });
+    expect(screen.queryByTestId("location-caption")).toBeNull();
   });
 
-  it("шапка главной: без свайпера курортов; сезон — под шестерёнкой", () => {
+  it("лист: фокус остаётся на отмеченном пункте, по закрытию — на кнопке; «Назад» Telegram закрывает", async () => {
+    render(
+      <GuideProvider value={env(vi.fn(async () => [place]))}>
+        <LocationProvider>
+          <LocationChip />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    const chip = screen.getByTestId("location-chip");
+    chip.focus();
+    fireEvent.click(chip);
+    const dialog = screen.getByRole("dialog", { name: "Локація" });
+    expect(dialog.getAttribute("aria-describedby")).toBe("loc-sheet-hint");
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Усі локації" }));
+    const yaremche = screen.getByRole("checkbox", { name: "Яремче" });
+    yaremche.focus();
+    fireEvent.click(yaremche);
+    await flush();
+    expect(document.activeElement).toBe(yaremche);
+    fireEvent.click(screen.getByRole("button", { name: "Готово" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(chip);
+    fireEvent.click(chip);
+    expect(screen.getByRole("dialog")).toBeDefined();
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(consumeBack()).toBe(false);
+  });
+
+  it("пунктов меньше двух — сохранённый выбор не применяется; старый ключ курортов убран", async () => {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "region", ids: [YAREMCHE] }));
+    localStorage.setItem("tg.resort", "tatariv");
+    const search = vi.fn(async () => [place]);
+    render(
+      <GuideProvider
+        value={env(
+          search,
+          vi.fn(async () => LOCALITIES.slice(0, 1)),
+        )}
+      >
+        <LocationProvider>
+          <HomePlaces />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    expect(localStorage.getItem("tg.resort")).toBeNull();
+  });
+
+  it("список пунктов недоступен или пунктов меньше двух — кнопки нет, выдача без фильтра", async () => {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "region", ids: [YAREMCHE] }));
+    const search = vi.fn(async () => [place]);
+    render(
+      <GuideProvider
+        value={env(
+          search,
+          vi.fn(async () => Promise.reject(new Error("down"))),
+        )}
+      >
+        <LocationProvider>
+          <LocationChip />
+          <HomePlaces />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.queryByTestId("location-chip")).toBeNull();
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    cleanup();
+    render(
+      <GuideProvider
+        value={env(
+          search,
+          vi.fn(async () => LOCALITIES.slice(0, 1)),
+        )}
+      >
+        <LocationProvider>
+          <LocationChip />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.queryByTestId("location-chip")).toBeNull();
+  });
+});
+
+describe("шапка", () => {
+  it("главная: без свайпера курортов; сезон и профиль — в листе под кнопкой «Меню»", () => {
     const view = render(
       <SeasonProvider>
-        <AppTop path="/" profile={false} />
+        <AppTop path="/" profile />
       </SeasonProvider>,
     );
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
-    const gear = screen.getByRole("button", { name: "Налаштування" });
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(gear);
-    expect(gear.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByTestId("app-settings").hidden).toBe(false);
-    // Escape закрывает панель.
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    const menu = screen.getByRole("button", { name: "Меню" });
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(menu);
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    const dialog = screen.getByRole("dialog", { name: "Меню" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
+    // Фокус внутри листа; Escape закрывает и возвращает фокус на кнопку.
+    expect(dialog.contains(document.activeElement)).toBe(true);
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
-    // Выбор сезона применяется и закрывает панель.
-    fireEvent.click(gear);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(document.activeElement).toBe(menu);
+    // Тап вне листа закрывает.
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByTestId("menu-backdrop"));
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Тап внутри листа — не закрывает; кнопка «Закрити» закрывает.
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByTestId("app-settings"));
+    expect(screen.getByTestId("app-settings")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Закрити" }));
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Выбор сезона применяется и закрывает лист.
+    fireEvent.click(menu);
     fireEvent.click(screen.getByRole("button", { name: /Весна/ }));
     expect(document.documentElement.dataset.season).toBe("spring");
-    expect(gear.getAttribute("aria-expanded")).toBe("false");
-    // Переход на другой экран закрывает панель.
-    fireEvent.click(gear);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    // Переход на другой экран закрывает лист.
+    fireEvent.click(menu);
     view.rerender(
       <SeasonProvider>
-        <AppTop path="/help" profile={false} />
+        <AppTop path="/help" profile />
       </SeasonProvider>,
     );
-    expect(screen.getByTestId("app-settings").hidden).toBe(true);
+    expect(screen.queryByTestId("app-settings")).toBeNull();
   });
 
-  it("шапка вне главной — ссылка на главную, без свайпера на экранах без фильтра", () => {
-    render(<AppTop path="/help" profile />);
+  it("лист меню: фон не прокручивается, «Назад» Telegram закрывает лист", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile />
+      </SeasonProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(document.body.style.overflow).toBe("hidden");
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(consumeBack()).toBe(false);
+  });
+
+  it("Tab в листе не выходит за его пределы", () => {
+    render(
+      <SeasonProvider>
+        <AppTop path="/" profile />
+      </SeasonProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    const link = screen.getByRole("link", { name: "Профіль" });
+    link.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Закрити" }));
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(link);
+  });
+
+  it("вне главной: нет h1 и нет ссылок в самой полосе; профиль — только в меню и только при profile", () => {
+    const view = render(<AppTop path="/help" profile={false} />);
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-    expect(screen.getByRole("link", { name: "Гід туриста — на головну" }).getAttribute("href")).toBe("#/");
+    expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
+    view.unmount();
+    render(<AppTop path="/help" profile />);
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
     expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
   });
 });
 
-function CurrentResort() {
-  const { resort, setResort } = useResort();
+function CurrentLocation() {
+  const { selected, setSelected } = useLocations();
   return (
-    <button type="button" data-testid="current" onClick={() => setResort("yablunytsia")}>
-      {resort.id}
+    <button type="button" data-testid="current" onClick={() => setSelected([TATARIV])}>
+      {selected.join(",") || "all"}
     </button>
   );
 }
 
-describe("курорт и контекст входа", () => {
-  it("вход по QR заведения сбрасывает сохранённый курорт; чужой регион — всегда весь регион", () => {
-    localStorage.setItem("tg.resort", "tatariv");
+describe("локація и контекст входа", () => {
+  it("вход по QR заведения не применяет и сбрасывает сохранённый выбор; выбор в этом открытии — действует", async () => {
+    const saved = JSON.stringify({ regionId: "region", ids: [YAREMCHE] });
+    localStorage.setItem(LOCATION_STORAGE_KEY, saved);
+    const e = env(vi.fn(async () => []));
     const { rerender } = render(
-      <ResortProvider venueEntry={false}>
-        <CurrentResort />
-      </ResortProvider>,
+      <GuideProvider value={e}>
+        <LocationProvider venueEntry={false}>
+          <CurrentLocation />
+        </LocationProvider>
+      </GuideProvider>,
     );
-    expect(screen.getByTestId("current").textContent).toBe("tatariv");
+    await flush();
+    expect(screen.getByTestId("current").textContent).toBe(YAREMCHE);
     rerender(
-      <ResortProvider venueEntry>
-        <CurrentResort />
-      </ResortProvider>,
+      <GuideProvider value={e}>
+        <LocationProvider venueEntry>
+          <CurrentLocation />
+        </LocationProvider>
+      </GuideProvider>,
     );
     expect(screen.getByTestId("current").textContent).toBe("all");
-    expect(localStorage.getItem("tg.resort")).toBeNull();
-    // После входа по QR турист выбирает курорт сам — выбор действует.
+    expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
     fireEvent.click(screen.getByTestId("current"));
-    expect(screen.getByTestId("current").textContent).toBe("yablunytsia");
+    expect(screen.getByTestId("current").textContent).toBe(TATARIV);
     cleanup();
-    // Первый же рендер при входе по QR — весь регион (без запроса от старого курорта).
-    localStorage.setItem("tg.resort", "tatariv");
+    // Первый же рендер при входе по QR — весь регион (без запроса по старому выбору).
+    localStorage.setItem(LOCATION_STORAGE_KEY, saved);
     render(
-      <ResortProvider venueEntry>
-        <CurrentResort />
-      </ResortProvider>,
+      <GuideProvider value={e}>
+        <LocationProvider venueEntry>
+          <CurrentLocation />
+        </LocationProvider>
+      </GuideProvider>,
     );
     expect(screen.getByTestId("current").textContent).toBe("all");
-    cleanup();
-    localStorage.setItem("tg.resort", "tatariv");
+  });
+
+  it("хранилище недоступно — выбор действует до закрытия, без ошибки", async () => {
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
     render(
-      <ResortProvider enabled={false}>
-        <CurrentResort />
-      </ResortProvider>,
+      <GuideProvider value={env(vi.fn(async () => []))}>
+        <LocationProvider>
+          <CurrentLocation />
+        </LocationProvider>
+      </GuideProvider>,
     );
-    expect(screen.getByTestId("current").textContent).toBe("all");
+    await flush();
+    fireEvent.click(screen.getByTestId("current"));
+    expect(screen.getByTestId("current").textContent).toBe(TATARIV);
+    set.mockRestore();
+    get.mockRestore();
   });
 });
 
@@ -350,9 +560,9 @@ describe("поиск мест /search", () => {
     const search = vi.fn(async () => [place]);
     render(
       <GuideProvider value={env(search)}>
-        <ResortProvider>
+        <LocationProvider>
           <PlaceSearch initialQuery="чан" />
-        </ResortProvider>
+        </LocationProvider>
       </GuideProvider>,
     );
     await flush();
