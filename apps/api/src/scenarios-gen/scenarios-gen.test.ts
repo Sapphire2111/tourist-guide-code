@@ -31,20 +31,30 @@ import {
   type GenRecord,
 } from "./journal.js";
 import { wantedReport } from "./missing.js";
+import { mapCategory } from "../places-import/mapping.js";
 import {
+  CRITIC_SYSTEM,
   GEN_MAX_TOKENS,
   OUTPUT_SCHEMA,
   parseScenario,
   priceOf,
   requestParams,
+  SYSTEM_PROMPT,
   type GenScenario,
 } from "./prompt.js";
 import { chooseOrders, planEstimate, runOrders, summarize, type Order } from "./run.js";
 import {
   checkDraft,
+  DESCRIPTION_ASK_MAX,
+  draftToGen,
+  NOTE_ASK_MAX,
+  NOTE_MAX,
   openEnough,
   realisticMinutes,
   stripSchedule,
+  TITLE_ASK_MAX,
+  TITLE_MAX,
+  trimNote,
   validateScenario,
   type ScenarioDraft,
 } from "./validate.js";
@@ -655,6 +665,260 @@ describe("приписка «Графік: …» и совет туриста", 
     expect(r.draft!.items[0]!.note!.uk).toBe(
       "Приходьте о 7:00 і беріть готівку. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.",
     );
+  });
+});
+
+describe("примечание без обрыва", () => {
+  const filler = "Вирушайте зранку, поки мало людей на стежці й легко знайти місце для авто. "
+    .repeat(6)
+    .trim();
+  const market = () =>
+    place("markets", "Косівський ринок", 300, {
+      weekly: [{ dayOfWeek: 6, opensAt: "06:00", closesAt: "13:00" }],
+    });
+  const validate = (note: string, first = probii) => {
+    const museum = place("museums", "Музей", 1100);
+    return validateScenario(
+      brief("culture"),
+      setOf([first, lunch, museum]),
+      scenario([
+        { ...item("p1", "08:00", 60, ["p3"]), note_uk: note },
+        item("p3", "10:00", 60),
+        item("p2", "12:00", 75),
+      ]),
+    );
+  };
+
+  it.each([
+    ["двоеточие", "Розвертатися зручно у Ворохті. Правило розвороту:", "Розвертатися зручно у Ворохті."],
+    ["слово оборвано", "Це святе місце. Поводьтеся тихо. Вра", "Це святе місце. Поводьтеся тихо."],
+  ])("реальный обрыв из пилота (%s) не доходит до туриста", (_n, raw, want) => {
+    expect(trimNote(raw)).toBe(want);
+    const r = validate(raw);
+    expect(r.draft!.items[0]!.note!.uk).toBe(want);
+    expect(r.fixes.join()).toMatch(/скорочено до закінченого речення/);
+  });
+
+  it("длинное режется по последнему предложению в пределах лимита, с записью в fixes", () => {
+    const raw = `${filler} Поводьтеся тихо. Враховуйте, що на стежці бувають інші туристи і треба йти дуже обережно.`;
+    expect(raw.length).toBeGreaterThan(NOTE_MAX);
+    const r = validate(raw);
+    const note = r.draft!.items[0]!.note!.uk;
+    expect(note.length).toBeLessThanOrEqual(NOTE_MAX);
+    expect(note).toMatch(/[.!?]$/);
+    expect(raw.startsWith(note)).toBe(true);
+    expect(r.fixes.join()).toMatch(/→/);
+  });
+
+  it("лимит: длина в промпте — и у модели, и у критика; предел программы не меньше", () => {
+    expect(SYSTEM_PROMPT).toContain(`до ${NOTE_ASK_MAX} символів`);
+    expect(CRITIC_SYSTEM).toContain(`до ${NOTE_ASK_MAX} символів`);
+    expect(NOTE_MAX).toBeGreaterThanOrEqual(NOTE_ASK_MAX);
+  });
+
+  it("без точек: короткое остаётся, длинное и хвост с двоеточием — без примечания, но с fixes", () => {
+    expect(trimNote("Прогулянка")).toBe("Прогулянка");
+    const long = "йти далі стежкою вздовж річки ".repeat(30);
+    const r = validate(long);
+    expect(r.errors).toEqual([]);
+    expect(r.draft!.items[0]!.note).toBeNull();
+    expect(r.fixes.join()).toMatch(/примітку прибрано/);
+    expect(trimNote("Правило розвороту:")).toBe("");
+    expect(trimNote("")).toBe("");
+  });
+
+  it("точка после сокращения и числа — не конец предложения", () => {
+    const tail = "а далі".repeat(100);
+    expect(trimNote(`Парковка біля храму. Їдьте у м. Яремче ${tail}`)).toBe("Парковка біля храму.");
+    expect(trimNote("Вул. Свободи поруч")).toBe("Вул. Свободи поруч");
+    expect(trimNote(`Беріть воду. Це прибл. три години ${tail}`)).toBe("Беріть воду.");
+    expect(trimNote(`Беріть воду! Старт о 10.30 ${tail}`)).toBe("Беріть воду!");
+    expect(trimNote(`Скажіть «Добрий день!» Далі ${tail}`)).toBe("Скажіть «Добрий день!»");
+  });
+
+  it("приписка графика у длинного примечания: целая, советы не вытеснены", () => {
+    const m = market();
+    const raw = `${filler} Беріть готівку.`;
+    expect(raw.length).toBeLessThanOrEqual(NOTE_MAX);
+    const note = validate(raw, m).draft!.items[0]!.note!.uk;
+    expect(note).toBe(`${raw} Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.`);
+    // Совет оборван, график остаётся целым; без совета — один график.
+    expect(validate("Правило:", m).draft!.items[0]!.note!.uk).toBe(
+      "Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.",
+    );
+  });
+
+  it("повторная проверка не портит текст: draftToGen → validate и checkDraft", () => {
+    const m = market();
+    const museum = place("museums", "Музей", 1100);
+    const set = setOf([m, lunch, museum]);
+    const gen = scenario([
+      { ...item("p1", "08:00", 60, ["p3"]), note_uk: `${filler} Беріть готівку. Правило розвороту:` },
+      item("p3", "10:00", 60),
+      item("p2", "12:00", 75),
+    ]);
+    const first = validateScenario(brief("culture"), set, gen).draft!;
+    const again = validateScenario(brief("culture"), set, draftToGen(first, set));
+    expect(again.draft!.items.map((i) => i.note)).toEqual(first.items.map((i) => i.note));
+    expect(again.fixes.join()).not.toMatch(/примітку/);
+    const byId = new Map([m, lunch, museum].map((x) => [x.id, x]));
+    expect(checkDraft(first, byId)).toEqual([]);
+  });
+});
+
+describe("конец предложения: числа, единицы, сокращения, кавычки", () => {
+  it.each([
+    ["Обід о 14:00. Правило:", "Обід о 14:00."],
+    [
+      "Парковка поруч. Вхід 100 грн. Каса працює до 18:00. Далі обір",
+      "Парковка поруч. Вхід 100 грн. Каса працює до 18:00.",
+    ],
+    ["Каса до 18:00. Вра", "Каса до 18:00."],
+    ["Закладіть 40 хв. Вра", "Закладіть 40 хв."],
+    ["Маршрут макс. 20 км. Далі обір", "Маршрут макс. 20 км."],
+    ["1. Йти прямо", "1. Йти прямо"],
+    ["Беріть воду. 2. Йдіть далі", "Беріть воду."],
+    ["Йдіть 5 км. на схід", "Йдіть 5 км. на схід"],
+    [
+      "Йдіть на пров. Шкільний, далі на буд. 5 і ще трохи без кінця",
+      "Йдіть на пров. Шкільний, далі на буд. 5 і ще трохи без кінця",
+    ],
+    ["Їдьте до обл. Центру без кінця", "Їдьте до обл. Центру без кінця"],
+    ["Беріть воду. Скажіть „Добрий день!“", "Беріть воду. Скажіть „Добрий день!“"],
+  ])("%s", (raw, want) => {
+    expect(trimNote(raw)).toBe(want);
+    expect(trimNote(want)).toBe(want);
+  });
+
+  it("склейка после снятия графика: пробел сохраняется", () => {
+    expect(stripSchedule("Зранку. Графік: сб 06:00-13:00, тому не запізнюйтесь.")).toBe(
+      "Зранку. тому не запізнюйтесь.",
+    );
+  });
+
+  it("правка критика с длинной английской назвой не теряется", async () => {
+    const set = setOf([probii, lunch, chan]);
+    const items = (time: string) => [
+      item("p1", time, 45, ["p3"]),
+      item("p2", "12:00", 75),
+      item("p3", "15:00", 120),
+    ];
+    const res = (o: unknown) => ({
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+      content: [{ type: "text", text: JSON.stringify(o) }],
+    });
+    const revised = scenario(items("09:30"), { title_en: "Long title ".repeat(10) });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(res(scenario(items("10:00"))))
+      .mockResolvedValueOnce(res({ verdict: "fix", issues: ["x"], revised }));
+    const out = await generateOne(api(create), brief("waterfalls"), set, emptyUsage(), {
+      retries: 0,
+      criticRounds: 1,
+    });
+    expect(out.critic[0]!.accepted).toBe(true);
+    expect(out.draft!.items[0]!.timeHint).toBe("09:30");
+    expect(out.draft!.title.en).toBeUndefined();
+  });
+});
+
+describe("назва и опис без обрыва", () => {
+  const set = setOf([probii, lunch, chan]);
+  const items = [item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)];
+  const check = (over: Partial<GenScenario>) =>
+    validateScenario(brief("waterfalls"), set, scenario(items, over));
+  const long = "Дуже довга назва сценарію про водоспади Карпат ".repeat(3).trim();
+  const byId = new Map([probii, lunch, chan].map((x) => [x.id, x]));
+  const draft = () => check({}).draft!;
+
+  it("длинная назва (uk и en) — ошибка, а не обрезка", () => {
+    expect(check({ title_uk: long }).draft).toBeNull();
+    expect(check({ title_uk: long }).errors.join()).toMatch(/назва довша/);
+    const en = check({ title_en: long });
+    expect(en.errors).toEqual([]);
+    expect(en.draft!.title).toEqual({ uk: "День у Яремчі" });
+    expect(en.fixes.join()).toMatch(/англійська назва довша.*прибрано/);
+    expect(check({ title_uk: "Яремче: маршрут:" }).errors.join()).toMatch(/обірвана/);
+    expect(check({ title_uk: "а".repeat(TITLE_MAX) }).errors).toEqual([]);
+  });
+
+  it("длинный опис — по законченному предложению, с записью в fixes; лимиты названы модели и критику", () => {
+    const first = "Неспішний день біля водоспадів і обід поруч.";
+    const r = check({ description_uk: `${first} ${"Далі ".repeat(90)}` });
+    expect(r.draft!.description!.uk).toBe(first);
+    expect(r.fixes.join()).toMatch(/опис скорочено/);
+    const none = check({ description_uk: "а далі ".repeat(70) });
+    expect(none.draft!.description).toBeNull();
+    expect(none.fixes.join()).toMatch(/опис прибрано/);
+    for (const prompt of [SYSTEM_PROMPT, CRITIC_SYSTEM]) {
+      expect(prompt).toContain(`до ${TITLE_ASK_MAX} символів`);
+      expect(prompt).toContain(`до ${DESCRIPTION_ASK_MAX} символів`);
+    }
+  });
+
+  it("checkDraft отклоняет оборванное из журнала и пропускает целое", () => {
+    const d = draft();
+    expect(checkDraft(d, byId)).toEqual([]);
+    const withNote = (uk: string) => ({
+      ...d,
+      items: [{ ...d.items[0]!, note: { uk } }, ...d.items.slice(1)],
+    });
+    expect(checkDraft(withNote("Поводьтеся тихо. Вра"), byId).join()).toMatch(/примітка \(uk\) обірвана/);
+    expect(checkDraft(withNote("Сюди зручно. Правило розвороту:"), byId).join()).toMatch(/обірвана/);
+    expect(checkDraft(withNote("Зранку. Графік: пн 09:00-13:00,14:00-18"), byId).join()).toMatch(/обірвана/);
+    expect(checkDraft(withNote("Зранку. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд."), byId)).toEqual(
+      [],
+    );
+    // Старая проверка резала назву ровно на 80 символов.
+    const cut = long.slice(0, 80);
+    expect(checkDraft({ ...d, title: { uk: cut } }, byId).join()).toMatch(/назва \(uk\) довша/);
+    expect(checkDraft({ ...d, title: { uk: "Назва", en: cut } }, byId).join()).toMatch(/назва \(en\) довша/);
+    expect(checkDraft({ ...d, description: { uk: "День біля води. Обід поб" } }, byId).join()).toMatch(
+      /опис \(uk\) обірваний/,
+    );
+  });
+});
+
+describe("Женецький Гук в каталоге", () => {
+  const catalogOf = (places: GenPlace[]): GenCatalog => ({
+    regionId: "r",
+    timezone: "Europe/Kyiv",
+    places,
+    localities: [{ code: "yaremche", name: "Яремче", location: CENTER }],
+    existingCodes: new Set(),
+  });
+  // Категория — как в импорте (Google ставит водоспадам tourist_attraction, название главнее типа).
+  const fromImport = (name: string, m: number) => {
+    const category = mapCategory({ primaryType: "tourist_attraction" }, name);
+    expect(category).toBe("nature");
+    return place(category!, name, m);
+  };
+  const zhenets = fromImport("Водоспад Женецький Гук", 2_000);
+  const small = fromImport("Водоспад Малий Гук Шешорський", 9_000);
+
+  it("отчёт: реальные названия найдены, отдельного «Водоспад Гук» нет", () => {
+    const missing = wantedReport(catalogOf([zhenets, small])).filter((w) => /Гук|Женец/.test(w.name));
+    expect(missing).toHaveLength(1);
+    expect(missing[0]!.found[0]).toMatch(/Водоспад Женецький Гук/);
+    // Без Женецького пункт остаётся недостающим: Малий Гук — другой водоспад.
+    const none = wantedReport(catalogOf([small])).filter((w) => /Гук|Женец/.test(w.name));
+    expect(none[0]!.found).toEqual([]);
+    const plain = wantedReport(catalogOf([fromImport("Водоспад Гук", 2_000)]));
+    expect(plain.filter((w) => /Гук|Женец/.test(w.name))[0]!.found).toHaveLength(1);
+  });
+
+  it("заказ: водоспад — кандидат темы, а Женецький и Малий Гук не считаются одним маршрутом", () => {
+    const set = selectCandidates(brief("waterfalls"), catalogOf([zhenets, small, lunch, chan, probii]));
+    const line = set.candidates.find((c) => c.place.id === zhenets.id);
+    expect(line).toMatchObject({ focus: true });
+    expect(line!.place.estimate.landmark?.name).toBe("Женецький водоспад");
+    const r = validateScenario(
+      brief("waterfalls"),
+      setOf([zhenets, small, lunch, place("museums", "Музей", 1100)]),
+      scenario([item("p1", "09:00", 150, ["p4"]), item("p3", "12:00", 75), item("p2", "14:00", 150)]),
+    );
+    expect(r.errors.join()).not.toMatch(/той самий маршрут/);
   });
 });
 

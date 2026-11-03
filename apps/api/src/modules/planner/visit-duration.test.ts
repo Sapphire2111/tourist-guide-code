@@ -189,3 +189,17 @@ describe("горные места: доп. категории из импорт�
     expect(isMountainHike(p("sights", "Музей на горі"))).toBe(false);
   });
 });
+
+describe("Женецький Гук и другие «Гук»", () => {
+  it("свой ориентир вместо общего huk; длительность, вид и сезон прежние", () => {
+    for (const name of ["Водоспад Женецький Гук", "Женецький Гук", "Zhenetskyi Huk Waterfall"]) {
+      const place = p("nature", name);
+      expect(landmarkOf(place)?.code, name).toBe("zhenets");
+      expect(visitEstimate(place)).toMatchObject({ minutes: 150, kind: "walk", fixed: true });
+      expect(isSeasonalHike(place), name).toBe(false);
+      expect(isMountainHike(place), name).toBe(false);
+    }
+    expect(landmarkOf(p("nature", "Водоспад Малий Гук Шешорський"))?.code).toBe("huk");
+    expect(landmarkOf(p("nature", "Водоспад Гук"))?.code).toBe("huk");
+  });
+});
