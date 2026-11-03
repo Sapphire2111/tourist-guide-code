@@ -49,11 +49,11 @@ export type AssistantQuery = {
 };
 
 /**
- * Синонимы населённых пунктов для модели (курорты и разговорные названия). Временно здесь — до общего списка
- * локаций с синонимами (ветка «Локація»).
+ * Алиасы населённых пунктов для модели (курорты, падежи). Временно здесь — после слияния ветки «Локація» заменить на
+ * общий LOCALITY_ALIASES (guide/locality-aliases.ts), а фильтр placeLocalities — на localityIds в поиске каталога.
  */
-export const LOCALITY_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
-  polianytsia: ["Буковель", "Bukovel"],
+export const LOCALITY_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  polianytsia: ["Буковель", "Буковелі", "Bukovel", "Поляниця"],
 };
 /** Кандидатов на категорию при фильтре по населённому пункту (фильтр — после поиска, до общего параметра). */
 const CANDIDATES_WITH_LOCALITY = 50;
@@ -118,7 +118,7 @@ export class AssistantService {
     const localities: IntentLocality[] = localityRows.map((l) => ({
       code: l.code,
       name: l.name_i18n.uk,
-      synonyms: LOCALITY_SYNONYMS[l.code] ?? [],
+      aliases: LOCALITY_ALIASES[l.code] ?? [],
     }));
     const localityIdOf = new Map(localityRows.map((l) => [l.code, l.id]));
 

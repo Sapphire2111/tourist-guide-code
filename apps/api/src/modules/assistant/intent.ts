@@ -51,7 +51,7 @@ export type AssistantIntent = {
 
 export type IntentCategory = { code: string; name: string; parentName: string | null };
 /** Населённый пункт для модели: код, название, синонимы (курорт, старое название). */
-export type IntentLocality = { code: string; name: string; synonyms: readonly string[] };
+export type IntentLocality = { code: string; name: string; aliases: readonly string[] };
 
 /**
  * Системный промпт: неизменный (без данных региона и запроса). Кэш промпта не включён: префикс (инструмент + промпт)
@@ -107,7 +107,7 @@ export function intentTool(
             { type: "null" },
           ],
           description: `Населений пункт, названий туристом, або null. ${localities
-            .map((l) => `${l.code} — ${[l.name, ...l.synonyms].join(", ")}`)
+            .map((l) => `${l.code} — ${[l.name, ...l.aliases].join(", ")}`)
             .join("; ")}`,
         },
         radiusMeters: {
