@@ -179,7 +179,12 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
     },
     localities: async () => {
       const data = await ok(api.GET("/localities", { params: { query: { regionId: region() } } }));
-      return data.items.map((l) => ({ id: l.id, name: l.name, placeCount: l.placeCount }));
+      return data.items.map((l) => ({
+        id: l.id,
+        name: l.name,
+        placeCount: l.placeCount,
+        location: l.location ? { lat: l.location.lat, lng: l.location.lon } : null,
+      }));
     },
     search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max, signal }) => {
       const query = {

@@ -144,7 +144,7 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).toBeChecked();
     await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).not.toBeChecked();
     const state = apiMockState.get(page)!;
-    await expect.poll(() => state.searches.at(-1)).toMatchObject({ lat: "48.4535", radius: "500" });
+    await expect.poll(() => state.searches.at(-1)).toMatchObject({ lat: "48.4535", radius: "10000" });
     await expectNoSeriousA11yViolations(page);
     await sheet.getByRole("checkbox", { name: "Татарів" }).check();
     await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).not.toBeChecked();
@@ -157,7 +157,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.goto("/");
     await page.getByTestId("location-chip").click();
     const sheet = page.getByRole("dialog", { name: "Локація" });
-    await sheet.getByRole("checkbox", { name: "Моє місцезнаходження" }).check();
+    await sheet.getByRole("checkbox", { name: "Моє місцезнаходження" }).click();
     await expect(page.getByTestId("location-gps-failed")).toBeVisible();
     await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).toBeChecked();
     await sheet.getByRole("button", { name: "Готово" }).click();

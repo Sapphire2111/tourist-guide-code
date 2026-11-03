@@ -3,9 +3,19 @@
 // позиции туриста. Выбор запоминается на устройстве по региону; пусто — «Усі локації» (весь регион).
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useRef,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useMaybeGuide } from "./context.js";
-import { requestLocation, type LatLng } from "./geo.js";
+import { distanceMeters, requestLocation, requestLocationIfGranted, type LatLng } from "./geo.js";
+import type { GuideApi, PlaceSummary, SearchParams } from "./types.js";
 import type { LocalityOption } from "./types.js";
 
 export const LOCATION_STORAGE_KEY = "tg.localities";
@@ -22,13 +32,41 @@ export type LocationState = {
   gps: LatLng | null;
   /** Идёт определение точки (выбор пункта «Моє місцезнаходження»). */
   gpsBusy: boolean;
-  /** Не удалось получить точку по явному выбору: показать сообщение, выбор откачен на «Усі локації». */
-  gpsFailed: boolean;
+  /** Явный выбор не удался: нет точки/отказ или точка вне региона; выбор откачен на «Усі локації». */
+  gpsFailed: "denied" | "outside" | null;
   selectGps: () => void;
+  /** Лист «Локація» открыт (из чипа или подсказки «Змінити локацію»). */
+  sheetOpen: boolean;
+  setSheetOpen: (open: boolean) => void;
 };
 
-/** Радиус выдачи вокруг точки устройства, м (как у «Що поруч» по умолчанию). */
-export const GPS_RADIUS = 500;
+/** Радиус выдачи вокруг точки устройства, м; найдено меньше GPS_MIN_PLACES — расширяется до GPS_RADIUS_WIDE. */
+export const GPS_RADIUS = 3_000;
+export const GPS_RADIUS_WIDE = 10_000;
+export const GPS_MIN_PLACES = 5;
+/** Авто-режим включается, только если точка не дальше стольких метров от ближайшего пункта региона. */
+export const REGION_REACH_M = 15_000;
+/** Сообщение об отказе/выходе за регион гаснет само, мс. */
+const FAILED_MS = 6_000;
+
+/** Поиск вокруг точки устройства: радиус GPS_RADIUS, мало результатов — GPS_RADIUS_WIDE. */
+export async function searchAround(
+  search: GuideApi["search"],
+  params: SearchParams,
+  gps: LatLng,
+): Promise<PlaceSummary[]> {
+  const first = await search({ ...params, point: gps, radius: GPS_RADIUS });
+  if (first.length >= GPS_MIN_PLACES) return first;
+  const wide = await search({ ...params, point: gps, radius: GPS_RADIUS_WIDE });
+  return wide.length >= first.length ? wide : first;
+}
+
+/** Точка в регионе: рядом с каким-либо пунктом; координат пунктов нет — проверить нечем (null). */
+function inRegion(point: LatLng, options: readonly LocalityOption[]): boolean | null {
+  const centers = options.flatMap((o) => (o.location ? [o.location] : []));
+  if (centers.length === 0) return null;
+  return centers.some((c) => distanceMeters(point, c) <= REGION_REACH_M);
+}
 
 const EMPTY: readonly string[] = [];
 const LocationContext = createContext<LocationState>({
@@ -37,8 +75,10 @@ const LocationContext = createContext<LocationState>({
   setSelected: () => undefined,
   gps: null,
   gpsBusy: false,
-  gpsFailed: false,
+  gpsFailed: null,
   selectGps: () => undefined,
+  sheetOpen: false,
+  setSheetOpen: () => undefined,
 });
 
 /** mode "all" — турист сам выбрал «Усі локації»: GPS по умолчанию не включается. */
@@ -99,7 +139,8 @@ export function LocationProvider({
   const [explicitAll, setExplicitAll] = useState(() => readMode(regionId));
   const [point, setPoint] = useState<LatLng | null>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
-  const [gpsFailed, setGpsFailed] = useState(false);
+  const [gpsFailed, setGpsFailed] = useState<"denied" | "outside" | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [list, setList] = useState<
     { status: "loading" | "error" } | { status: "ready"; data: LocalityOption[] }
   >({
@@ -138,6 +179,26 @@ export function LocationProvider({
     if (venueEntry && !picked) store(regionId, []);
   }, [venueEntry, picked, regionId]);
 
+  // Вход по QR заведения (в т.ч. скан внутри приложения): точка заведения главнее GPS.
+  useEffect(() => {
+    if (!venueEntry) return;
+    setPicked(false);
+    setPoint(null);
+    setGpsFailed(null);
+  }, [venueEntry]);
+
+  // Закрыли лист — сообщение об отказе больше не нужно.
+  useEffect(() => {
+    if (!sheetOpen) setGpsFailed(null);
+  }, [sheetOpen]);
+
+  // Сообщение гаснет само.
+  useEffect(() => {
+    if (!gpsFailed) return;
+    const timer = setTimeout(() => setGpsFailed(null), FAILED_MS);
+    return () => clearTimeout(timer);
+  }, [gpsFailed]);
+
   const setSelected = useCallback(
     (next: readonly string[]) => {
       const clean = [...new Set(next)].slice(0, LOCATION_MAX);
@@ -146,33 +207,34 @@ export function LocationProvider({
       setIds(clean);
       setExplicitAll(clean.length === 0);
       setPoint(null);
-      setGpsFailed(false);
+      setGpsFailed(null);
       setPicked(true);
     },
     [regionId],
   );
 
+  const optionsRef = useRef<LocalityOption[] | null>(null);
   const selectGps = useCallback(() => {
     store(regionId, []);
     setIds([]);
     setExplicitAll(false);
     setPicked(true);
-    setGpsFailed(false);
+    setGpsFailed(null);
     setGpsBusy(true);
     void requestLocation(webApp).then((p) => {
       setGpsBusy(false);
-      if (p) setPoint(p);
+      const inside = p && optionsRef.current ? inRegion(p, optionsRef.current) : null;
+      if (p && inside !== false) setPoint(p);
       else {
-        // Отказ или нет точки: откат на «Усі локації».
+        // Отказ, нет точки или точка вне региона: откат на «Усі локації» (в хранилище не пишем — не явный выбор).
         setPoint(null);
-        setExplicitAll(true);
-        store(regionId, [], true);
-        setGpsFailed(true);
+        setGpsFailed(p ? "outside" : "denied");
       }
     });
   }, [regionId, webApp]);
 
   const options = list.status === "ready" ? list.data : null;
+  optionsRef.current = options;
   // Пока список грузится — сохранённый выбор (первый запрос сразу с фильтром); список недоступен — без фильтра
   // (турист не увидел бы, что выдача ограничена); пункты, которых больше нет, отбрасываются.
   // Выбирать не из чего (меньше двух пунктов, кнопки нет) — сохранённый выбор не применяется.
@@ -181,23 +243,31 @@ export function LocationProvider({
     list.status === "error" ? "" : raw.filter((id) => !options || options.some((o) => o.id === id)).join(",");
   const selected = useMemo(() => (key ? key.split(",") : EMPTY), [key]);
   // По умолчанию (ничего не выбрано, не «Усі локації» явно, не вход по QR, есть из чего выбирать) — вокруг точки
-  // устройства, если она доступна; нет — весь регион, без сообщений.
+  // устройства, но только если доступ уже выдан (без запроса на старте) и точка в регионе; иначе весь регион, молча.
   const canAuto =
     !(venueEntry && !picked) && !explicitAll && selected.length === 0 && !!options && options.length >= 2;
   useEffect(() => {
-    if (!canAuto || point || gpsBusy || gpsFailed) return;
+    if (!canAuto || !options) return;
     let alive = true;
-    void requestLocation(webApp).then((p) => alive && p && setPoint(p));
+    setGpsBusy(true);
+    void requestLocationIfGranted(webApp).then((p) => {
+      if (!alive) return;
+      setGpsBusy(false);
+      if (p && inRegion(p, options) === true) setPoint(p);
+    });
     return () => {
       alive = false;
     };
-    // Один запрос на смену условий; повтор не нужен, пока условия те же.
+    // Один запрос на смену условий; options нужен только для проверки региона.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAuto, webApp]);
-  const gps = selected.length === 0 && !explicitAll && options && options.length >= 2 ? point : null;
+  const gps =
+    selected.length === 0 && !explicitAll && !(venueEntry && !picked) && options && options.length >= 2
+      ? point
+      : null;
   const value = useMemo(
-    () => ({ options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps }),
-    [options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps],
+    () => ({ options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen, setSheetOpen }),
+    [options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen],
   );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

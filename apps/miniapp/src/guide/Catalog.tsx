@@ -6,8 +6,9 @@ import { Button, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
-import { GPS_RADIUS, useLocationCaption, useLocations } from "./LocationProvider.js";
+import { searchAround, useLocationCaption, useLocations } from "./LocationProvider.js";
 import { MapSlot } from "./MapSlot.js";
+import { DEVICE_MAX_ZOOM } from "./Nearby.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import type { CatalogSection, Category } from "./types.js";
 
@@ -61,7 +62,7 @@ function CategoryPlaces({
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const { selected: localityIds, gps } = useLocations();
+  const { selected: localityIds, gps, setSheetOpen } = useLocations();
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
   const [categoryId, setCategoryId] = useState(rootId);
@@ -82,16 +83,15 @@ function CategoryPlaces({
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() =>
-          api.search({
+        .then(() => {
+          const params = {
             categoryId,
             q: q || undefined,
-            point,
             ...(byLocation ? { localityIds } : {}),
-            ...(gps ? { radius: GPS_RADIUS } : {}),
             ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
-          }),
-        )
+          };
+          return gps ? searchAround(api.search, params, gps) : api.search({ ...params, point });
+        })
         .then((list) => ({ list, submitId })),
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
   );
@@ -177,6 +177,11 @@ function CategoryPlaces({
             <div className="kosiv-card kosiv-empty">
               {ICONS.search}
               <p data-testid="catalog-empty">{t("miniapp.catalog.empty")}</p>
+              {gps && (
+                <Button onClick={() => setSheetOpen(true)} data-testid="catalog-change-location">
+                  {t("miniapp.location.change")}
+                </Button>
+              )}
               {(q || categoryId !== rootId) && (
                 <Button
                   onClick={() => {
@@ -191,7 +196,15 @@ function CategoryPlaces({
             </div>
           ) : (
             <Stack>
-              {view === "map" && <MapSlot places={list} center={point} centerLabel={base?.name} />}
+              {view === "map" && (
+                <MapSlot
+                  places={list}
+                  center={point}
+                  centerLabel={gps ? t("miniapp.map.me") : base?.name}
+                  // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
+                  maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
+                />
+              )}
               <PlaceList places={list} />
             </Stack>
           )

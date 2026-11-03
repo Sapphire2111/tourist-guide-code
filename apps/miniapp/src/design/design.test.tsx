@@ -11,6 +11,7 @@ import { AppTop, SeasonSwitcher } from "./Chrome.js";
 import { LocationChip } from "../guide/LocationPicker.js";
 import {
   GPS_RADIUS,
+  GPS_RADIUS_WIDE,
   LOCATION_STORAGE_KEY,
   LocationProvider,
   useLocations,
@@ -125,8 +126,8 @@ const YAREMCHE = "00000000-0000-4000-8000-0000000000d1";
 const TATARIV = "00000000-0000-4000-8000-0000000000d2";
 const EMPTY_LOC = "00000000-0000-4000-8000-0000000000d3";
 const LOCALITIES = [
-  { id: YAREMCHE, name: { uk: "Яремче" }, placeCount: 5 },
-  { id: TATARIV, name: { uk: "Татарів" }, placeCount: 2 },
+  { id: YAREMCHE, name: { uk: "Яремче" }, placeCount: 5, location: { lat: 48.45, lng: 24.55 } },
+  { id: TATARIV, name: { uk: "Татарів" }, placeCount: 2, location: { lat: 48.3, lng: 24.4 } },
   { id: EMPTY_LOC, name: { uk: "Ворохта" }, placeCount: 0 },
 ];
 
@@ -456,9 +457,10 @@ describe("шапка", () => {
   });
 });
 
-function stubGeolocation(result: { lat: number; lng: number } | null) {
+function stubGeolocation(result: { lat: number; lng: number } | null, granted = true) {
   vi.stubGlobal("navigator", {
     ...navigator,
+    permissions: { query: async () => ({ state: granted ? "granted" : "prompt" }) },
     geolocation: {
       getCurrentPosition: (ok: (p: unknown) => void, fail: () => void) =>
         result ? ok({ coords: { latitude: result.lat, longitude: result.lng, accuracy: 20 } }) : fail(),
@@ -484,12 +486,15 @@ describe("локація: моє місцезнаходження", () => {
     mount(search);
     await flush();
     await flush();
+    // Найдено меньше 5 мест — радиус расширяется.
+    expect(search).toHaveBeenCalledWith(expect.objectContaining({ radius: GPS_RADIUS }));
     expect(search).toHaveBeenLastCalledWith({
       point: { lat: 48.45, lng: 24.55, accuracy: 20 },
-      radius: GPS_RADIUS,
+      radius: GPS_RADIUS_WIDE,
       excludeSections: ["stay"],
       limit: HOME_PLACES,
     });
+    expect(screen.getByRole("heading", { name: "Поруч з вами" })).toBeDefined();
     const chip = screen.getByTestId("location-chip");
     expect(chip.textContent).toContain("Моє місцезнаходження");
     expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Моє місцезнаходження");
@@ -508,7 +513,7 @@ describe("локація: моє місцезнаходження", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));
     await flush();
     await flush();
-    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ radius: GPS_RADIUS }));
+    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ radius: GPS_RADIUS_WIDE }));
     expect(search.mock.calls.at(-1)![0]).not.toHaveProperty("localityIds");
     expect(chip.textContent).toContain("Моє місцезнаходження");
   });
@@ -533,6 +538,42 @@ describe("локація: моє місцезнаходження", () => {
       false,
     );
     expect(chip.textContent).toContain("Усі локації");
+  });
+
+  it("доступ не выдан или точка вне региона — авто-режима нет; явный выбор вне региона — сообщение и откат", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 }, false);
+    const search = vi.fn(async (_params: SearchParams) => [place]);
+    mount(search);
+    await flush();
+    await flush();
+    // Без разрешения на старте точка не запрашивается.
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    cleanup();
+    // Турист дома, далеко от региона: авто-режим молчит.
+    stubGeolocation({ lat: 50.45, lng: 30.52 });
+    const far = vi.fn(async (_params: SearchParams) => [place]);
+    mount(far);
+    await flush();
+    await flush();
+    expect(far).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    expect(screen.queryByTestId("location-gps-failed")).toBeNull();
+    fireEvent.click(screen.getByTestId("location-chip"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));
+    await flush();
+    await flush();
+    expect(screen.getByTestId("location-gps-failed").textContent).toContain("Ви поза регіоном");
+    expect((screen.getByRole("checkbox", { name: "Усі локації" }) as HTMLInputElement).checked).toBe(true);
+    // Не явное «Усі локації»: режим в хранилище не пишется.
+    expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("пустая лента в GPS-режиме: подсказка «Змінити локацію» открывает лист", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    mount(vi.fn(async (_params: SearchParams) => []));
+    await flush();
+    await flush();
+    fireEvent.click(screen.getByTestId("home-change-location"));
+    expect(screen.getByRole("dialog", { name: "Локація" })).toBeDefined();
   });
 
   it("явное «Усі локації» запоминается: GPS по умолчанию не включается", async () => {

@@ -55,6 +55,8 @@ export type TelegramWebApp = {
 export type TelegramLocationManager = {
   isInited?: boolean;
   isLocationAvailable?: boolean;
+  /** Пользователь уже разрешил боту геолокацию (после init). */
+  isAccessGranted?: boolean;
   init?(cb?: () => void): void;
   getLocation?(
     cb: (

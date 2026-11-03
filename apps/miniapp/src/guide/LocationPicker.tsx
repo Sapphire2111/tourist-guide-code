@@ -2,7 +2,7 @@
 // Выбор применяется сразу; лист закрывают «Готово», Escape, тап по фону и «Назад» Telegram.
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { interceptBack } from "../telegram.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
@@ -10,11 +10,10 @@ import "./location.css";
 
 export function LocationChip() {
   const { t } = useT();
-  const { options, gps } = useLocations();
+  const { options, gps, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
-  const [open, setOpen] = useState(false);
   // Стабильная ссылка: иначе эффект листа перезапускался бы на каждый рендер и уводил фокус.
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => setOpen(false), [setOpen]);
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
@@ -113,7 +112,7 @@ function LocationSheet({ onClose }: { onClose: () => void }) {
             )}
             {gpsFailed && (
               <p role="alert" className="loc-hint" data-testid="location-gps-failed">
-                {t("miniapp.location.gpsFailed")}
+                {t(gpsFailed === "outside" ? "miniapp.location.outside" : "miniapp.location.gpsFailed")}
               </p>
             )}
           </li>
