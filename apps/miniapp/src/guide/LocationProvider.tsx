@@ -125,9 +125,12 @@ function store(regionId: string | null, ids: readonly string[], explicitAll = fa
  */
 export function LocationProvider({
   venueEntry = false,
+  entryKey,
   children,
 }: {
   venueEntry?: boolean;
+  /** Меняется при каждом входе по QR (в т.ч. скан внутри приложения): GPS-режим сбрасывается. */
+  entryKey?: string;
   children?: ReactNode;
 }) {
   const guide = useMaybeGuide();
@@ -179,13 +182,18 @@ export function LocationProvider({
     if (venueEntry && !picked) store(regionId, []);
   }, [venueEntry, picked, regionId]);
 
+  // Номер попытки определения точки: устаревший ответ (новый скан QR, явный выбор) не применяется.
+  const attempt = useRef(0);
+
   // Вход по QR заведения (в т.ч. скан внутри приложения): точка заведения главнее GPS.
   useEffect(() => {
     if (!venueEntry) return;
+    attempt.current++;
     setPicked(false);
     setPoint(null);
     setGpsFailed(null);
-  }, [venueEntry]);
+    setGpsBusy(false);
+  }, [venueEntry, entryKey]);
 
   // Закрыли лист — сообщение об отказе больше не нужно.
   useEffect(() => {
@@ -221,7 +229,9 @@ export function LocationProvider({
     setPicked(true);
     setGpsFailed(null);
     setGpsBusy(true);
+    const mine = ++attempt.current;
     void requestLocation(webApp).then((p) => {
+      if (mine !== attempt.current) return;
       setGpsBusy(false);
       const inside = p && optionsRef.current ? inRegion(p, optionsRef.current) : null;
       if (p && inside !== false) setPoint(p);
@@ -247,17 +257,12 @@ export function LocationProvider({
   const canAuto =
     !(venueEntry && !picked) && !explicitAll && selected.length === 0 && !!options && options.length >= 2;
   useEffect(() => {
-    if (!canAuto || !options) return;
-    let alive = true;
-    setGpsBusy(true);
+    // Одна попытка за раз: пока идёт явный выбор, авто-проверка не стартует.
+    if (!canAuto || !options || gpsBusy) return;
+    const mine = ++attempt.current;
     void requestLocationIfGranted(webApp).then((p) => {
-      if (!alive) return;
-      setGpsBusy(false);
-      if (p && inRegion(p, options) === true) setPoint(p);
+      if (mine === attempt.current && p && inRegion(p, options) === true) setPoint(p);
     });
-    return () => {
-      alive = false;
-    };
     // Один запрос на смену условий; options нужен только для проверки региона.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAuto, webApp]);

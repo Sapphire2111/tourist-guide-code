@@ -8,7 +8,7 @@ import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi, PlaceSummary, SearchParams } from "../guide/types.js";
 import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher, Splash } from "./Chrome.js";
-import { LocationChip } from "../guide/LocationPicker.js";
+import { LocationChip, LocationSheetHost } from "../guide/LocationPicker.js";
 import {
   GPS_RADIUS,
   GPS_RADIUS_WIDE,
@@ -187,6 +187,7 @@ describe("локації", () => {
         <LocationProvider>
           <AppTop path="/" profile={false} />
           <LocationChip />
+          <LocationSheetHost />
           <HomePlaces />
         </LocationProvider>
       </GuideProvider>,
@@ -289,6 +290,7 @@ describe("локації", () => {
       <GuideProvider value={env(vi.fn(async () => [place]))}>
         <LocationProvider>
           <LocationChip />
+          <LocationSheetHost />
         </LocationProvider>
       </GuideProvider>,
     );
@@ -350,6 +352,7 @@ describe("локації", () => {
       >
         <LocationProvider>
           <LocationChip />
+          <LocationSheetHost />
           <HomePlaces />
         </LocationProvider>
       </GuideProvider>,
@@ -368,6 +371,7 @@ describe("локації", () => {
       >
         <LocationProvider>
           <LocationChip />
+          <LocationSheetHost />
         </LocationProvider>
       </GuideProvider>,
     );
@@ -485,6 +489,7 @@ describe("локація: моє місцезнаходження", () => {
       <GuideProvider value={env(search)}>
         <LocationProvider>
           <LocationChip />
+          <LocationSheetHost />
           <HomePlaces />
         </LocationProvider>
       </GuideProvider>,
@@ -584,6 +589,31 @@ describe("локація: моє місцезнаходження", () => {
     await flush();
     fireEvent.click(screen.getByTestId("home-change-location"));
     expect(screen.getByRole("dialog", { name: "Локація" })).toBeDefined();
+  });
+
+  it("каталог в GPS-режиме: «Змінити локацію» открывает лист; текстовый поиск без результатов рядом — по региону с пометкой", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    const search = vi.fn(async (params: SearchParams) => (params.radius || !params.q ? [] : [place]));
+    render(
+      <GuideProvider value={env(search)}>
+        <LocationProvider>
+          <Catalog section="eat" />
+          <LocationSheetHost />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    fireEvent.click(await screen.findByTestId("catalog-change-location"));
+    expect(screen.getByRole("dialog", { name: "Локація" })).toBeDefined();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "смерека" } });
+    fireEvent.submit(screen.getByRole("searchbox"));
+    await flush();
+    await flush();
+    expect(screen.getByTestId("catalog-region-wide")).toBeDefined();
+    expect(search.mock.calls.at(-1)![0]).not.toHaveProperty("radius");
   });
 
   it("явное «Усі локації» запоминается: GPS по умолчанию не включается", async () => {

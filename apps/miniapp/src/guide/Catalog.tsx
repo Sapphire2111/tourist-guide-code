@@ -83,16 +83,22 @@ function CategoryPlaces({
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() => {
+        .then(async () => {
           const params = {
             categoryId,
             q: q || undefined,
             ...(byLocation ? { localityIds } : {}),
             ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
           };
-          return gps ? searchAround(api.search, params, gps) : api.search({ ...params, point });
+          if (!gps) return { list: await api.search({ ...params, point }), regionWide: false };
+          const near = await searchAround(api.search, params, gps);
+          // Текстовый запрос не нашёл ничего рядом (до 10 км) — ищем по региону, с пометкой.
+          if (q && near.length === 0)
+            return { list: await api.search({ ...params, point: gps }), regionWide: true };
+          return { list: near, regionWide: false };
         })
-        .then((list) => ({ list, submitId })),
+        .then(({ list, regionWide }) => ({ list, regionWide, submitId })),
+
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
   );
   useEffect(() => {
@@ -171,6 +177,11 @@ function CategoryPlaces({
           ? t("miniapp.catalog.results", { count: places.data.list.length })
           : ""}
       </p>
+      {places.status === "ready" && places.data.regionWide && (
+        <p className="kosiv-muted" data-testid="catalog-region-wide">
+          {t("miniapp.catalog.regionWide")}
+        </p>
+      )}
       <AsyncView state={places} retry={retry}>
         {({ list }) =>
           list.length === 0 ? (

@@ -302,6 +302,7 @@ export const uk = {
   "miniapp.location.locating": "Визначаємо, де ви…",
   "miniapp.location.outside": "Ви поза регіоном — показуємо всі локації",
   "miniapp.location.change": "Змінити локацію",
+  "miniapp.catalog.regionWide": "Поруч нічого не знайдено — показуємо результати по всьому регіону.",
   "miniapp.home.nearYou": "Поруч з вами",
   "miniapp.location.gpsFailed":
     "Не вдалося визначити місцезнаходження — дозвольте доступ до геолокації. Показуємо всі локації.",
@@ -1797,6 +1798,7 @@ export const en: Messages = {
   "miniapp.location.locating": "Finding where you are…",
   "miniapp.location.outside": "You are outside the region — showing all locations",
   "miniapp.location.change": "Change location",
+  "miniapp.catalog.regionWide": "Nothing found nearby — showing results across the whole region.",
   "miniapp.home.nearYou": "Near you",
   "miniapp.location.gpsFailed":
     "Could not get your location — please allow location access. Showing all locations.",

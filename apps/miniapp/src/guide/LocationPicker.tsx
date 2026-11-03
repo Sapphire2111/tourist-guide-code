@@ -12,8 +12,6 @@ export function LocationChip() {
   const { t } = useT();
   const { options, gps, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
-  // Стабильная ссылка: иначе эффект листа перезапускался бы на каждый рендер и уводил фокус.
-  const close = useCallback(() => setOpen(false), [setOpen]);
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
@@ -39,9 +37,18 @@ export function LocationChip() {
         <span className="loc-chip-text">{label}</span>
         <span aria-hidden="true">▾</span>
       </button>
-      {open && <LocationSheet onClose={close} />}
     </>
   );
+}
+
+/** Единственный лист «Локація»: открывается из чипа и подсказок «Змінити локацію»; закрывается при смене маршрута. */
+export function LocationSheetHost({ path }: { path?: string }) {
+  const { sheetOpen, setSheetOpen } = useLocations();
+  const close = useCallback(() => setSheetOpen(false), [setSheetOpen]);
+  useEffect(() => {
+    setSheetOpen(false);
+  }, [path, setSheetOpen]);
+  return sheetOpen ? <LocationSheet onClose={close} /> : null;
 }
 
 function LocationSheet({ onClose }: { onClose: () => void }) {
