@@ -17,6 +17,8 @@ test.describe("QR отеля demoHotel01", () => {
   test("«Про заклад» без ручного выбора, контекст запрошен один раз; a11y", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("venue-summary")).toHaveText("Ви відкрили гід: Тестовий готель");
+    // Карточка отеля на главной: название видно (venue-summary скрыт, его текст проверяется выше).
+    await expect(page.locator(".modern-host").getByText("Тестовий готель")).toBeVisible();
     await page.getByRole("link", { name: "Про заклад" }).click();
     const venue = page.getByTestId("venue");
     await expect(venue.getByRole("heading", { name: "Тестовий готель" })).toBeVisible();
@@ -42,7 +44,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await next.click();
     await page.getByRole("button", { name: "Меню" }).click();
-    await page.getByRole("link", { name: "Профіль" }).click();
+    await page.getByRole("dialog", { name: "Меню" }).getByRole("link", { name: "Профіль" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Профіль" })).toBeVisible();
     expect(await telegramCalls(page)).toContain("requestWriteAccess");
     const state = apiMockState.get(page)!;
@@ -120,7 +122,7 @@ test.describe("сбои и подтверждения", () => {
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await page.getByRole("button", { name: "Продовжити" }).click();
     await page.getByRole("button", { name: "Меню" }).click();
-    await page.getByRole("link", { name: "Профіль" }).click();
+    await page.getByRole("dialog", { name: "Меню" }).getByRole("link", { name: "Профіль" }).click();
     await page.getByRole("button", { name: "Запросити видалення даних" }).click();
     expect(apiMockState.get(page)!.privacyRequests).toHaveLength(0);
     await page.getByRole("button", { name: "Так, видалити мої дані" }).click();

@@ -9,16 +9,10 @@ import { installTelegramWebApp, type TelegramWebAppOptions } from "./telegram-we
 export const test = base.extend<{
   telegram: TelegramWebAppOptions | null;
   googleMaps: boolean;
-  design: "original" | "modern" | null;
 }>({
   telegram: [{}, { option: true }],
-  design: ["original", { option: true }],
   googleMaps: [true, { option: true }],
-  page: async ({ page, telegram, googleMaps, design }, use) => {
-    if (design)
-      await page.addInitScript((value) => {
-        if (localStorage.getItem("tg.design") === null) localStorage.setItem("tg.design", value);
-      }, design);
+  page: async ({ page, telegram, googleMaps }, use) => {
     // Настоящий telegram-web-app.js не грузим (CI без сети, и он перезаписал бы мок).
     await page.route("**/telegram.org/**", (route) =>
       route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),

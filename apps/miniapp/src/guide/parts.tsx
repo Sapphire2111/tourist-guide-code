@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "r
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
 import { routeUrl, type LatLng } from "./geo.js";
-import { ICONS } from "../design/Ornament.js";
+import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useMaybeGuide, type Async } from "./context.js";
 import type { Photo, PlaceSummary } from "./types.js";
@@ -150,7 +150,7 @@ export function CoverCredit({
   );
 }
 
-export function PlaceMedia({ place }: { place: PlaceSummary }) {
+export function PlaceMedia({ place, icon }: { place: PlaceSummary; icon?: ReactNode }) {
   // Файл не загрузился (404, предел, сеть) — подложка с иконкой вместо битой картинки; подпись не нужна.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const cover = place.cover && place.cover.url !== failedUrl ? place.cover : null;
@@ -159,7 +159,7 @@ export function PlaceMedia({ place }: { place: PlaceSummary }) {
       {cover ? (
         <img src={cover.url} alt="" loading="lazy" decoding="async" onError={() => setFailedUrl(cover.url)} />
       ) : (
-        ICONS.nearby
+        (icon ?? ICONS.nearby)
       )}
       {cover?.credit && <CoverCredit credit={cover.credit} className="kosiv-place-credit" />}
     </div>
@@ -189,11 +189,22 @@ export function PlaceSummaryCard({
   const raw = useDistance()(place.distanceMeters);
   // Что это за место («Кафе», «Пам'ятка») — название категории из справочника.
   const guide = useMaybeGuide();
-  const category = useCategoryIndex(guide?.api).byId.get(place.categoryId);
+  const categories = useCategoryIndex(guide?.api);
+  const category = categories.byId.get(place.categoryId);
   const d = raw && distanceFrom ? t("miniapp.place.distanceFrom", { d: raw, from: distanceFrom }) : raw;
   return (
     <Tag className={`kosiv-card kosiv-place${layout === "row" ? " kosiv-row" : ""}`} data-testid={testId}>
-      <PlaceMedia place={place} />
+      <PlaceMedia
+        place={place}
+        // Списки по удалённости: значок раздела вместо обложки-заглушки, как на эталоне.
+        icon={
+          quickRoute ? (
+            <span aria-hidden="true">
+              {SECTION_EMOJI[categories.sectionOf(place.categoryId) ?? "other"] ?? SECTION_EMOJI.other}
+            </span>
+          ) : undefined
+        }
+      />
       <div className="kosiv-place-body">
         <Link to={`/place/${encodeURIComponent(place.id)}`} className="kosiv-place-title">
           {pickLocalized(place.name, locale)}
@@ -215,7 +226,7 @@ export function PlaceSummaryCard({
             href={routeUrl(place.location, routeFrom)}
             onOpen={() => guide?.analytics.track("route_clicked", { placeId: place.id })}
           >
-            {ICONS.arrow}
+            <span aria-hidden="true">🧭</span>
             {t("miniapp.modern.route")}
           </ExtLink>
         )}

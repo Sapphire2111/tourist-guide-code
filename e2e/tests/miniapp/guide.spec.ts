@@ -13,38 +13,37 @@ test.beforeEach(async ({ page }) => {
 test.describe("QR отеля demoHotel01", () => {
   test.use({ telegram: { startParam: "demoHotel01" } });
 
-  test("главная: 8 разделов и нижняя навигация; a11y", async ({ page }) => {
+  test("главная: намерения, служебные разделы и нижняя навигация; a11y", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
     // Сезон — под шестерёнкой, без декоративного героя; «Локація» — кнопка под приветствием.
     await expect(page.getByTestId("season-hero")).toHaveCount(0);
     await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
-    const sections = page.getByTestId("home-sections").getByRole("link");
-    await expect(sections).toHaveText([
-      "Про заклад",
-      "Де житиГотелі, садиби",
+    await page.keyboard.press("Escape");
+    // modern: четыре намерения в основном блоке, остальные разделы — в «Ще для вашої подорожі», «Про заклад» — карточка заведения.
+    const intentions = page.getByTestId("home-sections").getByRole("link");
+    await expect(intentions).toHaveText([
       "Де поїсти",
-      "Де купити",
-      "Релакс",
-      "Розваги",
-      "Гірські лижі",
       "Що поруч",
-      "Авто",
-      "Сервіси",
-      "Халепа?",
+      "Відпочити та зігрітися",
+      "Розваги та враження",
     ]);
+    await expect(page.getByRole("link", { name: /Про заклад/ })).toHaveAttribute("href", "#/about");
+    const more = page.getByRole("navigation", { name: "Ще для вашої подорожі" }).getByRole("link");
+    await expect(more).toHaveText(["Авто", "Де купити", "Допомога", /^Де жити/, "Гірські лижі", "Сервіси"]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });
     await expect(nav.getByRole("link", { name: "Головна" })).toHaveAttribute("aria-current", "page");
-    // Стили на месте (защита от случайного удаления правил kosiv.css): нижняя навигация, плитки, карточки.
+    // Стили на месте (защита от случайного удаления правил kosiv.css): нижняя навигация, карточки намерений.
     await expect(nav).toHaveCSS("position", "fixed");
     await expect(nav).toHaveCSS("display", "flex");
-    const tile = sections.first();
-    await expect(tile).toHaveCSS("text-align", "center");
-    await expect(tile).toHaveCSS("align-items", "center");
+    const tile = intentions.first();
+    await expect(tile).toHaveCSS("display", "flex");
     await expect(tile).toHaveCSS("border-top-style", "solid");
-    await expect(nav.getByRole("link", { name: "Халепа?" })).toBeVisible();
+    // В modern «Халепа?» — постоянная кнопка «Допомога» в верхней полосе, а в нижней навигации — «Поруч».
+    await expect(page.getByTestId("app-top").getByRole("link", { name: "Допомога" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Поруч" })).toBeVisible();
     await expectNoSeriousA11yViolations(page);
   });
 
@@ -65,6 +64,8 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("place-item")).toHaveCount(1);
     await page.getByRole("button", { name: "Карта" }).click();
     await expect(page.getByTestId("places-map").locator(".gm-fake-map")).toBeAttached();
+    // Легенда — у карты каталога; в «Що поруч» значок раздела на капсуле маркера.
+    await expect(page.getByTestId("map-legend")).toContainText("Де поїсти");
     await expectNoSeriousA11yViolations(page);
 
     await page.getByRole("searchbox").fill("немає такого");
@@ -255,14 +256,14 @@ test.describe("QR отеля demoHotel01", () => {
     const card = page.getByTestId("place-item").first();
     await expect(card).toHaveCSS("border-top-style", "solid");
     expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
-    const slider = page.getByRole("slider", { name: "Радіус" });
-    await slider.fill("10000");
-    await expect(page.getByTestId("radius-value")).toHaveText("10 км");
+    const radius = page.getByRole("group", { name: "Радіус" });
+    await radius.getByRole("button", { name: "10 км" }).click();
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
     await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
     expect(state.searches.at(-1)).toMatchObject({ limit: "50" });
     await expect(page.getByTestId("places-map")).toBeVisible();
-    // Маркеры по разделам, легенда, подпись по нажатию: название + категория.
-    await expect(page.getByTestId("map-legend")).toContainText("Де поїсти");
+    // Легенды здесь нет; маркеры по разделам, подпись по нажатию: название + категория.
+    await expect(page.getByTestId("map-legend")).toHaveCount(0);
     await page.getByTestId("places-map").locator('.kosiv-pin[data-group="eat"]').first().click();
     await expect(page.locator(".kosiv-map-popup")).toBeVisible();
     await expectNoSeriousA11yViolations(page);
@@ -272,6 +273,7 @@ test.describe("QR отеля demoHotel01", () => {
     await context.clearPermissions();
     await page.goto("/");
     await page.getByTestId("near-me").click();
+    await expect(page.getByTestId("nearby-locate")).toBeVisible();
     await expect(page.getByTestId("geo-off")).toHaveText(
       "Геолокацію вимкнено. Показуємо місця поруч: Тестовий готель.",
     );
@@ -295,7 +297,10 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("«Халепа?»: 112 и контакты региона, звонок в одно нажатие; a11y", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Халепа?" }).click();
+    await page
+      .getByRole("navigation", { name: "Ще для вашої подорожі" })
+      .getByRole("link", { name: "Допомога" })
+      .click();
     await expect(page.getByTestId("call-112")).toHaveAttribute("href", "tel:112");
     await expect(page.getByRole("link", { name: "Подзвонити: Поліція, 102" })).toHaveAttribute(
       "href",
