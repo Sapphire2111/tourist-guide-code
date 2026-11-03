@@ -33,13 +33,21 @@ export function DesignProvider({ children }: { children: ReactNode }) {
 export function useDesign() {
   return useContext(Context);
 }
-export function DesignSwitcher() {
+export function DesignSwitcher({ onPicked }: { onPicked?: () => void } = {}) {
   const { design, setDesign } = useDesign();
   const { t } = useT();
   return (
     <div className="design-switch" role="group" aria-label={t("miniapp.design.label")}>
       {(["original", "modern"] as const).map((value) => (
-        <button key={value} type="button" aria-pressed={design === value} onClick={() => setDesign(value)}>
+        <button
+          key={value}
+          type="button"
+          aria-pressed={design === value}
+          onClick={() => {
+            setDesign(value);
+            onPicked?.();
+          }}
+        >
           {t(`miniapp.design.${value}`)}
         </button>
       ))}

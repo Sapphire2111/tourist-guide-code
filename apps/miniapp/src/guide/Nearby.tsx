@@ -1,6 +1,6 @@
 // C05 «Що поруч»: места в радиусе от базовой точки (QR) или — по нажатию и с разрешения — от устройства.
 // Подпись «Поруч із вами» только при полученной геолокации, иначе «Поруч із <база>».
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { useDesign } from "../design/DesignProvider.js";
 import { useCategoryIndex } from "./categories.js";
@@ -246,12 +246,17 @@ export function ModernNearbyResults({
       ...list.map((p) => categories.sectionOf(p.categoryId)).filter((s) => s !== null),
     ]),
   );
-  const visible = list.filter(
-    (p) =>
-      (section === "all" || categories.sectionOf(p.categoryId) === section) &&
-      `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
-        .toLocaleLowerCase(locale)
-        .includes(query.trim().toLocaleLowerCase(locale)),
+  // Стабильная ссылка: иначе карта пересоздаёт маркеры и сбрасывает охват на каждый рендер.
+  const visible = useMemo(
+    () =>
+      list.filter(
+        (p) =>
+          (section === "all" || categories.sectionOf(p.categoryId) === section) &&
+          `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
+            .toLocaleLowerCase(locale)
+            .includes(query.trim().toLocaleLowerCase(locale)),
+      ),
+    [list, section, query, categories, locale],
   );
   return (
     <div className="modern-nearby-results">

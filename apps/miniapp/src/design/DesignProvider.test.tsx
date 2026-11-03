@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { DesignProvider, DesignSwitcher, DESIGN_STORAGE_KEY, readDesign } from "./DesignProvider.js";
 

@@ -1,4 +1,4 @@
-﻿/* Второе оформление использует те же сезонные поверхности и настоящие данные приложения. */
+/* Второе оформление использует те же сезонные поверхности и настоящие данные приложения. */
 .design-switch {
   display: inline-flex;
   padding: 3px;
@@ -10,7 +10,7 @@
   min-width: 0;
 }
 .design-switch button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 10px;
   border: 0;
   border-radius: 10px;
@@ -45,8 +45,8 @@ html[data-design="modern"] .kosiv-top {
   border-bottom: 1px solid var(--app-border);
 }
 html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
-  width: 40px;
-  min-width: 40px;
+  width: 44px;
+  min-width: 44px;
   height: 44px;
 }
 .modern-help {
@@ -55,7 +55,7 @@ html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
   justify-content: center;
   gap: 5px;
   min-height: 44px;
-  min-width: 40px;
+  min-width: 44px;
   color: var(--app-text);
   font-size: 12px;
   font-weight: 600;
@@ -472,8 +472,17 @@ html[data-design="modern"] .modern-search input {
   cursor: pointer;
 }
 .modern-nearby .kosiv-range summary span::after {
-  content: "⌄";
+  content: "⌄" / "";
   padding-left: 12px;
+}
+/* Подпись и значение уже в summary — вторую строку оставляем только скринридеру (label у ползунка). */
+.modern-nearby .kosiv-range-head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .modern-nearby .kosiv-range[open] summary {
   margin-bottom: 12px;

@@ -17,3 +17,6 @@ blob-report/
 *.md
 !.github/pull_request_template.md
 .docs-git/
+
+# Результаты локальных прогонов
+output/

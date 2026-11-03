@@ -147,7 +147,6 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
   }, [open, close]);
   return (
     <div className="kosiv-top" data-testid="app-top">
-      <DesignSwitcher />
       {design === "modern" && (
         <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
           {ICONS.help}
@@ -216,6 +215,7 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
               </button>
             </div>
             <SeasonSwitcher onPicked={close} />
+            <DesignSwitcher onPicked={close} />
             {design === "modern" && (
               <Link to="/favorites" className="kosiv-sheet-link">
                 {ICONS.heart}

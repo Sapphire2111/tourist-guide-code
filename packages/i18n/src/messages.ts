@@ -27,7 +27,6 @@ export const uk = {
   "miniapp.modern.reset": "Скинути фільтри",
   "miniapp.modern.results": "Знайдено: {n}",
   "miniapp.modern.route": "Маршрут",
-  "miniapp.modern.details": "Детальніше",
   "miniapp.modern.origin": "Відстані — від точки пошуку, зазначеної вище.",
 
   "app.name": "Гід туриста",
@@ -1563,7 +1562,6 @@ export const en: Messages = {
   "miniapp.modern.reset": "Reset filters",
   "miniapp.modern.results": "Found: {n}",
   "miniapp.modern.route": "Directions",
-  "miniapp.modern.details": "Details",
   "miniapp.modern.origin": "Distances are measured from the search origin shown above.",
 
   "admin.placeStatus.pending_moderation": "Pending moderation",

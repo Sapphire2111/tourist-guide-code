@@ -1,5 +1,5 @@
 // Общие элементы экранов гида: состояния загрузки/ошибки, бейджи, список мест.
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
 import { routeUrl, type LatLng } from "./geo.js";
@@ -7,6 +7,47 @@ import { ICONS } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useMaybeGuide, type Async } from "./context.js";
 import type { Photo, PlaceSummary } from "./types.js";
+
+/** Внешняя ссылка: в Telegram — openLink (внешний браузер), иначе новая вкладка. */
+export function ExtLink({
+  href,
+  children,
+  className,
+  testId,
+  label,
+  variant,
+  onOpen,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+  testId?: string;
+  label?: string;
+  variant?: "ghost";
+  onOpen?: () => void;
+}) {
+  const webApp = useMaybeGuide()?.webApp;
+  return (
+    <a
+      href={href}
+      className={className}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={testId}
+      data-variant={variant}
+      aria-label={label}
+      onClick={(e: MouseEvent) => {
+        onOpen?.();
+        if (webApp?.openLink) {
+          e.preventDefault();
+          webApp.openLink(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 /** Список без маркеров с отступом между пунктами (li — прямые потомки ul). */
 export const listStyle: CSSProperties = {
@@ -164,16 +205,14 @@ export function PlaceSummaryCard({
           <PlaceBadges place={place} />
         </span>
         {quickRoute && place.location && (
-          <a
+          <ExtLink
             className="modern-route"
             href={routeUrl(place.location, routeFrom)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => guide?.analytics.track("route_clicked", { placeId: place.id })}
+            onOpen={() => guide?.analytics.track("route_clicked", { placeId: place.id })}
           >
             {ICONS.arrow}
             {t("miniapp.modern.route")}
-          </a>
+          </ExtLink>
         )}
       </div>
     </Tag>
