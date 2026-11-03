@@ -508,7 +508,10 @@ export class AssistantService {
     // В пункте без точки туриста (или она далеко — QR отеля в Косові, «план у Буковелі») — кандидаты ближе к центру
     // пункта, а не первые по алфавиту.
     const lc = scope.localityCenter;
-    if (byLocality && lc && (!center || haversineMeters(center, lc) > MAX_HOP_M)) center = lc;
+    // Жильё дальше предела переезда от пункта плана — день начинается на месте, без переезда от жилья.
+    const homeFar = Boolean(byLocality && lc && center && haversineMeters(center, lc) > MAX_HOP_M);
+    const planOrigin = homeFar ? undefined : scope.origin;
+    if (byLocality && lc && (!center || homeFar)) center = lc;
     if (!byLocality && !center) center = await this.planAnchor(regionId, intent, catalog);
     const radius = byLocality || !center ? undefined : (intent.radiusMeters ?? PLAN_RADIUS_DEFAULT);
     const sectionIds = PLAN_SECTIONS.map((code) => catalog.anyIdOf.get(code)).filter((id): id is string =>
@@ -567,7 +570,7 @@ export class AssistantService {
     const built = buildPlan(candidates, {
       days,
       parts: intent.dayParts,
-      origin: scope.origin,
+      origin: planOrigin,
       withKids: intent.withKids,
       month: Number(days[0]!.date.slice(5, 7)),
       priceMin: intent.priceMin,

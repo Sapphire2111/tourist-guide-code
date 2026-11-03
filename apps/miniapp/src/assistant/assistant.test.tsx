@@ -9,6 +9,7 @@ import { setMapLoaderForTests } from "../guide/MapSlot.js";
 import type { PlacesMapProps } from "../guide/PlacesMap.js";
 import type { GuideApi, PlaceSummary } from "../guide/types.js";
 import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
+import { takePlanPartial } from "../plan/partial-notice.js";
 import { ApiCallError } from "../host/types.js";
 import { FeatureFlagsProvider } from "@tg/ui";
 import { Assistant, DIALOG_KEY } from "./Assistant.js";
@@ -745,6 +746,9 @@ describe("Assistant: больше мест и план", () => {
     expect(updatePlan).toHaveBeenCalledTimes(2);
     expect(window.location.hash).toBe("#/plan/saved/plan-2");
     expect(screen.queryByRole("alert")).toBeNull();
+    // Экран плана сообщит «Додано не все місця» один раз.
+    expect(takePlanPartial("plan-2")).toBe(true);
+    expect(takePlanPartial("plan-2")).toBe(false);
   });
 
   it("план не создан (сбой POST) — сообщение об ошибке, кнопку можно нажать снова", async () => {

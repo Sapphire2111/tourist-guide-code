@@ -245,18 +245,15 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
         let best: { c: PlanCandidate; s: number; d: number | null } | undefined;
         for (const c of pool) {
           if (used.has(c.id) || !slot.includes(c.category)) continue;
-          const hop = at ? haversineMeters(at, c.location) : null;
-          // Первый переезд дня от жилья туриста дальше предела (QR отеля в Косові, «план у Буковелі») — день
-          // начинается на месте, без переезда; между пунктами предел действует.
-          const d = hop !== null && hop > MAX_HOP_M && !dayCats.length ? null : hop;
+          // Дальше предела не переезжаем, и от жилья тоже: жильё далеко от пункта плана — сервис не передаёт origin.
+          const d = at ? haversineMeters(at, c.location) : null;
           if (d !== null && d > MAX_HOP_M) continue;
           const arrive = t + (d === null ? 0 : travelOf(d).minutes);
           const duration = DURATION_OF[c.category] ?? 60;
           if (arrive + duration > window.to + OVERRUN_MIN) continue;
           const open = openDuring(c.schedule, day, arrive, arrive + duration);
           if (open === false) continue;
-          // Штраф — по фактическому расстоянию: ближние к жилью (если есть) всё равно выше дальних.
-          let s = score.get(c.id)! - (hop === null ? 0 : distancePenalty(hop));
+          let s = score.get(c.id)! - (d === null ? 0 : distancePenalty(d));
           if (open === null) s -= 0.5;
           // Разнообразие дня: та же категория второй раз — ниже (два музея подряд — скучно).
           if (dayCats.includes(c.category) && ROLE_OF[c.category] !== "eat") s -= 0.8;

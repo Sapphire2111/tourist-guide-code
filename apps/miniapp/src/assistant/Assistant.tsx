@@ -13,6 +13,7 @@ import { useRadiusLabel } from "../guide/Nearby.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { useOptionalHost } from "../host/context.js";
 import { useErrorText } from "../host/errors.js";
+import { markPlanPartial } from "../plan/partial-notice.js";
 import type {
   AssistantApi,
   AssistantIntent,
@@ -403,8 +404,10 @@ function AddToMyPlan({
       navigate(`/plan/saved/${created.id}`);
     } catch {
       // План уже создан — открываем его (что успели добавить, остальное — галочками там), а не создаём второй.
-      if (createdId) navigate(`/plan/saved/${createdId}`);
-      else setState("error");
+      if (createdId) {
+        markPlanPartial(createdId);
+        navigate(`/plan/saved/${createdId}`);
+      } else setState("error");
     }
   };
   return (

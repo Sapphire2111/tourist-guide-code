@@ -150,19 +150,17 @@ describe("buildPlan", () => {
     expect(stops[1]!.travelMeters).toBeLessThan(1000);
   });
 
-  it("жильё дальше 30 км от пункта (QR отеля в Косові, «план у Буковелі») — план не пустой, день начинается на месте", () => {
-    const plan = buildPlan(
-      [c("nature", 80), c("sights", 80.5), c("restaurants", 81), c("chany", 81.5)],
-      opts({ parts: ["morning", "evening"] }),
-    );
-    const stops = plan.days[0]!.parts.flatMap((p) => p.stops);
-    expect(stops.length).toBe(4);
-    expect(stops[0]).toMatchObject({ travel: null, travelMeters: null, startMinute: 9 * 60 + 30 });
-    expect(stops[1]!.travelMeters).toBeLessThan(1000);
-    // Есть место рядом с жильём — оно первым, дальние не «бесплатны».
-    const near = c("nature", 1, { rating: 4 });
-    const mixed = buildPlan([near, c("nature", 80, { rating: 5 })], opts({ parts: ["morning"] }));
-    expect(mixed.days[0]!.parts[0]!.stops[0]!.placeId).toBe(near.id);
+  it("предел 30 км строгий: и от жилья, и между пунктами (дальнее и ближнее — не в один день)", () => {
+    const far = c("nature", 80, { rating: 5, wanted: true });
+    const near = c("sights", 1);
+    // От жилья — дальнее не берётся.
+    expect(buildPlan([far], opts({ parts: ["morning"] })).days[0]!.parts).toEqual([]);
+    // Без жилья день начинается у лучшего (дальнего) — ближнее за 79 км в тот же день не попадает.
+    const plan = buildPlan([far, near], opts({ origin: undefined, parts: ["morning"] }));
+    expect(plan.days[0]!.parts[0]!.stops.map((s) => s.placeId)).toEqual([far.id]);
+    // С жильём рядом — ближнее, дальнее не попадает.
+    const home = buildPlan([far, near], opts({ parts: ["morning"] }));
+    expect(home.days[0]!.parts[0]!.stops.map((s) => s.placeId)).toEqual([near.id]);
   });
 
   it("цена: дорогой ресторан при «недорого» — ниже", () => {

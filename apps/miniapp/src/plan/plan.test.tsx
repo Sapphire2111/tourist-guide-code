@@ -11,6 +11,7 @@ import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
 import { createHostApi } from "../host/host-api.js";
 import { ConflictError, type HostApi, type PlanOption, type UserPlan } from "../host/types.js";
 import { MyPlan, NewPlanScreen, SavedPlanScreen } from "./MyPlan.js";
+import { markPlanPartial } from "./partial-notice.js";
 
 afterEach(() => {
   cleanup();
@@ -153,6 +154,18 @@ describe("Мій план: параметри поїздки", () => {
     });
     expect(screen.getByTestId("plan-status").textContent).toBe("Параметри збережено — варіанти оновлено.");
     expect(screen.queryByTestId("trip-form")).toBeNull();
+  });
+});
+
+describe("Мій план: частично добавленный ассистентом", () => {
+  it("флаг ассистента — «Додано не все місця» один раз; без флага — нет", async () => {
+    markPlanPartial(PLAN);
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan() });
+    expect((await screen.findByTestId("plan-partial")).textContent).toContain("Додано не все місця");
+    cleanup();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan() });
+    await screen.findByRole("region", { name: /День 1/ });
+    expect(screen.queryByTestId("plan-partial")).toBeNull();
   });
 });
 

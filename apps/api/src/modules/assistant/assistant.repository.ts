@@ -190,7 +190,9 @@ export class AssistantRepository {
             + CASE WHEN f.type_label ~* ${re} THEN 3 ELSE 0 END
             + CASE WHEN f.texts ~* ${re} THEN 2 ELSE 0 END
             + LEAST(3, regexp_count(f.reviews, ${re}, 1, 'i')))::int`.as("score"),
-        );
+        )
+        // OFFSET 0 — барьер оптимизатора: подзапрос не встраивается, вес не пересчитывается в WHERE и ORDER BY.
+        .offset(0);
       const found = await db
         .selectFrom(scored.as("s"))
         .select(["s.id", "s.score"])
