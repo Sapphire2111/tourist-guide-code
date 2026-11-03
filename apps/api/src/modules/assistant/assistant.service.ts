@@ -140,11 +140,14 @@ export class AssistantService {
       clarifyIntent(q.previous, allowed);
     if (intent.clarify || (!intent.categories.length && !intent.nameQuery))
       return { intent: { ...intent, clarify: true }, items: [], route: null, notes: [] };
-    // Населённый пункт, названный в запросе, — главнее выбора туриста; выбор — только пункты этого региона.
+    // Населённый пункт, названный в запросе, — главнее выбора туриста; радиус в запросе («в 500 м») без названного
+    // пункта — тоже: поиск от точки туриста, выбор «Локація» не применяется. Выбор — только пункты этого региона.
     const regionLocalities = new Set(localityIdOf.values());
     const localityIds = intent.locality
       ? [localityIdOf.get(intent.locality)!]
-      : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
+      : intent.radiusMeters !== null
+        ? []
+        : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
     return this.select(regionId, intent, idOf, q.origin, localityIds);
   }
 
@@ -178,6 +181,8 @@ export class AssistantService {
       origin,
       radius: byLocality || !origin ? undefined : (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT),
       localityIds: byLocality ? [...localityIds] : undefined,
+      // Лимит — на категорию по всем выбранным пунктам вместе (осознанно): при точке туриста выдача отсортирована
+      // по расстоянию, ближайшие не теряются.
       limit: byLocality ? CANDIDATES_WITH_LOCALITY : CANDIDATES_PER_CATEGORY,
     }));
     const pages = await Promise.all(

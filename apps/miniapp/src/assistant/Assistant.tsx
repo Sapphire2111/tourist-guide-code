@@ -31,7 +31,8 @@ export function useIntentSummary(index: CategoryIndex): (intent: AssistantIntent
     if (!parts.length && intent.nameQuery)
       parts.push(t("miniapp.assistant.anything", { q: intent.nameQuery }));
     if (intent.kind === "tour") parts.push(t("miniapp.assistant.filter.tour"));
-    if (intent.radiusMeters)
+    // Названный пункт ищется по пункту, без радиуса — радиус не обещаем.
+    if (intent.radiusMeters && !intent.locality)
       parts.push(t("miniapp.assistant.filter.radius", { r: radius(intent.radiusMeters) }));
     if (intent.priceMax !== null && intent.priceMax <= 2) parts.push(t("miniapp.assistant.filter.cheap"));
     if (intent.priceMin !== null && intent.priceMin >= 3) parts.push(t("miniapp.assistant.filter.pricey"));

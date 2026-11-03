@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { createApiClient, type ApiSchemas } from "@tg/api-client";
 import type { Analytics } from "../guide/analytics.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
+import { LOCATION_STORAGE_KEY, LocationProvider } from "../guide/LocationProvider.js";
 import { setMapLoaderForTests } from "../guide/MapSlot.js";
 import type { PlacesMapProps } from "../guide/PlacesMap.js";
 import type { GuideApi, PlaceSummary } from "../guide/types.js";
@@ -163,6 +164,76 @@ describe("Assistant: диалог", () => {
     });
     const replies = screen.getAllByTestId("assistant-reply").map((r) => r.textContent);
     expect(replies).toEqual(["Шукаю: Кафе", "Шукаю: Кафе, недорого"]);
+  });
+
+  it("выбор «Локація» уходит в запрос (localityIds); вход по QR — без выбора туриста", async () => {
+    const YAREMCHE = "00000000-0000-4000-8000-000000000301";
+    const TATARIV = "00000000-0000-4000-8000-000000000302";
+    const withLocalities = (): GuideEnv => {
+      const e = env();
+      (e.api as unknown as { localities: unknown }).localities = vi.fn(async () => [
+        { id: YAREMCHE, code: "yaremche", name: { uk: "Яремче" }, placeCount: 3 },
+        { id: TATARIV, code: "tatariv", name: { uk: "Татарів" }, placeCount: 2 },
+      ]);
+      return e;
+    };
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [YAREMCHE] }));
+    const api = fakeAssistant();
+    render(
+      <GuideProvider value={withLocalities()}>
+        <LocationProvider>
+          <Assistant api={api} initialQuery="кава" />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(api.ask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "кава", localityIds: [YAREMCHE] }),
+    );
+    cleanup();
+
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [YAREMCHE] }));
+    const qr = fakeAssistant();
+    render(
+      <GuideProvider value={withLocalities()}>
+        <LocationProvider venueEntry>
+          <Assistant api={qr} initialQuery="кава" />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(qr.ask).toHaveBeenCalled();
+    expect(qr.ask.mock.calls.at(-1)![0]).not.toHaveProperty("localityIds");
+    localStorage.clear();
+  });
+
+  it("радиус в подписи — только без названного пункта (по пункту ищем без радиуса)", async () => {
+    const api = fakeAssistant({
+      ask: vi.fn(async () => result({ intent: intent({ radiusMeters: 500 }) })),
+    });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="кава в 500 м" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    const plain = screen.getByTestId("assistant-reply").textContent;
+    expect(plain).not.toBe("Шукаю: Кафе");
+    cleanup();
+    const named = fakeAssistant({
+      ask: vi.fn(async () => result({ intent: intent({ radiusMeters: 500, locality: "yaremche" }) })),
+    });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={named} initialQuery="кава в Яремчі" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByTestId("assistant-reply").textContent).toBe("Шукаю: Кафе");
   });
 
   it("экскурсия: маршрут на карте, номера остановок, Вікіпедія — ссылкой", async () => {
