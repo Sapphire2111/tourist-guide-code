@@ -260,6 +260,7 @@ const catalogRow = (n: number, category: string, over: Partial<CatalogPlaceRow> 
   location: { lon: 24 + n / 10000, lat: 48 },
   recommended: false,
   tags: [],
+  extra_category_codes: [],
   ...over,
 });
 

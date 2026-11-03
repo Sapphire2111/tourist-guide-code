@@ -134,22 +134,30 @@ export class GuideRepository {
   /**
    * Число опубликованных мест по категориям — основной и дополнительной (place_extra_categories), без дублей:
    * own — места самой категории; tree — места корня вместе с активными подкатегориями (место в нескольких
-   * подкатегориях раздела считается один раз).
+   * подкатегориях раздела считается один раз). Правило то же, что у search: место видно, только если его основная
+   * категория активна; в счёт категории/раздела идёт по основной или по активной доп. категории.
    */
   async publishedCountByCategory(): Promise<{ own: Map<string, number>; tree: Map<string, number> }> {
     const q = this.q.with("pc", (db) =>
       db
         .selectFrom("places")
+        .innerJoin("categories as pc0", "pc0.id", "places.category_id")
         .select(["places.id as place_id", "places.category_id"])
         .where("places.status", "=", "published")
         .where("places.location", "is not", null)
+        .where("pc0.active", "=", true)
         .union(
+          // Доп. категория — только активная и только у места с активной основной (как в search).
           db
             .selectFrom("place_extra_categories as x")
             .innerJoin("places as xp", "xp.id", "x.place_id")
+            .innerJoin("categories as xpc", "xpc.id", "xp.category_id")
+            .innerJoin("categories as xc", "xc.id", "x.category_id")
             .select(["x.place_id", "x.category_id"])
             .where("xp.status", "=", "published")
-            .where("xp.location", "is not", null),
+            .where("xp.location", "is not", null)
+            .where("xpc.active", "=", true)
+            .where("xc.active", "=", true),
         ),
     );
     const own = await q
@@ -220,6 +228,7 @@ export class GuideRepository {
               .innerJoin("categories as xc", "xc.id", "x.category_id")
               .select("x.place_id")
               .whereRef("x.place_id", "=", "places.id")
+              .where("xc.active", "=", true)
               .where((w) => w.or([w("x.category_id", "=", categoryId), w("xc.parent_id", "=", categoryId)])),
           ),
         ]),
@@ -250,6 +259,7 @@ export class GuideRepository {
                 )
                 .select("x.place_id")
                 .whereRef("x.place_id", "=", "places.id")
+                .where("xc.active", "=", true)
                 .where("xr.home_section", "in", [...exclude]),
             ),
           ),

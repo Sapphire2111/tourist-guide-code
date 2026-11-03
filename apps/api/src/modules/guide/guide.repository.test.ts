@@ -52,6 +52,7 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.params).toContain("stay");
     expect(q!.sql).toMatch(/"place_extra_categories" as "x"/);
     expect(q!.sql).toMatch(/"xr"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/"xc"\."active" = \$/);
     const [plain] = await capture((r) => r.search({ text: "готель", limit: 10, offset: 0 }));
     expect(plain!.sql).not.toMatch(/not exists/);
   });
@@ -61,6 +62,14 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.sql).toMatch(/exists \(select "x"\."place_id" from "place_extra_categories" as "x"/);
     expect(q!.sql).toMatch(/"x"\."region_id" = \$/);
     expect(q!.sql).toMatch(/"xc"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/"xc"\."active" = \$/);
+  });
+
+  it("счётчики: основная категория активна, доп. — только активная (как в search)", async () => {
+    const [own] = await capture((r) => r.publishedCountByCategory());
+    expect(own!.sql).toMatch(/"pc0"\."active" = \$/);
+    expect(own!.sql).toMatch(/"xpc"\."active" = \$/);
+    expect(own!.sql).toMatch(/"xc"\."active" = \$/);
   });
 
   it("без точки: нет гео-фильтра, distance — NULL", async () => {

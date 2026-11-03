@@ -149,6 +149,27 @@ describe("slotOptions", () => {
     expect(out.every((o) => o.reason === "indoor")).toBe(true);
   });
 
+  it("доп. категория: место подбирается по ней, причина — по подходящей категории", () => {
+    const places = [place(1, "nature", 100, { extraCategories: ["restaurants"] }), place(2, "nature", 100)];
+    const out = slotOptions("evening", BASE, places, car, new Set());
+    expect(out.map((o) => o.placeId)).toEqual([P(1)]);
+    expect(out[0]!.reason).toBe("dinner");
+  });
+
+  it("с детьми вечером нет места с доп. adult-fun", () => {
+    const places = [
+      place(1, "active", 100, { extraCategories: ["adult-fun"] }),
+      place(2, "restaurants", 100),
+    ];
+    expect(slotOptions("evening", BASE, places, car, new Set()).map((o) => o.placeId)).toContain(P(1));
+    expect(slotOptions("evening", BASE, places, kids, new Set()).map((o) => o.placeId)).toEqual([P(2)]);
+  });
+
+  it("якщо дощ: магазин не-ТРЦ не проходит за счёт доп. категории", () => {
+    const places = [place(1, "stores", 100, { names: ["Магазин взуття"], extraCategories: ["cafes"] })];
+    expect(slotOptions("rain", BASE, places, car, new Set())).toEqual([]);
+  });
+
   it("без точки отсчёта — без расстояния", () => {
     const [o] = slotOptions("morning", null, [place(1, "cafes", 100)], noCar, new Set());
     // Без авто и без точки — не утверждаем ни «пішки», ни «потрібен транспорт».
