@@ -1,12 +1,14 @@
 // C06 «Картка місця»: галерея (свои фото и фото Google с авторами), тип и рейтинг Google, бейджи, действия
 // (маршрут OSM, звонок tel:, сайт, Telegram, обране), «Про місце» (текст ШІ с пометкой или описание Google),
 // «Що пропонує», график, адрес и контакты, отзывы Google, блок Вікіпедії, подписи источников. Нет данных — блока нет.
-// «Доступно зараз» — блок 7; до него всегда «Уточнити доступність» (ТЗ §10.3).
+// «Доступно зараз» и «Забронювати» — блок 7 (флаг module.bookings); иначе «Уточнити доступність» (ТЗ §10.3).
 import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
+import { usePlaceResources } from "../bookings/context.js";
+import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { useAsync, useGuide } from "./context.js";
 import { interceptBack } from "../telegram.js";
 import { routeUrl } from "./geo.js";
@@ -400,7 +402,8 @@ function Offers({ amenities }: { amenities: string[] }) {
 
 function PlaceView({ place }: { place: PlaceDetail }) {
   const { t, locale } = useT();
-  const { api, analytics, webApp, signedIn, base } = useGuide();
+  const { api, analytics, webApp, signedIn, base, regionId } = useGuide();
+  const resources = usePlaceResources(place.id, regionId);
   const distance = useDistance()(place.distanceMeters);
   const name = pickLocalized(place.name, locale);
   // Заголовок появляется после загрузки — фокус на нём ставит сам экран (смена маршрута его ещё не видит).
@@ -511,7 +514,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             <span className="kosiv-chip">{t("miniapp.place.openUntil", { time: place.openUntil })}</span>
           )}
           <PlaceBadges place={place} />
-          <Badge testId="badge-availability">{t("miniapp.place.checkAvailability")}</Badge>
+          <AvailabilityBadge resources={resources} />
         </span>
         <div className="kosiv-actions">
           {route && (
@@ -576,6 +579,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             </Button>
           )}
         </div>
+        <BookingEntry placeId={place.id} resources={resources} signedIn={signedIn} />
         {!signedIn && <p className="pc-muted pc-small">{t("miniapp.place.favoriteNeedsLogin")}</p>}
         {favError && (
           <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
