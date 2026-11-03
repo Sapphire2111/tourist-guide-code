@@ -7,14 +7,22 @@ import { ICONS, VaseIcon } from "./Ornament.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
+/** Через сколько мс заставки показать «сервер прокидається» (холодный старт api на Render free — 30–60 с). */
+export const SPLASH_SLOW_MS = 6000;
+
 /**
  * Заставка, пока идут вход и GET /context: та же разметка, что статическая в index.html (до загрузки бандла), —
- * подмена без мигания. Бейдж — текущий сезон.
+ * подмена без мигания. Бейдж — текущий сезон. Вход затянулся — пояснение, что сервер просыпается.
  */
-export function Splash() {
+export function Splash({ slowAfterMs = SPLASH_SLOW_MS }: { slowAfterMs?: number }) {
   const { t } = useT();
   const { season } = useSeason();
   const cfg = SEASON_CONFIG[season];
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setSlow(true), slowAfterMs);
+    return () => clearTimeout(id);
+  }, [slowAfterMs]);
   return (
     <div className="kosiv-splash" data-testid="splash">
       <VaseIcon size={44} />
@@ -33,6 +41,11 @@ export function Splash() {
       </svg>
       <p className="kosiv-splash-badge">{`${cfg.icon} ${t(cfg.badge)}`}</p>
       <p className="kosiv-splash-note">{t("miniapp.splash.welcome")}</p>
+      {slow && (
+        <p className="kosiv-splash-note" data-testid="splash-slow">
+          {t("miniapp.splash.slow")}
+        </p>
+      )}
       <span className="kosiv-dots" role="status" aria-label={t("miniapp.start.loading")}>
         <i />
         <i />

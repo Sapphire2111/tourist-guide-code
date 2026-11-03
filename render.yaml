@@ -117,6 +117,13 @@ services:
       - path: /*
         name: Strict-Transport-Security
         value: max-age=31536000; includeSubDomains
+      # Ассеты Vite с хэшем в имени — неизменяемы: повторное открытие Mini App берёт JS/CSS/шрифты из кэша WebView
+      # без запроса (по умолчанию Render отдаёт max-age=0 — ревалидация каждого файла). index.html и season-boot.js
+      # (без хэша) — по умолчанию Render, чтобы новый деплой подхватывался сразу. Чанк старого хэша после деплоя
+      # (rewrite → index.html) тоже закэшируется, но новый index.html ссылается уже на другие имена.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     routes:
       - type: rewrite
         source: /*

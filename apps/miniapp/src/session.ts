@@ -1,5 +1,5 @@
-// Поток старта Mini App (блок 2, ADR-0015/0016): POST /auth/telegram → токен сессии → GET /context/{start_param}
-// (без QR — GET /context; ровно один раз за открытие) → GET /me. Токен — в памяти и sessionStorage (ADR-0009),
+// Поток старта Mini App (блок 2, ADR-0015/0016): POST /auth/telegram → токен сессии → параллельно GET /context/{start_param}
+// (без QR — GET /context; ровно один раз за открытие) и GET /me. Токен — в памяти и sessionStorage (ADR-0009),
 // anonymousId — в localStorage.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import type { MessageKey } from "@tg/i18n";
@@ -164,8 +164,8 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
     // Приглашение сотрудника — не QR-точка: контекст без start_param, экран P14 по токену.
     const invite = inviteTokenOf(rawStartParam);
     const startParam = invite !== undefined ? undefined : rawStartParam;
-    const context = await fetchContext(api, startParam || undefined);
-    const me = await api.GET("/me");
+    // Контекст и /me независимы (оба — с токеном входа) — параллельно: заставка ждёт на один запрос меньше.
+    const [context, me] = await Promise.all([fetchContext(api, startParam || undefined), api.GET("/me")]);
     if (!me.data) return { status: "error", messageKey: errorKey(me.response.status) };
     return {
       status: "ready",

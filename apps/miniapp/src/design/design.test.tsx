@@ -7,7 +7,7 @@ import { Catalog } from "../guide/Catalog.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
 import type { GuideApi } from "../guide/types.js";
 import { consumeBack, type TelegramWebApp } from "../telegram.js";
-import { AppTop, SeasonSwitcher } from "./Chrome.js";
+import { AppTop, SeasonSwitcher, Splash } from "./Chrome.js";
 import { LocationChip } from "../guide/LocationPicker.js";
 import { LOCATION_STORAGE_KEY, LocationProvider, useLocations } from "../guide/LocationProvider.js";
 import { HOME_PLACES, HomePlaces, SeasonTags } from "./HomeParts.js";
@@ -102,6 +102,16 @@ describe("сезон", () => {
     expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.winter.bg);
     expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.winter.surface);
     expect(JSON.parse(localStorage.getItem(SEASON_STORAGE_KEY)!).season).toBe("winter");
+  });
+
+  it("заставка: долгий вход (холодный старт api) — пояснение «сервер прокидається»", async () => {
+    render(
+      <SeasonProvider>
+        <Splash slowAfterMs={5} />
+      </SeasonProvider>,
+    );
+    expect(screen.queryByTestId("splash-slow")).toBeNull();
+    expect(await screen.findByTestId("splash-slow")).toBeTruthy();
   });
 
   it("старый клиент Telegram (до 6.1) — цвета окна не трогаем", () => {
