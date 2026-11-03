@@ -2,6 +2,8 @@
 // (их смотрят и публикуют в админке), --publish — сразу опубликованные. Уже существующий код — пропуск (повторный
 // прогон дописывает только новые). Перед записью места ещё раз сверяются с каталогом: опубликовано, категория активна.
 import { regionContext, withTenant, type Db } from "../db/index.js";
+import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
+import { SCENARIO_AUDIT, SCENARIO_ENTITY } from "../modules/planner/index.js";
 import type { ScenarioDraft } from "./validate.js";
 
 export class ScenariosWriteError extends Error {}
@@ -33,6 +35,7 @@ export async function writeDrafts(
     );
   return withTenant(db, regionContext(regionId), async (trx) => {
     const stats: WriteStats = { written: 0, existing: 0, placeUnavailable: [] };
+    const audit = new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS);
     const ids = [...new Set(drafts.flatMap((d) => d.items.flatMap((i) => [i.placeId, ...i.alternatives])))];
     const ok = new Set(
       ids.length
@@ -96,6 +99,23 @@ export async function writeDrafts(
           }),
         )
         .execute();
+      // Аудит — как создание сценария в админке, актор SYSTEM (CLI), по записи на сценарий.
+      await audit.record(trx, {
+        actor: { type: "system" },
+        action: SCENARIO_AUDIT.create,
+        entityType: SCENARIO_ENTITY,
+        entityId: s.id,
+        oldValues: null,
+        newValues: {
+          code: d.code,
+          items: d.items.length,
+          status: opts.publish ? "published" : "draft",
+          seasons: d.seasons,
+          source: "scenarios:generate",
+        },
+        regionId,
+        reason: "scenarios:generate",
+      });
       existing.add(d.code);
       stats.written++;
     }

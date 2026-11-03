@@ -98,27 +98,44 @@ export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
 function ScenarioList() {
   const { t, locale } = useT();
   const { api } = useHost();
-  const [list, retry] = useAsync(() => api.scenarios(), [api]);
+  // Дата поездки: сценарии её сезона (зимой можно спланировать летнюю поездку); без даты — текущий сезон.
+  const [tripDate, setTripDate] = useState("");
+  const [list, retry] = useAsync(() => api.scenarios(tripDate || null), [api, tripDate]);
+  const dateId = useId();
   return (
-    <AsyncView state={list} retry={retry}>
-      {(items: ScenarioSummary[]) =>
-        items.length ? (
-          <ul style={listStyle} data-testid="scenarios">
-            {items.map((s) => (
-              <li key={s.id} style={card} data-testid="scenario-item">
-                <Link to={`/plan/scenario/${s.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
-                  {pickLocalized(s.title, locale)}
-                </Link>
-                <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: s.days })}</span>
-                {s.description && <p style={{ margin: "4px 0 0" }}>{pickLocalized(s.description, locale)}</p>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p data-testid="scenarios-empty">{t("miniapp.plan.empty")}</p>
-        )
-      }
-    </AsyncView>
+    <>
+      <label htmlFor={dateId} className="plan-date">
+        <span>{t("miniapp.plan.trip.startDate")}</span>
+        <input
+          id={dateId}
+          type="date"
+          value={tripDate}
+          data-testid="scenarios-date"
+          onChange={(e) => setTripDate(e.target.value)}
+        />
+      </label>
+      <AsyncView state={list} retry={retry}>
+        {(items: ScenarioSummary[]) =>
+          items.length ? (
+            <ul style={listStyle} data-testid="scenarios">
+              {items.map((s) => (
+                <li key={s.id} style={card} data-testid="scenario-item">
+                  <Link to={`/plan/scenario/${s.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
+                    {pickLocalized(s.title, locale)}
+                  </Link>
+                  <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: s.days })}</span>
+                  {s.description && (
+                    <p style={{ margin: "4px 0 0" }}>{pickLocalized(s.description, locale)}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p data-testid="scenarios-empty">{t("miniapp.plan.empty")}</p>
+          )
+        }
+      </AsyncView>
+    </>
   );
 }
 

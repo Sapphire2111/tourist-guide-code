@@ -60,6 +60,12 @@ function daysOf(days: { dayNo: number; items: ItemDto[] }[]): PlanDay[] {
   }));
 }
 
+/** Сезон даты поездки YYYY-MM-DD — как в api (season.ts): зима — грудень–лютий, весна, літо, осінь. */
+export function seasonOfDate(date: string): "winter" | "spring" | "summer" | "autumn" {
+  const m = Number(date.slice(5, 7));
+  return m === 12 || m <= 2 ? "winter" : m <= 5 ? "spring" : m <= 8 ? "summer" : "autumn";
+}
+
 const scenarioOf = (s: ApiSchemas["ScenarioSummaryDto"]): ScenarioSummary => ({
   id: s.id,
   title: s.title,
@@ -198,8 +204,16 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
           }),
         ),
       ),
-    scenarios: async () =>
-      (await ok(api.GET("/scenarios", { params: { query: { regionId: region() } } }))).items.map(scenarioOf),
+    scenarios: async (tripDate) =>
+      (
+        await ok(
+          api.GET("/scenarios", {
+            params: {
+              query: { regionId: region(), ...(tripDate ? { season: seasonOfDate(tripDate) } : {}) },
+            },
+          }),
+        )
+      ).items.map(scenarioOf),
     scenario: async (id) => {
       const s = await ok(
         api.GET("/scenarios/{id}", { params: { path: { id }, query: { regionId: region() } } }),

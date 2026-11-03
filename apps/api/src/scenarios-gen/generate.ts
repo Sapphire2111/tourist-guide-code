@@ -9,7 +9,15 @@ import { validateScenario, type ScenarioDraft } from "./validate.js";
 /** Часть клиента Anthropic, нужная генератору (подменяется в тестах). */
 export type MessagesApi = Pick<Anthropic["messages"], "create">;
 
-export type Usage = { input: number; output: number; requests: number };
+/** Токены: input — без кэша; cacheWrite/cacheRead — запись и чтение кэша промпта (цены разные). */
+export type Usage = {
+  input: number;
+  cacheWrite: number;
+  cacheRead: number;
+  output: number;
+  requests: number;
+};
+export const emptyUsage = (): Usage => ({ input: 0, cacheWrite: 0, cacheRead: 0, output: 0, requests: 0 });
 
 export type GenOutcome = {
   code: string;
@@ -22,7 +30,13 @@ export type GenOutcome = {
 
 export const usd = (u: Usage, discount = 1) =>
   Math.round(
-    ((u.input * GEN_USD_PER_MTOK.input + u.output * GEN_USD_PER_MTOK.output) / 1e6) * discount * 100,
+    ((u.input * GEN_USD_PER_MTOK.input +
+      u.cacheWrite * GEN_USD_PER_MTOK.cacheWrite +
+      u.cacheRead * GEN_USD_PER_MTOK.cacheRead +
+      u.output * GEN_USD_PER_MTOK.output) /
+      1e6) *
+      discount *
+      100,
   ) / 100;
 
 export async function generateOne(
@@ -39,7 +53,9 @@ export async function generateOne(
     try {
       const res = await messages.create(requestParams(b, set, errors));
       usage.requests++;
-      usage.input += res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0);
+      usage.input += res.usage.input_tokens;
+      usage.cacheWrite += res.usage.cache_creation_input_tokens ?? 0;
+      usage.cacheRead += res.usage.cache_read_input_tokens ?? 0;
       usage.output += res.usage.output_tokens;
       if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") {
         errors = [`модель зупинилась: ${res.stop_reason}`];

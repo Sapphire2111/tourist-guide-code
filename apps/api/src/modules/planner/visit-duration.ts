@@ -31,6 +31,8 @@ export type Landmark = {
   winterOk: boolean;
   /** Откуда считается время (для примечания). */
   from?: string;
+  /** Дополнительно должно совпасть (Довбуш — только скелі/стежка/камінь, не музей). */
+  also?: RegExp;
 };
 
 const A = "['’ʼ`]?"; // апостроф в названиях Google пишут по-разному или пропускают
@@ -162,6 +164,7 @@ export const LANDMARKS: readonly Landmark[] = [
     code: "dovbush-rocks",
     name: "Скелі / стежка Довбуша",
     re: /довбуш|dovbush/iu,
+    also: /скел|стежк|камін|rock|trail|path/iu,
     minutes: 150,
     kind: "walk",
     highMountain: false,
@@ -177,9 +180,18 @@ export const LANDMARKS: readonly Landmark[] = [
     winterOk: true,
   },
   {
-    code: "maniava",
+    code: "maniava-waterfall",
+    name: "Манявський водоспад",
+    re: /маняв\p{L}*\s+водоспад|водоспад\s+маняв|maniav\p{L}*\s+waterfall/iu,
+    minutes: 120,
+    kind: "walk",
+    highMountain: false,
+    winterOk: true,
+  },
+  {
+    code: "maniava-skete",
     name: "Манявський скит",
-    re: /маняв|maniav/iu,
+    re: /маняв\p{L}*\s+(скит|монастир)|скит\s+маняв|maniav\p{L}*\s+(skete|monastery)/iu,
     minutes: 120,
     kind: "visit",
     highMountain: false,
@@ -188,7 +200,13 @@ export const LANDMARKS: readonly Landmark[] = [
 ];
 
 /** Категории, где название — сам маршрут или место (не отель «Під Хом'яком» и не колиба «Говерла»). */
-const LANDMARK_CATEGORIES: ReadonlySet<string> = new Set(["nature", "sights", "active", "museums"]);
+const LANDMARK_CATEGORIES: ReadonlySet<string> = new Set(["nature", "sights"]);
+/**
+ * Не сам маршрут, а сервис или заведение с вершиной в названии: прокат, тур, джип/квадро, отель, музей, памятник,
+ * кафе, такси («Джип-тур на Говерлу», «Музей Олекси Довбуша», «Пам'ятник Довбушу»).
+ */
+const NOT_ROUTE_RE =
+  /(^|[^\p{L}])(прокат\p{L}*|тур|тури|турів|tour\p{L}*|джип\p{L}*|jeep\p{L}*|квадро\p{L}*|kvadro\p{L}*|quad\p{L}*|atv|баг+і|buggy|готел\p{L}*|hotel\p{L}*|пам.ятник\p{L}*|музе\p{L}*|museum|колиб\p{L}*|садиб\p{L}*|кафе|ресторан\p{L}*|таксі|taxi|трансфер\p{L}*)([^\p{L}]|$)/iu;
 
 /** Турфирма/гид с вершиной в названии: экскурсия — весь маршрут + трансфер. */
 const TOUR_CATEGORIES: ReadonlySet<string> = new Set(["excursions"]);
@@ -202,8 +220,8 @@ const VIEW_RE = /(^|[^\p{L}])(вид|види|панорам\p{L}*|view|огля
 /** Известный маршрут или место по названию (только в категориях природы, пам'яток, активностей, музеев). */
 export function landmarkOf(p: NamedPlace): Landmark | null {
   if (!LANDMARK_CATEGORIES.has(p.category)) return null;
-  if (p.names.some((n) => VIEW_RE.test(n))) return null;
-  return LANDMARKS.find((l) => p.names.some((n) => l.re.test(n))) ?? null;
+  if (p.names.some((n) => VIEW_RE.test(n) || NOT_ROUTE_RE.test(n))) return null;
+  return LANDMARKS.find((l) => p.names.some((n) => l.re.test(n) && (!l.also || l.also.test(n)))) ?? null;
 }
 
 /**

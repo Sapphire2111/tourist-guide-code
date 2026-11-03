@@ -11,8 +11,10 @@ ALTER TABLE scenarios
     CHECK (seasons <@ ARRAY['winter', 'spring', 'summer', 'autumn']::text[]);
 
 UPDATE scenarios
+-- Порядок — как SCENARIO_SEASONS в api (зима → осінь), без повторов.
 SET seasons = ARRAY(
-      SELECT DISTINCT t FROM unnest(tags) AS t WHERE t IN ('winter', 'summer') ORDER BY t
+      SELECT o.s FROM unnest(ARRAY['winter', 'spring', 'summer', 'autumn']) WITH ORDINALITY AS o(s, n)
+      WHERE o.s = ANY(tags) AND o.s IN ('winter', 'summer') ORDER BY o.n
     ),
     tags = array_remove(array_remove(tags, 'winter'), 'summer')
 WHERE tags && ARRAY['winter', 'summer']::text[];

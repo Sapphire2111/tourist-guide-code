@@ -48,16 +48,15 @@ export type SeasonPlace = {
   tags: readonly string[];
 };
 
-/** Категории лыжного сезона: только зимой (летний Буковель — другие категории: озеро, прокат, активности). */
-export const WINTER_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
-  "ski-lifts",
-  "ski-schools",
-  "ski-rental",
-  "ski-shops",
-]);
+/**
+ * Чисто лыжное (прокат лыж, школы): не летом и не осенью — снега нет. Весной (березень) катаются; подъёмники и
+ * лыжные магазины работают круглый год (подъёмник летом возит туристов на гору) — их не прячем.
+ */
+export const SNOW_ONLY_CATEGORIES: ReadonlySet<string> = new Set(["ski-schools", "ski-rental"]);
+const SNOWLESS: ReadonlySet<ScenarioSeason> = new Set(["summer", "autumn"]);
 
 /**
- * Место уместно в сезон. Тег «Літо» без «Зима» — не зимой; «Зима» без «Літо» и лыжные категории — только зимой;
+ * Место уместно в сезон. Тег «Літо» без «Зима» — не зимой; «Зима» без «Літо» — только зимой; прокат лыж и школы — не летом и не осенью;
  * поход на вершину (Говерла, Хом'як, Синяк…) — не зимой.
  */
 export function placeFitsSeason(p: SeasonPlace, season: ScenarioSeason): boolean {
@@ -65,7 +64,7 @@ export function placeFitsSeason(p: SeasonPlace, season: ScenarioSeason): boolean
   const winter = p.tags.includes("winter");
   if (summer && !winter && season === "winter") return false;
   if (winter && !summer && season !== "winter") return false;
-  if (season !== "winter" && WINTER_ONLY_CATEGORIES.has(p.category)) return false;
+  if (SNOWLESS.has(season) && SNOW_ONLY_CATEGORIES.has(p.category)) return false;
   if (season === "winter") {
     const hike = landmarkOf(p);
     if (hike && !hike.winterOk) return false;

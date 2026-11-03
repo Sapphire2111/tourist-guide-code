@@ -6,10 +6,10 @@ import { GenArgsError, parseGenArgs } from "./args.js";
 import { allBriefs, THEMES, type Brief, type ThemeCode } from "./briefs.js";
 import { fitsBrief, selectCandidates, weeklyShort, type CandidateSet } from "./candidates.js";
 import { genPlace, type GenCatalog, type GenPlace } from "./catalog.js";
-import { generateOne, pool, type MessagesApi } from "./generate.js";
+import { emptyUsage, generateOne, pool, usd, type MessagesApi } from "./generate.js";
 import { wantedReport } from "./missing.js";
 import { OUTPUT_SCHEMA, parseScenario, requestParams, type GenScenario } from "./prompt.js";
-import { openEnough, realisticMinutes, validateScenario } from "./validate.js";
+import { checkDraft, openEnough, realisticMinutes, validateScenario } from "./validate.js";
 
 const CENTER: LonLat = { lon: 24.55, lat: 48.45 };
 const east = (m: number): LonLat => ({ lon: CENTER.lon + m / 73_800, lat: CENTER.lat });
@@ -233,7 +233,12 @@ describe("генерация", () => {
   const good = scenario([item("p1", "10:00", 45), item("p2", "12:00", 75), item("p3", "15:00", 120)]);
   const res = (text: string) => ({
     stop_reason: "end_turn",
-    usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0 },
+    usage: {
+      input_tokens: 1000,
+      output_tokens: 500,
+      cache_read_input_tokens: 100,
+      cache_creation_input_tokens: 50,
+    },
     content: [{ type: "text", text }],
   });
 
@@ -244,13 +249,15 @@ describe("генерация", () => {
         res(JSON.stringify(scenario([item("p7", "10:00", 45), item("p2", "12:00", 75)]))),
       )
       .mockResolvedValueOnce(res(JSON.stringify(good)));
-    const usage = { input: 0, output: 0, requests: 0 };
+    const usage = emptyUsage();
     const r = await generateOne({ create } as unknown as MessagesApi, brief("waterfalls"), set, usage, {
       retries: 1,
     });
     expect(r.draft?.items).toHaveLength(3);
     expect(r.attempts).toBe(2);
-    expect(usage).toEqual({ input: 2000, output: 1000, requests: 2 });
+    expect(usage).toEqual({ input: 2000, cacheWrite: 100, cacheRead: 200, output: 1000, requests: 2 });
+    // 2000×2 + 100×2,5 + 200×0,2 + 1000×10 = 14 290 мкдолл. → $0,01
+    expect(usd(usage)).toBe(0.01);
     const second = create.mock.calls[1]![0] as { messages: { content: string }[] };
     expect(second.messages[0]!.content).toMatch(/не пройшла перевірку[\s\S]*p7/);
     const params = requestParams(brief("waterfalls"), set);
@@ -264,7 +271,7 @@ describe("генерация", () => {
       { create } as unknown as MessagesApi,
       brief("waterfalls"),
       set,
-      { input: 0, output: 0, requests: 0 },
+      emptyUsage(),
       { retries: 0 },
     );
     expect(r.draft).toBeNull();
@@ -302,5 +309,36 @@ describe("аргументы", () => {
     expect(() => parseGenArgs(["--dry-run", "--publish", "--out", "x"])).toThrow(GenArgsError);
     expect(() => parseGenArgs(["--theme", "space"])).toThrow(GenArgsError);
     expect(parseGenArgs(["--plan"]).dryRun).toBe(true);
+  });
+});
+
+describe("--from-file: проверка готового сценария", () => {
+  it("валидный проходит; неизвестный тег/сезон, день вне days, нереальная длительность, место не из каталога — нет", () => {
+    const set = setOf([khomiak, lunch, chan]);
+    const draft = validateScenario(
+      brief("peak"),
+      set,
+      scenario([item("p1", "08:00", 390), item("p2", "15:00", 75), item("p3", "18:00", 120)]),
+    ).draft!;
+    const byId = new Map([khomiak, lunch, chan].map((x) => [x.id, x]));
+    expect(checkDraft(draft, byId)).toEqual([]);
+    const broken = {
+      ...draft,
+      tags: [...draft.tags, "space"],
+      seasons: ["monsoon"],
+      items: [
+        { ...draft.items[0]!, durationMin: 90 },
+        { ...draft.items[1]!, dayNo: 3 },
+        { ...draft.items[2]!, placeId: "0190f5c2-7d3e-7000-8000-999999999999" },
+      ],
+    } as unknown as typeof draft;
+    const errors = checkDraft(broken, byId).join("\n");
+    expect(errors).toMatch(/невідомі теги/);
+    expect(errors).toMatch(/невідомі сезони/);
+    expect(errors).toMatch(/нереальна/);
+    expect(errors).toMatch(/день поза/);
+    expect(errors).toMatch(/немає серед опублікованих/);
+    // Зимний сезон для похода на вершину — нет.
+    expect(checkDraft({ ...draft, seasons: ["winter"] }, byId).join()).toMatch(/сезону winter/);
   });
 });

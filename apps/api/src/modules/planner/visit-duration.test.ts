@@ -11,7 +11,10 @@ describe("visitEstimate — реалистичная длительность", 
     expect(visitMinutes(p("sights", "Говерла"))).toBeLessThanOrEqual(480);
     expect(visitMinutes(p("nature", "гора Синяк"))).toBeGreaterThanOrEqual(300);
     expect(visitMinutes(p("sights", "Підйом на г. Синяк"))).toBe(visitMinutes(p("nature", "Hora Synyak")));
-    expect(visitEstimate(p("active", "Гора Маковиця"))).toMatchObject({ kind: "hike", fixed: true });
+    expect(visitEstimate(p("sights", "Підйом на гору Маковиця"))).toMatchObject({
+      kind: "hike",
+      fixed: true,
+    });
     expect(visitMinutes(p("nature", "Пікуй"))).toBeGreaterThanOrEqual(300);
     expect(visitMinutes(p("nature", "Петрос"))).toBeGreaterThanOrEqual(420);
     expect(visitMinutes(p("nature", "Близниці"))).toBeGreaterThanOrEqual(300);
@@ -30,6 +33,31 @@ describe("visitEstimate — реалистичная длительность", 
     expect(landmarkOf(p("active", "Вид на Говерлу та Петром"))).toBeNull();
     expect(landmarkOf(p("active", "Панорама Говерла и Петрос"))).toBeNull();
     expect(landmarkOf(p("chany", "ДОВБУШЕВІ БАНІ"))).toBeNull();
+  });
+
+  it("ложные совпадения: прокат, тур, джип, квадро, отель, музей, памятник с вершиной в названии — не маршрут", () => {
+    for (const name of [
+      "Джип-тур на Говерлу",
+      "Квадроцикли на Синяк",
+      "Kvadro Tour Hoverla",
+      "Прокат спорядження Хом'як",
+      "Готель Петрос",
+      "Hotel Synyak",
+      "Музей Олекси Довбуша",
+      "Пам'ятник Довбушу",
+      "Кафе Маковиця",
+    ])
+      expect(landmarkOf(p("sights", name)), name).toBeNull();
+    // active — только по названию активности, не маршрут.
+    expect(landmarkOf(p("active", "Гора Маковиця"))).toBeNull();
+    expect(visitEstimate(p("active", "Джип тури на Говерлу"))).toMatchObject({ minutes: 240, fixed: false });
+    // Довбуш — только скелі/стежка/камінь.
+    expect(landmarkOf(p("sights", "Камінь Довбуша"))?.code).toBe("dovbush-rocks");
+    expect(landmarkOf(p("sights", "Церква Довбуша"))).toBeNull();
+    // Манявський водоспад и скит — разные места.
+    expect(landmarkOf(p("nature", "Манявський водоспад"))?.code).toBe("maniava-waterfall");
+    expect(landmarkOf(p("sights", "Манявський скит"))?.code).toBe("maniava-skete");
+    expect(landmarkOf(p("sights", "Маняви центр"))).toBeNull();
   });
 
   it("турфирма с вершинами — самый короткий из названных маршрутов + трансфер", () => {

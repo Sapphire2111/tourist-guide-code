@@ -97,7 +97,7 @@ function toForm(s: Detail): ScenarioForm {
     description: fromLocalized(s.description),
     days: String(s.days),
     tags: s.tags,
-    seasons: s.seasons,
+    seasons: s.seasons ?? [],
     adLabel: s.adLabel ?? "",
     sortOrder: String(s.sortOrder),
     items: [...s.items]
@@ -321,7 +321,7 @@ function ScenarioList() {
                     </Td>
                     <Td>{s.code}</Td>
                     <Td>{s.days}</Td>
-                    <Td>{seasonsLabel(s.seasons, tDynamic, t("admin.scenario.allYear"))}</Td>
+                    <Td>{seasonsLabel(s.seasons ?? [], tDynamic, t("admin.scenario.allYear"))}</Td>
                     <Td>{s.tags.map((x) => tDynamic(`admin.scenario.tag.${x}`)).join(", ")}</Td>
                     <Td>{s.itemCount}</Td>
                     <Td>{tDynamic(`admin.scenario.status.${s.status}`)}</Td>

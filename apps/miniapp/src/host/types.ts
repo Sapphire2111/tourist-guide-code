@@ -209,7 +209,8 @@ export type HostApi = {
   cancelRequest(id: string): Promise<ServiceRequest>;
   staffRequests(status: RequestStatus | null): Promise<ServiceRequest[]>;
   setStatus(id: string, status: StaffTransition, reason: string | null): Promise<ServiceRequest>;
-  scenarios(): Promise<ScenarioSummary[]>;
+  /** Сценарии региона; tripDate (YYYY-MM-DD) — сезон поездки, без неё — текущий сезон (решает api). */
+  scenarios(tripDate?: string | null): Promise<ScenarioSummary[]>;
   scenario(id: string): Promise<ScenarioDetail>;
   plans(): Promise<UserPlan[]>;
   plan(id: string): Promise<UserPlan>;

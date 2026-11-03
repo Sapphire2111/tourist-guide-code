@@ -16,6 +16,22 @@ describe("сезон", () => {
     expect(seasonAt(new Date("2026-07-01T00:00:00Z"), "Bad/Zone")).toBe("summer");
   });
 
+  it("лыжи: прокат и школы — не летом и не осенью; подъёмник и джип-тур зимой и летом — видны", () => {
+    const rental = { category: "ski-rental", names: ["Прокат лиж"], tags: [] };
+    expect(placeFitsSeason(rental, "spring")).toBe(true);
+    expect(placeFitsSeason(rental, "autumn")).toBe(false);
+    expect(placeFitsSeason({ category: "ski-schools", names: ["Школа"], tags: [] }, "summer")).toBe(false);
+    expect(placeFitsSeason({ category: "ski-lifts", names: ["Підйомник R1"], tags: [] }, "summer")).toBe(
+      true,
+    );
+    expect(placeFitsSeason({ category: "active", names: ["Джип-тур на Говерлу"], tags: [] }, "winter")).toBe(
+      true,
+    );
+    expect(
+      placeFitsSeason({ category: "active", names: ["Прокат квадроциклів Синяк"], tags: [] }, "winter"),
+    ).toBe(true);
+  });
+
   it("сценарий без сезонов — круглый год", () => {
     expect(scenarioFitsSeason([], "winter")).toBe(true);
     expect(scenarioFitsSeason(["summer", "autumn"], "winter")).toBe(false);

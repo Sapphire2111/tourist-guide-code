@@ -5,6 +5,7 @@
 import type { LocalizedText, ScenarioSeason } from "../db/index.js";
 import {
   placeFitsSeason,
+  SCENARIO_SEASONS,
   SCENARIO_TAGS,
   sphericalMeters,
   travelMinutes,
@@ -282,4 +283,58 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
     errors,
     fixes,
   };
+}
+
+const CODE_RE = /^[a-z0-9]([a-z0-9_-]{0,62}[a-z0-9])?$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Проверка готового сценария (--from-file: файл могли поправить руками): форма как у API (код, теги и сезоны из
+ * справочников, дни 1…5 и номер дня каждого пункта, время, длительность 5–1440), места — опубликованные места каталога,
+ * длительность — реалистичная для места, место подходит сезонам. Пустой список — можно писать.
+ */
+export function checkDraft(d: ScenarioDraft, places: ReadonlyMap<string, GenPlace>): string[] {
+  const e: string[] = [];
+  if (typeof d.code !== "string" || !CODE_RE.test(d.code)) e.push(`код «${String(d.code)}» не латиницею`);
+  if (typeof d.title?.uk !== "string" || clean(d.title.uk, 80).length < 3) e.push("немає назви uk");
+  if (!Number.isInteger(d.days) || d.days < 1 || d.days > 5) e.push(`днів ${String(d.days)} — має бути 1…5`);
+  if (!Array.isArray(d.tags) || d.tags.some((t) => !(SCENARIO_TAGS as readonly string[]).includes(t)))
+    e.push(`невідомі теги: ${String(d.tags)}`);
+  const seasonsOk =
+    Array.isArray(d.seasons) && d.seasons.every((s) => (SCENARIO_SEASONS as readonly string[]).includes(s));
+  if (!seasonsOk) e.push(`невідомі сезони: ${String(d.seasons)}`);
+  if (!Array.isArray(d.items) || d.items.length === 0 || d.items.length > 40)
+    return [...e, "пунктів має бути 1…40"];
+  const days = new Set<number>();
+  for (const i of d.items) {
+    const at = `день ${String(i.dayNo)}, ${i.placeName ?? String(i.placeId)}`;
+    if (!Number.isInteger(i.dayNo) || i.dayNo < 1 || i.dayNo > d.days) e.push(`${at}: день поза 1…${d.days}`);
+    days.add(i.dayNo);
+    if (typeof i.placeId !== "string" || !UUID_RE.test(i.placeId)) {
+      e.push(`${at}: placeId не uuid`);
+      continue;
+    }
+    if (typeof i.timeHint !== "string" || toMin(i.timeHint) === null)
+      e.push(`${at}: час «${String(i.timeHint)}» не ГГ:ХХ`);
+    if (!Number.isInteger(i.durationMin) || i.durationMin < 5 || i.durationMin > 1440)
+      e.push(`${at}: тривалість ${String(i.durationMin)} поза 5…1440`);
+    if (
+      !Array.isArray(i.alternatives) ||
+      i.alternatives.length > ALTERNATIVES_MAX ||
+      i.alternatives.some((a) => typeof a !== "string" || !UUID_RE.test(a))
+    )
+      e.push(`${at}: альтернативи — до ${ALTERNATIVES_MAX} uuid`);
+    const p = places.get(i.placeId.toLowerCase());
+    if (!p) {
+      e.push(`${at}: місця немає серед опублікованих у каталозі`);
+      continue;
+    }
+    if (realisticMinutes(p, i.durationMin) !== i.durationMin)
+      e.push(`${at}: тривалість ${i.durationMin} хв нереальна (оцінка ${p.estimate.minutes} хв)`);
+    if (seasonsOk)
+      for (const s of d.seasons.length ? d.seasons : SCENARIO_SEASONS)
+        if (!placeFitsSeason(p, s)) e.push(`${at}: не підходить для сезону ${s}`);
+  }
+  for (let n = 1; n <= d.days; n++) if (!days.has(n)) e.push(`день ${n} без пунктів`);
+  return e;
 }

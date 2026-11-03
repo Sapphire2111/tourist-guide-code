@@ -7,8 +7,8 @@ import { DAY_ACTIVE_MAX_MIN, DAY_END, DAY_START, MODEL_TAGS } from "./validate.j
 
 /** Последняя Claude Sonnet (как places:enrich). */
 export const GEN_MODEL = "claude-sonnet-5-5";
-/** $ за 1 млн токенов (обычные запросы; Message Batches — вдвое дешевле). */
-export const GEN_USD_PER_MTOK = { input: 2, output: 10 } as const;
+/** $ за 1 млн токенов (обычные запросы; Message Batches — вдвое дешевле): запись в кэш ×1,25, чтение ×0,1. */
+export const GEN_USD_PER_MTOK = { input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 } as const;
 export const GEN_MAX_TOKENS = 16_000;
 
 const SEASON_UK: Record<string, string> = {

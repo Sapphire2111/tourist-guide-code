@@ -15,14 +15,22 @@ import { GenArgsError, parseGenArgs } from "../scenarios-gen/args.js";
 import { allBriefs, WANTED_AREAS, type Brief } from "../scenarios-gen/briefs.js";
 import { selectCandidates, type CandidateSet } from "../scenarios-gen/candidates.js";
 import { loadCatalog } from "../scenarios-gen/catalog.js";
-import { generateOne, pool, usd, type GenOutcome, type Usage } from "../scenarios-gen/generate.js";
+import {
+  emptyUsage,
+  generateOne,
+  pool,
+  usd,
+  type GenOutcome,
+  type Usage,
+} from "../scenarios-gen/generate.js";
 import { wantedReport } from "../scenarios-gen/missing.js";
 import { GEN_MODEL, SYSTEM_PROMPT, userPrompt } from "../scenarios-gen/prompt.js";
-import type { ScenarioDraft } from "../scenarios-gen/validate.js";
+import { checkDraft, type ScenarioDraft } from "../scenarios-gen/validate.js";
 import { ScenariosWriteError, writeDrafts } from "../scenarios-gen/writer.js";
 
 let db: Db | undefined;
-try {
+
+async function main(): Promise<void> {
   const args = parseGenArgs(process.argv.slice(2));
   const url = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
   if (!url) throw new GenArgsError("Нужен DATABASE_URL (каталог мест читается из БД)");
@@ -38,7 +46,7 @@ try {
   const missingAreas = Object.values(WANTED_AREAS);
   console.log(`Нет в каталоге (не выдумываем): ${[...missing, ...missingAreas].join("; ") || "—"}.`);
 
-  const usage: Usage = { input: 0, output: 0, requests: 0 };
+  const usage: Usage = emptyUsage();
   let drafts: ScenarioDraft[];
   const report: Record<string, unknown> = {
     model: GEN_MODEL,
@@ -49,9 +57,21 @@ try {
   };
 
   if (args.fromFile) {
-    const file = JSON.parse(await readFile(args.fromFile, "utf8")) as { scenarios?: ScenarioDraft[] };
-    drafts = file.scenarios ?? [];
-    console.log(`Из файла ${args.fromFile}: сценариев ${drafts.length} (без запросов к модели).`);
+    const file = JSON.parse(await readFile(args.fromFile, "utf8")) as { scenarios?: unknown };
+    // Файл могли поправить руками — та же проверка программой; невалидные — в отчёт, не в БД.
+    const byId = new Map(catalog.places.map((p) => [p.id, p]));
+    const all = (Array.isArray(file.scenarios) ? file.scenarios : []) as ScenarioDraft[];
+    const rejected: { code: string; errors: string[] }[] = [];
+    drafts = all.filter((d) => {
+      const errors = checkDraft(d, byId);
+      if (errors.length) rejected.push({ code: String(d.code), errors });
+      return errors.length === 0;
+    });
+    report.rejected = rejected;
+    console.log(
+      `Из файла ${args.fromFile}: сценариев ${all.length}, прошли проверку ${drafts.length} (без запросов к модели).`,
+    );
+    for (const r of rejected) console.log(`  пропуск ${r.code}: ${r.errors.slice(0, 3).join("; ")}`);
   } else {
     // Заказы: по кругу тем, без уже записанных кодов, только те, что собираются из каталога.
     const skipped: { code: string; reason: string }[] = [];
@@ -79,7 +99,7 @@ try {
       // Оценка без запросов (замер прогона 03.11.2026: кириллица ~1,5 символа на токен, ответ ~600 токенов).
       const chars = chosen.map((c) => (SYSTEM_PROMPT + userPrompt(c.brief, c.set)).length);
       const input = Math.round(chars.reduce((a, b) => a + b, 0) / 1.5);
-      const est = { input, output: chosen.length * 700, requests: chosen.length };
+      const est: Usage = { ...emptyUsage(), input, output: chosen.length * 700, requests: chosen.length };
       console.log(`Оценка: ≈ ${est.input} вх. / ${est.output} вых. токенов ≈ ${usd(est)} (без повторов).`);
       for (const s of skipped.filter((x) => x.reason !== "уже есть в БД"))
         console.log(`  пропуск ${s.code}: ${s.reason}`);
@@ -100,7 +120,7 @@ try {
           ),
         );
       }
-      process.exit(0);
+      return; // соединение с БД закрывает finally
     }
     if (chosen.length && !process.env.ANTHROPIC_API_KEY?.trim())
       throw new GenArgsError("Нужен ANTHROPIC_API_KEY");
@@ -122,7 +142,7 @@ try {
   report.usage = { ...usage, usd: usd(usage) };
   report.scenarios = drafts;
   console.log(
-    `Сценариев прошло проверку: ${drafts.length}. Запросов ${usage.requests}, токенов ${usage.input} вх. / ` +
+    `Сценариев прошло проверку: ${drafts.length}. Запросов ${usage.requests}, токенов ${usage.input} вх. (+ кэш: запись ${usage.cacheWrite}, чтение ${usage.cacheRead}) / ` +
       `${usage.output} вых. ≈ $${usd(usage)}.`,
   );
 
@@ -139,6 +159,10 @@ try {
         `уже были ${stats.existing}, пропущено из-за снятых мест ${stats.placeUnavailable.length}.`,
     );
   }
+}
+
+try {
+  await main();
 } catch (err) {
   console.error(
     err instanceof GenArgsError || err instanceof ScenariosWriteError

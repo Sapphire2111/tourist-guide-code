@@ -447,5 +447,12 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
     expect(admin.items.some((x) => x.code === draft.code)).toBe(false);
     const { rows } = await sql("SELECT status, seasons FROM scenarios WHERE code = $1", [draft.code]);
     expect(rows[0]).toMatchObject({ status: "published", seasons: ["summer"] });
+    // Аудит генератора — одна запись scenario.create (актор SYSTEM); повтор не пишет.
+    const { rows: audit } = await sql(
+      `SELECT count(*)::int AS n FROM audit_logs l JOIN scenarios s ON s.id = l.entity_id
+       WHERE l.action = 'scenario.create' AND s.code = $1`,
+      [draft.code],
+    );
+    expect(audit[0]).toMatchObject({ n: 1 });
   });
 });
