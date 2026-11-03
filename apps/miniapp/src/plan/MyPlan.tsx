@@ -26,6 +26,7 @@ import {
   type TripInput,
   type UserPlan,
 } from "../host/types.js";
+import { takePlanPartial } from "./partial-notice.js";
 import "./plan.css";
 
 // Сегменты в стиле переключателя сезонов (.kosiv-seasons): активный — поверхность и акцент.
@@ -442,14 +443,23 @@ export function SavedPlanScreen({ id }: { id: string }) {
     () => (signedIn ? api.plan(id) : Promise.reject(new UnauthorizedError())),
     [api, id, signedIn],
   );
+  // Ассистент добавил не все места — сообщаем один раз (флаг снимается при первом показе экрана).
+  const [partial] = useState(() => takePlanPartial(id));
   if (plan.status === "error" && plan.error instanceof NotFoundError)
     return <p role="alert">{t("miniapp.plan.notFound")}</p>;
   if (plan.status === "error" && plan.error instanceof UnauthorizedError)
     return <p role="alert">{t("miniapp.plan.needsLogin")}</p>;
   return (
-    <AsyncView state={plan} retry={retry}>
-      {(p) => <PlanEditor key={p.id} initial={p} />}
-    </AsyncView>
+    <>
+      {partial && (
+        <p role="status" data-testid="plan-partial">
+          {t("miniapp.assistant.plan.partial")}
+        </p>
+      )}
+      <AsyncView state={plan} retry={retry}>
+        {(p) => <PlanEditor key={p.id} initial={p} />}
+      </AsyncView>
+    </>
   );
 }
 

@@ -20,10 +20,16 @@ export type AssistantItem = {
   descriptionUrl: string | null;
 };
 
+export type AssistantPlan = ApiSchemas["AssistantPlanDto"];
+export type AssistantPlanStop = ApiSchemas["AssistantPlanStopDto"];
+export type AssistantDayPart = ApiSchemas["AssistantDayPart"];
+
 export type AssistantResult = {
   intent: AssistantIntent;
   items: AssistantItem[];
   route: { lengthMeters: number } | null;
+  /** План отдыха по дням (kind = plan); пункты ссылаются на items по индексу. */
+  plan: AssistantPlan | null;
   notes: AssistantNote[];
 };
 
@@ -59,6 +65,19 @@ export function resultOf(dto: ApiSchemas["AssistantResultDto"]): AssistantResult
       descriptionUrl: https(i.descriptionUrl),
     })),
     route: dto.route,
+    // Старый ответ (или кэш диалога) без плана — null; пункты с индексом вне items отбрасываются.
+    plan: dto.plan
+      ? {
+          ...dto.plan,
+          days: dto.plan.days.map((d) => ({
+            ...d,
+            parts: d.parts.map((p) => ({
+              ...p,
+              stops: p.stops.filter((s) => s.item >= 0 && s.item < dto.items.length),
+            })),
+          })),
+        }
+      : null,
     notes: dto.notes,
   };
 }

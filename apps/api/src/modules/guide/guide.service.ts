@@ -55,6 +55,8 @@ export type SearchParams = {
   /** Населённые пункты; пусто или нет — весь регион. */
   localityIds?: string[];
   text?: string;
+  /** Только эти места (ассистент); пусто — ничего. */
+  ids?: readonly string[];
   /** Разделы главной, места которых не нужны (по умолчанию — никакие). */
   excludeSections?: readonly HomeSection[];
   limit: number;

@@ -53,6 +53,8 @@ export type SearchQuery = {
   localityIds?: readonly string[];
   /** Текст без экранирования (экранирует репозиторий). */
   text?: string;
+  /** Только эти места (ассистент: найденные по ключевым словам); пусто — ничего. */
+  ids?: readonly string[];
   /** Не показывать места разделов главной (корень категории — с этим home_section): «Що поруч» и карты без «Де жити». */
   excludeSections?: readonly HomeSection[];
   limit: number;
@@ -253,6 +255,10 @@ export class GuideRepository {
           ),
         );
     if (s.localityIds?.length) query = query.where("places.locality_id", "in", [...s.localityIds]);
+    if (s.ids) {
+      if (!s.ids.length) return Promise.resolve([]);
+      query = query.where("places.id", "in", [...s.ids]);
+    }
     const pattern = text === undefined ? undefined : likeContains(text);
     if (pattern !== undefined)
       query = query.where(

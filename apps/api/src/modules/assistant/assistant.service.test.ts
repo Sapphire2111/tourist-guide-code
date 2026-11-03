@@ -4,8 +4,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiError } from "../../common/http/index.js";
-import type { GuideService, PlaceSummaryDto } from "../guide/index.js";
-import type { AssistantRepository, PlaceEnrichmentFacts } from "./assistant.repository.js";
+import type { GuideService, PlaceSummaryDto, ScheduleRows } from "../guide/index.js";
+import type { AssistantRepository, KeywordQuery, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
 import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
@@ -24,6 +24,11 @@ const MUSEUMS = "0190f5c2-7d3e-7000-8000-000000000103";
 const EMPTY = "0190f5c2-7d3e-7000-8000-000000000104";
 const STAY = "0190f5c2-7d3e-7000-8000-000000000105";
 const HOTELS = "0190f5c2-7d3e-7000-8000-000000000106";
+const RESTAURANTS = "0190f5c2-7d3e-7000-8000-000000000107";
+const NEARBY = "0190f5c2-7d3e-7000-8000-000000000108";
+const NATURE = "0190f5c2-7d3e-7000-8000-000000000109";
+const RELAX = "0190f5c2-7d3e-7000-8000-000000000110";
+const CHANY = "0190f5c2-7d3e-7000-8000-000000000111";
 
 const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto => ({
   id: `0190f5c2-7d3e-7000-8000-0000000002${String(n).padStart(2, "0")}`,
@@ -58,6 +63,7 @@ const intent = (over: Partial<AssistantIntent> = {}): AssistantIntent => ({
   kind: "places",
   categories: ["cafes"],
   nameQuery: null,
+  keywords: [],
   locality: null,
   radiusMeters: null,
   priceMin: null,
@@ -66,6 +72,9 @@ const intent = (over: Partial<AssistantIntent> = {}): AssistantIntent => ({
   openNow: false,
   clarify: false,
   suggestions: ["cheaper"],
+  days: null,
+  dayParts: [],
+  start: null,
   ...over,
 });
 
@@ -75,7 +84,12 @@ const reply = (input: unknown, stop: Anthropic.Message["stop_reason"] = "tool_us
     stop_reason: stop,
   }) as unknown as Anthropic.Message;
 
-type SearchArg = { origin?: { lon: number; lat: number }; localityIds?: readonly string[] };
+type SearchArg = {
+  origin?: { lon: number; lat: number };
+  localityIds?: readonly string[];
+  categoryId?: string;
+  ids?: readonly string[];
+};
 
 function setup(
   opts: {
@@ -90,6 +104,10 @@ function setup(
     placeLocality?: Record<string, string>;
     /** Выдача каталога в зависимости от точки поиска. */
     searchAt?: (s: SearchArg) => PlaceSummaryDto[] | undefined;
+    /** Совпадения по ключевым словам (id → вес). */
+    keywordMatches?: (q: KeywordQuery) => { id: string; score: number }[];
+    schedules?: Record<string, ScheduleRows>;
+    timezone?: string;
   } = {},
 ) {
   const guide = {
@@ -102,6 +120,11 @@ function setup(
           { id: EMPTY, parentId: null, code: "empty", name: { uk: "Порожня" }, placeCount: 0 },
           { id: STAY, parentId: null, code: "stay", name: { uk: "Де жити" }, placeCount: 2 },
           { id: HOTELS, parentId: STAY, code: "hotels", name: { uk: "Готелі" }, placeCount: 2 },
+          { id: RESTAURANTS, parentId: EAT, code: "restaurants", name: { uk: "Ресторани" }, placeCount: 2 },
+          { id: NEARBY, parentId: null, code: "nearby", name: { uk: "Що поруч" }, placeCount: 2 },
+          { id: NATURE, parentId: NEARBY, code: "nature", name: { uk: "Пам'ятки природи" }, placeCount: 2 },
+          { id: RELAX, parentId: null, code: "relax", name: { uk: "Релакс" }, placeCount: 1 },
+          { id: CHANY, parentId: RELAX, code: "chany", name: { uk: "Чани та сауни" }, placeCount: 1 },
         ],
       }),
     ),
@@ -109,7 +132,9 @@ function setup(
       Promise.resolve({
         // Как каталог: localityIds — только места этих пунктов (place_id → locality_id из opts.placeLocality).
         items: (opts.searchAt?.(s) ?? opts.places ?? [place(1), place(2)]).filter(
-          (p) => !s.localityIds?.length || s.localityIds.includes(opts.placeLocality?.[p.id] ?? ""),
+          (p) =>
+            (!s.localityIds?.length || s.localityIds.includes(opts.placeLocality?.[p.id] ?? "")) &&
+            (!s.ids || s.ids.includes(p.id)),
         ),
         nextOffset: null,
         radiusMeters: null,
@@ -124,6 +149,31 @@ function setup(
         new Map(ids.flatMap((id) => (opts.enrichment?.[id] ? [[id, opts.enrichment[id]] as const] : []))),
       ),
     ),
+    keywordMatches: vi.fn((_r: string, q: KeywordQuery) => Promise.resolve(opts.keywordMatches?.(q) ?? [])),
+    ratings: vi.fn((_r: string, ids: readonly string[]) =>
+      Promise.resolve(
+        new Map(
+          ids.flatMap((id) => {
+            const g = opts.enrichment?.[id]?.google;
+            return g
+              ? [
+                  [
+                    id,
+                    {
+                      rating: g.rating,
+                      ratingCount: g.ratingCount,
+                      priceLevel: g.priceLevel,
+                      amenities: g.amenities,
+                      typeLabel: g.typeLabel,
+                    },
+                  ] as const,
+                ]
+              : [];
+          }),
+        ),
+      ),
+    ),
+    schedules: vi.fn(() => Promise.resolve(new Map(Object.entries(opts.schedules ?? {})))),
     localities: vi.fn(() =>
       Promise.resolve([
         { id: YAREMCHE, code: "yaremche", name_i18n: { uk: "Яремче" }, location: YAREMCHE_AT },
@@ -138,7 +188,13 @@ function setup(
   };
   const budget = new AssistantBudget({ dailyLimit: opts.dailyLimit, userDailyLimit: opts.userDailyLimit });
   const regions = {
-    findById: vi.fn(() => Promise.resolve({ id: REGION, status: opts.regionStatus ?? "active" })),
+    findById: vi.fn(() =>
+      Promise.resolve({
+        id: REGION,
+        status: opts.regionStatus ?? "active",
+        timezone: opts.timezone ?? "Europe/Kyiv",
+      }),
+    ),
   };
   const service = new AssistantService(
     repo as unknown as AssistantRepository,
@@ -517,6 +573,280 @@ describe("AssistantService.transcribe", () => {
     ).toBe(404);
     expect(spend).not.toHaveBeenCalled();
     expect(speech.recognize).not.toHaveBeenCalled();
+  });
+});
+
+describe("блюдо или кухня (ключевые слова)", () => {
+  const sushi = (id: number, name: string, over: Partial<PlaceSummaryDto> = {}) =>
+    place(id, { name: { uk: name }, categoryId: RESTAURANTS, ...over });
+
+  it("«суші»: поиск по названию, типу, описаниям и отзывам во всём разделе «Де поїсти»; порядок — совпадение и рейтинг", async () => {
+    const byName = sushi(1, "Суши Кафе");
+    const byReview = sushi(2, "Family", { categoryId: CAFES });
+    const byAi = sushi(3, "KUMA");
+    const { service, repo, guide } = setup({
+      places: [byName, byReview, byAi],
+      keywordMatches: () => [
+        { id: byName.id, score: 9 },
+        { id: byAi.id, score: 5 },
+        { id: byReview.id, score: 1 },
+      ],
+      enrichment: {
+        [byAi.id]: { google: google({ rating: 4.8 }), wiki: null, ai: "Хвалять суші та роли." },
+        [byReview.id]: { google: google({ rating: 4.9 }), wiki: null, ai: null },
+      },
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(reply(intent({ categories: ["restaurants"], keywords: ["суші", "sushi"] }))),
+        ),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("суші", { origin: YAREMCHE_AT }));
+    const q = repo.keywordMatches.mock.calls[0]![1];
+    expect(q).toMatchObject({ categoryIds: [EAT], origin: YAREMCHE_AT, radius: 5000, minScore: 1 });
+    expect(q.pattern).toContain("роли");
+    expect(q.pattern.startsWith("\\m")).toBe(true);
+    expect(q.namePattern).toContain("sushi");
+    // Карточки — поиском каталога по найденным id (не по названию).
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ ids: [byName.id, byAi.id, byReview.id], origin: YAREMCHE_AT }),
+    );
+    expect(guide.search).toHaveBeenCalledTimes(1);
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суши Кафе", "KUMA", "Family"]);
+    expect(res.notes).toEqual([]);
+  });
+
+  it("рядом мало и радиус не назван — поиск по всему региону (widened)", async () => {
+    const a = sushi(1, "Суші 1");
+    const b = sushi(2, "Суші 2");
+    const c = sushi(3, "Суші 3");
+    const { service, repo } = setup({
+      places: [a, b, c],
+      keywordMatches: (q) =>
+        q.radius === undefined ? [a, b, c].map((p) => ({ id: p.id, score: 4 })) : [{ id: a.id, score: 4 }],
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: [], keywords: ["суші"] })))) },
+    });
+    const res = await service.query(REGION, USER, ask("суші", { origin: YAREMCHE_AT }));
+    expect(repo.keywordMatches).toHaveBeenCalledTimes(2);
+    // Без категорий — одних упоминаний в отзывах мало.
+    expect(repo.keywordMatches.mock.calls[0]![1]).toMatchObject({ categoryIds: [], minScore: 2 });
+    expect(res.items).toHaveLength(3);
+    expect(res.notes).toEqual(["widened"]);
+  });
+
+  it("блюда нет нигде — места категории с пояснением keyword_none", async () => {
+    const { service, guide } = setup({
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"], keywords: ["рамен"] })))),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("рамен"));
+    expect(guide.search).toHaveBeenCalledWith(REGION, expect.objectContaining({ categoryId: CAFES }));
+    expect(res.items).toHaveLength(2);
+    expect(res.notes).toEqual(["keyword_none"]);
+  });
+
+  it("старое намерение: «суші» в nameQuery — по названию мало, добавляются найденные по описаниям и отзывам", async () => {
+    const named = sushi(1, "Доставка суші");
+    const described = sushi(2, "KUMA");
+    const { service } = setup({
+      searchAt: (s) => (s.ids ? [named, described] : [named]),
+      keywordMatches: () => [
+        { id: named.id, score: 4 },
+        { id: described.id, score: 5 },
+      ],
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(reply(intent({ categories: ["restaurants"], nameQuery: "суші" }))),
+        ),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("суші"));
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Доставка суші", "KUMA"]);
+  });
+
+  it("nameQuery — название заведения («Суші Барберрі»): синонимами не расширяется", async () => {
+    const named = sushi(1, "Суші Барберрі");
+    const { service, repo } = setup({
+      places: [named],
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(reply(intent({ categories: ["restaurants"], nameQuery: "Суші Барберрі" }))),
+        ),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("Суші Барберрі"));
+    expect(repo.keywordMatches).not.toHaveBeenCalled();
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суші Барберрі"]);
+  });
+
+  it("мест больше 10 — до 30 (клиент показывает по 10)", async () => {
+    const many = Array.from({ length: 40 }, (_, i) => place(i + 1));
+    const { service } = setup({ places: many });
+    const res = await service.query(REGION, USER, ask());
+    expect(res.items).toHaveLength(30);
+  });
+});
+
+describe("план відпочинку", () => {
+  const NOTES = "plan_notes";
+  const at = (dxKm: number) => ({ lon: YAREMCHE_AT.lon + dxKm / 73.8, lat: YAREMCHE_AT.lat });
+  const nature = place(1, { categoryId: NATURE, name: { uk: "Водоспад Пробій" }, location: at(0.5) });
+  const sight = place(2, { categoryId: NATURE, name: { uk: "Скелі" }, location: at(1) });
+  const lunch = place(3, { categoryId: RESTAURANTS, name: { uk: "Колиба" }, location: at(1.2) });
+  const dinner = place(4, { categoryId: RESTAURANTS, name: { uk: "Ресторан" }, location: at(1.4) });
+  const chan = place(5, { categoryId: CHANY, name: { uk: "Чан" }, location: at(1.6) });
+  const bySection: Record<string, PlaceSummaryDto[]> = {
+    [NEARBY]: [nature, sight],
+    [EAT]: [lunch, dinner],
+    [RELAX]: [chan],
+  };
+  const planIntent = (over: Partial<AssistantIntent> = {}) =>
+    intent({ kind: "plan", categories: [], days: 1, dayParts: [], start: null, ...over });
+  const notesReply = (notes: { n: number; text: string }[]) =>
+    ({
+      content: [{ type: "tool_use", id: "n", name: NOTES, input: { notes } }],
+      stop_reason: "tool_use",
+    }) as unknown as Anthropic.Message;
+
+  function planSetup(
+    i: AssistantIntent,
+    notes: Promise<Anthropic.Message>,
+    extra: Parameters<typeof setup>[0] = {},
+  ) {
+    const create = vi
+      .fn<
+        (
+          p: Anthropic.MessageCreateParamsNonStreaming,
+          o?: { timeoutMs?: number },
+        ) => Promise<Anthropic.Message>
+      >()
+      .mockResolvedValueOnce(reply(i))
+      .mockReturnValueOnce(notes);
+    const s = setup({
+      llm: { create },
+      searchAt: (q) => (q.categoryId ? bySection[q.categoryId] : []),
+      ...extra,
+    });
+    // Суббота 7.11.2026, 9:00 по Киеву.
+    s.service.now = () => new Date("2026-11-07T07:00:00Z");
+    return { ...s, create };
+  }
+
+  it("«план на день»: части дня с местами каталога, время, переезды; пояснения Claude по фактам", async () => {
+    const { service, guide, create, repo } = planSetup(
+      planIntent(),
+      Promise.resolve(notesReply([{ n: 1, text: "Почніть день біля водоспаду, поки мало людей." }])),
+    );
+    const res = await service.query(REGION, USER, ask("склади план на день", { origin: YAREMCHE_AT }));
+    // Кандидаты — по разделам каталога в радиусе плана от жилья.
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ categoryId: EAT, origin: YAREMCHE_AT, radius: 15_000 }),
+    );
+    expect(repo.schedules).toHaveBeenCalledWith(REGION, expect.any(Array), ["2026-11-07"]);
+    const plan = res.plan!;
+    expect(plan.days).toHaveLength(1);
+    expect(plan.days[0]!.date).toBe("2026-11-07");
+    expect(plan.days[0]!.parts.map((p) => [p.part, p.stops.map((s) => s.role)])).toEqual([
+      ["morning", ["see", "see"]],
+      ["afternoon", ["eat"]],
+      ["evening", ["eat", "relax"]],
+    ]);
+    // Пункты ссылаются на items (места каталога в порядке плана).
+    const stops = plan.days[0]!.parts.flatMap((p) => p.stops);
+    expect(stops.map((s) => res.items[s.item]!.place.id)).toEqual(res.items.map((i) => i.place.id));
+    expect(stops[0]).toMatchObject({
+      start: "09:38",
+      travel: "walk",
+      note: expect.stringContaining("водоспаду"),
+    });
+    expect(stops[1]!.note).toBeNull();
+    expect(res.route).toBeNull();
+    // Пояснения — второй вызов Claude: только факты каталога в теге данных.
+    expect(create).toHaveBeenCalledTimes(2);
+    const notesMsg = String(create.mock.calls[1]![0].messages[0]!.content);
+    expect(notesMsg).toContain("Водоспад Пробій");
+    expect(notesMsg).toContain("<facts>");
+  });
+
+  it("пояснения не получены (сбой Claude) — план без пояснений, а не ошибка", async () => {
+    const { service } = planSetup(planIntent(), Promise.reject(new AssistantUpstreamError("timeout")));
+    const res = await service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(res.plan!.days[0]!.parts.flatMap((p) => p.stops).every((s) => s.note === null)).toBe(true);
+  });
+
+  it("«що робити сьогодні ввечері» в 23:30 — план на завтра (plan_tomorrow); вихідні — с субботы", async () => {
+    const late = planSetup(planIntent({ dayParts: ["evening"] }), Promise.resolve(notesReply([])));
+    late.service.now = () => new Date("2026-11-04T21:30:00Z"); // среда 23:30 в Киеве
+    const res = await late.service.query(REGION, USER, ask("що робити ввечері", { origin: YAREMCHE_AT }));
+    expect(res.notes).toEqual(["plan_tomorrow"]);
+    expect(res.plan!.days[0]!.date).toBe("2026-11-05");
+    expect(res.plan!.days[0]!.parts.map((p) => p.part)).toEqual(["evening"]);
+
+    const weekend = planSetup(planIntent({ start: "weekend", days: 2 }), Promise.resolve(notesReply([])));
+    weekend.service.now = () => new Date("2026-11-04T08:00:00Z");
+    const w = await weekend.service.query(REGION, USER, ask("план на вихідні", { origin: YAREMCHE_AT }));
+    expect(w.plan!.days.map((d) => d.date)).toEqual(["2026-11-07", "2026-11-08"]);
+  });
+
+  it("без точки и пунктов — центр плана у лучшей пам'ятки региона; мест нет — plan null", async () => {
+    const { service, guide } = planSetup(planIntent(), Promise.resolve(notesReply([])));
+    const res = await service.query(REGION, USER, ask("план"));
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ categoryId: EAT, radius: 15_000, origin: expect.any(Object) }),
+    );
+    expect(res.plan).not.toBeNull();
+
+    const empty = setup({
+      llm: { create: vi.fn(() => Promise.resolve(reply(planIntent()))) },
+      searchAt: () => [],
+    });
+    const none = await empty.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(none.plan).toBeNull();
+    expect(none.items).toEqual([]);
+  });
+
+  it("жильё за 50 км (QR отеля в Косові), «план у Яремчі» — план не пустой; кандидаты — от центра пункта", async () => {
+    const KOSIV = { lon: 25.09, lat: 48.31 };
+    const all = Object.values(bySection).flat();
+    const { service, guide } = planSetup(
+      planIntent({ locality: "yaremche" }),
+      Promise.resolve(notesReply([])),
+      { placeLocality: Object.fromEntries(all.map((p) => [p.id, YAREMCHE])) },
+    );
+    const res = await service.query(REGION, USER, ask("план у Яремчі", { origin: KOSIV }));
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({
+        categoryId: EAT,
+        origin: YAREMCHE_AT,
+        radius: undefined,
+        localityIds: [YAREMCHE],
+      }),
+    );
+    const stops = res.plan!.days[0]!.parts.flatMap((p) => p.stops);
+    expect(stops.length).toBe(5);
+    expect(stops[0]).toMatchObject({ travel: null, travelMeters: null });
+  });
+
+  it("пояснения — с коротким таймаутом; бюджет плана — 2 единицы, на втором вызове исчерпан — план без пояснений, не 429", async () => {
+    const ok = planSetup(planIntent(), Promise.resolve(notesReply([{ n: 1, text: "Пояснення." }])), {
+      userDailyLimit: 2,
+    });
+    const res = await ok.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(ok.create).toHaveBeenCalledTimes(2);
+    expect(ok.create.mock.calls[1]![1]).toEqual({ timeoutMs: 9000 });
+    expect(res.plan!.days[0]!.parts[0]!.stops[0]!.note).toBe("Пояснення.");
+
+    const tight = planSetup(planIntent(), Promise.resolve(notesReply([{ n: 1, text: "Пояснення." }])), {
+      userDailyLimit: 1,
+    });
+    const cut = await tight.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(tight.create).toHaveBeenCalledTimes(1);
+    expect(cut.plan!.days[0]!.parts.flatMap((p) => p.stops).every((s) => s.note === null)).toBe(true);
   });
 });
 

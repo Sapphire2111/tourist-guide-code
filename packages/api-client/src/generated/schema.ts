@@ -3329,7 +3329,7 @@ export interface components {
      * @description places — места, tour — маршрут
      * @enum {string}
      */
-    AssistantKind: "places" | "tour";
+    AssistantKind: "places" | "tour" | "plan";
     /** @enum {string} */
     AssistantSuggestion:
       | "cheaper"
@@ -3339,13 +3339,26 @@ export interface components {
       | "kids"
       | "open_now"
       | "tour"
-      | "places";
+      | "places"
+      | "plan";
+    /**
+     * @description План: части дня; пусто — весь день
+     * @enum {string}
+     */
+    AssistantDayPart: "morning" | "afternoon" | "evening";
+    /**
+     * @description План: начало (null — сегодня)
+     * @enum {string}
+     */
+    AssistantPlanStart: "today" | "tomorrow" | "weekend";
     AssistantIntentDto: {
       /** @description places — места, tour — маршрут */
       kind: components["schemas"]["AssistantKind"];
       /** @description Коды категорий каталога */
       categories: string[];
       nameQuery: string | null;
+      /** @description Блюдо, кухня или особенность в нескольких написаниях (поиск по названию, типу, описаниям, отзывам) */
+      keywords?: string[];
       /** @description Код населённого пункта, названного туристом; null — действует выбор localityIds */
       locality?: string | null;
       radiusMeters: number | null;
@@ -3357,6 +3370,12 @@ export interface components {
       /** @description Запрос непонятен — уточнить (мест нет) */
       clarify: boolean;
       suggestions: components["schemas"]["AssistantSuggestion"][];
+      /** @description План: дней; не план — null */
+      days?: number | null;
+      /** @description План: части дня; пусто — весь день */
+      dayParts?: components["schemas"]["AssistantDayPart"][];
+      /** @description План: начало (null — сегодня) */
+      start?: components["schemas"]["AssistantPlanStart"] | null;
     };
     AssistantQueryDto: {
       /**
@@ -3402,16 +3421,65 @@ export interface components {
       lengthMeters: number;
     };
     /**
+     * @description see — огляд, fun — активність, eat — їжа, relax — відпочинок
+     * @enum {string}
+     */
+    AssistantPlanRole: "see" | "fun" | "eat" | "relax";
+    /** @enum {string} */
+    AssistantPlanTravel: "walk" | "car";
+    AssistantPlanStopDto: {
+      /** @description Индекс места в items */
+      item: number;
+      /** @description see — огляд, fun — активність, eat — їжа, relax — відпочинок */
+      role: components["schemas"]["AssistantPlanRole"];
+      /**
+       * @description Начало, местное время
+       * @example 13:00
+       */
+      start: string;
+      /** @description Оценка времени на месте, мин */
+      durationMin: number;
+      travel: components["schemas"]["AssistantPlanTravel"] | null;
+      /** @description Переезд от предыдущей точки, мин (оценка) */
+      travelMinutes: number | null;
+      /** @description Переезд по прямой, м */
+      travelMeters: number | null;
+      /** @description Часы работы в этот день по графику каталога */
+      hours: string | null;
+      /** @description Пояснение (Claude по фактам каталога); null — нет */
+      note: string | null;
+    };
+    AssistantPlanPartDto: {
+      part: components["schemas"]["AssistantDayPart"];
+      stops: components["schemas"]["AssistantPlanStopDto"][];
+    };
+    AssistantPlanDayDto: {
+      dayNo: number;
+      /**
+       * Format: date
+       * @example 2026-11-07
+       */
+      date: string;
+      parts: components["schemas"]["AssistantPlanPartDto"][];
+    };
+    AssistantPlanDto: {
+      days: components["schemas"]["AssistantPlanDayDto"][];
+      /** @description Сумма переездов по прямой, м */
+      lengthMeters: number;
+    };
+    /**
      * @description Пояснения выдачи
      * @enum {string}
      */
-    AssistantNote: "price_unknown" | "none_open" | "no_origin";
+    AssistantNote: "price_unknown" | "none_open" | "no_origin" | "keyword_none" | "widened" | "plan_tomorrow";
     AssistantResultDto: {
       intent: components["schemas"]["AssistantIntentDto"];
-      /** @description Только места каталога; для tour — в порядке обхода */
+      /** @description Только места каталога; для tour — в порядке обхода; для plan — в порядке плана */
       items: components["schemas"]["AssistantPlaceDto"][];
       /** @description Маршрут — только для tour */
       route: components["schemas"]["AssistantRouteDto"] | null;
+      /** @description План отдыха по дням и частям дня — только для plan */
+      plan: components["schemas"]["AssistantPlanDto"] | null;
       /** @description Пояснения выдачи */
       notes: components["schemas"]["AssistantNote"][];
     };

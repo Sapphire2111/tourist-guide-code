@@ -116,9 +116,28 @@ describe("POST /assistant/query", () => {
       text: "дешевше",
       origin: { lon: 24.5, lat: 48.4 },
       history: ["кав'ярня поруч"],
-      previous: result.intent,
+      // Старый клиент без новых полей намерения — значения по умолчанию.
+      previous: { ...result.intent, keywords: [], days: null, dayParts: [], start: null },
       localityIds: [LOCALITY],
     });
+  });
+
+  it("намерение плана и ключевые слова в previous принимаются; чужая часть дня — 400", async () => {
+    const { http, service } = await start();
+    const previous = {
+      ...result.intent,
+      kind: "plan",
+      keywords: ["суші"],
+      days: 2,
+      dayParts: ["evening"],
+      start: "weekend",
+    };
+    await http().post("/assistant/query").send({ regionId: REGION, text: "з дітьми", previous }).expect(200);
+    expect(service.query).toHaveBeenCalledWith(REGION, USER, expect.objectContaining({ previous }));
+    await http()
+      .post("/assistant/query")
+      .send({ regionId: REGION, text: "з дітьми", previous: { ...previous, dayParts: ["night"] } })
+      .expect(400);
   });
 
   it("без сессии — 401; флаг выключен — 404", async () => {
