@@ -17,6 +17,10 @@ export type ImportArgs = {
   maxRequests: number;
   /** Файл JSON с итоговой статистикой (необязательно). */
   report: string | undefined;
+  /** Точечный импорт: JSON-файл со списком запросов (targeted.ts). */
+  queriesFile: string | undefined;
+  /** Точечный импорт: `--query "текст=категория"` (можно несколько). */
+  queries: string[];
 };
 
 export class ImportArgsError extends Error {
@@ -36,6 +40,8 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
     cacheDir: DEFAULT_CACHE_DIR,
     maxRequests: DEFAULT_MAX_REQUESTS,
     report: undefined,
+    queriesFile: undefined,
+    queries: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const raw = argv[i]!;
@@ -63,6 +69,12 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
         break;
       case "--report":
         args.report = path.resolve(value());
+        break;
+      case "--queries-file":
+        args.queriesFile = path.resolve(value());
+        break;
+      case "--query":
+        args.queries.push(value());
         break;
       case "--max-requests": {
         const n = Number(value());
