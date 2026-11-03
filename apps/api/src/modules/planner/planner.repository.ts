@@ -10,6 +10,7 @@ import {
   type PromotionAdLabel,
   type Scenario,
   type ScenarioItem,
+  type ScenarioSeason,
   type ScenarioStatus,
   type UserPlan,
   type UserPlanItemRecord,
@@ -55,6 +56,7 @@ export type ScenarioWrite = {
   description_i18n: LocalizedText | null;
   days: number;
   tags: string[];
+  seasons: ScenarioSeason[];
   is_sponsored: boolean;
   ad_label: PromotionAdLabel | null;
   sort_order: number;
@@ -70,6 +72,9 @@ export type ScenarioItemWrite = {
   alternatives: string[];
 };
 
+/** Предел списка сценариев (турист и админка): генератор пишет 100–200 сценариев на регион. */
+export const SCENARIOS_LIST_MAX = 500;
+
 @Injectable()
 export class PlannerRepository {
   constructor(@InjectDb() private readonly db: Db) {}
@@ -80,12 +85,19 @@ export class PlannerRepository {
 
   // --- сценарии ---
 
-  listScenarios(filter: { status?: ScenarioStatus; tag?: string; days?: number }): Promise<Scenario[]> {
+  /** season — уместные в этот сезон: без сезонов (круглый год) или с ним (0025). */
+  listScenarios(filter: {
+    status?: ScenarioStatus;
+    tag?: string;
+    days?: number;
+    season?: ScenarioSeason;
+  }): Promise<Scenario[]> {
     let q = this.q.selectFrom("scenarios").selectAll();
     if (filter.status) q = q.where("status", "=", filter.status);
     if (filter.tag) q = q.where(sql<boolean>`${filter.tag} = ANY(tags)`);
     if (filter.days !== undefined) q = q.where("days", "=", filter.days);
-    return q.orderBy("sort_order").orderBy("code").limit(200).execute();
+    if (filter.season) q = q.where(sql<boolean>`(seasons = '{}' OR ${filter.season} = ANY(seasons))`);
+    return q.orderBy("sort_order").orderBy("code").limit(SCENARIOS_LIST_MAX).execute();
   }
 
   findScenario(id: string): Promise<Scenario | undefined> {

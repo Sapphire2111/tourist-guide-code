@@ -3,8 +3,9 @@
 // что будет делать. Без Nest и БД. Ничего не выдумываем: подпись — категория места (или «Водоспад»/«Бар» по названию
 // из Google), причина — что даёт эта категория в эту часть дня, расстояние — по прямой от предыдущего пункта дня
 // (или базовой точки), время в пути — оценка по средней скорости. Цен, рейтингов, часов работы не придумываем.
-import type { LonLat, PlanSlot } from "../../db/index.js";
+import type { LonLat, PlanSlot, ScenarioSeason } from "../../db/index.js";
 import { sphericalMeters } from "./plan-rules.js";
+import { placeFitsSeason } from "./season.js";
 
 export const PLAN_DAYS_MAX = 14;
 export const OPTIONS_PER_SLOT = 5;
@@ -284,7 +285,7 @@ export function slotOptions(
 
 /**
  * Варианты по всем дням плана. Точка отсчёта части дня — последний выбранный пункт раньше в этот день, иначе базовая
- * точка плана. Одно место не предлагается дважды в разные части дня/дни (кроме «якщо дощ» — запасной набор на
+ * точка плана; места — только уместные в сезон поездки. Одно место не предлагается дважды в разные части дня/дни (кроме «якщо дощ» — запасной набор на
  * каждый день), выбранные места плана — не предлагаются.
  */
 export function planOptions(input: {
@@ -293,8 +294,13 @@ export function planOptions(input: {
   places: readonly CatalogPlace[];
   trip: TripParams;
   base: LonLat | null;
+  /** Сезон поездки: места не по сезону (зимой — вершины и «Літо») не предлагаются; не задан — без фильтра. */
+  season?: ScenarioSeason;
 }): DayOptions[] {
-  const places = input.places.map(prepare);
+  const season = input.season;
+  const places = (season ? input.places.filter((p) => placeFitsSeason(p, season)) : input.places).map(
+    prepare,
+  );
   const inPlan = new Set(input.items.map((i) => i.placeId));
   const offered = new Set(inPlan);
   const out: DayOptions[] = [];

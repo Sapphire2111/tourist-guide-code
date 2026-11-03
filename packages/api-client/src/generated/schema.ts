@@ -1189,7 +1189,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Готовые сценарии региона (C09): опубликованные, фильтр по тегу и числу дней (без AI)
+     * Готовые сценарии региона (C09): опубликованные, текущего сезона (или season), фильтр по тегу и числу дней
      * @description Без аутентификации. 404 — региона нет или он не активен.
      */
     get: operations["listScenarios"];
@@ -3890,8 +3890,16 @@ export interface components {
       | "active"
       | "budget"
       | "premium"
-      | "winter"
-      | "summer";
+      | "hiking"
+      | "mountains"
+      | "waterfalls"
+      | "culture"
+      | "gastro"
+      | "relax"
+      | "ski"
+      | "excursion";
+    /** @enum {string} */
+    ScenarioSeason: "winter" | "spring" | "summer" | "autumn";
     ScenarioSummaryDto: {
       /** Format: uuid */
       id: string;
@@ -3900,6 +3908,8 @@ export interface components {
       description: components["schemas"]["LocalizedTextDto"] | null;
       days: number;
       tags: components["schemas"]["ScenarioTag"][];
+      /** @description Когда уместен; пусто — круглый год */
+      seasons: components["schemas"]["ScenarioSeason"][];
       /** @description Платное участие: метка «Реклама/Партнер» (C-02) */
       adLabel: components["schemas"]["AdLabel"] | null;
       /** @description Доступных пунктов */
@@ -3952,6 +3962,8 @@ export interface components {
       description: components["schemas"]["LocalizedTextDto"] | null;
       days: number;
       tags: components["schemas"]["ScenarioTag"][];
+      /** @description Когда уместен; пусто — круглый год */
+      seasons: components["schemas"]["ScenarioSeason"][];
       /** @description Платное участие: метка «Реклама/Партнер» (C-02) */
       adLabel: components["schemas"]["AdLabel"] | null;
       /** @description Доступных пунктов */
@@ -4185,6 +4197,7 @@ export interface components {
       description: components["schemas"]["LocalizedTextDto"] | null;
       days: number;
       tags: components["schemas"]["ScenarioTag"][];
+      seasons: components["schemas"]["ScenarioSeason"][];
       status: components["schemas"]["ScenarioStatus"];
       version: number;
       adLabel: components["schemas"]["AdLabel"] | null;
@@ -4217,6 +4230,8 @@ export interface components {
       description?: components["schemas"]["LocalizedDescriptionDto"] | null;
       days: number;
       tags?: components["schemas"]["ScenarioTag"][];
+      /** @description Когда уместен (Europe/Kyiv); пусто или не задано — круглый год */
+      seasons?: components["schemas"]["ScenarioSeason"][];
       /** @description Платное участие — только с меткой (C-02) */
       adLabel?: components["schemas"]["AdLabel"] | null;
       /** @default 0 */
@@ -4250,6 +4265,7 @@ export interface components {
       description: components["schemas"]["LocalizedTextDto"] | null;
       days: number;
       tags: components["schemas"]["ScenarioTag"][];
+      seasons: components["schemas"]["ScenarioSeason"][];
       status: components["schemas"]["ScenarioStatus"];
       version: number;
       adLabel: components["schemas"]["AdLabel"] | null;
@@ -13046,6 +13062,8 @@ export interface operations {
         tag?: components["schemas"]["ScenarioTag"];
         /** @description Число дней */
         days?: number;
+        /** @description Сезон; по умолчанию — текущий по часовому поясу региона (Europe/Kyiv). Сценарии без сезонов — всегда */
+        season?: components["schemas"]["ScenarioSeason"];
       };
       header?: {
         /** @description Correlation id; иначе генерируется */
@@ -13636,6 +13654,10 @@ export interface operations {
     parameters: {
       query?: {
         status?: components["schemas"]["ScenarioStatus"];
+        /** @description Уместные в этот сезон (и круглогодичные) */
+        season?: components["schemas"]["ScenarioSeason"];
+        /** @description Только с этим тегом */
+        tag?: components["schemas"]["ScenarioTag"];
       };
       header?: {
         /** @description Correlation id; иначе генерируется */

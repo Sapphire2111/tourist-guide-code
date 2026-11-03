@@ -235,3 +235,25 @@ describe("planOptions", () => {
     expect(afternoon.find((o) => o.placeId === P(2))!.distanceMeters).toBeGreaterThan(4900);
   });
 });
+
+describe("planOptions — сезон", () => {
+  it("зимой без вершин и мест «Літо»; летом без мест «Зима»; без сезона — всё", () => {
+    const places = [
+      place(1, "nature", 500, { names: ["Гора Хом'як"] }),
+      place(2, "nature", 600, { names: ["Водоспад Пробій"] }),
+      place(3, "active", 700, { tags: ["summer"] }),
+      place(4, "active", 800, { tags: ["winter"] }),
+    ];
+    const ids = (season?: "winter" | "summer") =>
+      [
+        ...new Set(
+          planOptions({ days: 1, items: [], places, trip: car, base: BASE, season })[0]!.slots.flatMap((s) =>
+            s.options.map((o) => o.placeId),
+          ),
+        ),
+      ].sort();
+    expect(ids("winter")).toEqual([P(2), P(4)]);
+    expect(ids("summer")).toEqual([P(1), P(2), P(3)]);
+    expect(ids()).toEqual([P(1), P(2), P(3), P(4)]);
+  });
+});

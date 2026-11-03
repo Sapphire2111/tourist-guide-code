@@ -895,6 +895,9 @@ export type Notification = Selectable<NotificationsTable>;
 
 export const SCENARIO_STATUSES = ["draft", "published", "archived"] as const;
 export type ScenarioStatus = (typeof SCENARIO_STATUSES)[number];
+/** Времена года сценария (0025, Europe/Kyiv): зима — грудень–лютий, весна — березень–травень и т. д. */
+export const SCENARIO_SEASONS = ["winter", "spring", "summer", "autumn"] as const;
+export type ScenarioSeason = (typeof SCENARIO_SEASONS)[number];
 
 export interface ScenariosTable {
   id: UuidPk;
@@ -904,6 +907,8 @@ export interface ScenariosTable {
   description_i18n: Nullable<LocalizedText>;
   days: ColumnType<number, number | undefined, number>;
   tags: ColumnType<string[], string[] | undefined, string[]>;
+  /** 0025: когда сценарий уместен; пустой — круглый год. */
+  seasons: ColumnType<ScenarioSeason[], ScenarioSeason[] | undefined, ScenarioSeason[]>;
   status: ColumnType<ScenarioStatus, ScenarioStatus | undefined, ScenarioStatus>;
   version: ColumnType<number, number | undefined, number>;
   is_sponsored: ColumnType<boolean, boolean | undefined, boolean>;

@@ -14,6 +14,7 @@ import {
   type Region,
   type Scenario,
   type ScenarioItem,
+  type ScenarioSeason,
   type ScenarioStatus,
   type UserPlan,
   type UserPlanItemRecord,
@@ -38,8 +39,9 @@ import type {
   UserPlanDto,
   UserPlanListDto,
 } from "./planner.dto.js";
-import { USER_PLANS_MAX } from "./planner.dto.js";
+import { SCENARIO_SEASONS, USER_PLANS_MAX } from "./planner.dto.js";
 import { itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
+import { seasonAt, seasonOfDate } from "./season.js";
 import {
   addItem,
   planItemsFromScenario,
@@ -106,9 +108,14 @@ export class PlannerService {
 
   // --- турист ---
 
-  async scenarios(regionId: string, filter: { tag?: ScenarioTag; days?: number }): Promise<ScenarioListDto> {
-    return this.inRegion(regionId, async () => {
-      const rows = await this.repo.listScenarios({ status: "published", ...filter });
+  /** Опубликованные сценарии сезона (по умолчанию — текущего по часовому поясу региона) и круглогодичные. */
+  async scenarios(
+    regionId: string,
+    filter: { tag?: ScenarioTag; days?: number; season?: ScenarioSeason },
+  ): Promise<ScenarioListDto> {
+    return this.inRegion(regionId, async (region) => {
+      const season = filter.season ?? seasonAt(new Date(), region.timezone);
+      const rows = await this.repo.listScenarios({ status: "published", ...filter, season });
       const items = await this.repo.items(rows.map((r) => r.id));
       const places = await this.placeMap(items.map((i) => i.place_id));
       return {
@@ -226,8 +233,10 @@ export class PlannerService {
 
   // --- админка (tenant-контекст запроса) ---
 
-  async adminList(status?: ScenarioStatus): Promise<AdminScenarioListDto> {
-    const rows = await this.repo.listScenarios({ status });
+  async adminList(
+    filter: { status?: ScenarioStatus; season?: ScenarioSeason; tag?: ScenarioTag } = {},
+  ): Promise<AdminScenarioListDto> {
+    const rows = await this.repo.listScenarios(filter);
     const counts = await this.repo.itemCounts(rows.map((r) => r.id));
     return { items: rows.map((r) => adminDto(r, counts.get(r.id) ?? 0)) };
   }
@@ -433,6 +442,12 @@ export class PlannerService {
       const n = planDays(r);
       const days = Array.from({ length: n }, (_, k) => ({ dayNo: k + 1, items: view.get(k + 1) ?? [] }));
       const { trip, baseAt } = await this.trip(r, bases, withOptions);
+      // Сезон вариантов (только для плана с вариантами): по дате начала, без даты — сейчас в поясе региона.
+      const season = !catalog
+        ? null
+        : r.start_date
+          ? seasonOfDate(dateOnly(r.start_date))
+          : seasonAt(new Date(), (await this.regions.findById(r.region_id))?.timezone);
       out.push({
         id: r.id,
         regionId: r.region_id,
@@ -452,7 +467,7 @@ export class PlannerService {
             replaced: source.replacedPlaceId !== null,
           })),
         })),
-        options: catalog ? optionsDto(days, catalog, trip, baseAt) : [],
+        options: catalog && season ? optionsDto(days, catalog, trip, baseAt, season) : [],
         createdAt: r.created_at.toISOString(),
         updatedAt: r.updated_at.toISOString(),
       });
@@ -581,6 +596,7 @@ function optionsDto(
   catalog: readonly CatalogPlaceRow[],
   trip: PlanTripDto,
   baseAt: LonLat | null,
+  season: ScenarioSeason,
 ): PlanDayOptionsDto[] {
   const byId = new Map(catalog.map((p) => [p.id, p]));
   const chosen = days.flatMap((d) =>
@@ -597,6 +613,7 @@ function optionsDto(
     places: catalog.map(catalogPlace),
     trip: { children: trip.children, withCar: trip.withCar },
     base: baseAt,
+    season,
   }).map((d) => ({
     dayNo: d.dayNo,
     slots: d.slots.map((s) => ({
@@ -636,6 +653,7 @@ function summary(s: Scenario, itemCount: number): ScenarioSummaryDto {
     description: s.description_i18n,
     days: s.days,
     tags: s.tags as ScenarioTag[],
+    seasons: s.seasons,
     adLabel: s.is_sponsored ? s.ad_label : null,
     itemCount,
   };
@@ -650,6 +668,7 @@ function adminDto(s: Scenario, itemCount: number): AdminScenarioDto {
     description: s.description_i18n,
     days: s.days,
     tags: s.tags as ScenarioTag[],
+    seasons: s.seasons,
     status: s.status,
     version: s.version,
     adLabel: s.is_sponsored ? s.ad_label : null,
@@ -676,6 +695,8 @@ function scenarioWrite(input: ScenarioInputDto) {
     description_i18n: input.description ? toLocalized(input.description) : null,
     days: input.days,
     tags: [...new Set(input.tags ?? [])],
+    // Порядок года (зима → осінь), без повторов: одинаковые наборы сравнимы.
+    seasons: SCENARIO_SEASONS.filter((x) => input.seasons?.includes(x)),
     is_sponsored: Boolean(input.adLabel),
     ad_label: input.adLabel ?? null,
     sort_order: input.sortOrder ?? 0,
