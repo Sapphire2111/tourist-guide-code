@@ -256,12 +256,18 @@ export function generateSlots(
   const earliest = now.getTime() + resource.lead_time_min * MIN;
   const latest = now.getTime() + resource.horizon_days * DAY;
   const step = resource.slot_duration_min + resource.buffer_before_min + resource.buffer_after_min;
+  const seen = new Set<number>();
   for (let i = 0; i < days; i++) {
     const date = addDays(fromDate, i);
     for (const [opens, closes] of windowsOn(rules, date, dayOfWeekOf(date))) {
       for (let t = opens; t + resource.slot_duration_min <= closes; t += step) {
         const startsAt = zonedInstant(date, t, timeZone);
         if (startsAt.getTime() < earliest || startsAt.getTime() > latest) continue;
+        // DST: местного времени нет (весенний перевод, 03:00–03:59 в Europe/Kyiv) — zonedInstant сдвигает его на
+        // соседний час, и слот совпал бы с другим; такой слот пропускается. Осенью повтор часа — один момент.
+        const local = localMoment(startsAt, timeZone);
+        if (local.date !== date || local.minutes !== t || seen.has(startsAt.getTime())) continue;
+        seen.add(startsAt.getTime());
         const endsAt = new Date(startsAt.getTime() + resource.slot_duration_min * MIN);
         const occ = occupiedRange(startsAt, endsAt, resource);
         out.push({ startsAt, endsAt, occupiedFrom: occ.from, occupiedUntil: occ.until });
