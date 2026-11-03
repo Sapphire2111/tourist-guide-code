@@ -94,15 +94,16 @@ function renderCard(place: PlaceDetail) {
 }
 
 describe("богатая картка місця", () => {
-  it("тип, ціни, рейтинг Google, «Про місце» з пометкой ШІ, «Що пропонує», відгуки, атрибуція Google", async () => {
+  it("тип, ціни, рейтинг Google, «Про місце» без пометки ШІ, «Що пропонує», відгуки, атрибуція Google", async () => {
     await renderCard({ ...base, ...rich });
     expect(screen.getByTestId("place-type").textContent).toBe("Ресторан · Середні ціни");
     expect(screen.getByTestId("place-rating").textContent).toContain("4.8");
     expect(screen.getByTestId("place-rating").textContent).toContain("Оцінок у Google: 792");
     const about = screen.getByTestId("place-about");
     expect(about.textContent).toContain("Ресторан у Яремчі з терасою");
-    expect(screen.getByTestId("place-ai-label").textContent).toBe("Згенеровано ШІ");
-    expect(about.textContent).toContain("claude-sonnet-5-5");
+    expect(screen.queryByTestId("place-ai-label")).toBeNull();
+    expect(about.textContent).not.toContain("Згенеровано ШІ");
+    expect(about.textContent).not.toContain("claude-sonnet-5-5");
     // Автоописание импорта при содержательном тексте не дублируется.
     expect(screen.queryByText("Ресторан у Яремчі. Джерело: Google Maps.")).toBeNull();
     const offers = within(screen.getByTestId("place-offers"));

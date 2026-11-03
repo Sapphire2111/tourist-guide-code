@@ -31,7 +31,7 @@ test("текст: «Що шукаєте?» → места каталога и к
   await expect(places).toHaveCount(2);
   await expect(places.first()).toContainText("Кав'ярня «Смерека»");
   await expect(places.first()).toContainText("Середні ціни");
-  await expect(places.first()).toContainText("Згенеровано ШІ");
+  await expect(places.first()).not.toContainText("Згенеровано ШІ");
   await expect(page.getByTestId("places-map")).toBeVisible();
   // Точка — базовая (QR отеля), а не устройство.
   expect(mock.queries[0]).toMatchObject({ regionId: REGION_ID, text: "Недорога кав'ярня", history: [] });

@@ -141,7 +141,7 @@ describe("Assistant: диалог", () => {
     expect(items[0]!.textContent).toContain("Місце 1");
     expect(items[0]!.textContent).toContain("Недорого");
     expect(items[0]!.textContent).toContain("Підходить для дітей");
-    expect(items[0]!.textContent).toContain("Згенеровано ШІ");
+    expect(items[0]!.textContent).not.toContain("Згенеровано ШІ");
     expect(items[1]!.textContent).not.toContain("Недорого");
     expect((await screen.findByTestId("map")).dataset.route).toBe("false");
   });

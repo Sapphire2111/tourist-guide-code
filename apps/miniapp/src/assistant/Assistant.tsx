@@ -1,6 +1,7 @@
 // Экран ассистента: диалог «реплика → места каталога». Места, цены и описания — только из ответа api (каталог и
 // обогащение); модель на сервере выбирает лишь категории и фильтры. Уточнения — следующей репликой или чипом;
 // контекст диалога (прежние реплики и намерение) хранится здесь и отправляется с каждым запросом.
+import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useRoute, useT } from "@tg/ui";
@@ -248,7 +249,7 @@ function AssistantPlace({ item, stop }: { item: AssistantItem; stop: number | nu
                   <a href={item.descriptionUrl} target="_blank" rel="noopener noreferrer">
                     {t("miniapp.assistant.source.wikipedia")}
                   </a>
-                ) : item.descriptionSource ? (
+                ) : item.descriptionSource && (SHOW_AI_LABELS || item.descriptionSource !== "ai") ? (
                   t(`miniapp.assistant.source.${item.descriptionSource}` as MessageKey)
                 ) : null}
               </p>

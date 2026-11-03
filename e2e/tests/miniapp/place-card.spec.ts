@@ -128,7 +128,8 @@ test.describe("богатая картка місця", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Wood Stone" })).toBeVisible();
     await expect(page.getByTestId("place-type")).toHaveText("Ресторан · Середні ціни");
     await expect(page.getByTestId("place-rating")).toContainText("Оцінок у Google: 792");
-    await expect(page.getByTestId("place-ai-label")).toHaveText("Згенеровано ШІ");
+    await expect(page.getByTestId("place-ai-label")).toHaveCount(0);
+    await expect(page.getByTestId("place-about")).toBeVisible();
     await expect(page.getByTestId("place-offers").getByRole("listitem")).toHaveCount(6);
     await expect(page.getByTestId("place-review")).toContainText("Іван");
     await expect(page.getByTestId("place-wikipedia")).toContainText("CC BY-SA 3.0");
