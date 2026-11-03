@@ -2,6 +2,7 @@
 // (маршрут OSM, звонок tel:, сайт, Telegram, обране), «Про місце» (текст ШІ с пометкой или описание Google),
 // «Що пропонує», график, адрес и контакты, отзывы Google, блок Вікіпедії, подписи источников. Нет данных — блока нет.
 // «Доступно зараз» — блок 7; до него всегда «Уточнити доступність» (ТЗ §10.3).
+import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
@@ -585,7 +586,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             title={t("miniapp.place.about")}
             testId="place-about"
             aside={
-              place.aiSummary ? (
+              SHOW_AI_LABELS && place.aiSummary ? (
                 <span className="pc-ai-badge" data-testid="place-ai-label">
                   {t("miniapp.place.aiLabel")}
                 </span>
@@ -593,11 +594,13 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             }
           >
             <p className="pc-lead">{about}</p>
-            <p className="pc-source">
-              {place.aiSummary
-                ? t("miniapp.place.aiNote", { model: place.aiSummary.model })
-                : t("miniapp.place.summarySource")}
-            </p>
+            {(SHOW_AI_LABELS || !place.aiSummary) && (
+              <p className="pc-source">
+                {place.aiSummary
+                  ? t("miniapp.place.aiNote", { model: place.aiSummary.model })
+                  : t("miniapp.place.summarySource")}
+              </p>
+            )}
           </Section>
         )}
         {description && <p className="pc-lead">{description}</p>}
