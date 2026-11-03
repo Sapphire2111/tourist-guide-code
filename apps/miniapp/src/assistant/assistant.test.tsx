@@ -261,8 +261,8 @@ describe("Assistant: диалог", () => {
               place: place(3, { categoryId: MUSEUMS }),
               priceLevel: null,
               kidsFriendly: false,
-              description: null,
-              descriptionSource: null,
+              description: "Текст ШІ без статті.",
+              descriptionSource: "ai",
               descriptionUrl: null,
             },
           ],
@@ -282,9 +282,12 @@ describe("Assistant: диалог", () => {
     );
     expect(screen.getByText("Зупинка 1")).toBeDefined();
     expect(screen.getByText("Зупинка 2")).toBeDefined();
-    expect(screen.getByRole("link", { name: "З Вікіпедії (CC BY-SA 4.0)" }).getAttribute("href")).toBe(
+    // Ссылка нейтральная: не утверждает, что текст написан по статье; у текста без ссылки её нет.
+    expect(screen.getAllByRole("link", { name: "Читати у Вікіпедії" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Читати у Вікіпедії" }).getAttribute("href")).toBe(
       "https://uk.wikipedia.org/wiki/M",
     );
+    expect(screen.queryByText("З Вікіпедії (CC BY-SA 4.0)")).toBeNull();
     expect((await screen.findByTestId("map")).dataset.route).toBe("true");
   });
 

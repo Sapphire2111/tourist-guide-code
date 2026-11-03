@@ -10,13 +10,14 @@ import { GooglePlacesClient } from "../places-import/google-client.js";
 import type { MappedPlace } from "../places-import/mapping.js";
 import {
   acceptText,
-  aiEligible,
   AI_MODEL,
   AI_PROMPT_VERSION,
   AiStore,
-  cachedTextAllowed,
+  buildAiItems,
   copiesSource,
   factsHash,
+  isWikimediaHash,
+  purgeCopies,
   requestParams,
   runAi,
   SYSTEM_PROMPT,
@@ -36,7 +37,7 @@ import {
   wikiRadius,
 } from "./wiki-match.js";
 import { WIKI_CATEGORIES, WikipediaClient, WikiLimitError, WikiUnavailableError } from "./wikipedia.js";
-import { writeEnrichment, type EnrichWriteItem } from "./writer.js";
+import { wikimediaTextPlaces, writeEnrichment, type EnrichWriteItem } from "./writer.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "tg-wm-"));
 const REGION = "0190f5c2-7d3e-7000-8000-00000000000a";
@@ -276,7 +277,7 @@ describe("серьёзное 5: только uk", () => {
 });
 
 describe("серьёзное 8: автор и лицензия", () => {
-  it.each([[null], [""], ["Unknown author"], ["Невідомий автор"]])(
+  it.each([[null], [""], ["Unknown author"], ["Невідомий автор"], ["Автор невідомий"], ["Author unknown"]])(
     "автор %j — файл не принимается",
     async (artist) => {
       const f = wiki({ Говерла: { qid: "Q1", p31: [MOUNTAIN], p18: "F.jpg" } }, { artist });
@@ -334,12 +335,17 @@ describe("серьёзное 8: автор и лицензия", () => {
   });
 });
 
-const writeOne = async (item: Partial<EnrichWriteItem>, wikimediaOnly = true) => {
+const writeOne = async (
+  item: Partial<EnrichWriteItem>,
+  wikimediaOnly = true,
+  saved?: { wiki: unknown; ai_summary_uk: string | null; ai_input_hash: string | null },
+) => {
   const sql: string[] = [];
   const { db } = recordingDb({}, (q) => {
     sql.push(q.sql);
     if (q.sql.startsWith('select "id", "google_place_id" from "places"'))
       return [{ id: "pid", google_place_id: "a" }];
+    if (saved && q.sql.startsWith('select "place_id", "wiki"')) return [{ place_id: "pid", ...saved }];
     if (q.sql.startsWith('update "place_enrichments"')) return { rows: [], numAffectedRows: 1n };
     return [];
   });
@@ -409,14 +415,130 @@ describe("блокер 3: готовые тексты ИИ не теряются
     ).toBe(true);
   });
 
+  const aiPlace = (googlePlaceId: string, over: object = {}) => ({
+    googlePlaceId,
+    name: "Говерла",
+    categoryCode: "nature",
+    localityCode: "",
+    address: null,
+    google: null,
+    wiki: article,
+    ...over,
+  });
+  const items = (
+    places: Parameters<typeof buildAiItems>[0],
+    wikimediaOnly: boolean,
+    keepText?: Set<string>,
+  ) =>
+    buildAiItems(places, {
+      withAi: new Set(["a"]),
+      wikimediaOnly,
+      ...(keepText ? { keepText } : {}),
+      categoryName: (c) => c,
+      localityName: () => null,
+    });
+
   it("готовый текст — без пакета у всех мест, и с сохранённым Google, и без; без статьи — нет", () => {
-    const withAi = new Set(["a"]);
-    expect(aiEligible({ googlePlaceId: "a", wiki: article }, withAi, true)).toBe(false);
-    expect(aiEligible({ googlePlaceId: "b", wiki: article }, withAi, true)).toBe(true);
-    expect(aiEligible({ googlePlaceId: "b", wiki: null }, withAi, true)).toBe(false);
+    const places = [aiPlace("a"), aiPlace("b"), aiPlace("c", { wiki: null })];
+    expect([...items(places, true).keys()]).toEqual(["b"]);
     // Обычный режим: как раньше — только для данных из кэша импорта.
-    expect(aiEligible({ googlePlaceId: "a", wiki: article }, withAi, false)).toBe(true);
-    expect(aiEligible({ googlePlaceId: "a", googleFromImport: true }, withAi, false)).toBe(false);
+    expect(items([aiPlace("a")], false).has("a")).toBe(true);
+    expect(items([aiPlace("a", { googleFromImport: true })], false).has("a")).toBe(false);
+  });
+
+  it("факты режима — только Вікіпедія, сохранённые данные Google в ИИ не идут; обычный режим их передаёт", () => {
+    const google = {
+      typeLabel: "Гора",
+      summary: "Опис Google",
+      rating: 4.9,
+      ratingCount: 100,
+      priceLevel: null,
+      amenities: [],
+      reviews: [],
+      photos: [],
+    };
+    const facts = (mode: boolean) => JSON.stringify(items([aiPlace("b", { google })], mode).get("b")!.facts);
+    expect(facts(true)).not.toMatch(/Google|Опис/);
+    expect(facts(true)).toContain("факт");
+    expect(facts(false)).toContain("Опис Google");
+  });
+
+  it("признак режима: хэш режима проходит CHECK БД и отличим от обычного", () => {
+    const facts = { назва: "x", Вікіпедія: "y" };
+    const mode = factsHash(facts, true);
+    expect(mode).toMatch(/^[0-9a-f]{16,64}$/);
+    expect(isWikimediaHash(mode)).toBe(true);
+    expect(isWikimediaHash(factsHash(facts))).toBe(false);
+    expect(isWikimediaHash(null)).toBe(false);
+    expect(isWikimediaHash(HASH)).toBe(false);
+  });
+
+  describe("последовательность: режим Wikimedia, затем обычный прогон", () => {
+    const modeHash = factsHash({ назва: "x", Вікіпедія: "y" }, true);
+    const strict = { ...article, title: "Строга", match: "strict" as const };
+    const loose = { ...article, title: "Вільна" };
+    const savedMode = { wiki: strict, ai_summary_uk: "Оплачений текст.", ai_input_hash: modeHash };
+    const fresh = { text: "Новий.", model: "m", generatedAt: "2026-11-01T00:00:00Z" };
+    const google = { photos: [], reviews: [], amenities: [] } as never;
+    const clearsNormal = (sql: string[]) =>
+      sql.some(
+        (s) => s.startsWith('update "place_enrichments"') && s.includes('"ai_summary_uk" is not null'),
+      );
+
+    it("обычный прогон без --ai: текст режима не снимается, строгая статья не заменяется", async () => {
+      for (const ai of [
+        { hash: HASH, result: null },
+        { hash: null, result: null },
+      ]) {
+        const { sql, stats } = await writeOne({ wiki: loose, google, ai }, false, savedMode);
+        expect(clearsNormal(sql)).toBe(false);
+        expect(stats.aiCleared).toBe(0);
+        const insert = sql.find((s) => s.startsWith('insert into "place_enrichments"'))!;
+        expect(insert).not.toContain('"wiki"');
+        // Данные Google обычный прогон по-прежнему обновляет.
+        expect(insert).toContain('"google"');
+      }
+    });
+
+    it("обычный прогон с готовым текстом: текст режима не заменяется", async () => {
+      const { sql, stats } = await writeOne(
+        { wiki: loose, ai: { hash: HASH, result: fresh } },
+        false,
+        savedMode,
+      );
+      expect(insertsAi(sql)).toBe(false);
+      expect(stats.aiWritten).toBe(0);
+    });
+
+    it("прочие места обычный прогон обновляет как раньше", async () => {
+      const plain = { wiki: loose, ai_summary_uk: "Старий.", ai_input_hash: HASH };
+      const a = await writeOne({ wiki: loose, ai: { hash: "b".repeat(32), result: null } }, false, plain);
+      expect(clearsNormal(a.sql)).toBe(true);
+      expect(a.sql.find((s) => s.startsWith('insert into "place_enrichments"'))).toContain('"wiki"');
+      const b = await writeOne({ ai: { hash: "b".repeat(32), result: fresh } }, false, plain);
+      expect(insertsAi(b.sql)).toBe(true);
+    });
+
+    it("сам режим строгую статью обновляет; статья режима помечена", async () => {
+      const { sql } = await writeOne({ wiki: strict }, true, savedMode);
+      expect(sql.find((s) => s.startsWith('insert into "place_enrichments"'))).toContain('"wiki"');
+      const f = wiki({ Говерла: { qid: "Q1", p31: [MOUNTAIN] } });
+      expect((await find(await clientOf(f), "Говерла"))?.match).toBe("strict");
+    });
+
+    it("обычный прогон не платит за места с текстом режима", async () => {
+      const { db } = recordingDb({}, (q) =>
+        q.sql.startsWith('select "places"."google_place_id"')
+          ? [
+              { google_place_id: "m", ai_input_hash: modeHash },
+              { google_place_id: "o", ai_input_hash: HASH },
+            ]
+          : [],
+      );
+      const keep = await wikimediaTextPlaces(db, REGION);
+      expect([...keep]).toEqual(["m"]);
+      expect([...items([aiPlace("m"), aiPlace("o")], false, keep).keys()]).toEqual(["o"]);
+    });
   });
 
   it("loadDbPlaces: hasAi — по сохранённому тексту, в том числе при google=NULL", async () => {
@@ -437,7 +559,7 @@ describe("блокер 3: готовые тексты ИИ не теряются
           ]
         : [],
     );
-    expect((await loadDbPlaces(db, REGION))[0]).toMatchObject({ hasAi: true, savedGoogle: null });
+    expect((await loadDbPlaces(db, REGION))[0]).toMatchObject({ hasAi: true });
   });
 });
 
@@ -651,7 +773,7 @@ describe("серьёзное 7: дословная копия статьи", () 
     expect(copiesSource(EX, "Пробій — водоспад.")).toBe(false);
   });
 
-  it("пакет: копия статьи отклоняется и не попадает в кэш как текст", async () => {
+  it("пакет: копия статьи не остаётся в кэше — счётчик, следующий прогон создаёт заново", async () => {
     const facts = { назва: "Пробій", Вікіпедія: EX };
     const hash = factsHash(facts, true);
     const api = {
@@ -676,18 +798,27 @@ describe("серьёзное 7: дословная копия статьи", () 
     } as unknown as BatchesApi;
     const store = new AiStore(await tmp());
     const stats = await runAi(api, store, [{ hash, facts, paraphrase: true }], { maxNew: 1, wait: true });
-    expect(stats).toMatchObject({ accepted: 0, rejected: 1 });
-    expect((await store.get(hash))?.text).toBeNull();
+    expect(stats).toMatchObject({ accepted: 0, rejected: 0, copies: 1 });
+    expect(await store.get(hash)).toBeNull();
     const body = vi.mocked(api.create).mock.calls[0]![0];
     expect(body.requests[0]!.params.system).toContain(WIKI_RULE);
+    // Следующий прогон снова считает текст недостающим.
+    const next = await runAi(api, store, [{ hash, facts, paraphrase: true }], { maxNew: 1, wait: true });
+    expect(next.submitted).toBe(1);
   });
 
-  it("кэш результатов: копия из прошлых прогонов не пишется", () => {
-    const r = { text: EX, model: "m", generatedAt: "2026-11-01T00:00:00Z" };
-    expect(cachedTextAllowed(r, EX)?.text).toBeNull();
-    const ok = { ...r, text: "Свій текст про водоспад без дослівних зворотів зі статті." };
-    expect(cachedTextAllowed(ok, EX)).toBe(ok);
-    expect(cachedTextAllowed(null, EX)).toBeNull();
+  it("кэш результатов: копия из прошлых прогонов удаляется, свой текст и пустой ответ остаются", async () => {
+    const r = { model: "m", generatedAt: "2026-11-01T00:00:00Z" };
+    const store = new AiStore(await tmp());
+    const facts = { назва: "Пробій", Вікіпедія: EX };
+    await store.put("copy", { ...r, text: EX });
+    await store.put("own", { ...r, text: "Свій текст про водоспад без дослівних зворотів зі статті." });
+    await store.put("none", { ...r, text: null });
+    const list = ["copy", "own", "none", "absent"].map((hash) => ({ hash, facts }));
+    expect(await purgeCopies(store, list)).toBe(1);
+    expect(await store.get("copy")).toBeNull();
+    expect((await store.get("own"))?.text).toContain("Свій текст");
+    expect(await store.get("none")).not.toBeNull();
   });
 });
 
@@ -730,5 +861,31 @@ describe("мелкое: аргументы, --limit, не-JSON", () => {
     expect(r.stats.wikiUnavailable).toBe(1);
     expect(client.stopped).toBeNull();
     await expect(client.geosearch("uk", AT, 1500, 30)).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["не-JSON при 200", () => new Response("<html>", { status: 200 }), "не JSON"],
+    ["{error} при 200", () => json({ error: { code: "ratelimited" } }), "ratelimited"],
+  ])("режим Wikimedia: %s — стоп, в кэш не попадает", async (_name, res, reason) => {
+    const cacheDir = await tmp();
+    const f = vi.fn(() => Promise.resolve(res()));
+    const client = await clientOf(f, { cacheDir, stopOnUnavailable: true });
+    await expect(client.geosearch("uk", AT)).rejects.toBeInstanceOf(WikiUnavailableError);
+    expect(client.stopped).toContain(reason);
+    await expect(client.geosearch("uk", AT)).rejects.toBeInstanceOf(WikiUnavailableError);
+    expect(f).toHaveBeenCalledTimes(1);
+    // Новый прогон с тем же кэшем идёт в сеть: ошибка как ответ не сохранилась.
+    const g = vi.fn(() => Promise.resolve(json({ query: { geosearch: [] } })));
+    await expect((await clientOf(g, { cacheDir })).geosearch("uk", AT)).resolves.toEqual([]);
+    expect(g).toHaveBeenCalledTimes(1);
+  });
+
+  it("обычный режим: {error} кэшируется и не останавливает, как раньше", async () => {
+    const f = vi.fn(() => Promise.resolve(json({ error: { code: "x" } })));
+    const client = await clientOf(f);
+    await expect(client.geosearch("uk", AT)).resolves.toEqual([]);
+    await expect(client.geosearch("uk", AT)).resolves.toEqual([]);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(client.stopped).toBeNull();
   });
 });

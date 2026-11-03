@@ -1,11 +1,10 @@
 // Места для places:enrich --covers-source wikimedia — из БД региона (опубликованные места импорта Google), без кэша
-// импорта и без единого запроса к Google. Сохранённые данные Google (place_enrichments.google) идут только в факты ИИ;
-// hasAi — у места уже есть текст ИИ: его не трогаем и в пакет не ставим.
-import { lonLatOf, regionContext, withTenant, type Db, type PlaceEnrichmentGoogle } from "../db/index.js";
+// импорта и без единого запроса к Google. Сохранённые данные Google — только для порядка мест (рейтинг), в факты ИИ не
+// идут (факты — только uk.wikipedia). hasAi — у места уже есть текст ИИ: его не трогаем и в пакет не ставим.
+import { lonLatOf, regionContext, withTenant, type Db } from "../db/index.js";
 import type { MappedPlace } from "../places-import/mapping.js";
 
 export type DbPlace = MappedPlace & {
-  savedGoogle: PlaceEnrichmentGoogle | null;
   hasCover: boolean;
   hasAi: boolean;
 };
@@ -53,7 +52,6 @@ export async function loadDbPlaces(db: Db, regionId: string): Promise<DbPlace[]>
         photos: [],
         rating: r.google?.rating ?? null,
         ratingCount: r.google?.ratingCount ?? null,
-        savedGoogle: r.google ?? null,
         hasCover: Boolean(r.has_cover),
         hasAi: Boolean(r.ai_summary_uk),
       },

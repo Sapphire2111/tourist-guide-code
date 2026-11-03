@@ -19,11 +19,9 @@ import {
   AI_BATCH_USD_PER_MTOK,
   AI_MODEL,
   AiStore,
-  aiEligible,
-  buildFacts,
-  cachedTextAllowed,
+  buildAiItems,
   estimateTokens,
-  factsHash,
+  purgeCopies,
   runAi,
   type AiItem,
   type AiResult,
@@ -31,7 +29,12 @@ import {
 import { EnrichArgsError, parseEnrichArgs } from "../places-enrich/args.js";
 import { DEFAULT_SKIP_DETAILS, enrich, GOOGLE_PRICING, googleCostUsd } from "../places-enrich/enrich.js";
 import { WikipediaClient } from "../places-enrich/wikipedia.js";
-import { withSavedGoogle, writeEnrichment, type EnrichWriteItem } from "../places-enrich/writer.js";
+import {
+  wikimediaTextPlaces,
+  withSavedGoogle,
+  writeEnrichment,
+  type EnrichWriteItem,
+} from "../places-enrich/writer.js";
 import { IMPORT_LOCALITIES } from "../places-import/config.js";
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
@@ -119,11 +122,6 @@ try {
     log: console.log,
   });
   const stats = enriched.stats;
-  if (noGoogle) {
-    // Сохранённые данные Google — только к фактам ИИ; запись режима колонки Google не трогает.
-    const saved = new Map(dbPlaces.map((p) => [p.googlePlaceId, p.savedGoogle]));
-    for (const p of enriched.places) p.google = saved.get(p.googlePlaceId) ?? null;
-  }
   // Из кэша импорта (беднее Details): слить с сохранённым до фактов ИИ; места с готовым текстом ИИ — без пакета.
   // Режим Wikimedia: готовый текст учитывается у всех мест, не только с сохранённым Google.
   const { places, withAi } = noGoogle
@@ -207,20 +205,15 @@ try {
 
   // ИИ: факты → хэш → кэш результатов; новые — пакетом (только с --ai, не в --plan).
   const store = new AiStore(args.cacheDir);
-  const aiItems = new Map<string, AiItem>();
-  for (const p of places) {
-    if (!aiEligible(p, withAi, noGoogle)) continue;
-    const facts = buildFacts({
-      name: p.name,
-      category: CATEGORY_NAMES[p.categoryCode] ?? p.categoryCode,
-      locality: LOCALITY_UK.get(p.localityCode) ?? null,
-      address: p.address,
-      google: p.google,
-      wiki: p.wiki ?? null,
-    });
-    if (facts)
-      aiItems.set(p.googlePlaceId, { hash: factsHash(facts, noGoogle), facts, paraphrase: noGoogle });
-  }
+  const aiItems = buildAiItems(places, {
+    withAi,
+    wikimediaOnly: noGoogle,
+    keepText: !noGoogle && db && regionId ? await wikimediaTextPlaces(db, regionId) : new Set<string>(),
+    categoryName: (code) => CATEGORY_NAMES[code] ?? code,
+    localityName: (code) => LOCALITY_UK.get(code) ?? null,
+  });
+  // Режим Wikimedia: копия статьи в кэше не считается готовым текстом.
+  const copiesPurged = noGoogle ? await purgeCopies(store, aiItems.values()) : 0;
   const aiMissing: AiItem[] = [];
   for (const it of aiItems.values()) if (!(await store.get(it.hash))) aiMissing.push(it);
   const tokens = estimateTokens(aiMissing);
@@ -244,13 +237,15 @@ try {
     tokens.input += planPlaces * 1300;
     tokens.output += planPlaces * 400;
   }
+  const photosUpperBound = googleCostUsd(photoViews * 2, GOOGLE_PRICING.photos);
   const estimate = {
     placeDetails: googleCostUsd(
       args.plan ? google.planned.details : google.requests.details,
       GOOGLE_PRICING.detailsAtmosphere,
     ),
     // Фото запрашиваются лениво (при просмотре карточки) и кэшируются: верхняя граница — каждое фото в 2 ширинах.
-    photosUpperBound: googleCostUsd(photoViews * 2, GOOGLE_PRICING.photos),
+    // Режим Wikimedia фото Google не обещает: их запросов в нём нет.
+    ...(noGoogle ? {} : { photosUpperBound }),
     wikipediaRequests: args.plan ? `≥ ${wikipedia?.planned ?? 0} (бесплатно)` : (wikipedia?.requests ?? 0),
     ai: {
       model: AI_MODEL,
@@ -289,9 +284,16 @@ try {
     `Темп Google: --rpm ${args.rpm || "без ограничения"}; ожидание ${Math.round(google.waitedMs / 1000)} с, ` +
       `429 по поминутной квоте ${google.rateLimitHits}, отложено после повторов ${google.rateLimitedGiveUps}.`,
   );
-  console.log(
-    `Фото Google (лениво, при просмотре, с кэшем): не больше ${photoViews * 2} запросов ≈ $${estimate.photosUpperBound.usdNoFreeTier}.`,
-  );
+  if (!noGoogle)
+    console.log(
+      `Фото Google (лениво, при просмотре, с кэшем): не больше ${photoViews * 2} запросов ≈ $${photosUpperBound.usdNoFreeTier}.`,
+    );
+  // Отчёт режима: копии статьи не пишутся и создаются заново следующим прогоном с --ai.
+  report.aiCopies = { rejectedFromBatch: aiStats?.copies ?? 0, purgedFromCache: copiesPurged };
+  if (aiStats?.copies || copiesPurged)
+    console.log(
+      `ИИ: отброшено копий статьи ${aiStats?.copies ?? 0}, удалено копий из кэша ${copiesPurged} — будут созданы заново.`,
+    );
   console.log(
     `ИИ (${AI_MODEL}, Batches): мест с фактами ${aiItems.size}, новых текстов ${aiMissing.length + planPlaces}${args.plan ? " (верхняя граница)" : ""}, ` +
       `≈ ${tokens.input} вх. / ${tokens.output} вых. токенов ≈ $${estimate.ai.estUsd}` +
@@ -307,9 +309,7 @@ try {
   const items: EnrichWriteItem[] = [];
   for (const p of places) {
     const it = aiItems.get(p.googlePlaceId);
-    const cached: AiResult | null = it ? await store.get(it.hash) : null;
-    // Режим Wikimedia: копия статьи не пишется, даже если попала в кэш результатов.
-    const result = noGoogle ? cachedTextAllowed(cached, p.wiki?.extract) : cached;
+    const result: AiResult | null = it ? await store.get(it.hash) : null;
     // Хэш фактов передаётся всегда: устаревший текст (другие факты, нового ещё нет) запись снимает. Фактов нет при
     // свежих данных Google — текст тоже снимается (hash null). Режим Wikimedia ничего не снимает: данные Google в нём
     // не свежие, а ранее сохранённые.

@@ -470,12 +470,24 @@ html[data-season] :focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Ссылка на файл Commons — поверх растянутой ссылки названия (.kosiv-place-title::after). */
+/*
+ * Ссылка на файл Commons — поверх растянутой ссылки названия (.kosiv-place-title::after). Сама подпись клики пропускает:
+ * вне ссылки нажатие открывает карточку. Контур фокуса — внутрь: у подписи overflow: hidden, снаружи он обрезался бы.
+ */
 .kosiv-place-credit {
   z-index: 1;
+  pointer-events: none;
 }
 .kosiv-place-credit a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: inherit;
+  pointer-events: auto;
+}
+html[data-season] .kosiv-place-credit a:focus-visible {
+  outline-color: #ffffff;
+  outline-offset: -2.5px;
 }
 .kosiv-place-body {
   display: flex;

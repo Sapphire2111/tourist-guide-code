@@ -157,16 +157,18 @@ describe("богатая картка місця", () => {
       ...base,
       ...rich,
       aiSummary: null,
+      // Текст статьи в данных карточки (как от старого api) всё равно не показывается.
       wikipedia: {
         title: "Пробій (водоспад)",
         url: "https://uk.m.wikipedia.org/wiki/Пробій",
+        extract: "Пробій — водоспад на річці Прут.",
         image: {
           url: "https://upload.wikimedia.org/x.jpg",
           author: "MSha",
           license: "CC BY-SA 3.0",
           sourceUrl: "https://commons.wikimedia.org/wiki/File:Probij-5.JPG",
         },
-      },
+      } as never,
     });
     const wiki = screen.getByTestId("place-wikipedia");
     expect(within(wiki).getByRole("link", { name: "Читати у Вікіпедії" }).getAttribute("href")).toBe(
@@ -174,7 +176,7 @@ describe("богатая картка місця", () => {
     );
     expect(within(wiki).getByRole("link", { name: /MSha · CC BY-SA 3.0 · Wikimedia Commons/ })).toBeDefined();
     expect(wiki.textContent).toContain("Джерело: Вікіпедія");
-    expect(screen.queryByTestId("place-wiki-truncated")).toBeNull();
+    expect(document.body.textContent).not.toContain("Пробій — водоспад на річці Прут.");
   });
 
   it("статья есть, пересказа ещё нет — автоописание остаётся: карточка не пустая", async () => {

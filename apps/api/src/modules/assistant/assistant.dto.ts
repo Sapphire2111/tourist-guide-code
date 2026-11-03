@@ -308,7 +308,7 @@ export class AssistantPlaceDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: "Статья Вікіпедії — источник фактов текста, ссылка показывается вместе с ним",
+    description: "Статья Вікіпедії о месте — ссылка «почитать»; источником текста не считается",
   })
   descriptionUrl!: string | null;
 }

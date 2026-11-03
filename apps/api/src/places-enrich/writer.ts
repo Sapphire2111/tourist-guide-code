@@ -7,7 +7,7 @@
 import { regionContext, withTenant, type Db, type PlaceEnrichmentGoogle } from "../db/index.js";
 import type { PlaceEnrichmentsTable } from "../db/schema.js";
 import type { Insertable } from "kysely";
-import type { AiResult } from "./ai.js";
+import { isWikimediaHash, type AiResult } from "./ai.js";
 import type { EnrichedPlace } from "./enrich.js";
 
 export type EnrichWriteItem = EnrichedPlace & {
@@ -71,6 +71,21 @@ export async function withSavedGoogle<T extends EnrichedPlace>(
   };
 }
 
+/** google_place_id мест с текстом режима Wikimedia: обычный прогон не ставит их в пакет (текст не заменится). */
+export async function wikimediaTextPlaces(db: Db, regionId: string): Promise<Set<string>> {
+  const rows = await withTenant(db, regionContext(regionId), (trx) =>
+    trx
+      .selectFrom("place_enrichments")
+      .innerJoin("places", "places.id", "place_enrichments.place_id")
+      .select(["places.google_place_id", "place_enrichments.ai_input_hash"])
+      .where("place_enrichments.ai_summary_uk", "is not", null)
+      .execute(),
+  );
+  return new Set(
+    rows.flatMap((r) => (r.google_place_id && isWikimediaHash(r.ai_input_hash) ? [r.google_place_id] : [])),
+  );
+}
+
 export async function writeEnrichment(
   db: Db,
   regionId: string,
@@ -97,13 +112,34 @@ export async function writeEnrichment(
         .execute();
       for (const r of prev) saved.set(r.place_id, r.google);
     }
+    // Обычный прогон: текст и статья режима Wikimedia (строже и оплачены) не снимаются и не заменяются.
+    const keep = new Map<string, { text: boolean; wiki: boolean }>();
+    const allIds = items.flatMap((it) => idOf.get(it.googlePlaceId) ?? []);
+    if (!opts.wikimediaOnly && allIds.length) {
+      const prev = await trx
+        .selectFrom("place_enrichments")
+        .select(["place_id", "wiki", "ai_summary_uk", "ai_input_hash"])
+        .where("place_id", "in", allIds)
+        .execute();
+      for (const r of prev)
+        keep.set(r.place_id, {
+          text: Boolean(r.ai_summary_uk) && isWikimediaHash(r.ai_input_hash),
+          wiki: r.wiki?.match === "strict",
+        });
+    }
     const stats: EnrichWriteStats = { written: 0, notInDb: 0, aiWritten: 0, aiCleared: 0 };
-    for (const it of items) {
-      const placeId = idOf.get(it.googlePlaceId);
+    for (const source of items) {
+      const placeId = idOf.get(source.googlePlaceId);
       if (!placeId) {
         stats.notInDb++;
         continue;
       }
+      const kept = keep.get(placeId);
+      const it: EnrichWriteItem = {
+        ...source,
+        ai: kept?.text ? undefined : source.ai,
+        wiki: kept?.wiki ? undefined : source.wiki,
+      };
       const values: Insertable<PlaceEnrichmentsTable> = { region_id: regionId, place_id: placeId };
       const update: Record<string, unknown> = {};
       if (it.google && !opts.wikimediaOnly) {

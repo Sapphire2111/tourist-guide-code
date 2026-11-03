@@ -114,11 +114,21 @@ export const WIKI_RULE = `
 export const systemPrompt = (facts: AiFacts, paraphrase = false) =>
   paraphrase && facts["Вікіпедія"] ? `${SYSTEM_PROMPT}${WIKI_RULE}` : SYSTEM_PROMPT;
 
+/**
+ * Признак текста режима Wikimedia в ai_input_hash (без миграции: CHECK допускает 16–64 hex-символа): 8 символов префикса
+ * и 32 символа хэша — всего 40; хэш обычного режима всегда 32. Такой текст обычный прогон не снимает и не заменяет.
+ */
+const WIKIMEDIA_HASH_PREFIX = "57ed1a00";
+
+export const isWikimediaHash = (hash: string | null | undefined) =>
+  hash?.length === WIKIMEDIA_HASH_PREFIX.length + 32 && hash.startsWith(WIKIMEDIA_HASH_PREFIX);
+
 export function factsHash(facts: AiFacts, paraphrase = false): string {
-  return createHash("sha256")
+  const hash = createHash("sha256")
     .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${systemPrompt(facts, paraphrase)}|${JSON.stringify(facts)}`)
     .digest("hex")
     .slice(0, 32);
+  return paraphrase ? `${WIKIMEDIA_HASH_PREFIX}${hash}` : hash;
 }
 
 /** Параметры одного запроса (и для Batches, и для теста). */
@@ -199,22 +209,69 @@ export type AiResult = { text: string | null; model: string; generatedAt: string
 /** paraphrase — режим Wikimedia: в промпте правило пересказа (WIKI_RULE), хэш считан с ним же. */
 export type AiItem = { hash: string; facts: AiFacts; paraphrase?: boolean };
 
+export type AiPlace = {
+  googlePlaceId: string;
+  name: string;
+  categoryCode: string;
+  localityCode: string;
+  address: string | null;
+  google: PlaceEnrichmentGoogle | null;
+  googleFromImport?: boolean;
+  wiki?: PlaceEnrichmentWiki | null | undefined;
+};
+
 /**
- * Нужен ли месту текст ИИ. Режим Wikimedia: только туда, где текста нет (по всем местам, не только с сохранённым
- * Google), и только при найденной статье. Из кэша импорта: только где текста нет.
+ * Что отправить в ИИ. Режим Wikimedia: только туда, где текста нет (по всем местам), только при найденной статье и
+ * только с фактами статьи — без сохранённых данных Google. Из кэша импорта: только где текста нет. keepText — текст
+ * режима Wikimedia, обычный прогон его не заменит, платить незачем.
  */
-export function aiEligible(
-  p: { googlePlaceId: string; googleFromImport?: boolean; wiki?: unknown },
-  withAi: ReadonlySet<string>,
-  wikimediaOnly: boolean,
-): boolean {
-  if ((wikimediaOnly || p.googleFromImport) && withAi.has(p.googlePlaceId)) return false;
-  return !wikimediaOnly || Boolean(p.wiki);
+export function buildAiItems(
+  places: readonly AiPlace[],
+  o: {
+    withAi: ReadonlySet<string>;
+    wikimediaOnly: boolean;
+    keepText?: ReadonlySet<string>;
+    categoryName: (code: string) => string;
+    localityName: (code: string) => string | null;
+  },
+): Map<string, AiItem> {
+  const items = new Map<string, AiItem>();
+  for (const p of places) {
+    if ((o.wikimediaOnly || p.googleFromImport) && o.withAi.has(p.googlePlaceId)) continue;
+    if (o.keepText?.has(p.googlePlaceId)) continue;
+    if (o.wikimediaOnly && !p.wiki) continue;
+    const facts = buildFacts({
+      name: p.name,
+      category: o.categoryName(p.categoryCode),
+      locality: o.localityName(p.localityCode),
+      address: p.address,
+      google: o.wikimediaOnly ? null : p.google,
+      wiki: p.wiki ?? null,
+    });
+    if (facts)
+      items.set(p.googlePlaceId, {
+        hash: factsHash(facts, o.wikimediaOnly),
+        facts,
+        paraphrase: o.wikimediaOnly,
+      });
+  }
+  return items;
 }
 
-/** Текст из кэша, который можно записать: пакет прошлых прогонов мог быть принят без статьи под рукой. */
-export function cachedTextAllowed(result: AiResult | null, source: string | null | undefined) {
-  return result?.text && copiesSource(result.text, source) ? { ...result, text: null } : result;
+/**
+ * Копии статьи из кэша результатов (пакет прошлых прогонов мог быть принят без статьи под рукой) удаляются: иначе текст
+ * считался бы готовым навсегда и не создавался заново. Возвращает, сколько удалено.
+ */
+export async function purgeCopies(store: AiStore, items: Iterable<AiItem>): Promise<number> {
+  let purged = 0;
+  for (const it of items) {
+    const cached = await store.get(it.hash);
+    if (cached?.text && copiesSource(cached.text, wikiSource(it.facts))) {
+      await store.remove(it.hash);
+      purged++;
+    }
+  }
+  return purged;
 }
 
 /** Кэш результатов и состояние отправленного пакета — файлы в каталоге кэша. */
@@ -240,6 +297,9 @@ export class AiStore {
   async put(hash: string, r: AiResult): Promise<void> {
     await mkdir(this.cacheDir, { recursive: true });
     await writeFile(this.file(hash), JSON.stringify(r));
+  }
+  async remove(hash: string): Promise<void> {
+    await rm(this.file(hash), { force: true });
   }
   async pending(): Promise<{ batchId: string; hashes: string[] } | null> {
     try {
@@ -271,6 +331,8 @@ export type AiRunStats = {
   /** Получено из пакета: принято, отклонено проверкой / «нет данных», ошибок. */
   accepted: number;
   rejected: number;
+  /** Отброшено как копия статьи: в кэш не идёт, следующий прогон с --ai создаст текст заново. */
+  copies: number;
   errored: number;
   batchId: string | null;
   /** Пакет ещё обрабатывается (результаты — при следующем прогоне). */
@@ -303,6 +365,7 @@ export async function runAi(
     submitted: 0,
     accepted: 0,
     rejected: 0,
+    copies: 0,
     errored: 0,
     batchId: null,
     stillProcessing: false,
@@ -338,7 +401,11 @@ export async function runAi(
         stats.errored++;
         continue;
       }
-      const text = acceptText(raw, sourceOf.get(r.custom_id));
+      const text = acceptText(raw);
+      if (text && copiesSource(text, sourceOf.get(r.custom_id))) {
+        stats.copies++;
+        continue;
+      }
       if (text) stats.accepted++;
       else stats.rejected++;
       await store.put(r.custom_id, { text, model: msg.model || AI_MODEL, generatedAt });

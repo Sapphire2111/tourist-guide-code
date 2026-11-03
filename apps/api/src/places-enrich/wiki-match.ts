@@ -258,7 +258,7 @@ export async function findWikipediaStrict(
     const image = file ? await client.commonsImage(file, { requireAuthor: true }) : null;
     const extract = shortExtract(s.extract);
     const truncated = extract !== s.extract.replace(/\s+/g, " ").trim();
-    return { lang, title: s.title, url: s.url, extract, truncated, image };
+    return { lang, title: s.title, url: s.url, extract, truncated, image, match: "strict" };
   }
   return null;
 }

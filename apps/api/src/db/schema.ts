@@ -1349,6 +1349,8 @@ export type PlaceEnrichmentWiki = {
   extract: string;
   /** extract обрезан по предложению. */
   truncated?: boolean;
+  /** strict — статья принята строгим сопоставлением (--covers-source wikimedia): обычный прогон её не заменяет. */
+  match?: "strict";
   image: {
     url: string;
     width: number | null;

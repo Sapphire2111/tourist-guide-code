@@ -3492,7 +3492,7 @@ export interface components {
       /** @description Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся */
       description: string | null;
       descriptionSource: components["schemas"]["AssistantDescriptionSource"] | null;
-      /** @description Статья Вікіпедії — источник фактов текста, ссылка показывается вместе с ним */
+      /** @description Статья Вікіпедії о месте — ссылка «почитать»; источником текста не считается */
       descriptionUrl: string | null;
     };
     AssistantRouteDto: {

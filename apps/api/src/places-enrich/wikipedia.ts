@@ -218,7 +218,7 @@ export class WikiUnavailableError extends Error {
 /** Свободные лицензии Commons (короткие имена). Иное (Fair use, «non-free») — без фото. */
 const FREE_LICENSE = /^(cc[ -]?by|cc[ -]?by[ -]?sa|cc0|public domain|pd\b|attribution|gfdl|fal\b)/i;
 /** «Автор неизвестен» в Commons — подписи всё равно нет. */
-const UNKNOWN_AUTHOR = /^(unknown|anonym|невідом|неизвест|анонім|аноним)/i;
+const UNKNOWN_AUTHOR = /^((автор|author)\s+)?(unknown|anonym|невідом|неизвест|анонім|аноним)/i;
 
 function stripHtml(s: unknown, max = 200): string | null {
   if (typeof s !== "string") return null;
@@ -331,7 +331,16 @@ export class WikipediaClient {
         data = await res.json();
       } catch (err) {
         // Не JSON (страница ошибки прокси) или обрыв тела: то же, что временный сбой, прогон идёт дальше к записи.
-        throw new WikiUnavailableError(`Вікіпедія: не JSON (${err instanceof Error ? err.name : "ошибка"})`);
+        const message = `Вікіпедія: не JSON (${err instanceof Error ? err.name : "ошибка"})`;
+        this.stopIfAsked(message);
+        throw new WikiUnavailableError(message);
+      }
+      // Режим Wikimedia: ошибка API при 200 ({error: …}, например ratelimited) — не ответ, в кэш не попадает.
+      if (this.options.stopOnUnavailable && isObject(data) && "error" in data) {
+        const code = isObject(data.error) && typeof data.error.code === "string" ? data.error.code : "ошибка";
+        const message = `Вікіпедія: ошибка API (${code})`;
+        this.stopIfAsked(message);
+        throw new WikiUnavailableError(message);
       }
     }
     await mkdir(this.options.cacheDir, { recursive: true });
