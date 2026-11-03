@@ -505,11 +505,14 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     expect((await sql(`SELECT status FROM bookings WHERE id = $1`, [b.id])).rows[0].status).toBe("completed");
   });
 
-  /** Сдвиг интервала брони так, чтобы она начиналась через `minutes` (владельцем БД). */
+  /**
+   * Сдвиг времени брони так, чтобы она начиналась через `minutes` (владельцем БД).
+   * Занятость (occupied_*) не трогаем: иначе интервал «сейчас + N» пересечётся
+   * с фиксированным слотом того же ресурса (bookings_no_overlap) в зависимости от часа запуска.
+   */
   const shiftTo = (id: string, minutes: number) =>
     sql(
-      `UPDATE bookings SET starts_at = now() + make_interval(mins => $2), ends_at = now() + make_interval(mins => $2 + 60),
-         occupied_from = now() + make_interval(mins => $2), occupied_until = now() + make_interval(mins => $2 + 60)
+      `UPDATE bookings SET starts_at = now() + make_interval(mins => $2), ends_at = now() + make_interval(mins => $2 + 60)
        WHERE id = $1`,
       [id, minutes],
     );
