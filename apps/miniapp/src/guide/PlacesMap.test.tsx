@@ -16,6 +16,9 @@ const calls = vi.hoisted(() => ({
   clusterAdds: 0,
   info: [] as HTMLElement[],
   fail: false,
+  authFailed: false,
+  authListeners: [] as (() => void)[],
+  resizes: 0,
 }));
 
 vi.mock("@googlemaps/markerclusterer", () => ({
@@ -50,7 +53,12 @@ vi.mock("./google-maps.js", async (orig) => {
           return this.pts[0];
         }
       },
-      event: { addListenerOnce: () => ({ remove: () => undefined }) },
+      event: {
+        addListenerOnce: () => ({ remove: () => undefined }),
+        trigger: (_m: unknown, e: string) => {
+          if (e === "resize") calls.resizes++;
+        },
+      },
     },
     maps: {
       Map: class {
@@ -100,8 +108,8 @@ vi.mock("./google-maps.js", async (orig) => {
           this.title = o.title;
           calls.markers.push(this);
         }
-        addListener(_e: string, f: () => void) {
-          this.click = f;
+        addEventListener(e: string, f: () => void) {
+          if (e === "gmp-click") this.click = f;
         }
       },
     },
@@ -109,6 +117,12 @@ vi.mock("./google-maps.js", async (orig) => {
   return {
     ...real,
     loadMapsApi: () => (calls.fail ? Promise.reject(new Error("net")) : Promise.resolve(libs)),
+    mapsAuthFailed: () => calls.authFailed,
+    onMapsAuthFailure: (l: () => void) => {
+      if (calls.authFailed) l();
+      calls.authListeners.push(l);
+      return () => undefined;
+    },
   };
 });
 
@@ -126,11 +140,19 @@ beforeEach(() => {
     clusterAdds: 0,
     info: [],
     fail: false,
+    authFailed: false,
+    authListeners: [],
+    resizes: 0,
   });
 });
 afterEach(cleanup);
 
-const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
+// Вид карты ставится в следующем кадре (requestAnimationFrame) — ждём его.
+// Первый act — загрузка API и эффекты, второй — кадр, в котором ставится вид.
+const flush = async () => {
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => new Promise((r) => setTimeout(r, 40)));
+};
 
 const place = (id: string, name = id): PlaceSummary => ({
   id,
@@ -174,6 +196,8 @@ describe("PlacesMap (Google Maps)", () => {
     expect(onMap()).toHaveLength(3);
     expect(calls.circles.filter((c) => c.map)).toHaveLength(1);
     expect(calls.fit).toBe(2);
+    // Перед подгонкой границ карта узнаёт размер нового узла.
+    expect(calls.resizes).toBe(2);
     expect(view.getByTestId("map-legend").textContent).toContain("Інше");
     expect(view.container.querySelector('[data-testid="map-me"]')).toBeNull();
     expect(onMap().find((m) => m.content?.dataset.group === "other")?.title).toBe("a");
@@ -245,5 +269,21 @@ describe("PlacesMap (Google Maps)", () => {
     const view = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
     await flush();
     expect(view.getByRole("alert").textContent).toBe("Карту не вдалося завантажити. Нижче — список.");
+  });
+
+  it("ключ отклонён (gm_authFailure) — сообщение; повторный заход — сразу сообщение, без карты Google", async () => {
+    const first = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
+    await flush();
+    expect(first.getByTestId("places-map")).toBeDefined();
+    calls.authFailed = true;
+    act(() => calls.authListeners.forEach((l) => l()));
+    expect(first.getByRole("alert").textContent).toBe("Карту не вдалося завантажити. Нижче — список.");
+    first.unmount();
+    const maps = calls.map;
+    const second = render(wrap(<PlacesMap places={[place("b")]} center={null} />));
+    await flush();
+    expect(second.getByRole("alert")).toBeDefined();
+    expect(second.queryByTestId("places-map")).toBeNull();
+    expect(calls.map).toBe(maps);
   });
 });

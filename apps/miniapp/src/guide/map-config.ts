@@ -4,7 +4,7 @@
 export type MapsConfig = { key: string; mapId: string };
 
 /** DEMO_MAP_ID Google: AdvancedMarker без своего Map ID (разработка); в staging/prod — свой векторный Map ID. */
-const DEMO_MAP_ID = "DEMO_MAP_ID";
+export const DEMO_MAP_ID = "DEMO_MAP_ID";
 
 let config: MapsConfig = {
   key: (import.meta.env?.VITE_GOOGLE_MAPS_BROWSER_KEY ?? "").trim(),

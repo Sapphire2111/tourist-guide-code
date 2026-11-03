@@ -2,7 +2,7 @@
 // Скрипт API — один раз на сессию (loading=async + importLibrary). Каждая new google.maps.Map — платная «загрузка
 // карты» (бесплатный объём Dynamic Maps ≈ 10 тыс./мес), поэтому карты не пересоздаются: экран берёт свободную
 // из пула и возвращает её при уходе — повторные заходы на экраны с картой новых загрузок не добавляют.
-import { mapsApiOnPage, mapsConfig } from "./map-config.js";
+import { DEMO_MAP_ID, mapsApiOnPage, mapsConfig } from "./map-config.js";
 
 export type MapsLibs = {
   core: google.maps.CoreLibrary;
@@ -66,6 +66,11 @@ function injectScript(language?: string): Promise<void> {
   });
 }
 
+/** Google отклонил ключ (неверный ключ, referrer, API не включён) — карту не показывать. */
+export function mapsAuthFailed(): boolean {
+  return authFailed;
+}
+
 /** Подписка на отказ ключа (gm_authFailure); уже отказано — вызывается сразу. Возвращает отписку. */
 export function onMapsAuthFailure(listener: () => void): () => void {
   if (authFailed) listener();
@@ -76,11 +81,18 @@ export function onMapsAuthFailure(listener: () => void): () => void {
 export type PooledMap = { div: HTMLDivElement; map: google.maps.Map; busy: boolean };
 
 const pool: PooledMap[] = [];
+let warnedDemo = false;
 
 /** Свободная карта из пула (её узел — в host) или новая. Вид (центр/масштаб) задаёт вызывающий. */
 export function acquireMap(l: MapsLibs, host: HTMLElement): PooledMap {
   let item = pool.find((p) => !p.busy);
   if (!item) {
+    if (import.meta.env?.PROD && mapsConfig().mapId === DEMO_MAP_ID && !warnedDemo) {
+      warnedDemo = true;
+      console.warn(
+        "VITE_GOOGLE_MAPS_MAP_ID не задан: DEMO_MAP_ID — только для разработки, задайте свой Map ID.",
+      );
+    }
     const div = document.createElement("div");
     div.style.width = "100%";
     div.style.height = "100%";

@@ -1,7 +1,7 @@
 // Загрузчик Google Maps: без ключа — отказ без сети; с ключом — один скрипт на сессию; API уже на странице — без
 // скрипта; сбой скрипта — повтор возможен.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadMapsApi, resetMapsForTests } from "./google-maps.js";
+import { loadMapsApi, mapsAuthFailed, onMapsAuthFailure, resetMapsForTests } from "./google-maps.js";
 import { mapsAvailable, setMapsConfigForTests } from "./map-config.js";
 
 const w = window as unknown as Record<string, unknown> & { google?: unknown };
@@ -61,5 +61,19 @@ describe("loadMapsApi", () => {
     await loadMapsApi();
     expect(importLibrary).toHaveBeenCalledTimes(3);
     expect(document.querySelector("script")).toBeNull();
+  });
+
+  it("gm_authFailure — флаг отказа и уведомление подписчиков (и подписавшихся позже)", () => {
+    setMapsConfigForTests({ key: "test-key" });
+    void loadMapsApi().catch(() => undefined);
+    const early = vi.fn();
+    onMapsAuthFailure(early);
+    expect(mapsAuthFailed()).toBe(false);
+    (w.gm_authFailure as () => void)();
+    expect(mapsAuthFailed()).toBe(true);
+    expect(early).toHaveBeenCalledTimes(1);
+    const late = vi.fn();
+    onMapsAuthFailure(late);
+    expect(late).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,6 +13,7 @@ import type { LatLng } from "./geo.js";
 import {
   acquireMap,
   loadMapsApi,
+  mapsAuthFailed,
   onMapsAuthFailure,
   releaseMap,
   type MapsLibs,
@@ -139,6 +140,8 @@ type Overlays = {
   /** Снятие прочих объектов (база, круг, линия). */
   other: (() => void)[];
   listeners: google.maps.MapsEventListener[];
+  /** Отложенная установка вида (requestAnimationFrame). */
+  frame: number | null;
 };
 
 export default function PlacesMap({
@@ -158,7 +161,7 @@ export default function PlacesMap({
   const [state, setState] = useState<Libs>({ status: "loading" });
   const [map, setMap] = useState<PooledMap | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
-  const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [] });
+  const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
   // Тексты подписи читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
@@ -173,7 +176,8 @@ export default function PlacesMap({
   useEffect(() => {
     let alive = true;
     loadMapsApi(localeRef.current).then(
-      (libs) => alive && setState({ status: "ready", libs }),
+      // Ключ уже отклонён (gm_authFailure на прошлом экране) — API «загружен», но карта была бы серой заглушкой Google.
+      (libs) => alive && setState(mapsAuthFailed() ? { status: "error" } : { status: "ready", libs }),
       () => alive && setState({ status: "error" }),
     );
     const off = onMapsAuthFailure(() => alive && setState({ status: "error" }));
@@ -275,7 +279,7 @@ export default function PlacesMap({
         content: pinNode(group, stop),
         gmpClickable: true,
       });
-      marker.addListener("click", () => {
+      marker.addEventListener("gmp-click", () => {
         const idx = indexRef.current;
         const cat = idx.byId.get(p.categoryId);
         const g = markerGroup(idx.sectionOf(p.categoryId));
@@ -301,21 +305,28 @@ export default function PlacesMap({
       o.clusterer.addMarkers(o.markers.map((x) => x.marker));
     } else for (const { marker } of o.markers) marker.map = m;
 
-    if (points > 1) {
-      // fitBounds без предела: ограничиваем приближение один раз после подгонки (пользователь может приблизить сам).
-      o.listeners.push(
-        libs.core.event.addListenerOnce(m, "idle", () => {
-          if ((m.getZoom() ?? 0) > maxZoom) m.setZoom(maxZoom);
-        }),
-      );
-      m.fitBounds(bounds, 24);
-    } else if (points === 1) {
-      m.setCenter(bounds.getCenter());
-      m.setZoom(Math.min(16, maxZoom));
-    } else {
-      m.setCenter({ lat: 48.45, lng: 24.55 });
-      m.setZoom(12);
-    }
+    // Вид — в следующем кадре: карта из пула только что вставлена в новый узел, сначала она должна увидеть его
+    // размер (resize), иначе fitBounds посчитает границы по старому (или нулевому) размеру.
+    const core = libs.core;
+    o.frame = requestAnimationFrame(() => {
+      o.frame = null;
+      core.event.trigger(m, "resize");
+      if (points > 1) {
+        // fitBounds без предела: приближение ограничиваем один раз после подгонки (пользователь может приблизить сам).
+        o.listeners.push(
+          core.event.addListenerOnce(m, "idle", () => {
+            if ((m.getZoom() ?? 0) > maxZoom) m.setZoom(maxZoom);
+          }),
+        );
+        m.fitBounds(bounds, 24);
+      } else if (points === 1) {
+        m.setCenter(bounds.getCenter());
+        m.setZoom(Math.min(16, maxZoom));
+      } else {
+        m.setCenter({ lat: 48.45, lng: 24.55 });
+        m.setZoom(12);
+      }
+    });
     // Тексты подписей, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
   }, [libs, map, places, center, centerLabel, radius, maxZoom, route]);
 
@@ -414,6 +425,8 @@ export default function PlacesMap({
 }
 
 function clearOverlays(o: Overlays): void {
+  if (o.frame !== null) cancelAnimationFrame(o.frame);
+  o.frame = null;
   for (const l of o.listeners) l.remove();
   o.listeners = [];
   o.clusterer?.clearMarkers();

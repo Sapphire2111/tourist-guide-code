@@ -87,9 +87,9 @@ function fakeGoogleMaps() {
       if (host) host.appendChild(this.node);
       else this.node.remove();
     }
-    addListener(_event: string, f: () => void) {
-      this.node.addEventListener("click", f);
-      return { remove: () => this.node.removeEventListener("click", f) };
+    /** gmp-click настоящего маркера — обычный click по узлу. */
+    addEventListener(event: string, f: () => void) {
+      if (event === "gmp-click") this.node.addEventListener("click", f);
     }
   }
 
