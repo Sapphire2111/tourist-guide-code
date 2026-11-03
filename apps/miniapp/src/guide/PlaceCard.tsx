@@ -3,7 +3,7 @@
 // «Що пропонує», график, адрес и контакты, отзывы Google, блок Вікіпедії, подписи источников. Нет данных — блока нет.
 // «Доступно зараз» и «Забронювати» — блок 7 (флаг module.bookings); иначе «Уточнити доступність» (ТЗ §10.3).
 import { SHOW_AI_LABELS } from "../ai-labels.js";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
@@ -12,7 +12,7 @@ import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { useAsync, useGuide } from "./context.js";
 import { interceptBack } from "../telegram.js";
 import { routeUrl } from "./geo.js";
-import { Badge, PlaceBadges, useDistance } from "./parts.js";
+import { Badge, ExtLink, PlaceBadges, useDistance } from "./parts.js";
 import "./place-card.css";
 import {
   NotFoundError,
@@ -51,47 +51,6 @@ export function PlaceCard({ id }: { id: string }) {
     );
   }
   return <PlaceView place={place.data} />;
-}
-
-/** Внешняя ссылка: в Telegram — openLink (внешний браузер), иначе новая вкладка. */
-function ExtLink({
-  href,
-  children,
-  className,
-  testId,
-  label,
-  variant,
-  onOpen,
-}: {
-  href: string;
-  children: ReactNode;
-  className?: string;
-  testId?: string;
-  label?: string;
-  variant?: "ghost";
-  onOpen?: () => void;
-}) {
-  const { webApp } = useGuide();
-  return (
-    <a
-      href={href}
-      className={className}
-      target="_blank"
-      rel="noopener noreferrer"
-      data-testid={testId}
-      data-variant={variant}
-      aria-label={label}
-      onClick={(e: MouseEvent) => {
-        onOpen?.();
-        if (webApp?.openLink) {
-          e.preventDefault();
-          webApp.openLink(href);
-        }
-      }}
-    >
-      {children}
-    </a>
-  );
 }
 
 function Section({
