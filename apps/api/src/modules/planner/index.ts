@@ -6,3 +6,4 @@ export { PlannerService, SCENARIO_AUDIT, SCENARIO_ENTITY } from "./planner.servi
 export * from "./plan-rules.js";
 export * from "./season.js";
 export * from "./visit-duration.js";
+export { adultsOnly, categoriesOf, placeKind, travelMinutes } from "./plan-options.js";

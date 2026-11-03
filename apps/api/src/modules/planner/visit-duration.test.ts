@@ -32,11 +32,11 @@ describe("visitEstimate — реалистичная длительность", 
     expect(landmarkOf(p("chany", "ДОВБУШЕВІ БАНІ"))).toBeNull();
   });
 
-  it("турфирма с вершинами — самый длинный маршрут + трансфер", () => {
+  it("турфирма с вершинами — самый короткий из названных маршрутов + трансфер", () => {
     const tour = p("excursions", "ЕКСКУРСІЇ ТА ТРАНСФЕРИ ЩОДНЯ НА ГОРУ ГОВЕРЛА ПЕТРОС ПІП ІВАН ХОМЯК");
-    expect(tourLandmarkOf(tour)?.code).toBe("pip-ivan");
+    expect(tourLandmarkOf(tour)?.code).toBe("khomiak");
     expect(visitEstimate(tour)).toMatchObject({ kind: "tour", fixed: true });
-    expect(visitMinutes(tour)).toBeGreaterThan(600);
+    expect(visitMinutes(tour)).toBe(390 + 120);
   });
 
   it("активности по названию и категории по умолчанию", () => {

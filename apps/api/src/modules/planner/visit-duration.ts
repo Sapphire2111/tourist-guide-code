@@ -206,11 +206,14 @@ export function landmarkOf(p: NamedPlace): Landmark | null {
   return LANDMARKS.find((l) => p.names.some((n) => l.re.test(n))) ?? null;
 }
 
-/** Самый длинный из маршрутов, названных в названии турфирмы/гида (экскурсия на Говерлу, Петрос, Хом'як…). */
+/**
+ * Маршрут экскурсии по названию турфирмы/гида («на Говерлу, Петрос, Піп Іван, Хом'як»): самый короткий из названных —
+ * турист выбирает вершину с гидом, а день должен вместить хотя бы её.
+ */
 export function tourLandmarkOf(p: NamedPlace): Landmark | null {
   if (!TOUR_CATEGORIES.has(p.category)) return null;
   const all = LANDMARKS.filter((l) => l.kind === "hike" && p.names.some((n) => l.re.test(n)));
-  return all.sort((a, b) => b.minutes - a.minutes)[0] ?? null;
+  return all.sort((a, b) => a.minutes - b.minutes)[0] ?? null;
 }
 
 const L = "\\p{L}";
