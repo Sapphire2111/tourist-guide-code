@@ -23,6 +23,8 @@ import {
 import { AssistantBox } from "./AssistantBox.js";
 import { loadDialog } from "./dialog-store.js";
 import { recordMime } from "./recorder.js";
+import { AssistantSessionProvider } from "./session.js";
+import { FROM_ASSISTANT } from "../back.js";
 
 const REGION = "00000000-0000-4000-8000-0000000000a1";
 const CAFES = "00000000-0000-4000-8000-000000000102";
@@ -302,8 +304,8 @@ describe("Assistant: диалог", () => {
     api.ask.mockRejectedValueOnce(
       new ApiCallError(503, "errors.assistant.unavailable", "SERVICE_UNAVAILABLE"),
     );
-    fireEvent.change(screen.getByLabelText("Що шукаєте?"), { target: { value: "кава" } });
-    fireEvent.click(screen.getByRole("button", { name: "Знайти" }));
+    fireEvent.change(screen.getByLabelText("Що додати або змінити?"), { target: { value: "кава" } });
+    fireEvent.click(screen.getByRole("button", { name: "Надіслати" }));
     await flush();
     expect(screen.getByRole("alert").textContent).toBe(
       "Асистент тимчасово недоступний. Скористайтеся розділами або пошуком.",
@@ -338,6 +340,24 @@ describe("Assistant: «Назад» из карточки", () => {
     fireEvent.click(screen.getByRole("button", { name: "Новий пошук" }));
     expect(screen.queryByTestId("assistant-dialog")).toBeNull();
     expect(sessionStorage.getItem(DIALOG_KEY)).toBeNull();
+  });
+});
+
+describe("Assistant: переход в карточку", () => {
+  it("ссылка на место из ответа — запись истории с меткой «из ассистента» (для «Назад»)", async () => {
+    const api = fakeAssistant();
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="кав'ярня" />
+      </GuideProvider>,
+    );
+    await flush();
+    const link = screen
+      .getAllByTestId("assistant-place")[0]!
+      .querySelector<HTMLAnchorElement>("a[href^='#/']")!;
+    fireEvent.click(link);
+    expect(window.location.hash).toBe(link.getAttribute("href"));
+    expect((window.history.state as Record<string, unknown>)[FROM_ASSISTANT]).toBe(true);
   });
 });
 
@@ -385,11 +405,26 @@ describe("AssistantBox", () => {
     const onSubmit = vi.fn();
     render(<AssistantBox api={fakeAssistant()} onSubmit={onSubmit} />);
     expect(screen.queryByTestId("assistant-mic")).toBeNull();
-    const send = screen.getByRole("button", { name: "Знайти" }) as HTMLButtonElement;
+    const send = screen.getByRole("button", { name: "Надіслати" }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Що шукаєте?"), { target: { value: "  з дітьми " } });
     fireEvent.submit(screen.getByRole("search"));
     expect(onSubmit).toHaveBeenCalledWith("з дітьми");
+  });
+
+  it("пилюля: начальная — «Що шукаєте?» и чипы-примеры; уточнение — «Скажіть, що додати або змінити»", () => {
+    const onSubmit = vi.fn();
+    const start = render(<AssistantBox api={fakeAssistant()} onSubmit={onSubmit} examples />);
+    expect((screen.getByLabelText("Що шукаєте?") as HTMLInputElement).placeholder).toBe(
+      "Що шукаєте? Напишіть або скажіть…",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "План на вихідні" }));
+    expect(onSubmit).toHaveBeenCalledWith("План на вихідні");
+    start.unmount();
+    render(<AssistantBox api={fakeAssistant()} onSubmit={onSubmit} variant="refine" />);
+    const input = screen.getByLabelText("Що додати або змінити?") as HTMLInputElement;
+    expect(input.placeholder).toBe("Скажіть, що додати або змінити");
+    expect(screen.queryByTestId("assistant-examples")).toBeNull();
   });
 });
 
@@ -439,6 +474,7 @@ describe("createAssistantApi", () => {
     route: null,
     plan: null,
     notes: ["no_origin"],
+    questions: [],
   };
 
   it("POST /assistant/query: регион, точка, контекст; javascript:-ссылка отбрасывается", async () => {
@@ -764,5 +800,109 @@ describe("Assistant: больше мест и план", () => {
     expect(screen.getByRole("alert").textContent).toContain("Не вдалося додати");
     expect((screen.getByTestId("assistant-plan-add") as HTMLButtonElement).disabled).toBe(false);
     expect(window.location.hash).not.toContain("/plan/saved/");
+  });
+
+  it("уточнение области и передвижения: чипы → следующая реплика с ответами в previous", async () => {
+    const asked = result({
+      intent: intent({ kind: "plan", categories: [], days: 5, withKids: true }),
+      items: [],
+      questions: ["scope", "transport"],
+    });
+    const api = fakeAssistant({ ask: vi.fn(async () => asked) });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="Я приїхав на 5 днів з дітьми, склади план" />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.getByTestId("assistant-status").textContent).toContain("Уточніть");
+    const q = screen.getByTestId("assistant-questions");
+    expect(q.textContent).toContain("Де плануєте відпочивати?");
+    expect(q.textContent).toContain("Як пересуваєтесь?");
+    // Точка — жильё туриста (нет пунктов рядом): «Тільки тут (Тестовий готель)».
+    expect(screen.getByRole("button", { name: "Тільки тут (Тестовий готель)" })).toBeDefined();
+    api.ask.mockResolvedValueOnce(planResult());
+    fireEvent.click(screen.getByRole("button", { name: "По всьому Прикарпаттю" }));
+    // Ответ на одно — ещё ждём второе.
+    expect(api.ask).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /На авто/ }));
+    await flush();
+    expect(api.ask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        text: "По всьому Прикарпаттю, На авто",
+        answer: true,
+        previous: { ...asked.intent, scope: "region", scopeLocalityIds: [], transport: "car" },
+      }),
+    );
+    expect(screen.queryByTestId("assistant-questions")).toBeNull();
+    expect(screen.getAllByTestId("assistant-plan-stop").length).toBeGreaterThan(0);
+  });
+
+  it("план без авто: переезд в другой район — таксі каталога и подсказка про автобусы; значки 🚶/🚗", async () => {
+    const base = planResult();
+    const r = {
+      ...base,
+      intent: { ...base.intent, transport: "foot" as const },
+      plan: {
+        ...base.plan!,
+        days: base.plan!.days.map((d, i) =>
+          i === 1 ? { ...d, transfer: { meters: 14_000, taxi: [4], excursions: [], busStations: [] } } : d,
+        ),
+      },
+    };
+    const api = fakeAssistant({ ask: async () => r });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="план без машини" />
+      </GuideProvider>,
+    );
+    await flush();
+    const travel = screen.getAllByTestId("assistant-plan-travel").map((x) => x.textContent);
+    expect(travel[0]).toContain("🚶");
+    expect(travel[1]).toContain("🚗");
+    expect(screen.queryByTestId("assistant-plan-transfer")).toBeNull();
+    fireEvent.click(screen.getAllByTestId("assistant-plan-day")[1]!);
+    const transfer = screen.getByTestId("assistant-plan-transfer");
+    expect(transfer.textContent).toContain("14 км");
+    expect(transfer.textContent).toContain("Таксі й трансфер поруч");
+    expect(transfer.textContent).toContain("Місце 5");
+    expect(screen.getByTestId("assistant-bus-hint").textContent).toBe(
+      "Розклад автобусів уточнюйте на автостанції / у перевізника.",
+    );
+  });
+
+  it("«Назад» из карточки: провайдер выше маршрутов — тот же ответ, «Показати ще», день плана и прокрутка", async () => {
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as unknown as typeof window.scrollTo;
+    const api = fakeAssistant({ ask: async () => result({ items: many(25) }) });
+    const Screen = ({ show }: { show: boolean }) => (
+      <GuideProvider value={env()}>
+        <AssistantSessionProvider>
+          {show ? <Assistant api={api} initialQuery={""} /> : <p>картка місця</p>}
+        </AssistantSessionProvider>
+      </GuideProvider>
+    );
+    const view = render(<Screen show />);
+    fireEvent.change(screen.getByLabelText("Що шукаєте?"), { target: { value: "кафе" } });
+    fireEvent.click(screen.getByRole("button", { name: "Надіслати" }));
+    await flush();
+    fireEvent.click(screen.getByTestId("assistant-more"));
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(20);
+    Object.defineProperty(window, "scrollY", { value: 900, configurable: true });
+    fireEvent.scroll(window);
+    await act(async () => new Promise((r) => setTimeout(r, 200)));
+    // Переход в карточку места: экран ассистента снят, провайдер остался.
+    view.rerender(<Screen show={false} />);
+    expect(screen.queryByTestId("assistant-dialog")).toBeNull();
+    view.rerender(<Screen show />);
+    await act(async () => new Promise((r) => setTimeout(r, 400)));
+    expect(api.ask).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(20);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 900 }));
+    // Строка ввода одна — уточнения под ответом.
+    expect(screen.getAllByTestId("assistant-box")).toHaveLength(1);
+    expect(screen.getByLabelText("Що додати або змінити?")).toBeDefined();
+    // И в хранилище (перезагрузка вкладки): раскрыто 20, прокрутка 900.
+    expect(loadDialog()?.ui).toMatchObject({ shown: 20, scrollY: 900 });
   });
 });

@@ -22,6 +22,8 @@ import {
 } from "@tg/ui";
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
+import { AssistantSessionProvider } from "./assistant/session.js";
+import { goBack } from "./back.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
@@ -149,6 +151,7 @@ type RoutesProps = Omit<
  * «Назад» (на главную, replace — без новой записи истории): в Telegram — нативная BackButton, в браузере — обычная кнопка.
  * Не history.back(): при входе по прямой ссылке он увёл бы из приложения.
  */
+/** «Назад»: из экрана, открытого из ассистента (метка в истории), — обратно в ассистент; иначе — на главную. */
 function Back({ webApp }: { webApp?: TelegramWebApp }) {
   const { t } = useT();
   const [, navigate] = useRoute();
@@ -157,7 +160,7 @@ function Back({ webApp }: { webApp?: TelegramWebApp }) {
     if (!back) return;
     // Открыт слой поверх экрана (полноэкранное фото) — «Назад» закрывает его, а не уводит на главную.
     const onClick = () => {
-      if (!consumeBack()) navigate("/", { replace: true });
+      if (!consumeBack()) goBack(navigate);
     };
     back.onClick(onClick);
     back.show();
@@ -167,7 +170,7 @@ function Back({ webApp }: { webApp?: TelegramWebApp }) {
     };
   }, [back, navigate]);
   if (back) return null;
-  return <Button onClick={() => navigate("/", { replace: true })}>{t("common.back")}</Button>;
+  return <Button onClick={() => goBack(navigate)}>{t("common.back")}</Button>;
 }
 
 /**
@@ -268,9 +271,7 @@ function HomeAssistant(props: RoutesProps) {
   if (!regionId || !props.session) return null;
   return (
     <Feature flag="module.assistant">
-      <div className="kosiv-card kosiv-panel">
-        <AssistantBox api={api} onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
-      </div>
+      <AssistantBox api={api} examples onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
     </Feature>
   );
 }
@@ -863,7 +864,10 @@ export function App({
                           profile={Boolean(session && hasRequiredConsents(session.me))}
                           scan={scanHandler}
                           routes={
-                            <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                            // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
+                            <AssistantSessionProvider>
+                              <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                            </AssistantSessionProvider>
                           }
                         />
                       </BookingsProvider>

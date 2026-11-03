@@ -23,6 +23,9 @@ export type AssistantItem = {
 export type AssistantPlan = ApiSchemas["AssistantPlanDto"];
 export type AssistantPlanStop = ApiSchemas["AssistantPlanStopDto"];
 export type AssistantDayPart = ApiSchemas["AssistantDayPart"];
+export type AssistantQuestion = ApiSchemas["AssistantQuestion"];
+export type AssistantPlanScope = ApiSchemas["AssistantPlanScope"];
+export type AssistantPlanTransport = ApiSchemas["AssistantPlanTransport"];
 
 export type AssistantResult = {
   intent: AssistantIntent;
@@ -31,6 +34,8 @@ export type AssistantResult = {
   /** План отдыха по дням (kind = plan); пункты ссылаются на items по индексу. */
   plan: AssistantPlan | null;
   notes: AssistantNote[];
+  /** Уточняющие вопросы перед планом (область, передвижение); старый ответ без поля — нет. */
+  questions?: AssistantQuestion[];
 };
 
 export type AssistantAsk = {
@@ -40,6 +45,8 @@ export type AssistantAsk = {
   previous: AssistantIntent | null;
   /** Выбор «Локація»; пункт, названный в запросе, сервер ставит выше. */
   localityIds?: readonly string[];
+  /** Ответ на уточняющие вопросы: намерение — previous с ответами, сервер не вызывает модель. */
+  answer?: boolean;
 };
 
 export type AssistantApi = {
@@ -53,6 +60,7 @@ export const HISTORY_MAX = 5;
 export const TEXT_MAX = 300;
 
 export function resultOf(dto: ApiSchemas["AssistantResultDto"]): AssistantResult {
+  const inItems = (i: number) => i >= 0 && i < dto.items.length;
   return {
     intent: dto.intent,
     items: dto.items.map((i) => ({
@@ -75,10 +83,19 @@ export function resultOf(dto: ApiSchemas["AssistantResultDto"]): AssistantResult
               ...p,
               stops: p.stops.filter((s) => s.item >= 0 && s.item < dto.items.length),
             })),
+            transfer: d.transfer
+              ? {
+                  meters: d.transfer.meters,
+                  taxi: d.transfer.taxi.filter(inItems),
+                  excursions: d.transfer.excursions.filter(inItems),
+                  busStations: d.transfer.busStations.filter(inItems),
+                }
+              : null,
           })),
         }
       : null,
     notes: dto.notes,
+    questions: dto.questions ?? [],
   };
 }
 
@@ -88,7 +105,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
     return regionId;
   };
   return {
-    ask: async ({ text, point, history, previous, localityIds }) =>
+    ask: async ({ text, point, history, previous, localityIds, answer }) =>
       resultOf(
         await ok(
           api.POST("/assistant/query", {
@@ -99,6 +116,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
               history: history.slice(-HISTORY_MAX).map((h) => h.slice(0, TEXT_MAX)),
               ...(previous ? { previous } : {}),
               ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
+              ...(answer && previous ? { answer: true } : {}),
             },
           }),
         ),

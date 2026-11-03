@@ -146,9 +146,14 @@ export class AssistantController {
             days: body.previous.days ?? null,
             dayParts: body.previous.dayParts ?? [],
             start: body.previous.start ?? null,
+            related: body.previous.related ?? [],
+            scope: body.previous.scope ?? null,
+            scopeLocalityIds: body.previous.scopeLocalityIds ?? [],
+            transport: body.previous.transport ?? null,
           }
         : null,
       localityIds: body.localityIds ?? [],
+      answer: body.answer === true,
     });
   }
 

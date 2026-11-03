@@ -5,7 +5,7 @@
 // «Для дорослих», детские — выше), цены для еды и сезон (лыжи — только зимой). Чистая логика без Nest и БД.
 import type { LonLat } from "../../db/index.js";
 import { openState, type ScheduleRows } from "../guide/index.js";
-import type { DayPart } from "./intent.js";
+import type { DayPart, PlanTransport } from "./intent.js";
 import { haversineMeters } from "./route.js";
 
 export type PlanRole = "see" | "fun" | "eat" | "relax";
@@ -69,6 +69,19 @@ const EVENING_ONLY_TEMPLATE: readonly Slot[] = [[...FUN, ...SEE], DINNER, RELAX]
 /** Пешком — не дальше, м (по прямой); дальше — на авто. Между пунктами дальше MAX_HOP_M не переезжаем. */
 export const WALK_MAX_M = 1200;
 export const MAX_HOP_M = 30_000;
+/** Без авто: между точками дня (и от жилья) — только пешком и не дальше, м по прямой. */
+export const FOOT_HOP_M = 2000;
+
+/**
+ * Район дня многодневного плана по региону: на авто — места в AREA_RADIUS_M от центра района, центры дней — не
+ * ближе AREA_SPACING_M друг к другу (разные районы, переезд — между днями, а не внутри дня). Пешком — компактнее.
+ */
+export const AREA = {
+  car: { radius: 12_000, spacing: 15_000 },
+  foot: { radius: 2_500, spacing: 6_000 },
+} as const satisfies Record<PlanTransport, { radius: number; spacing: number }>;
+/** Достопримечательностей района, по сумме качества которых выбирается район. */
+const AREA_TOP = 4;
 /** Опоздание за конец части дня, мин, — допустимо (вечеря может затянуться). */
 const OVERRUN_MIN = 30;
 
@@ -96,6 +109,11 @@ export type PlanDayInput = {
   dayOfWeek: number;
   /** С какой минуты можно начинать (сегодня — с текущего времени), минуты от полуночи. */
   fromMinute: number;
+  /**
+   * Центр района дня (план по региону или по нескольким пунктам): места дня — в радиусе района, день начинается на
+   * месте (переезд к району — между днями, не в плане дня). Нет — как раньше (от жилья туриста).
+   */
+  center?: LonLat;
 };
 
 export type PlanOptions = {
@@ -109,6 +127,8 @@ export type PlanOptions = {
   month: number;
   priceMin: number | null;
   priceMax: number | null;
+  /** Передвижение; нет — на авто. */
+  transport?: PlanTransport;
 };
 
 export type PlanStop = {
@@ -132,8 +152,12 @@ export type BuiltPlan = { days: PlanDay[]; lengthMeters: number };
 const isWinter = (month: number) => month === 12 || month <= 3;
 
 /** Переезд: пешком до WALK_MAX_M (≈ 80 м/мин с поправкой на дорогу), дальше — на авто (≈ 33 км/ч + парковка). */
-export function travelOf(meters: number): { travel: PlanTravel; minutes: number } {
-  if (meters <= WALK_MAX_M) return { travel: "walk", minutes: Math.max(2, Math.round((meters * 1.3) / 80)) };
+export function travelOf(
+  meters: number,
+  transport: PlanTransport = "car",
+): { travel: PlanTravel; minutes: number } {
+  if (meters <= WALK_MAX_M || transport === "foot")
+    return { travel: "walk", minutes: Math.max(2, Math.round((meters * 1.3) / 80)) };
   return { travel: "car", minutes: Math.round((meters * 1.35) / 550 / 5) * 5 + 5 };
 }
 
@@ -215,13 +239,10 @@ const distancePenalty = (meters: number) => (meters / 1000) * 0.35;
  * категории, которое открыто в это время и ещё не стоит в плане. Пункт, для которого места нет, пропускается.
  */
 export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions): BuiltPlan {
-  const winter = isWinter(o.month);
-  const pool = candidates.filter(
-    (c) =>
-      ROLE_OF[c.category] !== undefined &&
-      !(o.withKids && c.category === "adult-fun") &&
-      (winter || c.category !== "ski-resorts"),
-  );
+  const pool = eligible(candidates, o);
+  const transport = o.transport ?? "car";
+  const maxHop = transport === "foot" ? FOOT_HOP_M : MAX_HOP_M;
+  const areaRadius = AREA[transport].radius;
   const used = new Set<string>();
   const score = new Map(pool.map((c) => [c.id, quality(c, o)]));
   const parts = o.parts.length ? o.parts : (["morning", "afternoon", "evening"] as const);
@@ -230,7 +251,8 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
   const days: PlanDay[] = [];
 
   for (const day of o.days) {
-    let at: LonLat | undefined = o.origin;
+    // День в районе — начинается на месте (к району едут между днями); иначе — от жилья.
+    let at: LonLat | undefined = day.center ? undefined : o.origin;
     let t = 0;
     const dayCats: string[] = [];
     const planParts: PlanPart[] = [];
@@ -245,10 +267,11 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
         let best: { c: PlanCandidate; s: number; d: number | null } | undefined;
         for (const c of pool) {
           if (used.has(c.id) || !slot.includes(c.category)) continue;
+          if (day.center && haversineMeters(day.center, c.location) > areaRadius) continue;
           // Дальше предела не переезжаем, и от жилья тоже: жильё далеко от пункта плана — сервис не передаёт origin.
           const d = at ? haversineMeters(at, c.location) : null;
-          if (d !== null && d > MAX_HOP_M) continue;
-          const arrive = t + (d === null ? 0 : travelOf(d).minutes);
+          if (d !== null && d > maxHop) continue;
+          const arrive = t + (d === null ? 0 : travelOf(d, transport).minutes);
           const duration = DURATION_OF[c.category] ?? 60;
           if (arrive + duration > window.to + OVERRUN_MIN) continue;
           const open = openDuring(c.schedule, day, arrive, arrive + duration);
@@ -261,7 +284,7 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
         }
         if (!best) continue;
         const { c, d } = best;
-        const move = d === null ? null : travelOf(d);
+        const move = d === null ? null : travelOf(d, transport);
         const start = t + (move?.minutes ?? 0);
         const duration = DURATION_OF[c.category] ?? 60;
         used.add(c.id);
@@ -286,6 +309,74 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
     days.push({ dayNo: day.dayNo, date: day.date, parts: planParts });
   }
   return { days, lengthMeters: Math.round(lengthMeters) };
+}
+
+/** Кандидаты, которые вообще могут попасть в план: роль известна, «з дітьми» — без «Для дорослих», лыжи — зимой. */
+function eligible(
+  candidates: readonly PlanCandidate[],
+  o: Pick<PlanOptions, "withKids" | "month">,
+): PlanCandidate[] {
+  const winter = isWinter(o.month);
+  return candidates.filter(
+    (c) =>
+      ROLE_OF[c.category] !== undefined &&
+      !(o.withKids && c.category === "adult-fun") &&
+      (winter || c.category !== "ski-resorts"),
+  );
+}
+
+/**
+ * Районы дней многодневного плана по региону («по всьому Прикарпаттю»): у каждой пам'ятки или активности — сумма
+ * качества AREA_TOP лучших в радиусе района; жадно берём лучшие районы, каждый следующий — не ближе spacing к уже
+ * выбранным (разные районы, лучшие места региона). Районов меньше, чем дней, — лучшие повторяются (места не
+ * повторяются: buildPlan не берёт место дважды). Порядок дней — «ближайший следующий» от жилья (или от лучшего
+ * района): переезды короче. Чистая функция; кандидатов нет — пусто.
+ */
+export function planAreas(
+  candidates: readonly PlanCandidate[],
+  days: number,
+  o: Pick<PlanOptions, "withKids" | "month" | "priceMin" | "priceMax" | "origin"> & {
+    transport?: PlanTransport;
+  },
+): LonLat[] {
+  const { radius, spacing } = AREA[o.transport ?? "car"];
+  const sights = eligible(candidates, o).filter((c) => {
+    const role = ROLE_OF[c.category];
+    return role === "see" || role === "fun";
+  });
+  if (!sights.length || days < 1) return [];
+  const q = new Map(sights.map((c) => [c.id, quality(c, o)]));
+  const scored = sights
+    .map((a) => {
+      const near = sights
+        .filter((b) => haversineMeters(a.location, b.location) <= radius)
+        .map((b) => q.get(b.id)!)
+        .sort((x, y) => y - x)
+        .slice(0, AREA_TOP);
+      return { at: a.location, score: near.reduce((s, x) => s + x, 0) };
+    })
+    .sort((x, y) => y.score - x.score);
+  const picked: LonLat[] = [];
+  for (const a of scored) {
+    if (picked.length >= days) break;
+    if (picked.every((p) => haversineMeters(p, a.at) >= spacing)) picked.push(a.at);
+  }
+  // Районов меньше дней — второй день в лучших районах (по кругу).
+  const areas = [...picked];
+  for (let i = 0; areas.length < days; i++) areas.push(picked[i % picked.length]!);
+  // Порядок: ближайший следующий (одинаковые районы — подряд, переезда нет).
+  const ordered: LonLat[] = [];
+  const left = [...areas];
+  let at = o.origin ?? left[0]!;
+  while (left.length) {
+    let best = 0;
+    left.forEach((p, i) => {
+      if (haversineMeters(at, p) < haversineMeters(at, left[best]!)) best = i;
+    });
+    at = left.splice(best, 1)[0]!;
+    ordered.push(at);
+  }
+  return ordered;
 }
 
 /** Первая минута плана сегодня: через 15 минут от «сейчас», на ближайшие четверть часа. */

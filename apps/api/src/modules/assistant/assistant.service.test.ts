@@ -29,6 +29,10 @@ const NEARBY = "0190f5c2-7d3e-7000-8000-000000000108";
 const NATURE = "0190f5c2-7d3e-7000-8000-000000000109";
 const RELAX = "0190f5c2-7d3e-7000-8000-000000000110";
 const CHANY = "0190f5c2-7d3e-7000-8000-000000000111";
+const TRANSFER = "0190f5c2-7d3e-7000-8000-000000000112";
+const TAXI = "0190f5c2-7d3e-7000-8000-000000000113";
+const FUN = "0190f5c2-7d3e-7000-8000-000000000114";
+const EXCURSIONS = "0190f5c2-7d3e-7000-8000-000000000115";
 
 const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto => ({
   id: `0190f5c2-7d3e-7000-8000-0000000002${String(n).padStart(2, "0")}`,
@@ -75,6 +79,10 @@ const intent = (over: Partial<AssistantIntent> = {}): AssistantIntent => ({
   days: null,
   dayParts: [],
   start: null,
+  related: [],
+  scope: null,
+  scopeLocalityIds: [],
+  transport: null,
   ...over,
 });
 
@@ -89,6 +97,7 @@ type SearchArg = {
   localityIds?: readonly string[];
   categoryId?: string;
   ids?: readonly string[];
+  radius?: number;
 };
 
 function setup(
@@ -108,6 +117,12 @@ function setup(
     keywordMatches?: (q: KeywordQuery) => { id: string; score: number }[];
     schedules?: Record<string, ScheduleRows>;
     timezone?: string;
+    /** Лучшие места региона по рейтингу (план «по всьому регіону»). */
+    topRated?: (q: {
+      categoryIds: readonly string[];
+      localityIds?: readonly string[];
+      limit: number;
+    }) => string[];
   } = {},
 ) {
   const guide = {
@@ -125,6 +140,10 @@ function setup(
           { id: NATURE, parentId: NEARBY, code: "nature", name: { uk: "Пам'ятки природи" }, placeCount: 2 },
           { id: RELAX, parentId: null, code: "relax", name: { uk: "Релакс" }, placeCount: 1 },
           { id: CHANY, parentId: RELAX, code: "chany", name: { uk: "Чани та сауни" }, placeCount: 1 },
+          { id: TRANSFER, parentId: null, code: "transfer", name: { uk: "Транспорт" }, placeCount: 1 },
+          { id: TAXI, parentId: TRANSFER, code: "taxi", name: { uk: "Таксі" }, placeCount: 1 },
+          { id: FUN, parentId: null, code: "fun", name: { uk: "Розваги" }, placeCount: 1 },
+          { id: EXCURSIONS, parentId: FUN, code: "excursions", name: { uk: "Екскурсії" }, placeCount: 1 },
         ],
       }),
     ),
@@ -174,6 +193,10 @@ function setup(
       ),
     ),
     schedules: vi.fn(() => Promise.resolve(new Map(Object.entries(opts.schedules ?? {})))),
+    topRated: vi.fn(
+      (_r: string, q: { categoryIds: readonly string[]; localityIds?: readonly string[]; limit: number }) =>
+        Promise.resolve(opts.topRated?.(q) ?? []),
+    ),
     localities: vi.fn(() =>
       Promise.resolve([
         { id: YAREMCHE, code: "yaremche", name_i18n: { uk: "Яремче" }, location: YAREMCHE_AT },
@@ -785,7 +808,10 @@ describe("план відпочинку", () => {
     expect(res.plan!.days[0]!.date).toBe("2026-11-05");
     expect(res.plan!.days[0]!.parts.map((p) => p.part)).toEqual(["evening"]);
 
-    const weekend = planSetup(planIntent({ start: "weekend", days: 2 }), Promise.resolve(notesReply([])));
+    const weekend = planSetup(
+      planIntent({ start: "weekend", days: 2, scope: "here", transport: "car" }),
+      Promise.resolve(notesReply([])),
+    );
     weekend.service.now = () => new Date("2026-11-04T08:00:00Z");
     const w = await weekend.service.query(REGION, USER, ask("план на вихідні", { origin: YAREMCHE_AT }));
     expect(w.plan!.days.map((d) => d.date)).toEqual(["2026-11-07", "2026-11-08"]);
@@ -847,6 +873,268 @@ describe("план відпочинку", () => {
     const cut = await tight.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
     expect(tight.create).toHaveBeenCalledTimes(1);
     expect(cut.plan!.days[0]!.parts.flatMap((p) => p.stops).every((s) => s.note === null)).toBe(true);
+  });
+
+  it("«приїхав на 5 днів з дітьми» без области и передвижения — сначала вопросы, места не ищутся", async () => {
+    const { service, guide, create } = planSetup(
+      planIntent({ days: 5, withKids: true }),
+      Promise.resolve(notesReply([])),
+    );
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("Я приїхав на 5 днів з дітьми", { origin: YAREMCHE_AT }),
+    );
+    expect(res.questions).toEqual(["scope", "transport"]);
+    expect(res.plan).toBeNull();
+    expect(res.items).toEqual([]);
+    expect(guide.search).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    // Пункт назван — область не спрашиваем, только передвижение; передвижение сказано — только область.
+    const named = planSetup(planIntent({ days: 3, locality: "yaremche" }), Promise.resolve(notesReply([])));
+    expect((await named.service.query(REGION, USER, ask("3 дні в Яремчі"))).questions).toEqual(["transport"]);
+    const car = planSetup(planIntent({ days: 3, transport: "car" }), Promise.resolve(notesReply([])));
+    expect((await car.service.query(REGION, USER, ask("3 дні на авто"))).questions).toEqual(["scope"]);
+  });
+
+  /** Районы по региону: по пам'ятці, обеду, ужину и чану вокруг точек в dx км к востоку от Яремче. */
+  function regionData(dxs: readonly number[]) {
+    let n = 10;
+    const areas = dxs.map((dx) => ({
+      sights: [
+        place(++n, { categoryId: NATURE, location: at(dx) }),
+        place(++n, { categoryId: NATURE, location: at(dx + 0.5) }),
+      ],
+      eat: [
+        place(++n, { categoryId: RESTAURANTS, location: at(dx + 0.3) }),
+        place(++n, { categoryId: RESTAURANTS, location: at(dx + 0.8) }),
+      ],
+      relax: [place(++n, { categoryId: CHANY, location: at(dx + 1) })],
+    }));
+    const all = areas.flatMap((a) => [...a.sights, ...a.eat, ...a.relax]);
+    const section: Record<string, PlaceSummaryDto[]> = {
+      [NEARBY]: areas.flatMap((a) => a.sights),
+      [EAT]: areas.flatMap((a) => a.eat),
+      [RELAX]: areas.flatMap((a) => a.relax),
+    };
+    return { all, section, sightIds: areas.flatMap((a) => a.sights.map((p) => p.id)) };
+  }
+
+  it("ответ «По всьому Прикарпаттю» (previous.scope): 5 днів — дні по різних районах, переїзди між днями", async () => {
+    const dxs = [0, 30, 60, 90, 120];
+    const data = regionData(dxs);
+    const previous = planIntent({ days: 5, withKids: true, scope: "region", transport: "car" });
+    const { service, repo } = planSetup(
+      // Модель не повторила область и передвижение — берутся из прежнего намерения.
+      planIntent({ days: 5, withKids: true }),
+      Promise.resolve(notesReply([])),
+      {
+        topRated: () => data.sightIds,
+        searchAt: (q) => (q.ids ? data.all : q.categoryId ? data.section[q.categoryId] : []),
+      },
+    );
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("По всьому Прикарпаттю", { origin: YAREMCHE_AT, previous }),
+    );
+    expect(res.questions).toEqual([]);
+    expect(res.intent).toMatchObject({ scope: "region", transport: "car" });
+    expect(repo.topRated).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ categoryIds: expect.arrayContaining([NEARBY]) }),
+    );
+    const plan = res.plan!;
+    expect(plan.days).toHaveLength(5);
+    // Каждый день — в одном районе (все пункты в пределах 12 км), районы дней разные.
+    const areaOf = (lon: number) => Math.round(((lon - YAREMCHE_AT.lon) * 73.8) / 30);
+    const dayAreas = plan.days.map((d) => {
+      const areas = new Set(
+        d.parts.flatMap((p) => p.stops.map((s) => areaOf(res.items[s.item]!.place.location.lon))),
+      );
+      expect(areas.size).toBe(1);
+      return [...areas][0];
+    });
+    expect(new Set(dayAreas).size).toBe(5);
+    // Переезд в другой район — между днями (на авто — без подсказок такси).
+    expect(plan.days[0]!.transfer).toBeNull();
+    for (const d of plan.days.slice(1))
+      expect(d.transfer).toMatchObject({ taxi: [], excursions: [], busStations: [] });
+    expect(plan.days[1]!.transfer!.meters).toBeGreaterThan(20_000);
+  });
+
+  it("без авто, обрані локації: переходи пішки ≤ 2 км; переїзд в інший пункт — таксі, екскурсії, автостанція каталогу", async () => {
+    const data = regionData([0, 0]);
+    // Второй район — у Буковелі.
+    const buk = (dx: number) => ({ lon: BUKOVEL_AT.lon + dx / 73.8, lat: BUKOVEL_AT.lat });
+    const bukovel = [
+      place(40, { categoryId: NATURE, location: buk(0) }),
+      place(41, { categoryId: NATURE, location: buk(0.4) }),
+      place(42, { categoryId: RESTAURANTS, location: buk(0.2) }),
+      place(43, { categoryId: RESTAURANTS, location: buk(0.6) }),
+      place(44, { categoryId: CHANY, location: buk(0.8) }),
+    ];
+    const taxi = place(50, { categoryId: TAXI, location: buk(1) });
+    const excursion = place(51, { categoryId: EXCURSIONS, location: buk(1.5) });
+    const bus = place(52, { categoryId: TAXI, name: { uk: "Автостанція" }, location: buk(2) });
+    const yaremche = data.all.slice(0, 5);
+    const all = [...yaremche, ...bukovel, taxi, excursion, bus];
+    const section: Record<string, PlaceSummaryDto[]> = {
+      [NEARBY]: all.filter((p) => p.categoryId === NATURE),
+      [EAT]: all.filter((p) => p.categoryId === RESTAURANTS),
+      [RELAX]: all.filter((p) => p.categoryId === CHANY),
+      [TAXI]: [taxi],
+      [EXCURSIONS]: [excursion],
+    };
+    const previous = planIntent({
+      days: 2,
+      scope: "localities",
+      scopeLocalityIds: [YAREMCHE, POLIANYTSIA, "0190f5c2-7d3e-7000-8000-000000000399"],
+      transport: "foot",
+    });
+    const { service, repo } = planSetup(planIntent({ days: 2 }), Promise.resolve(notesReply([])), {
+      placeLocality: Object.fromEntries([
+        ...yaremche.map((p) => [p.id, YAREMCHE] as const),
+        ...bukovel.map((p) => [p.id, POLIANYTSIA] as const),
+      ]),
+      searchAt: (q) => (q.ids ? all : q.categoryId ? section[q.categoryId] : []),
+      keywordMatches: (q) => (q.minScore === 3 ? [{ id: bus.id, score: 4 }] : []),
+      topRated: () => [...yaremche, ...bukovel].filter((p) => p.categoryId === NATURE).map((p) => p.id),
+    });
+    const res = await service.query(REGION, USER, ask("Обрані локації: Яремче, Поляниця", { previous }));
+    // Чужой пункт отброшен; пам'ятки — лучшие по рейтингу в выбранных пунктах.
+    expect(res.intent.scopeLocalityIds).toEqual([YAREMCHE, POLIANYTSIA]);
+    expect(repo.topRated).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ localityIds: [YAREMCHE, POLIANYTSIA] }),
+    );
+    const plan = res.plan!;
+    expect(plan.days).toHaveLength(2);
+    for (const d of plan.days)
+      for (const s of d.parts.flatMap((p) => p.stops)) {
+        expect(s.travel === null || s.travel === "walk").toBe(true);
+        expect(s.travelMeters ?? 0).toBeLessThanOrEqual(2000);
+      }
+    const t = plan.days[1]!.transfer!;
+    expect(t.meters).toBeGreaterThan(5000);
+    expect(t.taxi.map((i) => res.items[i]!.place.id)).toEqual([taxi.id]);
+    expect(t.excursions.map((i) => res.items[i]!.place.id)).toEqual([excursion.id]);
+    expect(t.busStations.map((i) => res.items[i]!.place.id)).toEqual([bus.id]);
+    // Автостанция — по названию или типу Google, а не упоминанию в отзывах.
+    expect(repo.keywordMatches).toHaveBeenCalledWith(REGION, expect.objectContaining({ minScore: 3 }));
+  });
+
+  it("ответ чипами (answer): намерение из previous без вызова модели и без единицы бюджета", async () => {
+    const data = regionData([0, 30]);
+    const previous = planIntent({ days: 2, withKids: true, scope: "region", transport: "car" });
+    const { service, create } = planSetup(planIntent({ days: 2 }), Promise.resolve(notesReply([])), {
+      topRated: () => data.sightIds,
+      searchAt: (q) => (q.ids ? data.all : q.categoryId ? data.section[q.categoryId] : []),
+      // Одна единица — только на пояснения: разбор моделью не тратит.
+      userDailyLimit: 1,
+    });
+    // Подменённые поля previous проверяются как ответ модели: чужой код категории отброшен.
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("По всьому Прикарпаттю, На авто", {
+        previous: { ...previous, categories: ["hacked"] },
+        answer: true,
+      }),
+    );
+    expect(res.intent).toMatchObject({
+      kind: "plan",
+      days: 2,
+      scope: "region",
+      transport: "car",
+      categories: [],
+    });
+    expect(res.plan!.days).toHaveLength(2);
+    // Вызов модели — только пояснения к плану.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((create.mock.calls[0]![0].tools![0] as Anthropic.Tool).name).toBe(NOTES);
+  });
+
+  it("ответ через модель: пункт и радиус модели не перекрывают «обрані локації» и «Пішки»", async () => {
+    const previous = planIntent({
+      days: 2,
+      scope: "localities",
+      scopeLocalityIds: [YAREMCHE],
+      transport: null,
+    });
+    const { service } = planSetup(
+      // Модель «додумала»: пункт Буковель и «пішки» ≈ 1500 м.
+      planIntent({ days: 2, locality: "polianytsia", radiusMeters: 1500, transport: "foot" }),
+      Promise.resolve(notesReply([])),
+    );
+    const res = await service.query(REGION, USER, ask("Пішки (без авто)", { origin: YAREMCHE_AT, previous }));
+    expect(res.intent).toMatchObject({
+      scope: "localities",
+      scopeLocalityIds: [YAREMCHE],
+      locality: null,
+      radiusMeters: null,
+      transport: "foot",
+    });
+    // «Пішки» без области в previous: радиус модели (1500) — не радиус туриста.
+    const foot = planSetup(
+      planIntent({ days: 2, radiusMeters: 1500, transport: "foot" }),
+      Promise.resolve(notesReply([])),
+    );
+    const r2 = await foot.service.query(
+      REGION,
+      USER,
+      ask("Пішки", { origin: YAREMCHE_AT, previous: planIntent({ days: 2, scope: "here" }) }),
+    );
+    expect(r2.intent.radiusMeters).toBeNull();
+  });
+
+  it("по региону, но пам'яток для районов нет — запасной план вокруг якоря, а не пусто", async () => {
+    const { service, repo } = planSetup(
+      planIntent({ days: 2, scope: "region", transport: "car" }),
+      Promise.resolve(notesReply([])),
+      { topRated: () => [] },
+    );
+    const res = await service.query(REGION, USER, ask("2 дні по всьому регіону", { origin: YAREMCHE_AT }));
+    expect(repo.topRated).toHaveBeenCalled();
+    expect(res.plan).not.toBeNull();
+    expect(res.plan!.days.every((d) => !d.transfer)).toBe(true);
+  });
+});
+
+describe("широкое понимание и расширение поиска", () => {
+  it("GPS-режим, по категориям в радиусе 5 км пусто — ближайшие по региону (widened)", async () => {
+    const far = [place(1, { distanceMeters: 9000 }), place(2, { distanceMeters: 12_000 })];
+    const { service, guide } = setup({ searchAt: (s) => (s.radius === undefined ? far : []) });
+    const res = await service.query(REGION, USER, ask("кафе", { origin: YAREMCHE_AT }));
+    expect(guide.search).toHaveBeenCalledWith(REGION, expect.objectContaining({ radius: 5000 }));
+    expect(res.notes).toContain("widened");
+    expect(res.items.map((i) => i.place.id)).toEqual(far.map((p) => p.id));
+    // Радиус назван туристом — не расширяем.
+    const named = setup({
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ radiusMeters: 1000 })))) },
+      searchAt: (s) => (s.radius === undefined ? far : []),
+    });
+    const r = await named.service.query(REGION, USER, ask("кафе в 1 км", { origin: YAREMCHE_AT }));
+    expect(r.items).toEqual([]);
+    expect(r.notes).not.toContain("widened");
+  });
+
+  it("связанные понятия: места категорий плюс найденные по словам; совпавшие — выше", async () => {
+    const terrace = place(3);
+    const { service, repo } = setup({
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(
+            reply(intent({ categories: ["cafes", "restaurants"], related: ["тераса", "з видом"] })),
+          ),
+        ),
+      },
+      searchAt: (s) => (s.ids ? [terrace] : [place(1), place(2)]),
+      keywordMatches: () => [{ id: terrace.id, score: 3 }],
+    });
+    const res = await service.query(REGION, USER, ask("романтичний вечір", { origin: YAREMCHE_AT }));
+    expect(repo.keywordMatches).toHaveBeenCalled();
+    expect(res.items.map((i) => i.place.id)).toEqual([terrace.id, place(1).id, place(2).id]);
   });
 });
 

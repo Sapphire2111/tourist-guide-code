@@ -18,6 +18,7 @@ import {
 import { OriginQueryDto, PlaceSummaryDto } from "../guide/index.js";
 import {
   ASSISTANT_KINDS,
+  ASSISTANT_QUESTIONS,
   ASSISTANT_SUGGESTIONS,
   DAY_PARTS,
   INTENT_CATEGORIES_MAX,
@@ -27,10 +28,16 @@ import {
   INTENT_PLAN_DAYS_MAX,
   INTENT_RADIUS_MAX,
   INTENT_RADIUS_MIN,
+  INTENT_RELATED_MAX,
+  PLAN_SCOPES,
   PLAN_STARTS,
+  PLAN_TRANSPORTS,
+  type PlanTransport,
   type AssistantKind,
+  type AssistantQuestion,
   type AssistantSuggestion,
   type DayPart,
+  type PlanScope,
   type PlanStart,
 } from "./intent.js";
 import { PLAN_ROLES, PLAN_TRAVELS, type PlanRole, type PlanTravel } from "./plan.js";
@@ -185,6 +192,52 @@ export class AssistantIntentDto {
   @IsOptional()
   @IsIn(PLAN_STARTS)
   start?: PlanStart | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: INTENT_RELATED_MAX,
+    description: "Раскрытое желание: связанные понятия и синонимы (не фильтр — найденные по ним места выше)",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(INTENT_RELATED_MAX)
+  @IsString({ each: true })
+  @MaxLength(INTENT_KEYWORD_MAX, { each: true })
+  related?: string[];
+
+  @ApiPropertyOptional({
+    enum: PLAN_SCOPES,
+    enumName: "AssistantPlanScope",
+    nullable: true,
+    description:
+      "План: here — рядом (точка или выбор «Локація»), region — по всему региону (дни по районам), localities — " +
+      "пункты scopeLocalityIds; null — не названо",
+  })
+  @IsOptional()
+  @IsIn(PLAN_SCOPES)
+  scope?: PlanScope | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: "uuid",
+    maxItems: ASSISTANT_LOCALITIES_MAX,
+    description: "План, scope = localities: пункты, выбранные туристом в ответ на уточнение",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ASSISTANT_LOCALITIES_MAX)
+  @IsUUID("all", { each: true })
+  scopeLocalityIds?: string[];
+
+  @ApiPropertyOptional({
+    enum: PLAN_TRANSPORTS,
+    enumName: "AssistantPlanTransport",
+    nullable: true,
+    description: "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо",
+  })
+  @IsOptional()
+  @IsIn(PLAN_TRANSPORTS)
+  transport?: PlanTransport | null;
 }
 
 export class AssistantQueryDto extends OriginQueryDto {
@@ -217,6 +270,15 @@ export class AssistantQueryDto extends OriginQueryDto {
   @ArrayMaxSize(ASSISTANT_LOCALITIES_MAX)
   @IsUUID("all", { each: true })
   localityIds?: string[];
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      "Ответ на уточняющие вопросы плана: намерение — previous (scope, scopeLocalityIds, transport), модель не вызывается",
+  })
+  @IsOptional()
+  @IsBoolean()
+  answer?: boolean;
 
   @ApiPropertyOptional({ type: AssistantIntentDto, description: "Намерение прошлого ответа (для уточнений)" })
   @IsOptional()
@@ -287,10 +349,42 @@ export class AssistantPlanPartDto {
   @ApiProperty({ type: [AssistantPlanStopDto] }) stops!: AssistantPlanStopDto[];
 }
 
+export class AssistantPlanTransferDto {
+  @ApiProperty({
+    type: "integer",
+    description: "Переезд к району дня (от прошлого района или жилья), м по прямой",
+  })
+  meters!: number;
+  @ApiProperty({
+    type: "integer",
+    isArray: true,
+    description: "Без авто: такси и трансферы каталога рядом (индексы в items); на авто — пусто",
+  })
+  taxi!: number[];
+  @ApiProperty({
+    type: "integer",
+    isArray: true,
+    description: "Без авто: экскурсионные бюро каталога рядом (индексы в items)",
+  })
+  excursions!: number[];
+  @ApiProperty({
+    type: "integer",
+    isArray: true,
+    description: "Без авто: автостанции каталога рядом (индексы в items); расписания в каталоге нет",
+  })
+  busStations!: number[];
+}
+
 export class AssistantPlanDayDto {
   @ApiProperty({ type: "integer" }) dayNo!: number;
   @ApiProperty({ type: String, format: "date", example: "2026-11-07" }) date!: string;
   @ApiProperty({ type: [AssistantPlanPartDto] }) parts!: AssistantPlanPartDto[];
+  @ApiPropertyOptional({
+    type: AssistantPlanTransferDto,
+    nullable: true,
+    description: "Переезд в другой район перед этим днём (план по региону или пунктам); нет — null",
+  })
+  transfer?: AssistantPlanTransferDto | null;
 }
 
 export class AssistantPlanDto {
@@ -320,6 +414,15 @@ export class AssistantResultDto {
     description: "Пояснения выдачи",
   })
   notes!: AssistantNote[];
+  @ApiProperty({
+    enum: ASSISTANT_QUESTIONS,
+    enumName: "AssistantQuestion",
+    isArray: true,
+    description:
+      "Уточняющие вопросы перед планом (мест нет): scope — «Де плануєте відпочивати?», transport — «На авто / " +
+      "Пішки»; ответы — previous.scope и previous.transport",
+  })
+  questions!: AssistantQuestion[];
 }
 
 export class AssistantTranscriptDto {

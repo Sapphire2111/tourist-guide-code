@@ -105,6 +105,43 @@ export class AssistantRepository {
     );
   }
 
+  /**
+   * Лучшие опубликованные места разделов (категория или её корень — из списка) по всему региону: рейтинг Google с
+   * поправкой на число отзывов и рекомендацию (как quality плана). Для плана «по всьому регіону» — без радиуса.
+   */
+  topRated(
+    regionId: string,
+    q: { categoryIds: readonly string[]; localityIds?: readonly string[]; limit: number },
+  ): Promise<string[]> {
+    if (!q.categoryIds.length) return Promise.resolve([]);
+    return withTenant(this.db, regionContext(regionId), async () => {
+      let query = currentDb(this.db)
+        .selectFrom("places as p")
+        .innerJoin("categories as c", "c.id", "p.category_id")
+        .leftJoin("place_enrichments as e", "e.place_id", "p.id")
+        .select("p.id")
+        .where("p.status", "=", "published")
+        .where("c.active", "=", true)
+        .where("p.location", "is not", null)
+        .where((eb) =>
+          eb.or([eb("c.id", "in", [...q.categoryIds]), eb("c.parent_id", "in", [...q.categoryIds])]),
+        );
+      // Выбранные пункты (план по нескольким пунктам) — только их места.
+      if (q.localityIds?.length) query = query.where("p.locality_id", "in", [...q.localityIds]);
+      const rows = await query
+        .orderBy(
+          sql`coalesce((e.google->>'rating')::float8, 4)
+            + 0.4 * log(1 + coalesce((e.google->>'ratingCount')::int, 0))
+            + CASE WHEN p.recommended THEN 0.5 ELSE 0 END`,
+          "desc",
+        )
+        .orderBy("p.id")
+        .limit(q.limit)
+        .execute();
+      return rows.map((r) => r.id);
+    });
+  }
+
   /** Активные населённые пункты региона (для поля locality инструмента и выбора туриста). */
   localities(regionId: string): Promise<AssistantLocality[]> {
     return withTenant(
