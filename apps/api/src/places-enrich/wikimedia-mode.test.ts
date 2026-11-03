@@ -773,6 +773,42 @@ describe("серьёзное 7: дословная копия статьи", () 
     expect(copiesSource(EX, "Пробій — водоспад.")).toBe(false);
   });
 
+  it("обычный режим как в main: текст, совпавший со статьёй, принимается и кэшируется, второго пакета нет", async () => {
+    const facts = { назва: "Пробій", Вікіпедія: EX };
+    const hash = factsHash(facts);
+    const api = {
+      create: vi.fn(() => Promise.resolve({ id: "b1" })),
+      retrieve: vi.fn(() =>
+        Promise.resolve({ processing_status: "ended", request_counts: { processing: 0 } }),
+      ),
+      results: vi.fn(async function* () {
+        yield {
+          custom_id: hash,
+          result: {
+            type: "succeeded",
+            message: {
+              stop_reason: "end_turn",
+              model: AI_MODEL,
+              usage: { input_tokens: 1, output_tokens: 1 },
+              content: [{ type: "text", text: EX }],
+            },
+          },
+        };
+      }),
+    } as unknown as BatchesApi;
+    const store = new AiStore(await tmp());
+    const first = await runAi(api, store, [{ hash, facts, paraphrase: false }], { maxNew: 1, wait: true });
+    expect(first).toMatchObject({ accepted: 1, copies: 0 });
+    expect((await store.get(hash))?.text).toBe(EX);
+    const second = await runAi(api, store, [{ hash, facts, paraphrase: false }], { maxNew: 1, wait: true });
+    expect(second.submitted).toBe(0);
+    expect(api.create).toHaveBeenCalledTimes(1);
+    // Текст записывается обычным путём.
+    const { sql, stats } = await writeOne({ ai: { hash, result: await store.get(hash) } }, false);
+    expect(insertsAi(sql)).toBe(true);
+    expect(stats.aiWritten).toBe(1);
+  });
+
   it("пакет: копия статьи не остаётся в кэше — счётчик, следующий прогон создаёт заново", async () => {
     const facts = { назва: "Пробій", Вікіпедія: EX };
     const hash = factsHash(facts, true);

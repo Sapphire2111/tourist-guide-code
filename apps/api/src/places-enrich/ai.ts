@@ -372,7 +372,13 @@ export async function runAi(
     usage: { inputTokens: 0, outputTokens: 0 },
   };
 
-  const sourceOf = new Map(items.map((it) => [it.hash, wikiSource(it.facts)]));
+  // Проверка копии — только режим Wikimedia: обычный режим как раньше (копия не кэшировалась бы и оплачивалась снова).
+  const sourceOf = new Map(
+    items.flatMap((it) => (it.paraphrase ? [[it.hash, wikiSource(it.facts)]] : [])) as [
+      string,
+      string | null,
+    ][],
+  );
 
   const collect = async (batchId: string): Promise<boolean> => {
     const started = Date.now();

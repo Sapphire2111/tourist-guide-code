@@ -212,8 +212,9 @@ try {
     categoryName: (code) => CATEGORY_NAMES[code] ?? code,
     localityName: (code) => LOCALITY_UK.get(code) ?? null,
   });
-  // Режим Wikimedia: копия статьи в кэше не считается готовым текстом.
-  const copiesPurged = noGoogle ? await purgeCopies(store, aiItems.values()) : 0;
+  // Режим Wikimedia: копия статьи в кэше не считается готовым текстом. Пробный прогон кэш не меняет.
+  const copiesPurged =
+    noGoogle && !args.plan && !args.dryRun ? await purgeCopies(store, aiItems.values()) : 0;
   const aiMissing: AiItem[] = [];
   for (const it of aiItems.values()) if (!(await store.get(it.hash))) aiMissing.push(it);
   const tokens = estimateTokens(aiMissing);
