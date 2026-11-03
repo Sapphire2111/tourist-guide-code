@@ -186,7 +186,18 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         location: l.location ? { lat: l.location.lat, lng: l.location.lon } : null,
       }));
     },
-    search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max, signal }) => {
+    search: async ({
+      point,
+      radius,
+      categoryId,
+      q,
+      excludeSections,
+      localityIds,
+      limit,
+      max,
+      signal,
+      onPartial,
+    }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
@@ -211,10 +222,13 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         } catch (error) {
           // Сбой догрузки (не первой страницы и не отмена) — показываем уже загруженное.
           if (items.length === 0 || signal?.aborted) throw error;
+          onPartial?.();
           break;
         }
         items.push(...data.items.map(summaryOf));
         offset = max && items.length < max ? data.nextOffset : null;
+        // Дошли до max, а сервер говорит, что места есть ещё, — список усечён.
+        if (max && items.length >= max && data.nextOffset !== null) onPartial?.();
       }
       return max ? items.slice(0, max) : items;
     },

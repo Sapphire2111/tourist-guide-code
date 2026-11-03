@@ -2,6 +2,7 @@
 // список рядом остаётся (C05 «ошибка карты»).
 import { Component, lazy, Suspense, useState, type ComponentType, type ReactNode } from "react";
 import { useT } from "@tg/ui";
+import { isChunkLoadError, reloadOnceForChunkError } from "../chunk-reload.js";
 import { MAPS_ORIGIN, mapsAvailable } from "./map-config.js";
 import type { PlacesMapProps } from "./PlacesMap.js";
 
@@ -51,6 +52,8 @@ export function preloadMap(language?: string): Promise<MapModule> {
         // Повтор после сбоя: и промис, и lazy (он запомнил отказ) сбрасываются — следующий монтаж создаст новый.
         mapModule = null;
         lazyMap = null;
+        // Старый чанк карты после деплоя — один раз автоматически обновляем страницу.
+        if (isChunkLoadError(e)) reloadOnceForChunkError();
         throw e;
       },
     );

@@ -4,11 +4,16 @@
 import { Component, lazy, Suspense, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { MessageKey } from "@tg/i18n";
 import { Button, useT } from "@tg/ui";
+import { isChunkLoadError, reloadForChunkError, reloadOnceForChunkError } from "../chunk-reload.js";
 
 class ScreenBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    // Старый чанк после деплоя: один раз автоматически обновляем страницу (дальше — кнопка).
+    if (isChunkLoadError(error)) reloadOnceForChunkError();
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
@@ -21,12 +26,14 @@ export function lazyScreen<P extends object>(
   errorKey: MessageKey = "miniapp.booking.screenError",
 ): ComponentType<P> {
   let current: ComponentType<P> | null = null;
+  let lastLoadError: unknown = null;
   const get = (): ComponentType<P> =>
     (current ??= lazy(() =>
       load().then(
         (c) => ({ default: c }),
         (e: unknown) => {
           current = null;
+          lastLoadError = e;
           throw e;
         },
       ),
@@ -42,7 +49,14 @@ export function lazyScreen<P extends object>(
         fallback={
           <div className="kosiv-card kosiv-empty" data-testid="screen-load-error">
             <p role="alert">{t(errorKey)}</p>
-            <Button onClick={() => setAttempt((n) => n + 1)}>{t("miniapp.guide.retry")}</Button>
+            <Button
+              onClick={() => {
+                // Чанк потерян после деплоя — повтор import() бесполезен, перезагружаем страницу.
+                if (!reloadForChunkError(lastLoadError)) setAttempt((n) => n + 1);
+              }}
+            >
+              {t("miniapp.guide.retry")}
+            </Button>
           </div>
         }
       >

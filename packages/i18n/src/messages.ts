@@ -303,6 +303,8 @@ export const uk = {
   "miniapp.location.outside": "Ви поза регіоном — показуємо всі локації",
   "miniapp.location.change": "Змінити локацію",
   "miniapp.catalog.regionWide": "Поруч нічого не знайдено — показуємо результати по всьому регіону.",
+  "miniapp.catalog.partial":
+    "Показано не всі заклади — частина не завантажилась або список скорочено. Спробуйте оновити.",
   "miniapp.home.nearYou": "Поруч з вами",
   "miniapp.location.gpsFailed":
     "Не вдалося визначити місцезнаходження — дозвольте доступ до геолокації. Показуємо всі локації.",
@@ -1826,6 +1828,8 @@ export const en: Messages = {
   "miniapp.location.outside": "You are outside the region — showing all locations",
   "miniapp.location.change": "Change location",
   "miniapp.catalog.regionWide": "Nothing found nearby — showing results across the whole region.",
+  "miniapp.catalog.partial":
+    "Not all places are shown — some failed to load or the list was cut. Try refreshing.",
   "miniapp.home.nearYou": "Near you",
   "miniapp.location.gpsFailed":
     "Could not get your location — please allow location access. Showing all locations.",

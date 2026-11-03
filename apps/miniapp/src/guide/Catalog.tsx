@@ -10,7 +10,8 @@ import { searchAround, useLocationCaption, useLocations } from "./LocationProvid
 import { MapSlot } from "./MapSlot.js";
 import { DEVICE_MAX_ZOOM } from "./Nearby.js";
 import { AsyncView, PlaceList } from "./parts.js";
-import type { CatalogSection, Category } from "./types.js";
+import type { LatLng } from "./geo.js";
+import type { CatalogSection, Category, LocalityOption } from "./types.js";
 
 /** Поиск мест по всему региону или выбранным локациям (#/search?q=…): быстрые запросы сезона, «Усі місця». */
 export function PlaceSearch({ initialQuery = "" }: { initialQuery?: string }) {
@@ -50,6 +51,16 @@ export const STAY_MAP_MAX = 300;
 /** Сколько ждать базовую точку перед поиском без неё, мс. */
 export const BASE_WAIT_MS = 4_000;
 
+/** Середина центров выбранных пунктов (у которых есть координаты); нет ни одной — null. */
+export function selectedCenter(options: LocalityOption[] | null, selected: readonly string[]): LatLng | null {
+  const points = (options ?? []).filter((o) => selected.includes(o.id) && o.location).map((o) => o.location!);
+  if (points.length === 0) return null;
+  return {
+    lat: points.reduce((a, p) => a + p.lat, 0) / points.length,
+    lng: points.reduce((a, p) => a + p.lng, 0) / points.length,
+  };
+}
+
 function CategoryPlaces({
   root,
   subcategories,
@@ -62,7 +73,7 @@ function CategoryPlaces({
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const { selected: localityIds, gps, setSheetOpen } = useLocations();
+  const { selected: localityIds, gps, setSheetOpen, options: localityOptions } = useLocations();
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
   const [categoryId, setCategoryId] = useState(rootId);
@@ -74,6 +85,10 @@ function CategoryPlaces({
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
   const point = gps ?? base?.point ?? null;
+  // Центр карты: GPS, иначе выбранные локации (середина их центров), QR — только если ничего не выбрано.
+  const mapCenter =
+    gps ?? (byLocation ? selectedCenter(localityOptions, localityIds) : (base?.point ?? null));
+  const mapCenterLabel = gps ? t("miniapp.map.me") : byLocation ? undefined : base?.name;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -84,20 +99,29 @@ function CategoryPlaces({
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
         .then(async () => {
+          let partial = false;
           const params = {
             categoryId,
             q: q || undefined,
             ...(byLocation ? { localityIds } : {}),
-            ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
+            ...(mapFirst
+              ? {
+                  max: STAY_MAP_MAX,
+                  signal,
+                  onPartial: () => {
+                    partial = true;
+                  },
+                }
+              : {}),
           };
-          if (!gps) return { list: await api.search({ ...params, point }), regionWide: false };
+          if (!gps) return { list: await api.search({ ...params, point }), regionWide: false, partial };
           const near = await searchAround(api.search, params, gps);
           // Текстовый запрос не нашёл ничего рядом (до 10 км) — ищем по региону, с пометкой.
           if (q && near.length === 0)
-            return { list: await api.search({ ...params, point: gps }), regionWide: true };
-          return { list: near, regionWide: false };
+            return { list: await api.search({ ...params, point: gps }), regionWide: true, partial };
+          return { list: near, regionWide: false, partial };
         })
-        .then(({ list, regionWide }) => ({ list, regionWide, submitId })),
+        .then(({ list, regionWide, partial }) => ({ list, regionWide, partial, submitId })),
 
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
   );
@@ -182,6 +206,11 @@ function CategoryPlaces({
           {t("miniapp.catalog.regionWide")}
         </p>
       )}
+      {places.status === "ready" && places.data.partial && (
+        <p className="kosiv-muted" role="note" data-testid="catalog-partial">
+          {t("miniapp.catalog.partial")}
+        </p>
+      )}
       <AsyncView state={places} retry={retry}>
         {({ list }) =>
           list.length === 0 ? (
@@ -210,8 +239,8 @@ function CategoryPlaces({
               {view === "map" && (
                 <MapSlot
                   places={list}
-                  center={point}
-                  centerLabel={gps ? t("miniapp.map.me") : base?.name}
+                  center={mapCenter}
+                  centerLabel={mapCenterLabel}
                   // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
                   maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
                 />
