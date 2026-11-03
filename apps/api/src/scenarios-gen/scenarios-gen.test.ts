@@ -34,6 +34,12 @@ const place = (category: string, name: string, m: number, over: Partial<GenPlace
     ...over,
   });
 
+/** Текст запроса к модели (строка или блоки). */
+const textOf = (params: unknown): string => {
+  const c = (params as { messages: { content: string | { text: string }[] }[] }).messages[0]!.content;
+  return typeof c === "string" ? c : c.map((x) => x.text).join("\n");
+};
+
 const theme = (code: ThemeCode) => [...THEMES, ...TARGET_THEMES].find((t) => t.code === code)!;
 const brief = (code: ThemeCode, over: Partial<Brief> = {}): Brief => ({
   code: `ai-yaremche-${code}-test-1d`,
@@ -467,6 +473,44 @@ describe("комфорт туриста (решение владельца 03.11
     expect(new Set(codes).size).toBe(codes.length);
   });
 
+  it("2 раунда критика: «Графік: …» в примечании один раз, критик видит примечание без него", async () => {
+    const market = place("markets", "Косівський ринок", 300, {
+      weekly: [{ dayOfWeek: 6, opensAt: "06:00", closesAt: "13:00" }],
+    });
+    const museum2 = place("museums", "Музей Косова", 1100);
+    const set = setOf([market, lunch, museum2]);
+    const base = (note: string) =>
+      scenario([
+        { ...item("p1", "08:00", 60, ["p3"]), note_uk: note },
+        item("p3", "10:00", 60),
+        item("p2", "12:00", 75),
+      ]);
+    const res = (o: unknown) => ({
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+      content: [{ type: "text", text: JSON.stringify(o) }],
+    });
+    // Критик копирует примечание с приписанным графиком — программа не дублирует.
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(res(base("Приходьте рано.")))
+      .mockResolvedValueOnce(
+        res({ verdict: "fix", issues: ["a"], revised: base("Приходьте рано. Графік: сб 06:00-13:00.") }),
+      )
+      .mockResolvedValueOnce(
+        res({ verdict: "fix", issues: ["b"], revised: base("Приходьте о 7:00. Графік: сб 06:00-13:00.") }),
+      );
+    const r = await generateOne({ create } as unknown as MessagesApi, brief("culture"), set, emptyUsage(), {
+      retries: 0,
+      criticRounds: 2,
+    });
+    const note = r.draft!.items[0]!.note!.uk;
+    expect(note).toBe("Приходьте о 7:00. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.");
+    expect(note.match(/Графік:/g)).toHaveLength(1);
+    const toCritic = textOf(create.mock.calls[2]![0]);
+    expect(toCritic.split("Чернетка (JSON):")[1]).not.toMatch(/Графік:/);
+  });
+
   it("критик: правка принимается, только если проходит проверку; «ok» — конец", async () => {
     const set = setOf([probii, lunch, chan]);
     const good = scenario([
@@ -508,8 +552,19 @@ describe("комфорт туриста (решение владельца 03.11
     ]);
     expect(r.draft!.items[0]!.timeHint).toBe("09:30");
     // Второй раунд критика получил ошибки программы.
-    const second = create.mock.calls[2]![0] as { messages: { content: string }[]; model: string };
-    expect(second.messages[0]!.content).toMatch(/не пройшло перевірку програмою[\s\S]*p9/);
+    const second = create.mock.calls[2]![0] as {
+      model: string;
+      fallbacks: unknown;
+      betas: string[];
+      system: { cache_control?: unknown }[];
+      messages: { content: { cache_control?: unknown }[] }[];
+    };
+    expect(textOf(second)).toMatch(/не пройшло перевірку програмою[\s\S]*p9/);
+    // Кэш: системный промпт и постановка с кандидатами; запасная модель при отказе.
+    expect(second.system[0]!.cache_control).toEqual({ type: "ephemeral" });
+    expect(second.messages[0]!.content[0]!.cache_control).toEqual({ type: "ephemeral" });
+    expect(second.messages[0]!.content[1]!.cache_control).toBeUndefined();
+    expect(second).toMatchObject({ fallbacks: "default", betas: ["server-side-fallback-2026-07-01"] });
     expect(second.model).toBe("claude-opus-5-5");
   });
 });

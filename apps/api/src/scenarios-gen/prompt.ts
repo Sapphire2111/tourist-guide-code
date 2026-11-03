@@ -12,9 +12,22 @@ import { DAY_ACTIVE_MAX_MIN, DAY_END, DAY_START, MODEL_TAGS } from "./validate.j
 export const GEN_MODEL = "claude-opus-5-5";
 export const GEN_EFFORT = "high" as const;
 /** $ за 1 млн токенов Opus 5.5 (обычные запросы): запись в кэш ×1,25, чтение ×0,1. Размышление — как вывод. */
-export const GEN_USD_PER_MTOK = { input: 4, cacheWrite: 5, cacheRead: 0.4, output: 20 } as const;
-/** Без потоковой выдачи SDK допускает до ~21 тыс. (иначе требует stream); с размышлением — с запасом. */
-export const GEN_MAX_TOKENS = 20_000;
+export const GEN_USD_PER_MTOK = { input: 4, cacheWrite: 5, cacheRead: 0.2, output: 20 } as const;
+/** Без потоковой выдачи (skill claude-api: ~16 тыс. для обычных запросов); ответ со сценарием — 2–5 тыс. */
+export const GEN_MAX_TOKENS = 16_000;
+/**
+ * Запасная модель при отказе (refusal) — на стороне API, по рекомендации skill claude-api для Opus 5.5
+ * («default» выбирает модель по категории отказа).
+ */
+export const GEN_BETAS = ["server-side-fallback-2026-07-01"] as const;
+
+/** Параметры запроса (beta: запасная модель при отказе). */
+export type GenParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+
+/** Постоянный системный промпт — с кэшем (повторные запросы читают его из кэша). */
+const cachedSystem = (text: string): GenParams["system"] => [
+  { type: "text", text, cache_control: { type: "ephemeral" } },
+];
 
 const SEASON_UK: Record<string, string> = {
   winter: "зима",
@@ -121,19 +134,17 @@ export const OUTPUT_SCHEMA = {
   },
 } as const;
 
-export function requestParams(
-  b: Brief,
-  set: CandidateSet,
-  retryErrors: readonly string[] = [],
-): Anthropic.MessageCreateParamsNonStreaming {
+export function requestParams(b: Brief, set: CandidateSet, retryErrors: readonly string[] = []): GenParams {
   return {
     model: GEN_MODEL,
     max_tokens: GEN_MAX_TOKENS,
     // Адаптивное размышление (у Opus 5.5 включено всегда), высокое усилие — качество плана важнее токенов.
     thinking: { type: "adaptive" },
     output_config: { effort: GEN_EFFORT, format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-    system: SYSTEM_PROMPT,
+    system: cachedSystem(SYSTEM_PROMPT),
     messages: [{ role: "user", content: userPrompt(b, set, retryErrors) }],
+    betas: [...GEN_BETAS],
+    fallbacks: "default",
   };
 }
 
@@ -171,8 +182,17 @@ export function criticPrompt(
   facts: readonly string[],
   programErrors: readonly string[] = [],
 ): string {
+  return `${userPrompt(b, set)}\n${criticTail(set, draft, facts, programErrors)}`;
+}
+
+/** Изменяемая часть запроса критика: расчёты программы, ошибки прошлой правки, JSON чернетки. */
+export function criticTail(
+  _set: CandidateSet,
+  draft: GenScenario,
+  facts: readonly string[],
+  programErrors: readonly string[] = [],
+): string {
   const parts = [
-    userPrompt(b, set),
     "",
     "Розрахунки програми для чернетки (дорога гірськими дорогами, захід сонця):",
     ...facts.map((f) => `- ${f}`),
@@ -193,14 +213,25 @@ export function criticParams(
   draft: GenScenario,
   facts: readonly string[],
   programErrors: readonly string[] = [],
-): Anthropic.MessageCreateParamsNonStreaming {
+): GenParams {
   return {
     model: GEN_MODEL,
     max_tokens: GEN_MAX_TOKENS,
     thinking: { type: "adaptive" },
     output_config: { effort: GEN_EFFORT, format: { type: "json_schema", schema: CRITIC_SCHEMA } },
-    system: CRITIC_SYSTEM,
-    messages: [{ role: "user", content: criticPrompt(b, set, draft, facts, programErrors) }],
+    system: cachedSystem(CRITIC_SYSTEM),
+    // Постановка и кандидаты одинаковы во всех раундах критика — кэшируются; меняется только хвост с чернеткой.
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: userPrompt(b, set), cache_control: { type: "ephemeral" } },
+          { type: "text", text: criticTail(set, draft, facts, programErrors) },
+        ],
+      },
+    ],
+    betas: [...GEN_BETAS],
+    fallbacks: "default",
   };
 }
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isMountainHike, landmarkOf, tourLandmarkOf, visitEstimate, visitMinutes } from "./visit-duration.js";
+import {
+  isMountainHike,
+  isSeasonalHike,
+  landmarkOf,
+  tourLandmarkOf,
+  visitEstimate,
+  visitMinutes,
+} from "./visit-duration.js";
 import { placeFitsSeason } from "./season.js";
 
 const p = (category: string, ...names: string[]) => ({ category, names });
@@ -78,40 +85,61 @@ describe("visitEstimate — реалистичная длительность", 
   });
 });
 
-describe("isMountainHike — одно определение для сезона и погоды", () => {
+describe("горные места: погода (isMountainHike) и сезон (isSeasonalHike)", () => {
   const tags = { tags: [] as string[] };
-  it("Пікуй, Синяк, Hoverla, «Похід на Говерлу», полонина, турфирма на вершину — горный; зимой не предлагаются", () => {
+  const winter = (x: ReturnType<typeof p>) => placeFitsSeason({ ...x, ...tags }, "winter");
+
+  it("вершины, «Похід на Говерлу», экскурсия на вершину — горные и для погоды, и для сезона (зимой скрыты)", () => {
     for (const x of [
       p("nature", "Пікуй"),
       p("nature", "гора Синяк"),
       p("nature", "Hoverla peak"),
       p("active", "Похід на Говерлу"),
-      p("sights", "Полонина Перці"),
       p("excursions", "ЕКСКУРСІЇ ТА ТРАНСФЕРИ ЩОДНЯ НА ГОРУ ГОВЕРЛА"),
     ]) {
       expect(isMountainHike(x), x.names[0]).toBe(true);
-      expect(placeFitsSeason({ ...x, ...tags }, "winter"), x.names[0]).toBe(false);
+      expect(isSeasonalHike(x), x.names[0]).toBe(true);
+      expect(winter(x), x.names[0]).toBe(false);
       expect(placeFitsSeason({ ...x, ...tags }, "summer"), x.names[0]).toBe(true);
     }
   });
 
-  it("Прокат Говерла, Готель Говерла, кафе, музей, вид на гору, водоспад — не горный и зимой видны", () => {
+  it("джип-/квадро-туры и прокаты в горах — для погоды горные, зимой видны", () => {
     for (const x of [
-      p("active", "Прокат Говерла"),
+      p("active", "Джип-тур на Синяк"),
+      p("active", "Квадро тури на полонини"),
+      p("active", "Прокат квадроциклів Говерла"),
+    ]) {
+      expect(isMountainHike(x), x.names[0]).toBe(true);
+      expect(isSeasonalHike(x), x.names[0]).toBe(false);
+      expect(winter(x), x.names[0]).toBe(true);
+    }
+  });
+
+  it("«Церква на горі», полонина-пам'ятка — для погоды горные (кроме церкви), для сезона нет", () => {
+    expect(isSeasonalHike(p("sights", "Церква на горі"))).toBe(false);
+    expect(winter(p("sights", "Церква на горі"))).toBe(true);
+    expect(isMountainHike(p("sights", "Полонина Перці"))).toBe(true);
+    expect(winter(p("sights", "Полонина Перці"))).toBe(true);
+  });
+
+  it("готель, кафе, музей, вид на гору, водоспад, «Горіховий» — не горные ни для чего", () => {
+    for (const x of [
       p("hotels", "Готель Говерла"),
       p("sights", "Готель Говерла"),
+      p("gear-rental", "Прокат спорядження Говерла"),
       p("cafes", "Кафе Гора"),
       p("museums", "Музей Говерли"),
       p("active", "Вид на Говерлу та Петром"),
       p("nature", "Водоспад Пробій"),
       p("nature", "Горіховий гай"),
-      p("active", "Джип-тур на Синяк"),
     ]) {
       expect(isMountainHike(x), x.names[0]).toBe(false);
-      expect(placeFitsSeason({ ...x, ...tags }, "winter"), x.names[0]).toBe(true);
+      expect(isSeasonalHike(x), x.names[0]).toBe(false);
+      expect(winter(x), x.names[0]).toBe(true);
     }
     // Стежка Довбуша — горная для погоды, но маршрут уместен и зимой.
     expect(isMountainHike(p("sights", "Стежка Довбуша"))).toBe(true);
-    expect(placeFitsSeason({ ...p("sights", "Стежка Довбуша"), ...tags }, "winter")).toBe(true);
+    expect(winter(p("sights", "Стежка Довбуша"))).toBe(true);
   });
 });

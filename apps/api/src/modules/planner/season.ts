@@ -2,7 +2,7 @@
 // (грудень–лютий), весна, літо, осінь. Сценарии и варианты на выбор — только уместные в этот сезон: зимой без
 // летних походов на вершины и мест с тегом «Літо», летом без мест с тегом «Зима» (лыжи). Без Nest и БД.
 import { SCENARIO_SEASONS, type ScenarioSeason } from "../../db/index.js";
-import { isMountainHike, landmarkOf } from "./visit-duration.js";
+import { isSeasonalHike, landmarkOf } from "./visit-duration.js";
 
 export const DEFAULT_TIME_ZONE = "Europe/Kyiv";
 
@@ -65,8 +65,8 @@ export function placeFitsSeason(p: SeasonPlace, season: ScenarioSeason): boolean
   if (summer && !winter && season === "winter") return false;
   if (winter && !summer && season !== "winter") return false;
   if (SNOWLESS.has(season) && SNOW_ONLY_CATEGORIES.has(p.category)) return false;
-  // Горный поход (то же определение, что для погоды) — не зимой; кроме маршрутов, уместных и зимой (стежка Довбуша).
-  if (season === "winter" && isMountainHike(p) && !landmarkOf(p)?.winterOk) return false;
+  // Горный поход (isSeasonalHike: маршруты природы и активностей) — не зимой; кроме маршрутов, уместных и зимой.
+  if (season === "winter" && isSeasonalHike(p) && !landmarkOf(p)?.winterOk) return false;
   return true;
 }
 

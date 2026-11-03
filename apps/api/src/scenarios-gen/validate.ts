@@ -149,6 +149,10 @@ export const MODEL_TAGS = SCENARIO_TAGS.filter(
   (t) => !["one_day", "multi_day", "kids", "no_car", "rain", "ski", "excursion"].includes(t),
 );
 
+/** Приписка программы «Графік: …» в примечании (снимается перед повторной проверкой). */
+const SCHEDULE_RE = /\s*Графік:[\s\S]*$/u;
+export const stripSchedule = (note: string) => note.replace(SCHEDULE_RE, "").trim();
+
 /** Длина примечания к пункту (символов): практичные советы гида, без обрыва. */
 export const NOTE_MAX = 320;
 
@@ -273,7 +277,8 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
           if (isIndoor(alt)) rainAlt = true;
         }
       }
-      let note = clean(it.note_uk ?? "", NOTE_MAX);
+      // Графік дописує программа — прежний (из раунда критика) снимаем и пишем заново один раз.
+      let note = clean(stripSchedule(it.note_uk ?? ""), NOTE_MAX);
       // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день.
       const openDays = new Set(place.weekly.map((w) => w.dayOfWeek)).size;
       if (openDays > 0 && openDays < 7)
@@ -498,7 +503,7 @@ export function draftToGen(d: ScenarioDraft, set: CandidateSet): GenScenario {
           ref: refOf.get(i.placeId) ?? i.placeId,
           time: i.timeHint,
           minutes: i.durationMin,
-          note_uk: i.note?.uk ?? "",
+          note_uk: stripSchedule(i.note?.uk ?? ""),
           alternatives: i.alternatives.map((a) => refOf.get(a) ?? a),
         })),
     })),

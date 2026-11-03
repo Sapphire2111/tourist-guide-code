@@ -130,7 +130,7 @@ async function main(): Promise<void> {
     const usedCounts = new Map<string, number>();
     const outcomes: GenOutcome[] = await pool(chosen, args.concurrency, async ({ brief, set }) => {
       const fresh = selectCandidates(brief, catalog, usedCounts);
-      const r = await generateOne(client.messages, brief, fresh.viable ? fresh : set, usage, {
+      const r = await generateOne(client.beta.messages, brief, fresh.viable ? fresh : set, usage, {
         retries: args.retries,
         criticRounds: args.criticRounds,
       });

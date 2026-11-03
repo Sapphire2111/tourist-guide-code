@@ -11,12 +11,13 @@ import {
   parseCritic,
   parseScenario,
   requestParams,
+  type GenParams,
   type GenScenario,
 } from "./prompt.js";
 import { draftFacts, draftToGen, validateScenario, type ScenarioDraft } from "./validate.js";
 
 /** Часть клиента Anthropic, нужная генератору (подменяется в тестах). */
-export type MessagesApi = Pick<Anthropic["messages"], "create">;
+export type MessagesApi = Pick<Anthropic["beta"]["messages"], "create">;
 
 /** Токены: input — без кэша; cacheWrite/cacheRead — запись и чтение кэша промпта (цены разные). */
 export type Usage = {
@@ -53,7 +54,7 @@ export const usd = (u: Usage, discount = 1) =>
 /** Запрос к модели: текст ответа или причина отказа; токены — в usage. */
 async function ask(
   messages: MessagesApi,
-  params: Anthropic.MessageCreateParamsNonStreaming,
+  params: GenParams,
   usage: Usage,
 ): Promise<{ text: string } | { error: string }> {
   try {

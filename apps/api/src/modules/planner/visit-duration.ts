@@ -235,18 +235,44 @@ const MOUNTAIN_RE = new RegExp(
     `ridge|trail|hiking|стежк${L_}*|похід${L_}*)([^${L_}]|$)`,
   "iu",
 );
-const MOUNTAIN_CATEGORIES: ReadonlySet<string> = new Set(["nature", "active", "excursions", "sights"]);
+/** Погода: горные места по категории (активности в горах — джип/квадро-туры, прокаты — тоже). */
+const WEATHER_MOUNTAIN_CATEGORIES: ReadonlySet<string> = new Set([
+  "nature",
+  "active",
+  "excursions",
+  "sights",
+]);
+/** Сезон: общая «горная» регулярка — только для маршрутов природы и активностей (не «Церква на горі»). */
+const SEASON_ROUTE_CATEGORIES: ReadonlySet<string> = new Set(["nature", "active"]);
+
+type MountainPlace = NamedPlace & { extraCategories?: readonly string[] | undefined };
+const catsOf = (p: MountainPlace) => [p.category, ...(p.extraCategories ?? [])];
+/** Известный маршрут на вершину или экскурсия на вершину (турфирма с вершиной в названии). */
+const summitRoute = (p: MountainPlace) => landmarkOf(p)?.kind === "hike" || tourLandmarkOf(p) !== null;
 
 /**
- * Горный поход — ОДНО определение для сезона (зимой не предлагаем) и погоды (в грозу, ветер, снегопад не предлагаем,
- * предупреждаем): известный маршрут на вершину (landmarkOf, kind hike), экскурсия на вершину (турфирма с вершиной
- * в названии) или место природы/активностей/пам'яток с горным названием — без стоп-слов маршрута (прокат, тур, джип,
- * готель, музей, кафе…) и без «вид на…» (оглядовий майданчик).
+ * Горное место для ПОГОДЫ (в грозу, сильный ветер, снегопад, гололёд не предлагаем и предупреждаем): маршрут или
+ * экскурсия на вершину; природа/пам'ятки/экскурсии с горным названием без стоп-слов маршрута (готель, музей, кафе…);
+ * активности в горах с горным названием — всегда, даже джип-/квадро-тур и прокат («Джип-тур на Говерлу»: в грозу на
+ * полонину не едут). «Вид на…» (оглядовий майданчик) — не горное.
  */
-export function isMountainHike(p: NamedPlace & { extraCategories?: readonly string[] | undefined }): boolean {
-  if (landmarkOf(p)?.kind === "hike" || tourLandmarkOf(p)) return true;
-  const cats = [p.category, ...(p.extraCategories ?? [])];
-  if (!cats.some((c) => MOUNTAIN_CATEGORIES.has(c))) return false;
+export function isMountainHike(p: MountainPlace): boolean {
+  if (summitRoute(p)) return true;
+  const cats = catsOf(p);
+  if (!cats.some((c) => WEATHER_MOUNTAIN_CATEGORIES.has(c))) return false;
+  if (p.names.some((n) => VIEW_RE.test(n))) return false;
+  const activity = cats.includes("active");
+  if (!activity && p.names.some((n) => NOT_ROUTE_RE.test(n))) return false;
+  return p.names.some((n) => MOUNTAIN_RE.test(n));
+}
+
+/**
+ * Горный поход для СЕЗОНА (зимой не предлагаем): маршрут или экскурсия на вершину, либо природа/активность с горным
+ * названием без стоп-слов маршрута — джип-тур, прокат и «Церква на горі» зимой видны.
+ */
+export function isSeasonalHike(p: MountainPlace): boolean {
+  if (summitRoute(p)) return true;
+  if (!catsOf(p).some((c) => SEASON_ROUTE_CATEGORIES.has(c))) return false;
   if (p.names.some((n) => NOT_ROUTE_RE.test(n) || VIEW_RE.test(n))) return false;
   return p.names.some((n) => MOUNTAIN_RE.test(n));
 }
