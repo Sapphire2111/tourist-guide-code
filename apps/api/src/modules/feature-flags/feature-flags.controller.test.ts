@@ -165,7 +165,7 @@ describe("GET /feature-flags", () => {
     app = s.app;
     const res = await request(app.getHttpServer()).get("/feature-flags").expect(200);
     expect(res.body.regionId).toBeNull();
-    expect(res.body.items).toHaveLength(10);
+    expect(res.body.items).toHaveLength(11);
     expect(res.body.items.every((i: { enabled: boolean }) => !i.enabled)).toBe(true);
     expect(enabledOf(res.body, "finance.live")).toBe(false);
   });

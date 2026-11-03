@@ -1,7 +1,7 @@
 // Unit (без сети и БД): прокси фото Google — адрес файла запрашивается у Google один раз (дальше память и БД),
 // ключ уходит только заголовком, ответ не с хоста Google не отдаётся, суточный предел, без ключа — без запросов.
 // Картка місця с обогащением и без («нет данных — пусто»).
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
 import { usageDb } from "../../../test/support/usage-db.js";
 import type { EmergencyContactsRepository } from "../emergency-contacts/index.js";
@@ -9,6 +9,7 @@ import type { MediaService } from "../media/index.js";
 import type { RegionsRepository } from "../regions/index.js";
 import type { GuideRepository } from "./guide.repository.js";
 import { coverEtag, GuideService, isAutoDescription } from "./guide.service.js";
+import { monthOf } from "../../places-enrich/quota.js";
 import { GooglePhotosService } from "./google-photos.js";
 
 const NAME = "places/ChIJ-YqOVmolN0cRIY6uqQPGF4k/photos/AbC_1";
@@ -85,6 +86,12 @@ describe("GooglePhotosService", () => {
   });
 
   it("суточный предел — счётчик в БД: переживает рестарт api (новый экземпляр сервиса)", async () => {
+    // Сутки квоты — по America/Los_Angeles (quota.ts): 06:30 UTC 3-го — ещё 2-е; не зависит от времени запуска.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-03T06:30:00Z"));
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const usage = new Map<string, number>();
     const first = photos({ dailyLimit: 1, usage });
     expect(await first.svc.uri(NAME, 400)).toBe(URI);
@@ -94,16 +101,14 @@ describe("GooglePhotosService", () => {
     expect(first.fetchMock).toHaveBeenCalledTimes(1);
     expect(restarted.fetchMock).not.toHaveBeenCalled();
     expect([...usage.entries()].sort()).toEqual([
-      [`${new Date().toISOString().slice(0, 7)}-01|place_photos_month`, 1],
-      [`${new Date().toISOString().slice(0, 10)}|place_photos`, 1],
+      ["2026-11-01|place_photos_month", 1],
+      ["2026-11-02|place_photos", 1],
     ]);
     expect(await restarted.svc.exhausted()).toBe(true);
   });
 
   it("месячный предел (общий с CLI): исчерпан — без запросов, и сутки не тратятся", async () => {
-    const usage = new Map<string, number>([
-      [`${new Date().toISOString().slice(0, 7)}-01|place_photos_month`, 5],
-    ]);
+    const usage = new Map<string, number>([[`${monthOf(new Date())}|place_photos_month`, 5]]);
     const p = photos({ monthlyLimit: 5, usage });
     expect(await p.svc.uri(NAME, 400)).toBeNull();
     expect(p.fetchMock).not.toHaveBeenCalled();

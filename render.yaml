@@ -76,6 +76,14 @@ services:
         value: "300"
       - key: GOOGLE_PHOTO_MONTHLY_LIMIT
         value: "1000"
+      # Ассистент на главной (флаг module.assistant): Claude API; голос — Speech-to-Text по GOOGLE_MAPS_API_KEY.
+      # Без ключа ассистент отвечает 503. Выставляется вручную в Render → api → Environment.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ASSISTANT_DAILY_LIMIT
+        value: "500"
+      - key: ASSISTANT_USER_DAILY_LIMIT
+        value: "40"
       - key: TRUST_PROXY_HOPS
         # Цепочка на Render: клиент → Cloudflare → балансировщик Render → локальный прокси (::1); проверено 02.11.2026.
         value: "3"
