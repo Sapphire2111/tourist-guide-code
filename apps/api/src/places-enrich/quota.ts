@@ -5,8 +5,8 @@
 import { sql } from "kysely";
 import type { Db } from "../db/index.js";
 
-/** SKU Google, которые считаются: Place Details Enterprise + Atmosphere и Place Photos. */
-export type GoogleSku = "place_details" | "place_photos";
+/** SKU Google, которые считаются: Place Details Enterprise + Atmosphere, Place Photos и Weather (сейчас + по дням). */
+export type GoogleSku = "place_details" | "place_photos" | "weather";
 
 /** Бесплатный месячный объём Google на SKU (прейскурант с 03.2025). */
 export const GOOGLE_FREE_MONTHLY = 1000;

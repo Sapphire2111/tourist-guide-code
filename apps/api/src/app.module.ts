@@ -26,6 +26,7 @@ import { RateLimitModule } from "./modules/rate-limit/index.js";
 import { RbacModule, RbacTenantContextSource } from "./modules/rbac/index.js";
 import { RoleAssignmentsModule } from "./modules/role-assignments/index.js";
 import { SystemModule } from "./modules/system/index.js";
+import { WeatherModule } from "./modules/weather/index.js";
 
 @Module({})
 export class AppModule {
@@ -65,6 +66,8 @@ export class AppModule {
           | "GOOGLE_MAPS_API_KEY"
           | "GOOGLE_PHOTO_DAILY_LIMIT"
           | "GOOGLE_PHOTO_MONTHLY_LIMIT"
+          | "GOOGLE_WEATHER_DAILY_LIMIT"
+          | "GOOGLE_WEATHER_MONTHLY_LIMIT"
           | "ANTHROPIC_API_KEY"
           | "ASSISTANT_DAILY_LIMIT"
           | "ASSISTANT_USER_DAILY_LIMIT"
@@ -144,6 +147,14 @@ export class AppModule {
         ),
         // Заявки гостиницы, «Про заклад», персонал и планировщик (блок 5, ADR-0020).
         HostRequestsModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN }),
+        // Погода (флаг module.weather): снимки по точкам в БД; фоновое обновление — вместе с задачами воркера в процессе
+        // api (WORKER_IN_PROCESS), иначе лениво при запросе. «Мій план» берёт прогноз у WeatherService (global).
+        WeatherModule.forRoot({
+          googleApiKey: env.GOOGLE_MAPS_API_KEY,
+          googleDailyLimit: env.GOOGLE_WEATHER_DAILY_LIMIT,
+          googleMonthlyLimit: env.GOOGLE_WEATHER_MONTHLY_LIMIT,
+          refresh: env.WORKER_IN_PROCESS,
+        }),
         PlannerModule,
         // Кабинет партнёра и модерация (блок 6, ADR-0021).
         PartnerModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME }),

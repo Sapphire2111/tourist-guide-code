@@ -26,6 +26,7 @@ export {
 export {
   currentDb,
   currentTenant,
+  outsideTenant,
   PLATFORM_CONTEXT,
   regionContext,
   sameTenant,

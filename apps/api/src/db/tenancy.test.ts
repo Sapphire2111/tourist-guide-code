@@ -114,6 +114,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "sessions",
       "telegram_accounts",
       "users",
+      "weather_forecasts",
     ]);
   });
 });

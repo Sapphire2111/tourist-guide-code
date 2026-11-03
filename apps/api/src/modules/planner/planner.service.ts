@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { ApiError, toLocalized } from "../../common/http/index.js";
 import {
   currentDb,
@@ -19,13 +19,23 @@ import {
   type UserPlanItemRecord,
 } from "../../db/index.js";
 import { AuditService, type AuditEntry } from "../audit/index.js";
+import { FeatureFlagsService } from "../feature-flags/index.js";
 import { RegionsRepository } from "../regions/index.js";
+import {
+  HIKE_RELEVANT,
+  hikeUnsafe,
+  toDayDto,
+  WeatherService,
+  type WeatherSource,
+  type WeatherWarning,
+} from "../weather/index.js";
 import type {
   AdminScenarioDetailDto,
   AdminScenarioDto,
   AdminScenarioListDto,
   CreateUserPlanDto,
   PlanDayOptionsDto,
+  PlanDayWeatherDto,
   PlanPlaceDto,
   PlanTripDto,
   ScenarioDto,
@@ -39,7 +49,7 @@ import type {
   UserPlanListDto,
 } from "./planner.dto.js";
 import { USER_PLANS_MAX } from "./planner.dto.js";
-import { itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
+import { isMountainHike, itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
 import {
   addItem,
   planItemsFromScenario,
@@ -87,6 +97,23 @@ type ViewItem = {
 
 const hhmm = (t: string | null) => (t === null ? null : t.slice(0, 5));
 
+/** Горных пунктов плана, для которых берётся прогноз у их точки, не больше (остальные — по базовой точке). */
+const MOUNTAIN_ITEMS_MAX = 8;
+
+/** Погода плана: по дням, дни без гор, предупреждения пунктов-походов. */
+type PlanWeather = {
+  days: PlanDayWeatherDto[];
+  noMountainDays: Set<number>;
+  items: Map<string, WeatherWarning[]>;
+  source: WeatherSource | null;
+};
+const NO_WEATHER = (): PlanWeather => ({
+  days: [],
+  noMountainDays: new Set(),
+  items: new Map(),
+  source: null,
+});
+
 /**
  * Планировщик «Мій план» (блок 5; C09, S-04; D-53; ADR-0020): сценарии региона без AI (фильтр по тегу и дням),
  * план пользователя — копия пунктов с заменами. Турист видит только опубликованные сценарии; пункт с неопубликованным
@@ -102,6 +129,9 @@ export class PlannerService {
     @Inject(PlannerRepository) private readonly repo: PlannerRepository,
     @Inject(RegionsRepository) private readonly regions: RegionsRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    // Погода (module.weather): нет модуля (тесты) — план без погоды.
+    @Optional() @Inject(WeatherService) private readonly weather?: WeatherService,
+    @Optional() @Inject(FeatureFlagsService) private readonly flags?: FeatureFlagsService,
   ) {}
 
   // --- турист ---
@@ -433,6 +463,7 @@ export class PlannerService {
       const n = planDays(r);
       const days = Array.from({ length: n }, (_, k) => ({ dayNo: k + 1, items: view.get(k + 1) ?? [] }));
       const { trip, baseAt } = await this.trip(r, bases, withOptions);
+      const wx = catalog ? await this.planWeather(r, baseAt, days, catalog) : NO_WEATHER();
       out.push({
         id: r.id,
         regionId: r.region_id,
@@ -450,12 +481,64 @@ export class PlannerService {
           items: d.items.map(({ source, ...dto }) => ({
             ...dto,
             replaced: source.replacedPlaceId !== null,
+            weatherWarnings: wx.items.get(dto.id) ?? [],
           })),
         })),
-        options: catalog ? optionsDto(days, catalog, trip, baseAt) : [],
+        options: catalog ? optionsDto(days, catalog, trip, baseAt, wx.noMountainDays) : [],
+        weather: wx.days,
+        weatherSource: wx.source,
         createdAt: r.created_at.toISOString(),
         updatedAt: r.updated_at.toISOString(),
       });
+    }
+    return out;
+  }
+
+  /**
+   * Погода плана (module.weather): прогноз базовой точки на даты дней (startDate + dayNo − 1; без даты начала — нет).
+   * Дни с опасной для гор погодой (гроза, ветер, снегопад, гололёд) — без горных походов в вариантах; выбранный
+   * горный поход в такой день (или в мороз) — с предупреждением по прогнозу у его горной точки. Ошибки — без погоды.
+   */
+  private async planWeather(
+    r: UserPlan,
+    baseAt: LonLat | null,
+    days: readonly { dayNo: number; items: readonly (ScenarioItemDto & { source: ViewItem })[] }[],
+    catalog: readonly CatalogPlaceRow[],
+  ): Promise<PlanWeather> {
+    const out = NO_WEATHER();
+    if (!this.weather || !baseAt || r.start_date === null) return out;
+    if (this.flags && !(await this.flags.isEnabled("module.weather", r.region_id))) return out;
+    const f = await this.weather.forecastAt({ lat: baseAt.lat, lng: baseAt.lon });
+    if (!f) return out;
+    out.source = f.source;
+    const start = dateOnly(r.start_date);
+    const dateOf = (dayNo: number) => addDays(start, dayNo - 1);
+    for (const d of days) {
+      const w = f.days.find((x) => x.date === dateOf(d.dayNo));
+      if (!w) continue;
+      const noMountains = hikeUnsafe(w);
+      if (noMountains) out.noMountainDays.add(d.dayNo);
+      out.days.push({ ...toDayDto(w), dayNo: d.dayNo, noMountains });
+    }
+    if (!out.days.length) return { ...out, source: null };
+    const byId = new Map(catalog.map((p) => [p.id, p]));
+    const hikes = days
+      .filter((d) => out.days.some((w) => w.dayNo === d.dayNo))
+      .flatMap((d) =>
+        d.items.flatMap((i) => {
+          const p = i.place && i.slot !== "rain" ? byId.get(i.place.id) : undefined;
+          return p && i.place && isMountainHike(catalogPlace(p))
+            ? [{ dayNo: d.dayNo, id: i.id, at: i.place.location }]
+            : [];
+        }),
+      )
+      .slice(0, MOUNTAIN_ITEMS_MAX);
+    for (const h of hikes) {
+      const local =
+        (await this.weather.forecastAt({ lat: h.at.lat, lng: h.at.lon }, { mountain: true })) ?? f;
+      const w = local.days.find((x) => x.date === dateOf(h.dayNo));
+      const warnings = (w?.warnings ?? []).filter((x) => HIKE_RELEVANT.includes(x));
+      if (warnings.length) out.items.set(h.id, warnings);
     }
     return out;
   }
@@ -581,6 +664,7 @@ function optionsDto(
   catalog: readonly CatalogPlaceRow[],
   trip: PlanTripDto,
   baseAt: LonLat | null,
+  noMountainDays?: ReadonlySet<number>,
 ): PlanDayOptionsDto[] {
   const byId = new Map(catalog.map((p) => [p.id, p]));
   const chosen = days.flatMap((d) =>
@@ -597,6 +681,7 @@ function optionsDto(
     places: catalog.map(catalogPlace),
     trip: { children: trip.children, withCar: trip.withCar },
     base: baseAt,
+    noMountainDays,
   }).map((d) => ({
     dayNo: d.dayNo,
     slots: d.slots.map((s) => ({
@@ -700,6 +785,12 @@ function itemsWrite(input: ScenarioInputDto) {
       ),
     };
   });
+}
+
+/** YYYY-MM-DD + n дней (календарно, без часового пояса). */
+function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + n)).toISOString().slice(0, 10);
 }
 
 /** pg отдаёт date как Date в часовом поясе процесса — берём местную дату объекта. */

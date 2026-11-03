@@ -45,6 +45,7 @@ export const FEATURE_FLAG_KEYS = [
   "module.reviews",
   "module.ambassadors",
   "module.assistant",
+  "module.weather",
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -76,6 +77,8 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   "module.assistant": flag("Голосовой/текстовый ассистент на главной (Claude, Speech-to-Text)", ON, [
     "release.r1",
   ]),
+  // Погода (Google Weather по серверному ключу с квотой, запасной — бесплатный Open-Meteo): на главной и в «Мій план».
+  "module.weather": flag("Погода и предупреждения на главной и в «Мій план»", ALWAYS, ["release.r1"]),
 });
 
 export function isFeatureFlagKey(key: string): key is FeatureFlagKey {
