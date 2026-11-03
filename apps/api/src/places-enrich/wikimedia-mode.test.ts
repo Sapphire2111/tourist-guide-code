@@ -865,7 +865,15 @@ describe("мелкое: аргументы, --limit, не-JSON", () => {
 
   it.each([
     ["не-JSON при 200", () => new Response("<html>", { status: 200 }), "не JSON"],
-    ["{error} при 200", () => json({ error: { code: "ratelimited" } }), "ratelimited"],
+    ["ratelimited при 200", () => json({ error: { code: "ratelimited" } }), "ratelimited"],
+    ["maxlag при 200", () => json({ error: { code: "maxlag" } }), "maxlag"],
+    ["readonly при 200", () => json({ error: { code: "readonly" } }), "readonly"],
+    [
+      "internal_api_error при 200",
+      () => json({ error: { code: "internal_api_error_DBQueryError" } }),
+      "internal_api_error",
+    ],
+    ["{error} без кода при 200", () => json({ error: "x" }), "без кода"],
   ])("режим Wikimedia: %s — стоп, в кэш не попадает", async (_name, res, reason) => {
     const cacheDir = await tmp();
     const f = vi.fn(() => Promise.resolve(res()));
@@ -878,6 +886,51 @@ describe("мелкое: аргументы, --limit, не-JSON", () => {
     const g = vi.fn(() => Promise.resolve(json({ query: { geosearch: [] } })));
     await expect((await clientOf(g, { cacheDir })).geosearch("uk", AT)).resolves.toEqual([]);
     expect(g).toHaveBeenCalledTimes(1);
+  });
+
+  it("режим Wikimedia: постоянная ошибка (no-such-entity) — место без совпадения, прогон идёт дальше", async () => {
+    const good = wiki({ Говерла: { qid: "Q2", p31: [MOUNTAIN] } });
+    const f = vi.fn((url: string) =>
+      url.includes("entity=Q1&")
+        ? Promise.resolve(json({ error: { code: "no-such-entity" } }))
+        : url.includes("list=geosearch")
+          ? Promise.resolve(
+              json({
+                query: {
+                  geosearch: url.includes(`gscoord=${AT.lat.toFixed(5)}`)
+                    ? [{ title: "Петрос", lat: AT.lat, lon: AT.lon, dist: 1 }]
+                    : [{ title: "Говерла", lat: 48.5, lon: 24.6, dist: 1 }],
+                },
+              }),
+            )
+          : url.includes("/page/summary/") && decodeURIComponent(url).includes("Петрос")
+            ? Promise.resolve(
+                json({
+                  type: "standard",
+                  title: "Петрос",
+                  extract: "Стаття.",
+                  content_urls: { mobile: { page: "https://uk.m.wikipedia.org/wiki/P" } },
+                  wikibase_item: "Q1",
+                }),
+              )
+            : good(url),
+    );
+    const cacheDir = await tmp();
+    const client = await clientOf(f, { cacheDir, stopOnUnavailable: true });
+    const r = await enrich(
+      [place("bad", { name: "Петрос" }), place("ok", { name: "Говерла", at: { lon: 24.6, lat: 48.5 } })],
+      await noGoogle(),
+      client,
+      { details: false, wikimediaOnly: true },
+    );
+    expect(client.stopped).toBeNull();
+    expect(r.stats).toMatchObject({ wikiUnavailable: 0, wikiSearched: 2, wikiFound: 1 });
+    expect(r.places.map((p) => p.wiki?.title ?? null)).toEqual([null, "Говерла"]);
+    // Ответ кэшируется: следующий запуск на этом месте в сеть не идёт и не упирается в него.
+    const again = vi.fn(() => Promise.reject(new Error("сети быть не должно")));
+    const next = await clientOf(again, { cacheDir, stopOnUnavailable: true });
+    expect(await find(next, "Петрос")).toBeNull();
+    expect(again).not.toHaveBeenCalled();
   });
 
   it("обычный режим: {error} кэшируется и не останавливает, как раньше", async () => {

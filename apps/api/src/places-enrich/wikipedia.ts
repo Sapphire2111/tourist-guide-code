@@ -217,6 +217,8 @@ export class WikiUnavailableError extends Error {
 
 /** Свободные лицензии Commons (короткие имена). Иное (Fair use, «non-free») — без фото. */
 const FREE_LICENSE = /^(cc[ -]?by|cc[ -]?by[ -]?sa|cc0|public domain|pd\b|attribution|gfdl|fal\b)/i;
+/** Коды ошибок MediaWiki API, которые пройдут сами: повтор прогоном имеет смысл. */
+const TEMPORARY_API_ERROR = /^(ratelimited|maxlag|readonly|internal_api_error)/;
 /** «Автор неизвестен» в Commons — подписи всё равно нет. */
 const UNKNOWN_AUTHOR = /^((автор|author)\s+)?(unknown|anonym|невідом|неизвест|анонім|аноним)/i;
 
@@ -335,12 +337,15 @@ export class WikipediaClient {
         this.stopIfAsked(message);
         throw new WikiUnavailableError(message);
       }
-      // Режим Wikimedia: ошибка API при 200 ({error: …}, например ratelimited) — не ответ, в кэш не попадает.
+      // Режим Wikimedia: временная ошибка API при 200 — стоп, в кэш не попадает. Постоянная (no-such-entity и подобные)
+      // — обычный ответ: кэшируется, у вызывающих это «нет данных», место без совпадения, прогон идёт дальше.
       if (this.options.stopOnUnavailable && isObject(data) && "error" in data) {
-        const code = isObject(data.error) && typeof data.error.code === "string" ? data.error.code : "ошибка";
-        const message = `Вікіпедія: ошибка API (${code})`;
-        this.stopIfAsked(message);
-        throw new WikiUnavailableError(message);
+        const code = isObject(data.error) && typeof data.error.code === "string" ? data.error.code : null;
+        if (code === null || TEMPORARY_API_ERROR.test(code)) {
+          const message = `Вікіпедія: ошибка API (${code ?? "без кода"})`;
+          this.stopIfAsked(message);
+          throw new WikiUnavailableError(message);
+        }
       }
     }
     await mkdir(this.options.cacheDir, { recursive: true });
