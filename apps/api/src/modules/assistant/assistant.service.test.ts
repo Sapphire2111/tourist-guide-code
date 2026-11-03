@@ -398,23 +398,66 @@ describe("населені пункти", () => {
     expect(res.intent.locality).toBe("polianytsia");
   });
 
-  it("Буковель из Яремче при >50 местах категории рядом с туристом — места Буковеля не теряются", async () => {
-    const near = Array.from({ length: 60 }, (_, i) => place(i + 1, { name: { uk: `Яремче ${i}` } }));
-    const bukovel = place(99, {
-      name: { uk: "Прокат у Буковелі" },
-      location: BUKOVEL_AT,
-      distanceMeters: 50,
-    });
-    const placeLocality: Record<string, string> = Object.fromEntries(near.map((p) => [p.id, YAREMCHE]));
-    placeLocality[bukovel.id] = POLIANYTSIA;
-    const { service } = setup({
-      // Выдача от точки туриста — 60 мест Яремче (Буковеля в первых 50 нет); от центра Поляниці — Буковель.
-      searchAt: (s) => (s.localityIds?.includes(POLIANYTSIA) ? [bukovel] : near.slice(0, 50)),
+  it("Буковель из Яремче: поиск по пункту, расстояние — от точки туриста, не от центра пункта", async () => {
+    const bukovel = place(99, { name: { uk: "Прокат у Буковелі" }, location: BUKOVEL_AT });
+    const { service, guide } = setup({
+      // Каталог считает distanceMeters от переданной точки: от туриста в Яремче — 14 км, от центра Поляниці — 0.
+      searchAt: (s) => [{ ...bukovel, distanceMeters: s.origin?.lat === YAREMCHE_AT.lat ? 14_000 : 0 }],
       llm: { create: vi.fn(() => Promise.resolve(reply(intent({ locality: "polianytsia" })))) },
-      placeLocality,
+      placeLocality: { [bukovel.id]: POLIANYTSIA },
     });
     const res = await service.query(REGION, USER, ask("прокат у Буковелі", { origin: YAREMCHE_AT }));
-    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ origin: YAREMCHE_AT, radius: undefined, localityIds: [POLIANYTSIA] }),
+    );
+    expect(res.items.map((i) => [i.place.name.uk, i.place.distanceMeters])).toEqual([
+      ["Прокат у Буковелі", 14_000],
+    ]);
+  });
+
+  it("радиус в запросе без названного пункта — выбор туриста не применяется, поиск в радиусе от точки", async () => {
+    const { service, guide } = setup({
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ radiusMeters: 500 })))) },
+    });
+    await service.query(
+      REGION,
+      USER,
+      ask("кава в 500 м", { origin: YAREMCHE_AT, localityIds: [POLIANYTSIA] }),
+    );
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ origin: YAREMCHE_AT, radius: 500, localityIds: undefined }),
+    );
+  });
+
+  it("радиус в запросе без точки туриста — действует выбор туриста, без пометки no_origin", async () => {
+    const { service, guide } = setup({
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ radiusMeters: 500 })))) },
+    });
+    const res = await service.query(REGION, USER, ask("кава поруч", { localityIds: [YAREMCHE] }));
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ radius: undefined, localityIds: [YAREMCHE] }),
+    );
+    expect(res.notes).not.toContain("no_origin");
+  });
+
+  it("радиус в запросе и названный пункт — поиск по пункту из запроса", async () => {
+    const { service, guide } = setup({
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ radiusMeters: 500, locality: "polianytsia" })))),
+      },
+    });
+    await service.query(
+      REGION,
+      USER,
+      ask("кава в Буковелі", { origin: YAREMCHE_AT, localityIds: [YAREMCHE] }),
+    );
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ origin: YAREMCHE_AT, radius: undefined, localityIds: [POLIANYTSIA] }),
+    );
   });
 
   it("пункт не назван — действует выбор туриста; чужие id и код от модели вне списка — игнорируются", async () => {
