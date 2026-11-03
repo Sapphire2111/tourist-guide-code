@@ -17,6 +17,7 @@ import {
   type AssistantResult,
 } from "./assistant-api.js";
 import { AssistantBox } from "./AssistantBox.js";
+import { loadDialog } from "./dialog-store.js";
 import { recordMime } from "./recorder.js";
 
 const REGION = "00000000-0000-4000-8000-0000000000a1";
@@ -262,6 +263,45 @@ describe("Assistant: «Назад» из карточки", () => {
     fireEvent.click(screen.getByRole("button", { name: "Новий пошук" }));
     expect(screen.queryByTestId("assistant-dialog")).toBeNull();
     expect(sessionStorage.getItem(DIALOG_KEY)).toBeNull();
+  });
+});
+
+describe("dialog-store", () => {
+  it("битая или чужая форма в хранилище — новый диалог", () => {
+    sessionStorage.setItem(DIALOG_KEY, "{oops");
+    expect(loadDialog()).toBeNull();
+    sessionStorage.setItem(DIALOG_KEY, JSON.stringify({ v: 1, id: "x", turns: [{ text: 1 }] }));
+    expect(loadDialog()).toBeNull();
+    sessionStorage.setItem(
+      DIALOG_KEY,
+      JSON.stringify({ v: 1, id: "x", turns: [{ text: "кава", data: result() }] }),
+    );
+    expect(loadDialog()?.turns).toHaveLength(1);
+  });
+
+  it("поздний ответ прежнего экрана не попадает в новый диалог", async () => {
+    let resolveOld: (r: AssistantResult) => void = () => undefined;
+    const slow = fakeAssistant({
+      ask: () =>
+        new Promise<AssistantResult>((r) => {
+          resolveOld = r;
+        }),
+    });
+    const old = render(
+      <GuideProvider value={env()}>
+        <Assistant api={slow} initialQuery="стара" />
+      </GuideProvider>,
+    );
+    old.unmount();
+    // Новый запрос с главной — новый диалог.
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={fakeAssistant()} initialQuery="нова" />
+      </GuideProvider>,
+    );
+    await flush();
+    await act(async () => resolveOld(result()));
+    expect(loadDialog()?.turns.map((x) => x.text)).toEqual(["нова"]);
   });
 });
 

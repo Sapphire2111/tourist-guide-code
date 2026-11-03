@@ -7,7 +7,12 @@ import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto } from "../guide/index.js";
 import type { AssistantRepository, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
-import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
+import {
+  AssistantService,
+  describe as describePlace,
+  LOCALITY_SEARCH_RADIUS,
+  shorten,
+} from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
@@ -16,6 +21,8 @@ const REGION = "0190f5c2-7d3e-7000-8000-00000000000a";
 const USER = "0190f5c2-7d3e-7000-8000-0000000000ee";
 const YAREMCHE = "0190f5c2-7d3e-7000-8000-000000000301";
 const POLIANYTSIA = "0190f5c2-7d3e-7000-8000-000000000302";
+const YAREMCHE_AT = { lon: 24.551, lat: 48.451 };
+const BUKOVEL_AT = { lon: 24.417, lat: 48.367 };
 const EAT = "0190f5c2-7d3e-7000-8000-000000000101";
 const CAFES = "0190f5c2-7d3e-7000-8000-000000000102";
 const MUSEUMS = "0190f5c2-7d3e-7000-8000-000000000103";
@@ -84,6 +91,8 @@ function setup(
     regionStatus?: string;
     /** place_id → locality_id. */
     placeLocality?: Record<string, string>;
+    /** Выдача каталога в зависимости от точки поиска. */
+    searchAt?: (origin: { lon: number; lat: number } | undefined) => PlaceSummaryDto[] | undefined;
   } = {},
 ) {
   const guide = {
@@ -99,8 +108,12 @@ function setup(
         ],
       }),
     ),
-    search: vi.fn(() =>
-      Promise.resolve({ items: opts.places ?? [place(1), place(2)], nextOffset: null, radiusMeters: null }),
+    search: vi.fn((_r: string, s: { origin?: { lon: number; lat: number } }) =>
+      Promise.resolve({
+        items: opts.searchAt?.(s.origin) ?? opts.places ?? [place(1), place(2)],
+        nextOffset: null,
+        radiusMeters: null,
+      }),
     ),
   };
   const llm = { enabled: true, create: vi.fn(() => Promise.resolve(reply(intent()))), ...opts.llm };
@@ -113,8 +126,13 @@ function setup(
     ),
     localities: vi.fn(() =>
       Promise.resolve([
-        { id: YAREMCHE, code: "yaremche", name_i18n: { uk: "Яремче" } },
-        { id: POLIANYTSIA, code: "polianytsia", name_i18n: { uk: "Поляниця (Буковель)" } },
+        { id: YAREMCHE, code: "yaremche", name_i18n: { uk: "Яремче" }, location: YAREMCHE_AT },
+        {
+          id: POLIANYTSIA,
+          code: "polianytsia",
+          name_i18n: { uk: "Поляниця (Буковель)" },
+          location: BUKOVEL_AT,
+        },
       ]),
     ),
     placeLocalities: vi.fn((_r: string, ids: readonly string[]) =>
@@ -369,9 +387,35 @@ describe("населені пункти", () => {
     const schema = JSON.stringify(tool.input_schema);
     expect(schema).toContain('"polianytsia"');
     expect(schema).toContain("Буковель");
-    expect(guide.search).toHaveBeenCalledWith(REGION, expect.objectContaining({ radius: undefined }));
+    // Поиск — от центра Поляниці, не от точки туриста и не в выбранном Яремче.
+    expect(guide.search).toHaveBeenCalledTimes(1);
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ origin: BUKOVEL_AT, radius: LOCALITY_SEARCH_RADIUS }),
+    );
     expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
     expect(res.intent.locality).toBe("polianytsia");
+  });
+
+  it("Буковель из Яремче при >50 местах категории рядом с туристом — места Буковеля не теряются", async () => {
+    const near = Array.from({ length: 60 }, (_, i) => place(i + 1, { name: { uk: `Яремче ${i}` } }));
+    const bukovel = place(99, {
+      name: { uk: "Прокат у Буковелі" },
+      location: BUKOVEL_AT,
+      distanceMeters: 50,
+    });
+    const placeLocality: Record<string, string> = Object.fromEntries(near.map((p) => [p.id, YAREMCHE]));
+    placeLocality[bukovel.id] = POLIANYTSIA;
+    const { service } = setup({
+      // Выдача от точки туриста — 60 мест Яремче (Буковеля в первых 50 нет); от центра Поляниці — Буковель.
+      searchAt: (o) => (o === BUKOVEL_AT ? [bukovel] : near.slice(0, 50)),
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ locality: "polianytsia" })))) },
+      placeLocality,
+    });
+    const res = await service.query(REGION, USER, ask("прокат у Буковелі", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
+    // Расстояние — от туриста (≈ 13 км), а не от центра пункта.
+    expect(res.items[0]!.place.distanceMeters).toBeGreaterThan(10_000);
   });
 
   it("пункт не назван — действует выбор туриста; чужие id и код от модели вне списка — игнорируются", async () => {

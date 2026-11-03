@@ -27,7 +27,7 @@ import {
   type AssistantSpeech,
   type AudioMime,
 } from "./providers.js";
-import { orderRoute } from "./route.js";
+import { haversineMeters, orderRoute } from "./route.js";
 
 /** Мест в ответе «places». */
 export const ASSISTANT_PLACES_MAX = 10;
@@ -55,8 +55,13 @@ export type AssistantQuery = {
 export const LOCALITY_ALIASES: Readonly<Record<string, readonly string[]>> = {
   polianytsia: ["Буковель", "Буковелі", "Bukovel", "Поляниця"],
 };
-/** Кандидатов на категорию при фильтре по населённому пункту (фильтр — после поиска, до общего параметра). */
+/** Кандидатов на категорию и пункт при поиске в населённом пункте. */
 const CANDIDATES_WITH_LOCALITY = 50;
+/**
+ * Поиск в населённом пункте — от его центра в этом радиусе, затем фильтр по places.locality_id (временно, до общего
+ * параметра localityIds в поиске каталога): выдача от точки туриста теряла бы места дальнего пункта.
+ */
+export const LOCALITY_SEARCH_RADIUS = 10_000;
 
 type Enrichment = PlaceEnrichmentFacts;
 
@@ -152,7 +157,10 @@ export class AssistantService {
     const localityIds = intent.locality
       ? [localityIdOf.get(intent.locality)!]
       : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
-    return this.select(regionId, intent, idOf, q.origin, localityIds);
+    const areas = localityRows
+      .filter((l) => localityIds.includes(l.id))
+      .map((l) => ({ id: l.id, center: l.location }));
+    return this.select(regionId, intent, idOf, q.origin, areas);
   }
 
   async transcribe(regionId: string, userId: string, audio: Buffer, mime: AudioMime): Promise<string> {
@@ -174,24 +182,35 @@ export class AssistantService {
     intent: AssistantIntent,
     idOf: ReadonlyMap<string, string>,
     origin: LonLat | undefined,
-    localityIds: readonly string[],
+    areas: readonly { id: string; center: LonLat }[],
   ): Promise<AssistantResultDto> {
-    const byLocality = localityIds.length > 0;
-    // Поиск в населённом пункте — без радиуса от точки туриста (Буковель из Яремче — дальше 5 км); расстояние
-    // по-прежнему считается от точки.
-    const radius = origin && !byLocality ? (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT) : undefined;
-    const searches = intent.categories.length
-      ? intent.categories.map((code) => ({ categoryId: idOf.get(code) }))
-      : [{ categoryId: undefined }];
+    const byLocality = areas.length > 0;
+    const cats = intent.categories.length ? intent.categories.map((code) => idOf.get(code)) : [undefined];
+    // В населённом пункте — от его центра (Буковель из Яремче — дальше любого радиуса от туриста), иначе — от точки
+    // туриста. TODO(локації): localityIds в поиск каталога, когда в GET /places/search появится параметр.
+    const searches = byLocality
+      ? areas.flatMap((a) =>
+          cats.map((categoryId) => ({
+            categoryId,
+            origin: a.center,
+            radius: LOCALITY_SEARCH_RADIUS,
+            limit: CANDIDATES_WITH_LOCALITY,
+          })),
+        )
+      : cats.map((categoryId) => ({
+          categoryId,
+          origin,
+          radius: origin ? (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT) : undefined,
+          limit: CANDIDATES_PER_CATEGORY,
+        }));
     const pages = await Promise.all(
       searches.map((s) =>
         this.guide.search(regionId, {
-          origin,
-          radius,
+          origin: s.origin,
+          radius: s.radius,
           categoryId: s.categoryId,
           text: intent.nameQuery ?? undefined,
-          // TODO(локації): передать localityIds в поиск каталога, когда в GET /places/search появится параметр.
-          limit: byLocality ? CANDIDATES_WITH_LOCALITY : CANDIDATES_PER_CATEGORY,
+          limit: s.limit,
           offset: 0,
         }),
       ),
@@ -208,11 +227,17 @@ export class AssistantService {
         regionId,
         found.map((p) => p.id),
       );
-      const wanted = new Set(localityIds);
-      found = found.filter((p) => wanted.has(localityOf.get(p.id) ?? ""));
+      const wanted = new Set(areas.map((a) => a.id));
+      // Расстояние — от точки туриста (поиск шёл от центра пункта), без точки — нет.
+      found = found
+        .filter((p) => wanted.has(localityOf.get(p.id) ?? ""))
+        .map((p) => ({
+          ...p,
+          distanceMeters: origin ? Math.round(haversineMeters(origin, p.location) * 10) / 10 : null,
+        }));
     }
     // Несколько категорий: общий порядок — по расстоянию (с точкой), иначе как пришло.
-    if (origin && pages.length > 1)
+    if (origin && (pages.length > 1 || byLocality))
       found = found.sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
 
     const notes: AssistantNote[] = [];
@@ -271,6 +296,7 @@ function clarifyIntent(previous: AssistantIntent | null, allowed: ReadonlySet<st
     // Намерение пришло с клиента: только коды каталога региона.
     categories: (previous?.categories ?? []).filter((c) => allowed.has(c)),
     nameQuery: previous?.nameQuery ?? null,
+    // Пункт прошлого запроса не переносится: уточнение без пункта — снова выбор туриста.
     locality: null,
     radiusMeters: previous?.radiusMeters ?? null,
     priceMin: previous?.priceMin ?? null,

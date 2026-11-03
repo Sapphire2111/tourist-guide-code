@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
-import { useGuide, type Async } from "../guide/context.js";
+import { useGuide } from "../guide/context.js";
 import { MapSlot, preloadMap } from "../guide/MapSlot.js";
 import { useRadiusLabel } from "../guide/Nearby.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
@@ -13,37 +13,9 @@ import { useErrorText } from "../host/errors.js";
 import type { AssistantApi, AssistantIntent, AssistantItem, AssistantResult } from "./assistant-api.js";
 import { AssistantBox } from "./AssistantBox.js";
 
-type Turn = { id: number; text: string; state: Async<AssistantResult> };
+import { clearAssistantDialog, loadDialog, newDialogId, saveDialog, type Turn } from "./dialog-store.js";
 
-/**
- * Диалог переживает переход в карточку места и «Назад» (без повторного платного запроса): сохраняются только
- * завершённые реплики — текст запроса и ответ каталога — в sessionStorage вкладки; «Новий пошук» очищает.
- */
-export const DIALOG_KEY = "tg.assistant.dialog";
-
-export function loadDialog(): Turn[] {
-  try {
-    const raw = sessionStorage.getItem(DIALOG_KEY);
-    const list = raw ? (JSON.parse(raw) as { text: string; data: AssistantResult }[]) : [];
-    return Array.isArray(list)
-      ? list.map((x, i) => ({ id: i + 1, text: x.text, state: { status: "ready", data: x.data } }))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDialog(turns: readonly Turn[]): void {
-  try {
-    const done = turns.flatMap((x) =>
-      x.state.status === "ready" ? [{ text: x.text, data: x.state.data }] : [],
-    );
-    if (done.length) sessionStorage.setItem(DIALOG_KEY, JSON.stringify(done));
-    else sessionStorage.removeItem(DIALOG_KEY);
-  } catch {
-    // хранилище недоступно — диалог живёт только на экране
-  }
-}
+export { DIALOG_KEY } from "./dialog-store.js";
 
 /** Что ищем — по намерению: категории (названия из справочника), фильтры. */
 export function useIntentSummary(index: CategoryIndex): (intent: AssistantIntent) => string {
@@ -76,7 +48,9 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
   const errorText = useErrorText();
   const [, navigate] = useRoute();
   // Новый запрос с главной — новый диалог; возврат на #/assistant — прежний диалог из sessionStorage.
-  const [turns, setTurns] = useState<Turn[]>(() => (initialQuery.trim() ? [] : loadDialog()));
+  const [restored] = useState(() => (initialQuery.trim() ? null : loadDialog()));
+  const dialogId = useRef(restored?.id ?? newDialogId());
+  const [turns, setTurns] = useState<Turn[]>(() => restored?.turns ?? []);
   const nextId = useRef(turns.length + 1);
   const alive = useRef(true);
   useEffect(() => {
@@ -85,7 +59,7 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
       alive.current = false;
     };
   }, []);
-  useEffect(() => saveDialog(turns), [turns]);
+  useEffect(() => saveDialog(dialogId.current, turns), [turns]);
   const point = guide.base?.point ?? null;
 
   const ask = (text: string) => {
@@ -104,7 +78,10 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
       .then((state) => {
         // Ушли с экрана до ответа — ответ всё равно сохраняется в диалог (вернёмся — не платим повторно).
         if (!alive.current) {
-          if (state.status === "ready") saveDialog([...loadDialog(), { id, text, state }]);
+          // Только в свой диалог: если уже начат новый (другой id), поздний ответ не дописывается.
+          const stored = loadDialog();
+          const mine = stored?.id === dialogId.current ? stored.turns : stored ? null : [];
+          if (state.status === "ready" && mine) saveDialog(dialogId.current, [...mine, { id, text, state }]);
           return;
         }
         setTurns((all) => all.map((x) => (x.id === id ? { ...x, state } : x)));
@@ -191,7 +168,8 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
       {turns.length > 0 && (
         <Button
           onClick={() => {
-            saveDialog([]);
+            clearAssistantDialog();
+            dialogId.current = newDialogId();
             setTurns([]);
           }}
           disabled={busy}

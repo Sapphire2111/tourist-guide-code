@@ -162,7 +162,8 @@ export function intentUserMessage(input: {
         .map((h) => `<request>${asData(h)}</request>`)
         .join("\n")}\n</history>`,
     );
-  if (input.previous) parts.push(`Попередні параметри пошуку (JSON):\n${JSON.stringify(input.previous)}`);
+  if (input.previous)
+    parts.push(`Попередні параметри пошуку (JSON):\n${asData(JSON.stringify(input.previous))}`);
   parts.push(`Новий запит туриста:\n<request>${asData(input.text)}</request>`);
   return parts.join("\n\n");
 }

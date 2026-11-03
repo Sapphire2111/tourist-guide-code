@@ -6,6 +6,8 @@ import {
   withTenant,
   type Db,
   type LocalizedText,
+  type LonLat,
+  lonLatOf,
   type PlaceEnrichmentGoogle,
   type PlaceEnrichmentWiki,
 } from "../../db/index.js";
@@ -17,7 +19,7 @@ export type PlaceEnrichmentFacts = {
   ai: string | null;
 };
 
-export type AssistantLocality = { id: string; code: string; name_i18n: LocalizedText };
+export type AssistantLocality = { id: string; code: string; name_i18n: LocalizedText; location: LonLat };
 
 /** Обогащение мест для ассистента: цена, удобства, описания — в контексте региона (RLS), одним запросом. */
 @Injectable()
@@ -38,14 +40,18 @@ export class AssistantRepository {
 
   /** Активные населённые пункты региона (для поля locality инструмента и выбора туриста). */
   localities(regionId: string): Promise<AssistantLocality[]> {
-    return withTenant(this.db, regionContext(regionId), () =>
-      currentDb(this.db)
-        .selectFrom("localities")
-        .select(["id", "code", "name_i18n"])
-        .where("active", "=", true)
-        .orderBy("sort_order")
-        .orderBy("code")
-        .execute(),
+    return withTenant(
+      this.db,
+      regionContext(regionId),
+      async () =>
+        (await currentDb(this.db)
+          .selectFrom("localities")
+          .select(["id", "code", "name_i18n"])
+          .select((eb) => lonLatOf(eb.ref("location")).as("location"))
+          .where("active", "=", true)
+          .orderBy("sort_order")
+          .orderBy("code")
+          .execute()) as AssistantLocality[],
     );
   }
 
