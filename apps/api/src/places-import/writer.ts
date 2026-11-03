@@ -5,7 +5,7 @@ import { point, regionContext, withTenant, type Db, type LocalizedText } from ".
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
-import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES } from "./config.js";
+import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES, type ImportLocality } from "./config.js";
 import type { MappedPlace } from "./mapping.js";
 
 export class ImportWriteError extends Error {
@@ -55,6 +55,8 @@ export type WriteOptions = {
   seenIds?: readonly string[];
   /** Выгрузка полная (без лимита запросов). */
   complete?: boolean;
+  /** Населённые пункты, которые завести (по умолчанию IMPORT_LOCALITIES; точечный импорт — и TARGETED_LOCALITIES). */
+  localities?: readonly ImportLocality[];
 };
 
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -111,7 +113,7 @@ export async function writePlaces(
     const newLocalities = await trx
       .insertInto("localities")
       .values(
-        IMPORT_LOCALITIES.map((l, i) => ({
+        (options.localities ?? IMPORT_LOCALITIES).map((l, i) => ({
           region_id: regionId,
           code: l.code,
           kind: "settlement" as const,
@@ -219,7 +221,7 @@ export async function writePlaces(
             region_id: regionId,
             category_id: categoryId.get(p.categoryCode)!,
             import_category_id: categoryId.get(p.categoryCode)!,
-            locality_id: localityId.get(p.localityCode) ?? null,
+            locality_id: (p.localityCode && localityId.get(p.localityCode)) || null,
             name_i18n: { uk: p.name },
             description_i18n: { uk: p.description },
             address_i18n: { uk: p.address },

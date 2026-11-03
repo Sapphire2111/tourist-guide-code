@@ -629,6 +629,7 @@ export type MappedPlace = {
   categoryCode: string;
   /** Дополнительные категории (extraCategories): место видно и в этих разделах. */
   extraCategoryCodes: string[];
+  /** Код населённого пункта; "" — место вне пунктов (вершина, водоспад у точечного импорта), locality_id = null. */
   localityCode: string;
   name: string;
   description: string;
@@ -668,6 +669,8 @@ export function mapPlace(
   p: GooglePlace,
   localities: readonly ImportLocality[],
   categoryNames: Readonly<Record<string, string>> = {},
+  /** Категория задана заранее (точечный импорт, targeted.ts) — типы и название Google её не меняют. */
+  categoryOverride?: string,
 ): { ok: true; place: MappedPlace } | { ok: false; reason: SkipReason } {
   if (p.businessStatus === "CLOSED_PERMANENTLY") return { ok: false, reason: "closed_permanently" };
   const name = p.displayName?.text?.trim();
@@ -679,7 +682,7 @@ export function mapPlace(
   const at = { lon, lat };
   const locality = nearestLocality(at, localities);
   if (!locality) return { ok: false, reason: "outside_radius" };
-  const categoryCode = mapCategory(p, name);
+  const categoryCode = categoryOverride ?? mapCategory(p, name);
   if (!categoryCode) return { ok: false, reason: "no_category" };
   if (categoryCode === "parking" && (p.userRatingCount ?? 0) < PARKING_MIN_REVIEWS)
     return { ok: false, reason: "no_category" };
