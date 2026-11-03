@@ -149,9 +149,13 @@ export const MODEL_TAGS = SCENARIO_TAGS.filter(
   (t) => !["one_day", "multi_day", "kids", "no_car", "rain", "ski", "excursion"].includes(t),
 );
 
-/** Приписка программы «Графік: …» в примечании (снимается перед повторной проверкой). */
-const SCHEDULE_RE = /\s*Графік:[\s\S]*$/u;
-export const stripSchedule = (note: string) => note.replace(SCHEDULE_RE, "").trim();
+/**
+ * Приписка программы «Графік: …» в примечании (снимается перед повторной проверкой): только дни и часы в формате
+ * weeklyShort, в любом месте примечания — совет до и после неё сохраняется, а программа не задвоит график.
+ */
+const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд|вихідний)(?!\p{L})|\d[\d:]*|[\s,;–-])+\.?/gu;
+export const stripSchedule = (note: string) =>
+  note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? "" : m)).trim();
 
 /** Длина примечания к пункту (символов): практичные советы гида, без обрыва. */
 export const NOTE_MAX = 320;
