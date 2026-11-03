@@ -110,7 +110,9 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("place-item")).toContainText("Піцерія «Реклама»");
     const state = apiMockState.get(page)!;
     expect(state.searches.at(-1)).toMatchObject({ localityIds: LOCALITY_TATARIV });
-    expect(state.searches.at(-1)).not.toHaveProperty("lat");
+    // Точка отеля — для расстояния, без радиуса по умолчанию.
+    expect(state.searches.at(-1)).toHaveProperty("lat");
+    expect(state.searches.at(-1)).not.toHaveProperty("radius");
 
     // Главная: лента — по выбранной локации.
     await page

@@ -364,9 +364,10 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
       if (path === "/places/search") {
         state.searches.push(query);
         const localityIds = url.searchParams.getAll("localityIds").flatMap((v) => v.split(","));
+        // Как api: с localityIds радиус по умолчанию не ставится.
+        const radius = query.radius ? Number(query.radius) : localityIds.length ? Infinity : 500;
         const lat = query.lat ? Number(query.lat) : undefined;
         const lng = query.lng ? Number(query.lng) : undefined;
-        const radius = Number(query.radius ?? 500);
         const inCategory = (p: (typeof places)[number]) =>
           !query.category ||
           p.categoryId === query.category ||
@@ -382,7 +383,11 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
           }))
           .filter((p) => p.distanceMeters === null || p.distanceMeters <= radius)
           .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
-        return json(route, { items, nextOffset: null, radiusMeters: lat !== undefined ? radius : null });
+        return json(route, {
+          items,
+          nextOffset: null,
+          radiusMeters: lat !== undefined && Number.isFinite(radius) ? radius : null,
+        });
       }
       const signedIn = req.headers()["authorization"] === `Bearer ${TOKEN}`;
       const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
