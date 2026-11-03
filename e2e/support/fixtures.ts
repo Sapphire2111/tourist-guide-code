@@ -6,7 +6,10 @@ import { installApiMock } from "./api-mock.js";
 import { installGoogleMapsFake } from "./google-maps-fake.js";
 import { installTelegramWebApp, type TelegramWebAppOptions } from "./telegram-webapp.js";
 
-export const test = base.extend<{ telegram: TelegramWebAppOptions | null; googleMaps: boolean }>({
+export const test = base.extend<{
+  telegram: TelegramWebAppOptions | null;
+  googleMaps: boolean;
+}>({
   telegram: [{}, { option: true }],
   googleMaps: [true, { option: true }],
   page: async ({ page, telegram, googleMaps }, use) => {
