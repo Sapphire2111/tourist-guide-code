@@ -66,6 +66,8 @@ try {
     cacheDir: args.cacheDir,
     maxRequests: args.maxRequests,
     planOnly: args.plan,
+    rpm: args.rpm,
+    log: console.log,
     quota: async (sku) => {
       if (quota) return quota.take(sku, { monthly: args.monthlyLimit });
       if (!warnedNoDb)
@@ -146,7 +148,7 @@ try {
         `Google ${googleCovers}: в этом месяце до ${Math.min(googleCovers, remainingPhotos)}); записано ${coverStats.written} ` +
         `(Wikimedia ${coverStats.wikimedia}, Google ${coverStats.google}), отложено пределом Google ${coverStats.deferred}, ` +
         `Wikimedia недоступна (повторить позже) ${coverStats.wikiUnavailable}, ` +
-        `ошибок ${coverStats.failed}.`,
+        `отложено поминутной квотой Google ${coverStats.rateLimited}, ошибок ${coverStats.failed}.`,
     );
     report.covers = {
       ...coverStats,
@@ -221,7 +223,8 @@ try {
     `\nМест обработано ${stats.places} (пропущено по категориям ${stats.skippedByCategory}); Place Details получено ` +
       `${stats.details}, с данными ${stats.withData}: фото ${stats.withPhotos}, отзывы ${stats.withReviews}, ` +
       `удобства ${stats.withAmenities}, описание ${stats.withSummary}, рейтинг ${stats.withRating}` +
-      `${stats.googleLimitReached ? " (остановлено лимитом --max-requests)" : ""}.`,
+      `${stats.googleLimitReached ? " (Google остановлен: лимит или суточная/месячная квота)" : ""}` +
+      `${stats.rateLimited ? `; отложено поминутной квотой Google: ${stats.rateLimited}` : ""}.`,
   );
   console.log(
     `Вікіпедія: искали ${stats.wikiSearched}, найдено ${stats.wikiFound}, с фото Commons ${stats.wikiWithImage}, ` +
@@ -232,6 +235,10 @@ try {
     `Google Place Details: ${args.plan ? `понадобится запросов ${google.planned.details}` : `запросов ${google.requests.details}`}, ` +
       `из кэша ${google.cacheHits}; бесплатных «id,photos» ${args.plan ? google.planned.detailsIds : google.requests.detailsIds}; ≈ $${estimate.placeDetails.usdNoFreeTier} без бесплатного лимита ` +
       `($${estimate.placeDetails.usdAfterFreeTier} после ${GOOGLE_PRICING.detailsAtmosphere.freePerMonth} бесплатных в месяц).`,
+  );
+  console.log(
+    `Темп Google: --rpm ${args.rpm || "без ограничения"}; ожидание ${Math.round(google.waitedMs / 1000)} с, ` +
+      `429 по поминутной квоте ${google.rateLimitHits}, отложено после повторов ${google.rateLimitedGiveUps}.`,
   );
   console.log(
     `Фото Google (лениво, при просмотре, с кэшем): не больше ${photoViews * 2} запросов ≈ $${estimate.photosUpperBound.usdNoFreeTier}.`,

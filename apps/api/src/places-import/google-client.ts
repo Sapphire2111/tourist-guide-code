@@ -98,7 +98,7 @@ export class RequestLimitError extends Error {
 }
 
 export class GoogleApiError extends Error {
-  override readonly name = "GoogleApiError";
+  override readonly name: string = "GoogleApiError";
   /** status — HTTP-статус ответа Google (нет — ошибка не HTTP). */
   constructor(
     message: string,
@@ -106,6 +106,11 @@ export class GoogleApiError extends Error {
   ) {
     super(message);
   }
+}
+
+/** Google 429 с поминутной квотой не снялся за все повторы: место откладывается, прогон продолжается. */
+export class GoogleRateLimitedError extends GoogleApiError {
+  override readonly name = "GoogleRateLimitedError";
 }
 
 /** Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше (необязательный шаг можно пропустить). */
@@ -127,11 +132,25 @@ export type GoogleClientOptions = {
    * исчерпан, запрос не делается (RequestLimitError). Бесплатные виды (поиск в кэше, IDs Only) не учитываются.
    */
   quota?: (sku: "place_details" | "place_photos") => Promise<boolean>;
+  /** Запросов в минуту к Google (равномерный темп); не задан или 0 — без темпа. */
+  rpm?: number;
+  /** Повторов при 429 с поминутной квотой (по умолчанию 5). */
+  maxRateRetries?: number;
+  /** Подмены для тестов: пауза, часы, джиттер. */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  random?: () => number;
+  log?: (s: string) => void;
 };
 
 /** Месячный (суточный) предел SKU в google_api_usage исчерпан — продолжить в следующем месяце. */
 export class MonthlyLimitError extends RequestLimitError {
   override readonly name = "MonthlyLimitError";
+}
+
+/** Суточная/месячная квота Google исчерпана (429 per day/month): до конца прогона запросы к Google не делаются. */
+export class GoogleDailyQuotaError extends RequestLimitError {
+  override readonly name = "GoogleDailyQuotaError";
 }
 
 /** Режим planOnly: ответа нет в кэше, запрос только учтён. */
@@ -142,6 +161,16 @@ export class PlannedRequest extends Error {
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_RATE_RETRIES = 5;
+const MAX_RETRY_AFTER_MS = 5 * 60_000;
+const MINUTE_MS = 60_000;
+
+/**
+ * 429 по суточной/месячной квоте (а не поминутной): ждать бесполезно. Google ставит RATE_LIMIT_EXCEEDED и для
+ * суточных квот, поэтому решает только слово per day/month или единица 1/d/ в ПОЛНОМ теле.
+ */
+export const isLongQuota429 = (body: string): boolean =>
+  /per\s*day|PerDay|per\s*month|PerMonth|1\/d\//i.test(body);
 /** Сколько редиректов фото проходить вручную (каждый — тоже только на хост Google). */
 const MAX_PHOTO_REDIRECTS = 3;
 
@@ -207,10 +236,83 @@ export class GooglePlacesClient {
   readonly planned = { search: 0, photoMedia: 0, photoDownload: 0, details: 0, detailsIds: 0 };
   private readonly fetch: typeof fetch;
   private readonly timeoutMs: number;
+  /** Сколько мс ждали (темп --rpm и повторы после 429) и сколько раз был 429 с поминутной квотой. */
+  waitedMs = 0;
+  rateLimitHits = 0;
+  /** Места/фото, отложенные из-за поминутной квоты после всех повторов. */
+  rateLimitedGiveUps = 0;
+  private nextSlot = 0;
+  private consecutiveGiveUps = 0;
+  private longQuota: GoogleDailyQuotaError | undefined;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly clock: () => number;
 
   constructor(private readonly options: GoogleClientOptions) {
+    this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.clock = options.now ?? Date.now;
     this.fetch = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  private async pause(ms: number): Promise<void> {
+    if (ms <= 0) return;
+    this.waitedMs += ms;
+    await this.sleep(ms);
+  }
+
+  /**
+   * Запрос к API Google: равномерный темп (rpm), при 429 с поминутной квотой — ожидание (Retry-After или 60 с +
+   * джиттер) и повтор; суточная/месячная квота — GoogleDailyQuotaError (дальше запросы не идут).
+   */
+  private async googleFetch(url: string, init: RequestInit): Promise<Response> {
+    if (this.longQuota) throw this.longQuota;
+    const retries = this.options.maxRateRetries ?? DEFAULT_RATE_RETRIES;
+    const interval = this.options.rpm && this.options.rpm > 0 ? MINUTE_MS / this.options.rpm : 0;
+    for (let attempt = 0; ; attempt++) {
+      if (interval) {
+        const now = this.clock();
+        const start = Math.max(now, this.nextSlot);
+        this.nextSlot = start + interval;
+        await this.pause(start - now);
+      }
+      const res = await this.fetch(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
+      if (res.status !== 429) {
+        this.consecutiveGiveUps = 0;
+        return res;
+      }
+      const full = await res.text();
+      const text = full.slice(0, 500);
+      if (isLongQuota429(full)) {
+        this.longQuota = new GoogleDailyQuotaError(
+          `Суточная/месячная квота Google исчерпана (HTTP 429): запросы к Google остановлены. ${text.slice(0, 200)}`,
+        );
+        throw this.longQuota;
+      }
+      this.rateLimitHits++;
+      if (attempt >= retries) {
+        this.rateLimitedGiveUps++;
+        // Предохранитель: 2 запроса подряд не пробились после всех повторов — квота не отпускает, Google до конца
+        // прогона не трогаем (как при суточной квоте).
+        if (++this.consecutiveGiveUps >= 2)
+          this.longQuota = new GoogleDailyQuotaError(
+            "Google: 2 запроса подряд отклонены 429 после всех повторов — запросы к Google остановлены до конца прогона",
+          );
+        throw new GoogleRateLimitedError(
+          `Google: HTTP 429 (поминутная квота), ${retries} повторов не помогли — отложено. ${text.slice(0, 200)}`,
+          429,
+        );
+      }
+      const ra = Number(res.headers.get("retry-after"));
+      const wait =
+        Number.isFinite(ra) && ra > 0
+          ? Math.min(ra * 1000, MAX_RETRY_AFTER_MS)
+          : MINUTE_MS + Math.floor((this.options.random ?? Math.random)() * 5000);
+      this.options.log?.(
+        `Google 429 (поминутная квота): жду ${Math.round(wait / 1000)} с, повтор ${attempt + 1}/${retries}`,
+      );
+      this.nextSlot = Math.max(this.nextSlot, this.clock() + wait);
+      await this.pause(wait);
+    }
   }
 
   get totalRequests(): number {
@@ -232,9 +334,8 @@ export class GooglePlacesClient {
     const file = path.join(this.options.cacheDir, `details-${hash(`${placeId}|${DETAILS_FIELD_MASK}`)}.json`);
     try {
       return await this.cached(file, "details", isDetailsResponse, async (key) => {
-        const res = await this.fetch(`${API}/places/${placeId}?languageCode=uk&regionCode=UA`, {
+        const res = await this.googleFetch(`${API}/places/${placeId}?languageCode=uk&regionCode=UA`, {
           headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": DETAILS_FIELD_MASK },
-          signal: AbortSignal.timeout(this.timeoutMs),
         });
         return this.json(res, "place details", isDetailsResponse);
       });
@@ -251,7 +352,7 @@ export class GooglePlacesClient {
 
   searchText(body: SearchTextRequest): Promise<SearchTextResponse> {
     return this.cached(this.searchFile(body), "search", isSearchResponse, async (key) => {
-      const res = await this.fetch(`${API}/places:searchText`, {
+      const res = await this.googleFetch(`${API}/places:searchText`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -259,7 +360,6 @@ export class GooglePlacesClient {
           "X-Goog-FieldMask": SEARCH_FIELD_MASK,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
       });
       return this.json(res, "searchText", isSearchResponse);
     });
@@ -280,9 +380,8 @@ export class GooglePlacesClient {
     const file = path.join(this.options.cacheDir, `details-ids-${hash(`${placeId}|${mask}`)}.json`);
     try {
       return await this.cached(file, "detailsIds", isDetailsResponse, async (key) => {
-        const res = await this.fetch(`${API}/places/${placeId}`, {
+        const res = await this.googleFetch(`${API}/places/${placeId}`, {
           headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": mask },
-          signal: AbortSignal.timeout(this.timeoutMs),
         });
         return this.json(res, "place photos (ids only)", isDetailsResponse);
       });
@@ -303,9 +402,8 @@ export class GooglePlacesClient {
     const file = path.join(this.options.cacheDir, `photo-${hash(`${photoName}|${maxWidthPx}`)}.json`);
     const r = await this.cached(file, "photoMedia", isPhotoMediaResponse, async (key) => {
       const url = `${API}/${photoName}/media?maxWidthPx=${maxWidthPx}&skipHttpRedirect=true`;
-      const res = await this.fetch(url, {
+      const res = await this.googleFetch(url, {
         headers: { "X-Goog-Api-Key": key },
-        signal: AbortSignal.timeout(this.timeoutMs),
       });
       return this.json(res, "photo media", isPhotoMediaResponse);
     });
@@ -381,6 +479,8 @@ export class GooglePlacesClient {
       this.planned[kind]++;
       throw new PlannedRequest();
     }
+    // Квота Google уже исчерпана: ни месячный учёт (quota), ни счётчик запросов (take) не трогаем.
+    if (this.longQuota) throw this.longQuota;
     const key = this.options.apiKey;
     if (!key) throw new NoApiKeyError("Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше");
     // Бесплатные запросы (IDs Only) в --max-requests не входят — он страхует платные.

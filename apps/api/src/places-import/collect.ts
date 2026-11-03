@@ -3,6 +3,7 @@
 import { IMPORT_LOCALITIES, IMPORT_QUERIES, type ImportLocality } from "./config.js";
 import {
   GoogleApiError,
+  GoogleRateLimitedError,
   RequestLimitError,
   type GooglePlacesClient,
   type SearchTextRequest,
@@ -127,7 +128,7 @@ export async function collect(
           if (!pageToken) break;
         }
       } catch (err) {
-        if (!(err instanceof RequestLimitError)) throw err;
+        if (!(err instanceof RequestLimitError || err instanceof GoogleRateLimitedError)) throw err;
         log(err.message);
         limitReached = true;
         break outer;
