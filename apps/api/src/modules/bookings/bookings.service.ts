@@ -19,6 +19,7 @@ import {
 } from "../../db/index.js";
 import { AnalyticsService } from "../analytics/index.js";
 import { AuditService, type AuditEntry } from "../audit/index.js";
+import { FeatureFlagsService } from "../feature-flags/index.js";
 import { NotificationsService, type NotificationDraft } from "../host/index.js";
 import {
   findGrant,
@@ -90,7 +91,26 @@ export const BOOKING_AUDIT = {
 export const BOOKING_NOTIFICATIONS = {
   created: "booking.created",
   status: "booking.status",
+  // Шаблоны воркера (миграция 0023; строки отправляет воркер, не api).
+  expired: "booking.expired",
+  autoCompleted: "booking.auto_completed",
+  reminder: "booking.reminder",
+  partnerReminder: "booking.partner_reminder",
 } as const;
+/**
+ * Служебные метки причины перехода — всегда в booking_events.payload.code. status_reason брони (и reason события) —
+ * текст пользователя/партнёра, если он есть, иначе та же метка.
+ */
+export const BOOKING_REASON_CODES = {
+  deliveredToPartner: "delivered_to_partner",
+  autoConfirm: "auto_confirm",
+  alternativeDeclined: "alternative_declined",
+  partnerSla: "partner_sla",
+  customerTimeout: "customer_timeout",
+  autoComplete: "auto_complete",
+} as const;
+/** Флаг модуля: партнёрские эндпоинты без regionId проверяют его по регионам своих назначений. */
+const BOOKINGS_FLAG = "module.bookings";
 /** Версия текста согласия на передачу телефона партнёру (D-42; формулировка — LEG, на staging заглушка). */
 export const PHONE_SHARE_CONSENT_VERSION = "2026-11-03";
 
@@ -132,6 +152,7 @@ export class BookingsService {
     @Inject(RbacService) private readonly rbac: RbacService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(FeatureFlagsService) private readonly flags: Pick<FeatureFlagsService, "isEnabled">,
     @Optional() @Inject(AnalyticsService) private readonly analytics?: AnalyticsService,
   ) {}
 
@@ -271,7 +292,8 @@ export class BookingsService {
         to_status: next,
         actor_type: "system",
         actor_user_id: null,
-        reason: auto ? "auto_confirm" : "delivered_to_partner",
+        reason: auto ? BOOKING_REASON_CODES.autoConfirm : BOOKING_REASON_CODES.deliveredToPartner,
+        payload: { code: auto ? BOOKING_REASON_CODES.autoConfirm : BOOKING_REASON_CODES.deliveredToPartner },
       });
       const partnerUsers = await this.repo.partnerUsers(resource.organization_id, resource.place_id);
       const placeName = (await this.repo.placeNames([resource.place_id])).get(resource.place_id);
@@ -330,9 +352,12 @@ export class BookingsService {
       }
       const resource = await this.repo.findResource(row.resource_id);
       if (!resource) throw notFound();
-      const reason =
-        input.reason?.trim() ||
-        (row.status === "alternative_proposed" && to === "cancelled_by_user" ? "alternative_declined" : null);
+      // Служебная метка — всегда в payload события; status_reason — текст туриста, если он есть, иначе метка.
+      const code =
+        row.status === "alternative_proposed" && to === "cancelled_by_user"
+          ? BOOKING_REASON_CODES.alternativeDeclined
+          : null;
+      const reason = input.reason?.trim() || code;
       const patch = this.transitionPatch(
         row,
         to,
@@ -353,13 +378,15 @@ export class BookingsService {
         actor_user_id: userId,
         role_assignment_id: grant?.id ?? null,
         reason,
-        payload:
-          to === "alternative_proposed"
+        payload: {
+          ...(code ? { code } : {}),
+          ...(to === "alternative_proposed"
             ? {
                 alternativeStartsAt: updated.alternative_starts_at!.toISOString(),
                 alternativeEndsAt: updated.alternative_ends_at!.toISOString(),
               }
-            : {},
+            : {}),
+        },
       });
       // D-44 А: счётчик no_show пользователя; исправление no_show → completed — обратно.
       if (row.user_id && to === "no_show") await this.repo.adjustNoShow(row.user_id, 1);
@@ -394,7 +421,7 @@ export class BookingsService {
   // --- партнёр: брони (P04, P05) ---
 
   async partnerList(userId: string, q: PartnerBookingsQueryDto): Promise<PartnerBookingListDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     let places = await this.partnerPlaces(grants, "booking.read");
     if (places.length === 0) throw new ApiError("FORBIDDEN", { details: { reason: "not_partner" } });
     if (q.placeId) {
@@ -427,7 +454,7 @@ export class BookingsService {
     input: CreateManualBookingDto,
     meta: BookingAuditMeta,
   ): Promise<PartnerBookingDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const { resource, grant } = await this.locateResource(grants, input.resourceId, "booking.manual.create");
     const startsAt = new Date(input.startsAt);
     const endsAt = input.endsAt
@@ -513,7 +540,7 @@ export class BookingsService {
   // --- партнёр: ресурсы и доступность ---
 
   async partnerResources(userId: string, placeId: string): Promise<PartnerResourceListDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const place = (await this.partnerPlaces(grants, "booking.read")).find(
       (p) => p.placeId === placeId.toLowerCase(),
     );
@@ -530,7 +557,7 @@ export class BookingsService {
     input: CreateResourceDto,
     meta: BookingAuditMeta,
   ): Promise<PartnerResourceDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const place = (await this.partnerPlaces(grants, "resource.manage")).find(
       (p) => p.placeId === input.placeId.toLowerCase(),
     );
@@ -566,7 +593,7 @@ export class BookingsService {
     input: UpdateResourceDto,
     meta: BookingAuditMeta,
   ): Promise<PartnerResourceDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const { resource, grant } = await this.locateResource(grants, id, "resource.manage");
     return withTenant(this.db, regionContext(resource.region_id), async () => {
       const region = await this.regionOf(resource.region_id);
@@ -597,7 +624,7 @@ export class BookingsService {
     input: PutAvailabilityDto,
     meta: BookingAuditMeta,
   ): Promise<PartnerResourceDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const { resource, grant } = await this.locateResource(grants, id, "availability.edit");
     const rules = input.rules.map(toRuleInput);
     const problems = [
@@ -637,7 +664,7 @@ export class BookingsService {
     input: PutManualAvailabilityDto,
     meta: BookingAuditMeta,
   ): Promise<PartnerResourceDto> {
-    const grants = await this.activeGrants(userId);
+    const grants = await this.partnerGrants(userId);
     const { resource, grant } = await this.locateResource(grants, id, "availability.status.manual");
     return withTenant(this.db, regionContext(resource.region_id), async () => {
       const region = await this.regionOf(resource.region_id);
@@ -928,6 +955,26 @@ export class BookingsService {
   private async activeGrants(userId: string): Promise<Grant[]> {
     const now = this.now();
     return (await this.rbac.grantsOf(userId)).filter((g) => isGrantActive(g, now));
+  }
+
+  /**
+   * Назначения партнёра для эндпоинтов /partner/* (regionId в запросе нет): флаг module.bookings — по регионам
+   * назначений. Включён хотя бы в одном — доступ, но назначения регионов с выключенным флагом отбрасываются (их места,
+   * ресурсы и брони не видны и не меняются); ни в одном — 404, как у выключенного модуля. Без региональных назначений —
+   * значение окружения (дальше обычный 403/404 по правам).
+   */
+  private async partnerGrants(userId: string): Promise<Grant[]> {
+    const grants = await this.activeGrants(userId);
+    const regions = [...new Set(grants.flatMap((g) => (g.regionId ? [g.regionId.toLowerCase()] : [])))];
+    if (regions.length === 0) {
+      if (!(await this.flags.isEnabled(BOOKINGS_FLAG, null))) throw notFound();
+      return grants;
+    }
+    const enabled = new Set<string>();
+    for (const regionId of regions)
+      if (await this.flags.isEnabled(BOOKINGS_FLAG, regionId)) enabled.add(regionId);
+    if (enabled.size === 0) throw notFound();
+    return grants.filter((g) => !g.regionId || enabled.has(g.regionId.toLowerCase()));
   }
 
   /**

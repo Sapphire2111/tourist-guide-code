@@ -91,6 +91,8 @@ export const TABLE_TENANCY = {
   partner_phone_consents: "tenant",
   bookings: "tenant",
   booking_events: "tenant",
+  // Напоминания броней (0023): отметка «уже отправлено» — регион брони.
+  booking_reminders: "tenant",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

@@ -2,7 +2,9 @@
 // ресурс и правила партнёра, слоты, две параллельные брони на один слот → ровно одна (ограничение исключения БД, 409),
 // ручная запись блокирует слот, «Доступно зараз» только при реальном слоте или неистёкшем ручном статусе, телефон
 // партнёру только при согласии (и не кассиру), expired по SLA функцией воркера, альтернатива освобождает исходный
-// слот, no_show и счётчик, completed без проводок ledger. Без Docker — пропуск (CI).
+// слот, no_show и счётчик, completed без проводок ledger. Миграция 0023: уведомления переходов воркера (один раз),
+// напоминания (один раз на бронь и вид), отправка outbox воркером, метка причины в payload, флаг по регионам партнёра.
+// Без Docker — пропуск (CI).
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createDatabase, type Db } from "../../src/db/index.js";
@@ -36,8 +38,17 @@ const APP_PASSWORD = "tg_api_bookings_test";
 const OWNER = seedUuid("bookings-test:user:owner");
 const STAFF = seedUuid("bookings-test:user:staff");
 const STRANGER = seedUuid("bookings-test:user:stranger");
-const TOURISTS = Array.from({ length: 24 }, (_, i) => seedUuid(`bookings-test:user:tourist-${i}`));
+const OWNER2 = seedUuid("bookings-test:user:owner2");
+const TOURISTS = Array.from({ length: 40 }, (_, i) => seedUuid(`bookings-test:user:tourist-${i}`));
 const ORG = seedUuid("bookings-test:org");
+const ORG_B = seedUuid("bookings-test:org-b");
+/** Шаблоны outbox, которые отправляет воркер (миграция 0023). */
+const WORKER_TEMPLATES = [
+  "booking.expired",
+  "booking.auto_completed",
+  "booking.reminder",
+  "booking.partner_reminder",
+];
 
 const meta = (userId: string): BookingAuditMeta => ({
   actor: { type: "user", userId },
@@ -69,6 +80,11 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
   let placeId = "";
   let resourceId = "";
   let tourist = 0;
+  /** Регионы с выключенным флагом module.bookings (заглушка FeatureFlagsService). */
+  const flagOff = new Set<string>();
+  const flags = {
+    isEnabled: (_key: string, region: string | null) => Promise.resolve(!flagOff.has(region ?? "env")),
+  };
   /** Следующий турист (у каждого — свой лимит неподтверждённых броней). */
   const nextTourist = () => TOURISTS[tourist++]!;
 
@@ -98,7 +114,7 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     await seedCatalog(ownerDb, base.regions);
     regionId = base.regions.a;
     let tg = 990000000700;
-    for (const id of [OWNER, STAFF, STRANGER, ...TOURISTS]) {
+    for (const id of [OWNER, STAFF, STRANGER, OWNER2, ...TOURISTS]) {
       tg += 1;
       await sql(`INSERT INTO users (id, status, language, display_name) VALUES ($1, 'active', 'uk', $2)`, [
         id,
@@ -108,6 +124,11 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
         `INSERT INTO telegram_accounts (user_id, telegram_user_id, first_name, last_auth_date)
          VALUES ($1, $2, 'Тест', now())`,
         [id, tg],
+      );
+      await sql(
+        `INSERT INTO messaging_consents (user_id, purpose, granted, source, granted_at)
+         VALUES ($1, 'service', true, 'settings', now())`,
+        [id],
       );
     }
     // Организация и опубликованное место демо-каталога региона A — заведение партнёра.
@@ -129,6 +150,25 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
         `INSERT INTO role_assignments (user_id, role, scope_type, scope_id, region_id)
          VALUES ($1, $2, 'ORGANIZATION', $3, $4)`,
         [user, role, ORG, regionId],
+      );
+    // Владелец организаций в двух регионах (флаг по регионам назначений партнёра).
+    await sql(
+      `INSERT INTO organizations (id, region_id, name, created_by) VALUES ($1, $2, 'Купелі Буковелю', $3)`,
+      [ORG_B, base.regions.b, OWNER2],
+    );
+    await sql(
+      `UPDATE places SET organization_id = $1
+       WHERE id = (SELECT id FROM places WHERE region_id = $2 AND status = 'published' ORDER BY id LIMIT 1)`,
+      [ORG_B, base.regions.b],
+    );
+    for (const [org, region] of [
+      [ORG, regionId],
+      [ORG_B, base.regions.b],
+    ] as const)
+      await sql(
+        `INSERT INTO role_assignments (user_id, role, scope_type, scope_id, region_id)
+         VALUES ($1, 'ORG_OWNER', 'ORGANIZATION', $2, $3)`,
+        [OWNER2, org, region],
       );
     const url = new URL(tdb.container.getConnectionUri());
     url.username = APP_LOGIN;
@@ -153,6 +193,7 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       rbac,
       audit,
       notifications,
+      flags,
       analytics,
     );
   }, 180_000);
@@ -578,5 +619,251 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
         ),
       ),
     ).toMatchObject({ status: 422, reason: "resource_inactive" });
+  });
+
+  // --- миграция 0023: уведомления и напоминания воркера, метка причины, флаг по регионам партнёра ---
+
+  const PARTNERS = [OWNER, STAFF, OWNER2].sort();
+  const HEAD = /^Бронювання №[0-9a-f]{6} \(.+ — .+, \d\d\.\d\d, \d\d:\d\d\)/;
+  const notesOf = async (bookingId: string, template: string) =>
+    (
+      await sql(
+        `SELECT recipient_user_id, body, status FROM notifications
+         WHERE entity_id = $1 AND template = $2 ORDER BY recipient_user_id`,
+        [bookingId, template],
+      )
+    ).rows as { recipient_user_id: string; body: string; status: string }[];
+
+  it("0023: expired по SLA — уведомления туристу и партнёрам один раз, метка partner_sla в payload", async () => {
+    const [slot] = await freeSlots();
+    const user = nextTourist();
+    const b = await bookings.create(user, bookingInput(slot!));
+    await sql(`UPDATE bookings SET partner_response_due_at = now() - interval '1 minute' WHERE id = $1`, [
+      b.id,
+    ]);
+    await appClient.query(`SELECT bookings_expire_due(100)`);
+    await appClient.query(`SELECT bookings_expire_due(100)`);
+    const notes = await notesOf(b.id, "booking.expired");
+    expect(notes.map((n) => n.recipient_user_id).sort()).toEqual([user, ...PARTNERS].sort());
+    const toUser = notes.find((n) => n.recipient_user_id === user)!;
+    expect(toUser.body).toMatch(HEAD);
+    expect(toUser.body).toContain("заклад не відповів вчасно");
+    expect(notes.find((n) => n.recipient_user_id === OWNER)!.body).toContain("минув час на відповідь");
+    const ev = await sql(
+      `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'expired'`,
+      [b.id],
+    );
+    expect(ev.rows).toEqual([{ reason: "partner_sla", payload: { code: "partner_sla" } }]);
+  });
+
+  it("0023: customer_timeout — уведомления и метка; отказ от альтернативы с текстом — метка всё равно в payload", async () => {
+    const [o1, a1, o2, a2] = (await freeSlots()).slice(-4);
+    const silentUser = nextTourist();
+    const silent = await bookings.create(silentUser, bookingInput(o1!));
+    await bookings.updateStatus(
+      OWNER,
+      silent.id,
+      { regionId, status: "alternative_proposed", alternativeStartsAt: a1! },
+      meta(OWNER),
+    );
+    await sql(`UPDATE bookings SET customer_response_due_at = now() - interval '1 minute' WHERE id = $1`, [
+      silent.id,
+    ]);
+    await appClient.query(`SELECT bookings_expire_due(100)`);
+    const notes = await notesOf(silent.id, "booking.expired");
+    expect(notes.map((n) => n.recipient_user_id).sort()).toEqual([silentUser, ...PARTNERS].sort());
+    expect(notes.find((n) => n.recipient_user_id === silentUser)!.body).toContain(
+      "ви не відповіли на запропонований час",
+    );
+    const ev = await sql(
+      `SELECT payload FROM booking_events WHERE booking_id = $1 AND to_status = 'expired'`,
+      [silent.id],
+    );
+    expect(ev.rows[0].payload).toEqual({ code: "customer_timeout" });
+
+    const user = nextTourist();
+    const declined = await bookings.create(user, bookingInput(o2!));
+    await bookings.updateStatus(
+      OWNER,
+      declined.id,
+      { regionId, status: "alternative_proposed", alternativeStartsAt: a2! },
+      meta(OWNER),
+    );
+    const out = await bookings.updateStatus(
+      user,
+      declined.id,
+      { regionId, status: "cancelled_by_user", reason: "Не підходить час" },
+      meta(user),
+    );
+    expect(out.statusReason).toBe("Не підходить час");
+    const dec = await sql(
+      `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'cancelled_by_user'`,
+      [declined.id],
+    );
+    expect(dec.rows).toEqual([{ reason: "Не підходить час", payload: { code: "alternative_declined" } }]);
+    const created = await sql(
+      `SELECT payload FROM booking_events WHERE booking_id = $1 AND to_status = 'pending_partner'`,
+      [declined.id],
+    );
+    expect(created.rows[0].payload).toEqual({ code: "delivered_to_partner" });
+  });
+
+  it("0023: автозавершение — уведомление туристу один раз, метка auto_complete", async () => {
+    const [slot] = await freeSlots();
+    const user = nextTourist();
+    const b = await bookings.create(user, bookingInput(slot!));
+    await bookings.updateStatus(OWNER, b.id, { regionId, status: "confirmed" }, meta(OWNER));
+    await sql(
+      `UPDATE bookings SET starts_at = now() - interval '50 hours', ends_at = now() - interval '49 hours',
+         occupied_from = now() - interval '50 hours', occupied_until = now() - interval '49 hours' WHERE id = $1`,
+      [b.id],
+    );
+    await appClient.query(`SELECT bookings_auto_complete(24, 100)`);
+    await appClient.query(`SELECT bookings_auto_complete(24, 100)`);
+    const notes = await notesOf(b.id, "booking.auto_completed");
+    expect(notes.map((n) => n.recipient_user_id)).toEqual([user]);
+    expect(notes[0]!.body).toMatch(HEAD);
+    const ev = await sql(
+      `SELECT payload FROM booking_events WHERE booking_id = $1 AND to_status = 'completed'`,
+      [b.id],
+    );
+    expect(ev.rows[0].payload).toEqual({ code: "auto_complete" });
+  });
+
+  it("0023: напоминания — туристу за 24 ч и 2 ч, партнёру перед SLA; один раз; отменённым — нет", async () => {
+    // Отдельный ресурс: брони сдвигаются к «сейчас» и не должны пересекаться с бронями других тестов.
+    const own = await bookings.createResource(
+      OWNER,
+      { placeId, name: { uk: "Чан для нагадувань" }, leadTimeMin: 0, capacityPeople: 4 },
+      meta(OWNER),
+    );
+    await bookings.putAvailability(
+      OWNER,
+      own.id,
+      { rules: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "00:00", closesAt: "24:00" })) },
+      meta(OWNER),
+    );
+    const [s1, s2, s3, s4] = await freeSlots(own.id);
+    const input = (slot: string) => bookingInput(slot, { resourceId: own.id });
+    const soonUser = nextTourist();
+    const soon = await bookings.create(soonUser, input(s1!));
+    const dayUser = nextTourist();
+    const day = await bookings.create(dayUser, input(s2!));
+    const goneUser = nextTourist();
+    const gone = await bookings.create(goneUser, input(s3!));
+    for (const id of [soon.id, day.id, gone.id])
+      await bookings.updateStatus(OWNER, id, { regionId, status: "confirmed" }, meta(OWNER));
+    await bookings.updateStatus(goneUser, gone.id, { regionId, status: "cancelled_by_user" }, meta(goneUser));
+    const move = (id: string, minutes: number) =>
+      sql(
+        `UPDATE bookings SET starts_at = now() + make_interval(mins => $2),
+           ends_at = now() + make_interval(mins => $2 + 60), occupied_from = now() + make_interval(mins => $2),
+           occupied_until = now() + make_interval(mins => $2 + 60), confirmed_at = now() - interval '2 days'
+         WHERE id = $1`,
+        [id, minutes],
+      );
+    // Партнёру: неподтверждённая, срок ответа через 10 мин (поставлена час назад). Создаётся до сдвигов: сдвинутые
+    // брони могли бы занять её слот.
+    const pending = await bookings.create(nextTourist(), input(s4!));
+    // Сначала все четыре — на 60 дней вперёд (взаимное расположение сохраняется), чтобы сдвиги ниже не задели исходные.
+    await sql(
+      `UPDATE bookings SET starts_at = starts_at + interval '60 days', ends_at = ends_at + interval '60 days',
+         occupied_from = occupied_from + interval '60 days', occupied_until = occupied_until + interval '60 days'
+       WHERE id = ANY($1)`,
+      [[soon.id, day.id, gone.id, pending.id]],
+    );
+    await sql(
+      `UPDATE bookings SET partner_response_due_at = now() + interval '10 minutes',
+         created_at = now() - interval '1 hour', starts_at = now() + interval '5 hours',
+         ends_at = now() + interval '6 hours', occupied_from = now() + interval '5 hours',
+         occupied_until = now() + interval '6 hours' WHERE id = $1`,
+      [pending.id],
+    );
+    // Сдвиги по одному: сначала освобождаются исходные слоты, сдвинутые интервалы не пересекаются (100, 300, 1200 мин).
+    await move(soon.id, 100);
+    await move(gone.id, 300);
+    await move(day.id, 1200);
+    const run = async () =>
+      (await appClient.query(`SELECT bookings_send_reminders(ARRAY[1440, 120], 15, 100) AS n`)).rows[0]
+        .n as number;
+    expect(await run()).toBeGreaterThanOrEqual(3);
+    expect(await run()).toBe(0);
+    const kinds = await sql(
+      `SELECT booking_id, kind FROM booking_reminders WHERE booking_id = ANY($1) ORDER BY kind`,
+      [[soon.id, day.id, gone.id, pending.id]],
+    );
+    expect(kinds.rows).toEqual(
+      expect.arrayContaining([
+        { booking_id: pending.id, kind: "partner_sla" },
+        { booking_id: soon.id, kind: "user_120" },
+        { booking_id: day.id, kind: "user_1440" },
+      ]),
+    );
+    expect(kinds.rowCount).toBe(3);
+    const soonNotes = await notesOf(soon.id, "booking.reminder");
+    expect(soonNotes.map((n) => n.recipient_user_id)).toEqual([soonUser]);
+    expect(soonNotes[0]!.body).toMatch(/^Нагадування: Бронювання №/);
+    expect((await notesOf(day.id, "booking.reminder")).map((n) => n.recipient_user_id)).toEqual([dayUser]);
+    expect(await notesOf(gone.id, "booking.reminder")).toEqual([]);
+    const partnerNotes = await notesOf(pending.id, "booking.partner_reminder");
+    expect(partnerNotes.map((n) => n.recipient_user_id).sort()).toEqual(PARTNERS);
+    expect(partnerNotes[0]!.body).toContain("чекає на підтвердження");
+    // Подтверждённая уже внутри окна (только что) — напоминания нет: подтверждение пришло только что.
+    await sql(`DELETE FROM booking_reminders WHERE booking_id = $1`, [soon.id]);
+    await sql(`UPDATE bookings SET confirmed_at = now() WHERE id = $1`, [soon.id]);
+    expect(await run()).toBe(0);
+
+    // Отправка воркером: берёт только свои шаблоны и один раз; итог — notifications_mark_dispatched.
+    const claim = async () =>
+      (
+        await appClient.query(`SELECT id, chat_id, body FROM notifications_claim_pending($1, 1000)`, [
+          WORKER_TEMPLATES,
+        ])
+      ).rows as { id: string; chat_id: string; body: string }[];
+    const claimed = await claim();
+    const soonNote = claimed.find((c) => c.body === soonNotes[0]!.body)!;
+    expect(soonNote.chat_id).toMatch(/^\d+$/);
+    expect(await claim()).toEqual([]);
+    const mark = (status: string) =>
+      appClient.query(`SELECT notifications_mark_dispatched($1, $2, NULL) AS ok`, [soonNote.id, status]);
+    expect((await mark("sent")).rows[0].ok).toBe(true);
+    expect((await mark("failed")).rows[0].ok).toBe(false);
+    expect((await notesOf(soon.id, "booking.reminder"))[0]!.status).toBe("sent");
+    // Строки api (booking.status, booking.created) воркер не берёт.
+    const foreign = await sql(
+      `SELECT count(*)::int AS n FROM notifications WHERE id = ANY($1) AND NOT (template = ANY($2))`,
+      [claimed.map((c) => c.id), WORKER_TEMPLATES],
+    );
+    expect(foreign.rows[0].n).toBe(0);
+  });
+
+  it("флаг module.bookings у партнёра — по регионам назначений: включён хоть в одном — только его места", async () => {
+    try {
+      flagOff.add(regionId);
+      // OWNER — назначения только в регионе A: модуль для него выключен (404).
+      expect(await failure(bookings.partnerList(OWNER, {}))).toMatchObject({ status: 404 });
+      expect(await failure(bookings.partnerResources(OWNER, placeId))).toMatchObject({ status: 404 });
+      // OWNER2 — регионы A и B, включён только B: брони и ресурсы региона A не видны и не меняются.
+      const list = await bookings.partnerList(OWNER2, {});
+      expect(list.items.filter((i) => i.regionId === regionId)).toEqual([]);
+      expect(await failure(bookings.partnerResources(OWNER2, placeId))).toMatchObject({ status: 403 });
+      const [slot] = await freeSlots();
+      expect(
+        await failure(
+          bookings.createManual(
+            OWNER2,
+            { resourceId, startsAt: slot!, peopleCount: 1, customerName: "Олена" },
+            meta(OWNER2),
+          ),
+        ),
+      ).toMatchObject({ status: 404 });
+      flagOff.add(base.regions.b);
+      expect(await failure(bookings.partnerList(OWNER2, {}))).toMatchObject({ status: 404 });
+      flagOff.clear();
+      expect((await bookings.partnerList(OWNER2, {})).items.some((i) => i.regionId === regionId)).toBe(true);
+      expect((await bookings.partnerResources(OWNER2, placeId)).items.length).toBeGreaterThan(0);
+    } finally {
+      flagOff.clear();
+    }
   });
 });

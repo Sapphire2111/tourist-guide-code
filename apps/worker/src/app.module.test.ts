@@ -76,7 +76,10 @@ describe("AppModule", () => {
       imports: [AppModule.register(withDb, factory, purgerFactory)],
     }).compile();
     await moduleRef.init();
-    expect(purgerFactory).toHaveBeenCalledExactlyOnceWith("postgres://u:p@localhost:4302/db", 90);
+    expect(purgerFactory).toHaveBeenCalledExactlyOnceWith("postgres://u:p@localhost:4302/db", {
+      serviceRequestRetentionDays: 90,
+      telegramBotToken: undefined,
+    });
     expect(factory).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         schedules: [

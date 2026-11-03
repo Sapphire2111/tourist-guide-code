@@ -133,6 +133,41 @@ describe("слоты (D-04 А, BR-08)", () => {
     expect(short.map((s) => s.startsAt.toISOString())).toEqual(["2026-11-09T08:00:00.000Z"]);
   });
 
+  it("DST весной (последнее воскресенье марта, Киев 03:00 → 04:00): несуществующий час пропущен, дублей нет", () => {
+    const night = { ...resource, horizon_days: 60 };
+    const now = new Date("2027-03-20T00:00:00Z");
+    const slots = generateSlots(night, [weekly(7, 0, 360)], "2027-03-28", 1, TZ, now);
+    expect(slots.map((s) => s.startsAt.toISOString())).toEqual([
+      "2027-03-27T22:00:00.000Z", // 00:00 EET
+      "2027-03-27T23:00:00.000Z", // 01:00
+      "2027-03-28T00:00:00.000Z", // 02:00
+      "2027-03-28T01:00:00.000Z", // 04:00 EEST (03:00 не существует)
+      "2027-03-28T02:00:00.000Z", // 05:00
+    ]);
+    // Слот на «несуществующее» 03:00 забронировать нельзя: findSlot находит только 04:00 сетки.
+    expect(
+      findSlot(night, [weekly(7, 0, 360)], new Date("2027-03-28T01:00:00Z"), TZ, now)?.startsAt.toISOString(),
+    ).toBe("2027-03-28T01:00:00.000Z");
+  });
+
+  it("DST осенью (последнее воскресенье октября, Киев 04:00 → 03:00): каждый местный час — один слот", () => {
+    const night = { ...resource, horizon_days: 60 };
+    const now = new Date("2027-10-20T00:00:00Z");
+    const slots = generateSlots(night, [weekly(7, 0, 360)], "2027-10-31", 1, TZ, now);
+    const times = slots.map((s) => s.startsAt.getTime());
+    expect(new Set(times).size).toBe(6);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+    expect(slots.map((s) => fmt.format(s.startsAt))).toEqual([
+      "00:00",
+      "01:00",
+      "02:00",
+      "03:00",
+      "04:00",
+      "05:00",
+    ]);
+  });
+
   it("findSlot — только начало слота сетки", () => {
     const rules = [weekly(1, 600, 840)];
     expect(findSlot(resource, rules, new Date("2026-11-09T09:00:00Z"), TZ, NOW)).toBeDefined();
