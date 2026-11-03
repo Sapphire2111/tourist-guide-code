@@ -26,7 +26,7 @@ test("места: список → создание → публикация с 
   await page.getByRole("link", { name: "Нове місце" }).click();
   const form = page.getByRole("form", { name: "Дані місця" });
   await form.getByRole("group", { name: "Назва" }).getByLabel("Українською").fill("Кав'ярня «Гуцулка»");
-  await form.getByLabel("Категорія").selectOption({ label: "Де відпочити" });
+  await form.getByLabel("Категорія").selectOption({ label: "Релакс" });
   await form.getByRole("button", { name: "Зберегти" }).click();
   await expect(page.getByRole("heading", { level: 2, name: "Кав'ярня «Гуцулка»" })).toBeVisible();
   await expect(page).toHaveURL(/#\/places\/[0-9a-f-]+$/);

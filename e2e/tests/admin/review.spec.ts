@@ -35,7 +35,7 @@ test("переходы: черновик → архив; недоступных 
   await login(page, "/#/places/new");
   const form = page.getByRole("form", { name: "Дані місця" });
   await form.getByRole("group", { name: "Назва" }).getByLabel("Українською").fill("Чернетка");
-  await form.getByLabel("Категорія").selectOption({ label: "Де відпочити" });
+  await form.getByLabel("Категорія").selectOption({ label: "Релакс" });
   await form.getByRole("button", { name: "Зберегти" }).click();
   const status = page.getByRole("region", { name: /Статус: Чернетка/ });
   await status.getByRole("button", { name: "До архіву" }).click();

@@ -61,7 +61,7 @@ export const SEED_CATEGORIES: readonly {
   },
   {
     code: "relax",
-    name: { uk: "Де відпочити", en: "Where to relax" },
+    name: { uk: "Релакс", en: "Relax" },
     icon: "spa",
     home: "relax",
     children: [
