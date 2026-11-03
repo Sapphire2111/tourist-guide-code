@@ -371,6 +371,34 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     }
   });
 
+  it("неактивная доп. категория: место не попадает ни в счётчик раздела, ни в выдачу", async () => {
+    await sql(`UPDATE categories SET active = false WHERE id = $1`, [categoryId("museums")]);
+    // База — после выключения museums (демо-место museum-khata в основной museums), до вставки доп. категории.
+    const funBefore = (await service.categories(base.regions.a)).items.find(
+      (c) => c.id === categoryId("fun"),
+    )!;
+    await sql(`INSERT INTO place_extra_categories (region_id, place_id, category_id) VALUES ($1, $2, $3)`, [
+      base.regions.a,
+      placeId("east"),
+      categoryId("museums"),
+    ]);
+    try {
+      const fun = (await service.categories(base.regions.a)).items.find((c) => c.id === categoryId("fun"))!;
+      const found = await service.search(base.regions.a, {
+        origin: ORIGIN,
+        radius: 5000,
+        limit: 50,
+        offset: 0,
+        categoryId: categoryId("fun"),
+      });
+      expect(keysOf(found.items)).not.toContain("east");
+      expect(fun.placeCount).toBe(funBefore.placeCount);
+    } finally {
+      await sql(`UPDATE categories SET active = true WHERE id = $1`, [categoryId("museums")]);
+      await sql(`DELETE FROM place_extra_categories WHERE place_id = $1`, [placeId("east")]);
+    }
+  });
+
   it("текст без координат: весь регион, без неопубликованных и чужого региона; рекомендованные выше", async () => {
     const res = await service.search(base.regions.a, { text: "тест-гід", limit: 50, offset: 0 });
     expect(keysOf(res.items)).toEqual(["west-rec", "east", "west-ad", "far", "north"]);

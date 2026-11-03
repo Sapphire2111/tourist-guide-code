@@ -245,6 +245,7 @@ export {
 export {
   BOOKING_ACTORS,
   BOOKING_MODES,
+  BOOKING_REASON_CODE_VALUES,
   BOOKING_SOURCES,
   BOOKING_STATUSES,
   MANUAL_AVAILABILITY,
@@ -255,6 +256,7 @@ export {
   type BookingActor,
   type BookingEvent,
   type BookingMode,
+  type BookingReasonCode,
   type BookingSource,
   type BookingStatus,
   type ManualAvailability,

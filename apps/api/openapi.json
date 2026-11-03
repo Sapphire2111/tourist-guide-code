@@ -11047,7 +11047,7 @@
     },
     "/bookings/{id}/status": {
       "patch": {
-        "description": "Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).",
+        "description": "Турист-владелец: cancelled_by_user (до BookingDto.cancelDeadline: confirmed — не позже чем за cancelBeforeStartHours ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).",
         "operationId": "updateBookingStatus",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -11152,7 +11152,7 @@
     },
     "/partner/bookings": {
       "get": {
-        "description": "Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё).",
+        "description": "Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё). 404 — модуль бронирований выключен во всех регионах назначений.",
         "operationId": "listPartnerBookings",
         "parameters": [
           {
@@ -11224,6 +11224,15 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
             }
           },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
           "429": {
             "description": "Ошибка",
             "headers": {
@@ -11248,7 +11257,7 @@
         "tags": ["partner-bookings"]
       },
       "post": {
-        "description": "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
+        "description": "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет или модуль выключен; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
         "operationId": "createManualBooking",
         "parameters": [
           {
@@ -11359,6 +11368,7 @@
     },
     "/partner/resources": {
       "get": {
+        "description": "403 not_partner — нет права booking.read на место. 404 — модуль бронирований выключен во всех регионах назначений.",
         "operationId": "listPartnerResources",
         "parameters": [
           {
@@ -11409,6 +11419,15 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
             }
           },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
           "429": {
             "description": "Ошибка",
             "headers": {
@@ -11433,7 +11452,7 @@
         "tags": ["partner-bookings"]
       },
       "post": {
-        "description": "Право resource.manage (владелец, менеджер). 403 — нет права на место. AuditLog.",
+        "description": "Право resource.manage (владелец, менеджер). 403 — нет права на место. 404 — модуль бронирований выключен во всех регионах назначений. AuditLog.",
         "operationId": "createPartnerResource",
         "parameters": [
           {
@@ -11484,6 +11503,15 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
             }
           },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
           "422": {
             "description": "Ошибка",
             "headers": {
@@ -11514,6 +11542,99 @@
         },
         "security": [{ "session": [] }],
         "summary": "Новый ресурс заведения (D-04 А: почасовые слоты): длительность, buffer, вместимость, SLA",
+        "tags": ["partner-bookings"]
+      }
+    },
+    "/partner/resources/{id}/slots": {
+      "get": {
+        "description": "Как GET /resources/{id}/slots, но место может быть не опубликовано, а ресурс — неактивен; регион — из ресурса. Право booking.read на место ресурса. 404 — ресурса нет среди мест партнёра или модуль выключен.",
+        "operationId": "listPartnerResourceSlots",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Первая местная дата (по умолчанию — сегодня в таймзоне региона)",
+            "schema": { "format": "date", "example": "2026-11-05", "type": "string" }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Дней (по умолчанию 7)",
+            "schema": { "minimum": 1, "maximum": 14, "type": "integer" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SlotListDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Слоты ресурса для партнёра: альтернатива, ручная запись, предпросмотр до публикации места",
         "tags": ["partner-bookings"]
       }
     },
@@ -11720,7 +11841,7 @@
     },
     "/partner/resources/{id}/manual-availability": {
       "put": {
-        "description": "available_now / busy — до now + ttlMinutes; unknown — снять. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.",
+        "description": "available_now / busy — до now + ttlMinutes (по умолчанию 60); unknown — снять, ttlMinutes не нужен. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.",
         "operationId": "putResourceManualAvailability",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -16110,9 +16231,46 @@
           "submit": { "type": "boolean", "description": "Отправить на модерацию (ORG_OWNER)" },
           "manageStaff": { "type": "boolean", "description": "Сотрудники P09 (ORG_OWNER)" },
           "manageOffers": { "type": "boolean", "description": "Акции P07 (ORG_OWNER, ORG_MANAGER)" },
-          "serviceRequests": { "type": "boolean", "description": "Заявки гостей P10 (все роли партнёра)" }
+          "serviceRequests": { "type": "boolean", "description": "Заявки гостей P10 (все роли партнёра)" },
+          "bookings": {
+            "type": "boolean",
+            "description": "Брони заведения P04/P05 — список и ответ (booking.read)"
+          },
+          "manualBooking": {
+            "type": "boolean",
+            "description": "Ручная запись клиента (booking.manual.create)"
+          },
+          "manageResources": {
+            "type": "boolean",
+            "description": "Ресурсы бронирования: создать, править, архивировать (resource.manage; ORG_OWNER, ORG_MANAGER)"
+          },
+          "editAvailability": {
+            "type": "boolean",
+            "description": "Правила доступности ресурса (availability.edit)"
+          },
+          "manualAvailability": {
+            "type": "boolean",
+            "description": "Ручной статус «Доступно зараз» (availability.status.manual)"
+          },
+          "customerPhone": {
+            "type": "boolean",
+            "description": "Видит телефон клиента брони при его согласии (booking.admin.read; кассиру — нет, C-20)"
+          }
         },
-        "required": ["editPlace", "editIdentity", "submit", "manageStaff", "manageOffers", "serviceRequests"]
+        "required": [
+          "editPlace",
+          "editIdentity",
+          "submit",
+          "manageStaff",
+          "manageOffers",
+          "serviceRequests",
+          "bookings",
+          "manualBooking",
+          "manageResources",
+          "editAvailability",
+          "manualAvailability",
+          "customerPhone"
+        ]
       },
       "ModerationCaseStatus": { "type": "string", "enum": ["open", "decided"] },
       "ModerationDecision": { "type": "string", "enum": ["approve", "reject", "changes_requested"] },
@@ -17023,7 +17181,12 @@
           "entryContextId": {
             "type": "string",
             "format": "uuid",
-            "description": "EntryContext входа (атрибуция)"
+            "description": "EntryContext входа (QR) — атрибуция брони; чужой или несуществующий контекст молча не сохраняется"
+          },
+          "customerName": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Имя клиента для заведения (необязательно; по умолчанию — имя профиля). Пробелы схлопываются, длиннее 200 символов — обрезается"
           }
         },
         "required": [
@@ -17049,6 +17212,18 @@
           "completed",
           "no_show"
         ]
+      },
+      "BookingReasonCode": {
+        "type": "string",
+        "enum": [
+          "delivered_to_partner",
+          "auto_confirm",
+          "alternative_declined",
+          "partner_sla",
+          "customer_timeout",
+          "auto_complete"
+        ],
+        "description": "Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…)"
       },
       "BookingAlternativeDto": {
         "type": "object",
@@ -17082,10 +17257,15 @@
           "fromStatus": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
           "toStatus": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
           "actor": { "allOf": [{ "$ref": "#/components/schemas/BookingActor" }] },
-          "reason": { "type": "string", "nullable": true },
+          "reason": { "type": "string", "nullable": true, "description": "Свободный текст туриста/партнёра" },
+          "reasonCode": {
+            "nullable": true,
+            "description": "Служебный код причины (система, воркер); показывать переводом, не как текст",
+            "allOf": [{ "$ref": "#/components/schemas/BookingReasonCode" }]
+          },
           "at": { "type": "string", "format": "date-time" }
         },
-        "required": ["fromStatus", "toStatus", "actor", "reason", "at"]
+        "required": ["fromStatus", "toStatus", "actor", "reason", "reasonCode", "at"]
       },
       "BookingDto": {
         "type": "object",
@@ -17097,7 +17277,21 @@
           "resourceId": { "type": "string", "format": "uuid" },
           "resourceName": { "$ref": "#/components/schemas/LocalizedTextDto" },
           "status": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
-          "statusReason": { "type": "string", "nullable": true },
+          "statusReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина статуса — только свободный текст туриста/партнёра (служебная метка — statusReasonCode)"
+          },
+          "statusReasonCode": {
+            "nullable": true,
+            "description": "Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…)",
+            "allOf": [{ "$ref": "#/components/schemas/BookingReasonCode" }]
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Kyiv",
+            "description": "Часовой пояс места (региона) — показывать время брони в нём"
+          },
           "startsAt": { "type": "string", "format": "date-time" },
           "endsAt": { "type": "string", "format": "date-time" },
           "peopleCount": { "type": "integer" },
@@ -17112,6 +17306,20 @@
             "format": "date-time",
             "nullable": true,
             "description": "Срок ответа партнёра (D-43)"
+          },
+          "cancelDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "До какого момента турист может отменить бронь (confirmed — за cancelBeforeStartHours до начала, неподтверждённую — до начала); null — турист эту бронь не отменяет"
+          },
+          "cancelTooLate": {
+            "type": "boolean",
+            "description": "Отменить туристу уже поздно (cancelDeadline прошёл): PATCH cancelled_by_user — 422 cancelTooLate"
+          },
+          "cancelBeforeStartHours": {
+            "type": "integer",
+            "description": "Правило отмены подтверждённой брони: не позже чем за столько часов до начала"
           },
           "allowedTransitions": {
             "type": "array",
@@ -17131,12 +17339,17 @@
           "resourceName",
           "status",
           "statusReason",
+          "statusReasonCode",
+          "timezone",
           "startsAt",
           "endsAt",
           "peopleCount",
           "comment",
           "alternative",
           "partnerResponseDueAt",
+          "cancelDeadline",
+          "cancelTooLate",
+          "cancelBeforeStartHours",
           "allowedTransitions",
           "history",
           "createdAt",
@@ -17183,7 +17396,21 @@
           "resourceId": { "type": "string", "format": "uuid" },
           "resourceName": { "$ref": "#/components/schemas/LocalizedTextDto" },
           "status": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
-          "statusReason": { "type": "string", "nullable": true },
+          "statusReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина статуса — только свободный текст туриста/партнёра (служебная метка — statusReasonCode)"
+          },
+          "statusReasonCode": {
+            "nullable": true,
+            "description": "Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…)",
+            "allOf": [{ "$ref": "#/components/schemas/BookingReasonCode" }]
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Kyiv",
+            "description": "Часовой пояс места (региона) — показывать время брони в нём"
+          },
           "startsAt": { "type": "string", "format": "date-time" },
           "endsAt": { "type": "string", "format": "date-time" },
           "peopleCount": { "type": "integer" },
@@ -17198,6 +17425,20 @@
             "format": "date-time",
             "nullable": true,
             "description": "Срок ответа партнёра (D-43)"
+          },
+          "cancelDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "До какого момента турист может отменить бронь (confirmed — за cancelBeforeStartHours до начала, неподтверждённую — до начала); null — турист эту бронь не отменяет"
+          },
+          "cancelTooLate": {
+            "type": "boolean",
+            "description": "Отменить туристу уже поздно (cancelDeadline прошёл): PATCH cancelled_by_user — 422 cancelTooLate"
+          },
+          "cancelBeforeStartHours": {
+            "type": "integer",
+            "description": "Правило отмены подтверждённой брони: не позже чем за столько часов до начала"
           },
           "allowedTransitions": {
             "type": "array",
@@ -17229,12 +17470,17 @@
           "resourceName",
           "status",
           "statusReason",
+          "statusReasonCode",
+          "timezone",
           "startsAt",
           "endsAt",
           "peopleCount",
           "comment",
           "alternative",
           "partnerResponseDueAt",
+          "cancelDeadline",
+          "cancelTooLate",
+          "cancelBeforeStartHours",
           "allowedTransitions",
           "history",
           "createdAt",
@@ -17514,8 +17760,7 @@
             "type": "integer",
             "minimum": 15,
             "maximum": 240,
-            "default": 60,
-            "description": "TTL ручного статуса, мин (D-78 А: короткий)"
+            "description": "TTL ручного статуса, мин (D-78 А: короткий); по умолчанию 60. Для unknown не нужен (игнорируется)"
           }
         },
         "required": ["status"]

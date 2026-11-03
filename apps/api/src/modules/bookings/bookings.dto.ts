@@ -21,12 +21,14 @@ import { LocalizedDescriptionDto, LocalizedNameDto, LocalizedTextDto } from "../
 import {
   BOOKING_ACTORS,
   BOOKING_MODES,
+  BOOKING_REASON_CODE_VALUES,
   BOOKING_SOURCES,
   BOOKING_STATUSES,
   MANUAL_AVAILABILITY,
   RESOURCE_STATUSES,
   type BookingActor,
   type BookingMode,
+  type BookingReasonCode,
   type BookingSource,
   type BookingStatus,
   type ManualAvailability,
@@ -70,6 +72,8 @@ export const HHMM_OPEN_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 export const HHMM_CLOSE_RE = /^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$/;
 export const BOOKING_COMMENT_MAX = 500;
 export const BOOKING_REASON_MAX = 500;
+/** Предел длины имени клиента во входе (защита от мусора); сохраняется обрезанным до BOOKING_PARAMS.customerNameMax. */
+export const BOOKING_CUSTOMER_NAME_INPUT_MAX = 1000;
 export const AVAILABILITY_RULES_MAX = 60;
 
 /** Источник телефона туриста (D-42 А): requestContact Telegram или ручной ввод запасным путём. */
@@ -169,10 +173,53 @@ export class CreateBookingDto extends BookingRegionQueryDto {
   @IsBoolean()
   phoneShareConsent!: boolean;
 
-  @ApiPropertyOptional({ type: String, format: "uuid", description: "EntryContext входа (атрибуция)" })
+  @ApiPropertyOptional({
+    type: String,
+    format: "uuid",
+    description:
+      "EntryContext входа (QR) — атрибуция брони; чужой или несуществующий контекст молча не сохраняется",
+  })
   @IsOptional()
   @IsUUID()
   entryContextId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: BOOKING_CUSTOMER_NAME_INPUT_MAX,
+    description:
+      `Имя клиента для заведения (необязательно; по умолчанию — имя профиля). Пробелы схлопываются, длиннее ` +
+      `${BOOKING_PARAMS.customerNameMax} символов — обрезается`,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(BOOKING_CUSTOMER_NAME_INPUT_MAX)
+  customerName?: string;
+}
+
+/** Слоты ресурса для партнёра (место может быть не опубликовано): регион — из ресурса. */
+export class PartnerSlotsQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: "date",
+    example: "2026-11-05",
+    description: "Первая местная дата (по умолчанию — сегодня в таймзоне региона)",
+  })
+  @IsOptional()
+  @IsIsoDate()
+  from?: string;
+
+  @ApiPropertyOptional({
+    type: "integer",
+    minimum: 1,
+    maximum: BOOKING_PARAMS.slotsMaxDays,
+    description: "Дней (по умолчанию 7)",
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(BOOKING_PARAMS.slotsMaxDays)
+  days?: number;
 }
 
 export class UpdateBookingStatusDto extends BookingRegionQueryDto {
@@ -462,8 +509,10 @@ export class PutManualAvailabilityDto {
     type: "integer",
     minimum: BOOKING_PARAMS.manualTtlMinMin,
     maximum: BOOKING_PARAMS.manualTtlMaxMin,
-    default: BOOKING_PARAMS.manualTtlDefaultMin,
-    description: "TTL ручного статуса, мин (D-78 А: короткий)",
+    // Без default в схеме: openapi-typescript делает поле с default обязательным в клиенте.
+    description:
+      `TTL ручного статуса, мин (D-78 А: короткий); по умолчанию ${BOOKING_PARAMS.manualTtlDefaultMin}. ` +
+      "Для unknown не нужен (игнорируется)",
   })
   @IsOptional()
   @IsInt()
@@ -556,7 +605,15 @@ export class BookingEventDto {
   fromStatus!: BookingStatus | null;
   @ApiProperty({ enum: BOOKING_STATUSES, enumName: "BookingStatus" }) toStatus!: BookingStatus;
   @ApiProperty({ enum: BOOKING_ACTORS, enumName: "BookingActor" }) actor!: BookingActor;
-  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Свободный текст туриста/партнёра" })
+  reason!: string | null;
+  @ApiProperty({
+    enum: BOOKING_REASON_CODE_VALUES,
+    enumName: "BookingReasonCode",
+    nullable: true,
+    description: "Служебный код причины (система, воркер); показывать переводом, не как текст",
+  })
+  reasonCode!: BookingReasonCode | null;
   @ApiProperty({ type: String, format: "date-time" }) at!: string;
 }
 
@@ -575,7 +632,27 @@ export class BookingDto {
   @ApiProperty({ type: String, format: "uuid" }) resourceId!: string;
   @ApiProperty({ type: LocalizedTextDto }) resourceName!: LocalizedTextDto;
   @ApiProperty({ enum: BOOKING_STATUSES, enumName: "BookingStatus" }) status!: BookingStatus;
-  @ApiProperty({ type: String, nullable: true }) statusReason!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Причина статуса — только свободный текст туриста/партнёра (служебная метка — statusReasonCode)",
+  })
+  statusReason!: string | null;
+  @ApiProperty({
+    enum: BOOKING_REASON_CODE_VALUES,
+    enumName: "BookingReasonCode",
+    nullable: true,
+    description:
+      "Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…)",
+  })
+  statusReasonCode!: BookingReasonCode | null;
+  @ApiProperty({
+    type: String,
+    example: "Europe/Kyiv",
+    description: "Часовой пояс места (региона) — показывать время брони в нём",
+  })
+  timezone!: string;
   @ApiProperty({ type: String, format: "date-time" }) startsAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) endsAt!: string;
   @ApiProperty({ type: "integer" }) peopleCount!: number;
@@ -588,6 +665,26 @@ export class BookingDto {
     description: "Срок ответа партнёра (D-43)",
   })
   partnerResponseDueAt!: string | null;
+  @ApiProperty({
+    type: String,
+    format: "date-time",
+    nullable: true,
+    description:
+      "До какого момента турист может отменить бронь (confirmed — за cancelBeforeStartHours до начала, " +
+      "неподтверждённую — до начала); null — турист эту бронь не отменяет",
+  })
+  cancelDeadline!: string | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Отменить туристу уже поздно (cancelDeadline прошёл): PATCH cancelled_by_user — 422 cancelTooLate",
+  })
+  cancelTooLate!: boolean;
+  @ApiProperty({
+    type: "integer",
+    description: "Правило отмены подтверждённой брони: не позже чем за столько часов до начала",
+  })
+  cancelBeforeStartHours!: number;
   @ApiProperty({
     enum: TARGET_STATUSES,
     enumName: "BookingTargetStatus",

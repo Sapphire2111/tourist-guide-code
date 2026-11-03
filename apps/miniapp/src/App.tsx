@@ -1,3 +1,4 @@
+import { DesignProvider, useDesign } from "./design/DesignProvider.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import {
@@ -277,6 +278,7 @@ function HomeAssistant(props: RoutesProps) {
 }
 
 function Home(props: RoutesProps) {
+  const { design } = useDesign();
   const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
@@ -295,9 +297,10 @@ function Home(props: RoutesProps) {
           {t("miniapp.staff.open")}
         </Link>
       )}
-      <HomeAssistant {...props} />
+      {design === "original" && <HomeAssistant {...props} />}
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
+      {design === "modern" && <HomeAssistant {...props} />}
       <HomePlaces />
       <SeasonTags />
       <div className="kosiv-meta-block">
@@ -725,7 +728,7 @@ function Shell({
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>
-      <BottomNav />
+      <BottomNav profile={profile} />
       <LocationSheetHost path={path} />
     </>
   );
@@ -821,8 +824,9 @@ export function App({
     () => ({
       api: bookingsApi ?? createBookingsApi(props.api),
       timeZone: context?.region?.timezone ?? "Europe/Kyiv",
+      entryContextId: context?.entryContextId ?? null,
     }),
-    [bookingsApi, props.api, context?.region?.timezone],
+    [bookingsApi, props.api, context?.region?.timezone, context?.entryContextId],
   );
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
   // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
@@ -850,34 +854,44 @@ export function App({
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
-        <SeasonProvider webApp={webApp}>
-          <main className="kosiv-shell" lang={effectiveLocale}>
-            {state.status === "loading" || state.status === "error" ? (
-              <StartupStatus state={state} />
-            ) : (
-              <GuideProvider value={guide}>
-                <LocationProvider venueEntry={venue !== null} entryKey={context?.entryContextId ?? undefined}>
-                  <HostProvider value={host}>
-                    <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
-                      <BookingsProvider value={bookings}>
-                        <Shell
-                          profile={Boolean(session && hasRequiredConsents(session.me))}
-                          scan={scanHandler}
-                          routes={
-                            // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
-                            <AssistantSessionProvider>
-                              <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
-                            </AssistantSessionProvider>
-                          }
-                        />
-                      </BookingsProvider>
-                    </PartnerProvider>
-                  </HostProvider>
-                </LocationProvider>
-              </GuideProvider>
-            )}
-          </main>
-        </SeasonProvider>
+        <DesignProvider>
+          <SeasonProvider webApp={webApp}>
+            <main className="kosiv-shell" lang={effectiveLocale}>
+              {state.status === "loading" || state.status === "error" ? (
+                <StartupStatus state={state} />
+              ) : (
+                <GuideProvider value={guide}>
+                  <LocationProvider
+                    venueEntry={venue !== null}
+                    entryKey={context?.entryContextId ?? undefined}
+                  >
+                    <HostProvider value={host}>
+                      <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
+                        <BookingsProvider value={bookings}>
+                          <Shell
+                            profile={Boolean(session && hasRequiredConsents(session.me))}
+                            scan={scanHandler}
+                            routes={
+                              // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
+                              <AssistantSessionProvider>
+                                <Routes
+                                  {...props}
+                                  session={session}
+                                  onMe={onMe}
+                                  retryContext={retryContext}
+                                />
+                              </AssistantSessionProvider>
+                            }
+                          />
+                        </BookingsProvider>
+                      </PartnerProvider>
+                    </HostProvider>
+                  </LocationProvider>
+                </GuideProvider>
+              )}
+            </main>
+          </SeasonProvider>
+        </DesignProvider>
       </FeatureFlagsProvider>
     </I18nProvider>
   );

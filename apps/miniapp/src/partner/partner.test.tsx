@@ -39,6 +39,12 @@ const abilities = (owner: boolean) => ({
   manageStaff: owner,
   manageOffers: true,
   serviceRequests: true,
+  bookings: true,
+  manualBooking: true,
+  manageResources: true,
+  editAvailability: true,
+  manualAvailability: true,
+  customerPhone: true,
 });
 
 const org = (over: Partial<PartnerOrganization> = {}): PartnerOrganization => ({

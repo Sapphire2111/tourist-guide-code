@@ -14,7 +14,7 @@ import { Live, type Message } from "../partner/parts.js";
 import type { TelegramWebApp } from "../telegram.js";
 import type { Booking, Resource, Slot, StatusChange } from "./bookings-api.js";
 import { useBookings } from "./context.js";
-import { addDays, dayLabel, localDate, localTime, normalizePhone, whenLabel } from "./format.js";
+import { addDays, bookingZone, dayLabel, localDate, localTime, normalizePhone, whenLabel } from "./format.js";
 import { Reason, StatusBadge, useBookingErrorText, useIdempotencyKey } from "./parts.js";
 
 /** Bot API 6.9+: запрос номера пользователя; номер — в responseUnsafe.contact (новые клиенты). */
@@ -22,9 +22,6 @@ type ContactResponse = { status?: string; responseUnsafe?: { contact?: { phone_n
 type ContactWebApp = TelegramWebApp & {
   requestContact?(cb?: (sent: boolean, res?: ContactResponse) => void): void;
 };
-
-/** До начала confirmed-брони — не позже стольких часов (BOOKING_PARAMS.userCancelBeforeStartHours сервера). */
-export const CANCEL_BEFORE_HOURS = 2;
 
 const ACTIVE = new Set(["new", "pending_partner", "alternative_proposed", "confirmed"]);
 
@@ -278,7 +275,7 @@ function BookingForm({
 }) {
   const { t, locale } = useT();
   const { regionId, webApp } = useGuide();
-  const { api, timeZone } = useBookings();
+  const { api, timeZone, entryContextId } = useBookings();
   const errorText = useBookingErrorText();
   const idem = useIdempotencyKey();
   const placeName = pickLocalized(place.name, locale);
@@ -286,6 +283,7 @@ function BookingForm({
   const [phoneRaw, setPhoneRaw] = useState("");
   const [phoneSource, setPhoneSource] = useState<"telegram_contact" | "manual">("manual");
   const [comment, setComment] = useState("");
+  const [name, setName] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
@@ -300,12 +298,16 @@ function BookingForm({
       window.removeEventListener("offline", off);
     };
   }, []);
-  const ids = { people: useId(), phone: useId(), comment: useId(), consent: useId() };
+  const ids = { people: useId(), phone: useId(), comment: useId(), consent: useId(), name: useId() };
   const phone = normalizePhone(phoneRaw);
   const uncertain = useRef(false);
   const tg = webApp as ContactWebApp | undefined;
   const user = tg?.initDataUnsafe?.user;
   const contactName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : null;
+  // Имя для заведения — только введённое туристом: имя из Telegram в бронь не копируется (партнёр и так видит имя
+  // профиля), поле его лишь подсказывает. Сервер обрежет длинное.
+  const customerName = (name ?? "").trim();
+  const shownName = customerName || contactName;
   const cap = resource.capacityPeople;
 
   const shareContact = () => {
@@ -339,9 +341,11 @@ function BookingForm({
       startsAt: slot.startsAt,
       peopleCount: people,
       ...(comment.trim() ? { comment: comment.trim() } : {}),
+      ...(customerName ? { customerName } : {}),
       phone,
       phoneSource,
       phoneShareConsent: true,
+      ...(entryContextId ? { entryContextId } : {}),
     };
     setBusy(true);
     setMessage(null);
@@ -390,10 +394,10 @@ function BookingForm({
               </dd>
             </>
           )}
-          {contactName && (
+          {shownName && (
             <>
               <dt>{t("miniapp.booking.contact")}</dt>
-              <dd>{contactName}</dd>
+              <dd>{shownName}</dd>
             </>
           )}
           {phone && (
@@ -437,6 +441,17 @@ function BookingForm({
             </Button>
           </span>
         </div>
+        <label htmlFor={ids.name}>
+          {t("miniapp.booking.customerName")}
+          <input
+            id={ids.name}
+            autoComplete="name"
+            maxLength={200}
+            placeholder={contactName ?? undefined}
+            value={name ?? ""}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
         <label htmlFor={ids.phone}>
           {t("miniapp.booking.phone")}
           <input
@@ -578,16 +593,18 @@ export function MyBookings() {
 
 function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (b: Booking) => void }) {
   const { t, locale } = useT();
-  const { api, timeZone } = useBookings();
+  const { api, timeZone: envZone } = useBookings();
+  // Время брони — в поясе места (сервер), а не текущего контекста входа.
+  const timeZone = bookingZone(b.timezone, envZone);
   const errorText = useBookingErrorText();
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const canCancel = b.allowedTransitions.includes("cancelled_by_user");
   const canAccept = b.status === "alternative_proposed" && b.allowedTransitions.includes("confirmed");
-  // Правило «не пізніше ніж за 2 год» для подтверждённой брони; сервер проверяет сам (cancel_too_late).
+  // Срок отмены считает сервер (cancelDeadline, cancelTooLate); срок мог пройти, пока экран открыт.
   const tooLate =
-    b.status === "confirmed" && Date.now() >= Date.parse(b.startsAt) - CANCEL_BEFORE_HOURS * 3_600_000;
+    b.cancelTooLate || (b.cancelDeadline !== null && Date.now() >= Date.parse(b.cancelDeadline));
 
   const change = async (c: StatusChange, done: string) => {
     setBusy(true);
@@ -611,7 +628,7 @@ function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (
         {t("miniapp.booking.peopleCount", { n: b.peopleCount })}
       </p>
       <StatusBadge status={b.status} who="user" />
-      <Reason reason={b.statusReason} />
+      <Reason reason={b.statusReason} code={b.statusReasonCode} />
       {b.status === "pending_partner" && b.partnerResponseDueAt && (
         <p className="kosiv-muted">
           {t("miniapp.booking.waitUntil", { time: whenLabel(b.partnerResponseDueAt, timeZone, locale) })}
@@ -650,7 +667,7 @@ function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (
           {b.status === "confirmed" && (
             <p className="kosiv-muted" data-testid="cancel-rule">
               {t(tooLate ? "miniapp.booking.cancelTooLate" : "miniapp.booking.cancelRule", {
-                hours: CANCEL_BEFORE_HOURS,
+                hours: b.cancelBeforeStartHours,
               })}
             </p>
           )}

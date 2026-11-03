@@ -8,6 +8,8 @@ export type BookingsEnv = {
   api: BookingsApi;
   /** Пояс региона (слоты и брони — в местном времени). */
   timeZone: string;
+  /** Контекст входа (QR) — атрибуция онлайн-брони; null — вход без контекста. */
+  entryContextId?: string | null;
 };
 
 const BookingsContext = createContext<BookingsEnv | null>(null);

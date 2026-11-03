@@ -567,6 +567,7 @@ function catalogPlace(p: CatalogPlaceRow): CatalogPlace {
   return {
     id: p.id,
     category: p.category_code,
+    extraCategories: p.extra_category_codes,
     names: Object.values(p.name_i18n).filter((v): v is string => typeof v === "string"),
     location: p.location,
     tags: p.tags,

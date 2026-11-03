@@ -9,7 +9,7 @@ import { useAsync } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { ConflictError } from "../host/types.js";
 import { orgOfPlace, useKeptAsync, usePartner } from "../partner/context.js";
-import type { PartnerRole } from "../partner/partner-api.js";
+import type { PartnerOrganization } from "../partner/partner-api.js";
 import { Live, type Message } from "../partner/parts.js";
 import type {
   AvailabilityRule,
@@ -22,6 +22,7 @@ import type {
 import { useBookings } from "./context.js";
 import {
   addDays,
+  bookingZone,
   dayLabel,
   localDate,
   localTime,
@@ -34,37 +35,41 @@ import { Reason, StatusBadge, useBookingErrorText, useIdempotencyKey } from "./p
 
 const row = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } as const;
 
-/** Роль пользователя в организации места; null — место не из его назначений. undefined — /partner/me грузится. */
-function usePlaceRole(placeId: string): PartnerRole | null | undefined {
+type Abilities = PartnerOrganization["abilities"];
+
+/**
+ * Права пользователя на место (abilities из /partner/me — сервер считает их по реестру прав, а не по коду роли);
+ * null — место не из его назначений. undefined — /partner/me грузится.
+ */
+function usePlaceAbilities(placeId: string): Abilities | null | undefined {
   const { me } = usePartner();
   if (me.status !== "ready") return me.status === "loading" ? undefined : null;
-  return orgOfPlace(me.data.organizations, placeId)?.role ?? null;
+  return orgOfPlace(me.data.organizations, placeId)?.abilities ?? null;
 }
 
-function useRoleGate(placeId: string): { role: PartnerRole | null; gate: ReactNode | null } {
+function useAccessGate(placeId: string): { abilities: Abilities | null; gate: ReactNode | null } {
   const { t } = useT();
-  const role = usePlaceRole(placeId);
-  if (role === undefined)
+  const abilities = usePlaceAbilities(placeId);
+  if (abilities === undefined)
     return {
-      role: null,
+      abilities: null,
       gate: (
         <p role="status" className="kosiv-muted">
           {t("miniapp.guide.loading")}
         </p>
       ),
     };
-  if (role === null) return { role: null, gate: <p role="alert">{t("miniapp.pbooking.noAccess")}</p> };
-  return { role, gate: null };
+  if (!abilities?.bookings)
+    return { abilities: null, gate: <p role="alert">{t("miniapp.pbooking.noAccess")}</p> };
+  return { abilities, gate: null };
 }
-
-const canManageResources = (role: PartnerRole | null) => role === "ORG_OWNER" || role === "ORG_MANAGER";
 
 // --- P04 ---
 
 export function PartnerBookings({ placeId }: { placeId: string }) {
   const { t, locale } = useT();
   const { api, timeZone } = useBookings();
-  const { role, gate } = useRoleGate(placeId);
+  const { abilities, gate } = useAccessGate(placeId);
   const [day, setDay] = useState(() => today(timeZone));
   const [resourceId, setResourceId] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -81,14 +86,14 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
       ),
     [api, placeId, day, timeZone],
   );
-  if (gate) return gate;
-  const manage = canManageResources(role);
+  if (gate || !abilities) return gate;
+  const manage = abilities.manageResources;
   const open = openId && bookings.status === "ready" ? bookings.data.find((b) => b.id === openId) : undefined;
   if (open && resources.status === "ready")
     return (
       <BookingCard
         booking={open}
-        role={role}
+        abilities={abilities}
         onBack={() => setOpenId(null)}
         onChanged={() => reloadBookings()}
       />
@@ -169,9 +174,11 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
                   }}
                 />
               ) : (
-                <Button onClick={() => setAdding(true)} data-testid="manual-add">
-                  {t("miniapp.pbooking.addManual")}
-                </Button>
+                abilities.manualBooking && (
+                  <Button onClick={() => setAdding(true)} data-testid="manual-add">
+                    {t("miniapp.pbooking.addManual")}
+                  </Button>
+                )
               )}
               {refreshError ? <p role="alert">{t("miniapp.partner.refreshError")}</p> : null}
               <AsyncView state={bookings} retry={reloadBookings} errorText={t("miniapp.pbooking.loadError")}>
@@ -381,17 +388,19 @@ const ACTION_KEYS: Record<string, MessageKey> = {
 
 function BookingCard({
   booking: b,
-  role,
+  abilities,
   onBack,
   onChanged,
 }: {
   booking: PartnerBooking;
-  role: PartnerRole | null;
+  abilities: Abilities;
   onBack: () => void;
   onChanged: () => void;
 }) {
   const { t, locale } = useT();
-  const { api, timeZone } = useBookings();
+  const { api, timeZone: envZone } = useBookings();
+  // Время брони — в поясе её места (сервер).
+  const timeZone = bookingZone(b.timezone, envZone);
   const errorText = useBookingErrorText();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
@@ -432,7 +441,7 @@ function BookingCard({
       <Button onClick={onBack}>{t("miniapp.pbooking.back")}</Button>
       <section style={card} data-testid="pbooking-card">
         <StatusBadge status={b.status} who="partner" />
-        <Reason reason={b.statusReason} />
+        <Reason reason={b.statusReason} code={b.statusReasonCode} />
         <dl>
           <dt>{t("miniapp.booking.resource")}</dt>
           <dd>{pickLocalized(b.resourceName, locale)}</dd>
@@ -449,7 +458,7 @@ function BookingCard({
             {b.contactPhone ? (
               <a href={`tel:${b.contactPhone}`}>{b.contactPhone}</a>
             ) : (
-              t(role === "ORG_STAFF" ? "miniapp.pbooking.phoneHidden" : "miniapp.pbooking.phoneNone")
+              t(abilities.customerPhone ? "miniapp.pbooking.phoneNone" : "miniapp.pbooking.phoneHidden")
             )}
           </dd>
           <dt>{t("miniapp.pbooking.source")}</dt>
@@ -561,7 +570,7 @@ function BookingCard({
               <li key={i} className="kosiv-muted">
                 {whenLabel(h.at, timeZone, locale)} —{" "}
                 {t(`miniapp.booking.pstatus.${h.toStatus}` as MessageKey)}
-                <Reason reason={h.reason} />
+                <Reason reason={h.reason} code={h.reasonCode} />
               </li>
             ))}
           </ul>
@@ -589,12 +598,13 @@ function AlternativeForm({
   onSubmit: (iso: string) => void;
 }) {
   const { t } = useT();
-  const { api, timeZone } = useBookings();
-  // Свободные слоты ресурса на выбранную дату (публичная сетка; у неопубликованного места её нет — тогда только
-  // ручной ввод времени).
+  const { api, timeZone: envZone } = useBookings();
+  const timeZone = bookingZone(booking.timezone, envZone);
+  // Свободные слоты ресурса на выбранную дату — сетка партнёра (есть и у неопубликованного места); ошибка — только
+  // ручной ввод времени.
   const [slots] = useAsync(
-    () => api.slots(booking.regionId, booking.resourceId, value.date, 1),
-    [api, booking.regionId, booking.resourceId, value.date],
+    () => api.partnerSlots(booking.resourceId, value.date, 1),
+    [api, booking.resourceId, value.date],
   );
   const free = slots.status === "ready" ? slots.data.items.filter((s) => s.free) : [];
   return (
@@ -665,12 +675,12 @@ function AlternativeForm({
 export function PartnerResources({ placeId }: { placeId: string }) {
   const { t, locale } = useT();
   const { api } = useBookings();
-  const { role, gate } = useRoleGate(placeId);
+  const { abilities, gate } = useAccessGate(placeId);
   const [state, reload] = useKeptAsync(() => api.partnerResources(placeId), [api, placeId]);
   const [editing, setEditing] = useState<{ id: string | null; part: "settings" | "rules" } | null>(null);
   const [notice, setNotice] = useState<Message>(null);
-  if (gate) return gate;
-  const manage = canManageResources(role);
+  if (gate || !abilities) return gate;
+  const manage = abilities.manageResources;
   const done = (text: string) => {
     setEditing(null);
     setNotice({ text, alert: false });
@@ -719,15 +729,19 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                     />
                   ) : (
                     <>
-                      <ManualStatus resource={r} onDone={reload} />
-                      {manage && (
+                      {abilities.manualAvailability && <ManualStatus resource={r} onDone={reload} />}
+                      {(manage || abilities.editAvailability) && (
                         <span style={row}>
-                          <Button onClick={() => setEditing({ id: r.id, part: "settings" })}>
-                            {t("miniapp.pres.edit")}
-                          </Button>
-                          <Button onClick={() => setEditing({ id: r.id, part: "rules" })}>
-                            {t("miniapp.pres.rules")}
-                          </Button>
+                          {manage && (
+                            <Button onClick={() => setEditing({ id: r.id, part: "settings" })}>
+                              {t("miniapp.pres.edit")}
+                            </Button>
+                          )}
+                          {abilities.editAvailability && (
+                            <Button onClick={() => setEditing({ id: r.id, part: "rules" })}>
+                              {t("miniapp.pres.rules")}
+                            </Button>
+                          )}
                         </span>
                       )}
                     </>
@@ -1118,7 +1132,7 @@ function ManualStatus({ resource: r, onDone }: { resource: PartnerResource; onDo
     setBusy(true);
     setMessage(null);
     try {
-      await api.putManual(r.id, status, ttl);
+      await api.putManual(r.id, status, status === "unknown" ? undefined : ttl);
       setMessage({ text: t("miniapp.pres.manualSaved"), alert: false });
       onDone();
     } catch (err) {
