@@ -75,13 +75,13 @@ describe("chunk-reload", () => {
     expect(await chunkLostByDeploy(err("https://x.test/a.js"))).toBe(false);
   });
 
-  it("без адреса (iOS): сеть упала — не деплой; сервер отвечает — деплой; хэш входа сравнивается", async () => {
+  it("без адреса (iOS): сеть упала — не деплой; сервер отвечает, хэш сравнить нельзя — деплой; хэш входа сравнивается", async () => {
     const f = vi.fn();
     vi.stubGlobal("fetch", f);
     const e = new TypeError("Importing a module script failed.");
     f.mockRejectedValueOnce(new TypeError("net"));
     expect(await chunkLostByDeploy(e)).toBe(false);
-    f.mockResolvedValueOnce(new Response("<html></html>", { headers: { "content-type": "text/html" } }));
+    f.mockResolvedValueOnce(new Response('<script type="module" src="/assets/index-new.js"></script>'));
     expect(await chunkLostByDeploy(e)).toBe(true);
     // Текущий вход страницы — index-old.js.
     const s = document.createElement("script");
@@ -94,6 +94,9 @@ describe("chunk-reload", () => {
     expect(await chunkLostByDeploy(e)).toBe(true);
     f.mockResolvedValueOnce(html("index-old"));
     expect(await chunkLostByDeploy(e)).toBe(false);
+    // Входного скрипта в ответе нет (captive portal) — не деплой.
+    f.mockResolvedValueOnce(new Response("<html>Sign in to Wi-Fi</html>"));
+    expect(await chunkLostByDeploy(e)).toBe(false);
     s.remove();
   });
 
@@ -105,6 +108,23 @@ describe("chunk-reload", () => {
         vi.fn(() => new Promise(() => undefined)),
       );
       const p = chunkLostByDeploy(err("https://x.test/a.js"));
+      await vi.advanceTimersByTimeAsync(5_001);
+      expect(await p).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("тело ответа читается под тем же таймаутом", async () => {
+    vi.useFakeTimers();
+    try {
+      const res = new Response("x");
+      vi.spyOn(res, "text").mockImplementation(() => new Promise(() => undefined));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => res),
+      );
+      const p = chunkLostByDeploy(new TypeError("Importing a module script failed."));
       await vi.advanceTimersByTimeAsync(5_001);
       expect(await p).toBe(false);
     } finally {

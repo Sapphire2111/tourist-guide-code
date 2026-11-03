@@ -23,7 +23,7 @@ describe("lazyScreen", () => {
     // Сервер отвечает (index.html), входной скрипт сравнить нельзя — это деплой.
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("<html></html>")),
+      vi.fn(async () => new Response('<script type="module" src="/assets/index-new.js"></script>')),
     );
     const Screen = lazyScreen(() =>
       Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/x.js")),
@@ -38,6 +38,8 @@ describe("lazyScreen", () => {
     expect(screen.getByTestId("screen-load-error")).toBeDefined();
     expect(reload).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Спробувати ще раз" }));
+    // Пока идёт проверка — кнопка заблокирована, подпись «Завантаження…».
+    expect((screen.getByRole("button", { name: "Завантажуємо…" }) as HTMLButtonElement).disabled).toBe(true);
     await flush();
     expect(reload).toHaveBeenCalledTimes(2);
   });

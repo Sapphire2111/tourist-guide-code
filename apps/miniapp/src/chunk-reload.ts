@@ -23,24 +23,36 @@ function offline(): boolean {
 /** Сколько ждать проверочный запрос, мс; таймаут — считаем сетевым сбоем, не деплоем. */
 const CHECK_TIMEOUT_MS = 5_000;
 
-/** fetch с таймаутом через AbortController (AbortSignal.timeout есть не во всех старых WebView). */
-async function fetchChecked(url: string): Promise<Response | null> {
+type Checked = { ok: boolean; contentType: string; text: string };
+
+/**
+ * Проверочный запрос с общим таймаутом на ответ и чтение тела (`withBody`). AbortController — потому что
+ * AbortSignal.timeout есть не во всех старых WebView; гонка с таймером — если abort не прервал fetch/чтение.
+ * Сбой или таймаут — null.
+ */
+async function fetchChecked(url: string, withBody = false): Promise<Checked | null> {
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = setTimeout(() => ctrl?.abort(), CHECK_TIMEOUT_MS);
-  let raceTimer: ReturnType<typeof setTimeout> | undefined;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const run = async (): Promise<Checked> => {
+    const res = await fetch(url, { cache: "no-store", signal: ctrl?.signal });
+    return {
+      ok: res.ok,
+      contentType: res.headers.get("content-type") ?? "",
+      text: withBody ? await res.text() : "",
+    };
+  };
   try {
-    // Гонка с таймером — запасной вариант, если abort не прервал fetch.
+    timers.push(setTimeout(() => ctrl?.abort(), CHECK_TIMEOUT_MS));
     return await Promise.race([
-      fetch(url, { cache: "no-store", signal: ctrl?.signal }),
+      run(),
       new Promise<null>((resolve) => {
-        raceTimer = setTimeout(() => resolve(null), CHECK_TIMEOUT_MS);
+        timers.push(setTimeout(() => resolve(null), CHECK_TIMEOUT_MS));
       }),
     ]);
   } catch {
     return null;
   } finally {
-    clearTimeout(timer);
-    clearTimeout(raceTimer);
+    timers.forEach(clearTimeout);
   }
 }
 
@@ -71,12 +83,15 @@ export async function chunkLostByDeploy(error: unknown): Promise<boolean> {
   if (url) {
     const res = await fetchChecked(url);
     if (!res) return false;
-    return !res.ok || (res.headers.get("content-type") ?? "").includes("text/html");
+    return !res.ok || res.contentType.includes("text/html");
   }
-  const res = await fetchChecked(location.pathname || "/");
+  const res = await fetchChecked(location.pathname || "/", true);
   if (!res || !res.ok) return false;
-  const [latest, mine] = [entryScript(await res.text().catch(() => "")), currentEntry()];
-  return latest && mine ? latest !== mine : true;
+  // Входного скрипта в ответе нет (captive portal, чужая страница) — это не наш деплой.
+  const latest = entryScript(res.text);
+  if (!latest) return false;
+  const mine = currentEntry();
+  return mine ? latest !== mine : true;
 }
 
 /**

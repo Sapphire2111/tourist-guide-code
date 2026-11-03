@@ -44,6 +44,8 @@ export function lazyScreen<P extends object>(
   return function LazyScreen(props: P) {
     const { t } = useT();
     const [attempt, setAttempt] = useState(0);
+    // Идёт проверка «деплой или сеть» (до 5 с): кнопка заблокирована, вместо подписи — «Завантаження…».
+    const [checking, setChecking] = useState(false);
     // Новая попытка — новый lazy (прежний после сбоя сброшен в get).
     const Screen = useMemo(get, [attempt]);
     return (
@@ -53,14 +55,17 @@ export function lazyScreen<P extends object>(
           <div className="kosiv-card kosiv-empty" data-testid="screen-load-error">
             <p role="alert">{t(errorKey)}</p>
             <Button
+              disabled={checking}
               onClick={() => {
+                setChecking(true);
                 // Чанк потерян после деплоя — повтор import() бесполезен, перезагружаем страницу.
                 void reloadForChunkError(lastLoadError).then((reloaded) => {
+                  setChecking(false);
                   if (!reloaded) setAttempt((n) => n + 1);
                 });
               }}
             >
-              {t("miniapp.guide.retry")}
+              {checking ? t("miniapp.guide.loading") : t("miniapp.guide.retry")}
             </Button>
           </div>
         }

@@ -49,7 +49,7 @@ describe("MapSlot", () => {
     vi.stubGlobal("location", { reload, pathname: "/", href: "http://localhost/" });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("<html></html>")),
+      vi.fn(async () => new Response('<script type="module" src="/assets/index-new.js"></script>')),
     );
     sessionStorage.clear();
     setMapLoaderForTests(async () => {
