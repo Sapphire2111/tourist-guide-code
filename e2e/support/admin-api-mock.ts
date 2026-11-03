@@ -681,6 +681,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         regionId: REGION_ID,
         description: null,
         tags: [],
+        seasons: [],
         adLabel: null,
         sortOrder: 0,
         updatedAt: NOW,
