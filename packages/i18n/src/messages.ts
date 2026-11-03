@@ -713,6 +713,8 @@ export const uk = {
   "admin.problem.platform_context_required": "Дія доступна лише на рівні платформи.",
   "admin.problem.category_not_found": "Обраної категорії немає в регіоні.",
   "admin.problem.locality_not_found": "Обраного населеного пункту немає в регіоні.",
+  "admin.problem.extra_categories_invalid":
+    "Додаткові категорії мають бути активними підкатегоріями, не повторювати основну й не перевищувати ліміт.",
   "admin.problem.tags_not_found": "Деяких обраних тегів немає в регіоні.",
   "admin.problem.media_not_found": "Фото не знайдено.",
   "admin.problem.media_not_image": "Файл не є фото.",
@@ -825,7 +827,10 @@ export const uk = {
   "admin.field.description": "Опис",
   "admin.field.address": "Адреса",
   "admin.field.category": "Категорія",
-  "admin.field.extraCategories": "Також у розділах (ставить імпорт Google)",
+  "admin.field.extraCategories": "Також у розділах",
+  "admin.field.extraCategoriesLimit": "Не більше {max}.",
+  "admin.field.extraCategoriesHint":
+    "Розділи й підкатегорії, де місце показується додатково (до {max}). Збережені вручну імпорт Google не змінює.",
   "admin.field.locality": "Населений пункт",
   "admin.field.timezone": "Часовий пояс (IANA)",
   "admin.field.language": "Типова мова",

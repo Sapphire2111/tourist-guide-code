@@ -29,6 +29,7 @@ const ERRORS: Record<CatalogErrorReason, { code: ErrorCode; messageKey?: string 
   },
   category_not_found: { code: "UNPROCESSABLE", messageKey: "errors.catalog.invalidReference" },
   locality_not_found: { code: "UNPROCESSABLE", messageKey: "errors.catalog.invalidReference" },
+  extra_categories_invalid: { code: "UNPROCESSABLE", messageKey: "errors.catalog.invalidReference" },
   tags_not_found: { code: "UNPROCESSABLE", messageKey: "errors.catalog.invalidReference" },
   invalid_transition: { code: "CONFLICT", messageKey: "errors.place.invalidTransition" },
   not_publishable: { code: "UNPROCESSABLE", messageKey: "errors.place.notPublishable" },

@@ -431,6 +431,45 @@ export class CatalogRepository {
     return rows.map((r) => r.category_id);
   }
 
+  /** Сколько из id — активные категории, годные в дополнительные (0020): корень или подкатегория активного раздела. */
+  async countAssignableCategories(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const cats = await this.q
+      .selectFrom("categories")
+      .select(["id", "parent_id"])
+      .where("id", "in", ids)
+      .where("active", "=", true)
+      .execute();
+    const parentIds = [...new Set(cats.flatMap((c) => (c.parent_id ? [c.parent_id] : [])))];
+    const live = new Set<string>();
+    if (parentIds.length > 0) {
+      const parents = await this.q
+        .selectFrom("categories")
+        .select("id")
+        .where("id", "in", parentIds)
+        .where("active", "=", true)
+        .execute();
+      for (const p of parents) live.add(p.id);
+    }
+    return cats.filter((c) => !c.parent_id || live.has(c.parent_id)).length;
+  }
+
+  /**
+   * Заменить дополнительные категории места правкой админки: все строки становятся manual (повторный импорт
+   * пересобирает только source = import и на конфликте ничего не перезаписывает, так что ручные сохраняются).
+   */
+  async replacePlaceExtraCategories(placeId: string, categoryIds: readonly string[]): Promise<void> {
+    await this.q.deleteFrom("place_extra_categories").where("place_id", "=", placeId).execute();
+    if (categoryIds.length > 0) {
+      await this.q
+        .insertInto("place_extra_categories")
+        .values(
+          categoryIds.map((category_id) => ({ place_id: placeId, category_id, source: "manual" as const })),
+        )
+        .execute();
+    }
+  }
+
   async placeTagIds(placeId: string): Promise<string[]> {
     const rows = await this.q
       .selectFrom("place_tags")

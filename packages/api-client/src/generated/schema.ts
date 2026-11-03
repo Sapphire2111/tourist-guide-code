@@ -2615,7 +2615,7 @@ export interface components {
       verifiedAt: string | null;
       /** @description id тегов */
       tagIds: string[];
-      /** @description id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже */
+      /** @description id дополнительных категорий (0020): место видно и в этих разделах; ставит импорт Google или админка (manual) */
       extraCategoryIds: string[];
       /** @description Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5) */
       hostCapable: boolean;
@@ -2645,6 +2645,8 @@ export interface components {
       verifiedAt?: string | null;
       /** @description Полный набор тегов (заменяет текущий) */
       tagIds?: string[];
+      /** @description Дополнительные категории: активные разделы и подкатегории, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает) */
+      extraCategoryIds?: string[];
       /** Format: uuid */
       categoryId: string;
       name: components["schemas"]["ShortTextDto"];
@@ -2668,6 +2670,8 @@ export interface components {
       verifiedAt?: string | null;
       /** @description Полный набор тегов (заменяет текущий) */
       tagIds?: string[];
+      /** @description Дополнительные категории: активные разделы и подкатегории, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает) */
+      extraCategoryIds?: string[];
     };
     /**
      * @description Пусто — можно публиковать

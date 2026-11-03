@@ -37,6 +37,15 @@ describe("OpenAPI-контракт", () => {
     expect(scheme).not.toHaveProperty("bearerFormat");
   });
 
+  it("партнёр не правит доп. категории: extraCategoryIds только в админском PATCH места", () => {
+    const schemas = buildOpenApiDocument(app).components?.schemas as Record<
+      string,
+      { properties?: Record<string, unknown> }
+    >;
+    expect(schemas.UpdatePlaceDto?.properties).toHaveProperty("extraCategoryIds");
+    expect(schemas.UpdatePartnerPlaceDto?.properties).not.toHaveProperty("extraCategoryIds");
+  });
+
   it("закоммиченный apps/api/openapi.json совпадает с кодом (иначе: pnpm api:generate)", async () => {
     const committed: unknown = JSON.parse(
       await readFile(new URL("../../openapi.json", import.meta.url), "utf8"),

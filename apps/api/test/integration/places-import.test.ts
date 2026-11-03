@@ -475,4 +475,40 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
       { code: "souvenirs", source: "manual" },
     ]);
   });
+
+  it("дополнительные категории: админка правила набор места (аудит place.extra_categories.edit) — импорт не пересобирает, даже если список очищен", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX2", { categoryCode: "car-service", extraCategoryCodes: ["help"] })],
+      t,
+    );
+    const extras = async () =>
+      (
+        await sql(
+          `SELECT c.code, x.source FROM place_extra_categories x JOIN places p ON p.id = x.place_id
+           JOIN categories c ON c.id = x.category_id WHERE p.google_place_id = 'gX2' ORDER BY c.code`,
+        )
+      ).rows;
+    expect(await extras()).toEqual([{ code: "help", source: "import" }]);
+    // Админ очистил список: строк нет, в аудите — запись об изменении.
+    await sql(
+      `DELETE FROM place_extra_categories WHERE place_id IN (SELECT id FROM places WHERE google_place_id = 'gX2')`,
+    );
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO audit_logs (actor_type, actor_user_id, region_id, action, entity_type, entity_id)
+       SELECT 'user', $1, region_id, 'place.extra_categories.edit', 'place', id::text FROM places WHERE google_place_id = 'gX2'`,
+      [user],
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX2", { categoryCode: "car-service", extraCategoryCodes: ["help", "active"] })],
+      t,
+    );
+    expect(r.extraCategoriesWritten).toBe(0);
+    expect(await extras()).toEqual([]);
+  });
 });
