@@ -3,13 +3,12 @@ import { apiMockState } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
 
-/** Переключатель дизайна живёт в листе меню: открыть, выбрать, лист закрывается сам. */
+/** Дизайн переключается прямо в шапке, без открытия меню. */
 async function pickDesign(page: Page, name: "Сучасний" | "Оригінальний") {
-  await page.getByTestId("menu-btn").click();
   await page.getByRole("button", { name, exact: true }).click();
 }
 
-test.use({ telegram: { startParam: "demoHotel01" } });
+test.use({ telegram: { startParam: "demoHotel01" }, design: null });
 test.beforeEach(async ({ page }) => {
   apiMockState.get(page)!.consents = [
     { kind: "terms", version: "2026-11-01-draft" },
@@ -23,19 +22,20 @@ test("modern home, preference persistence, nearby search/map/list and original r
   page,
 }, testInfo) => {
   await page.goto("/");
-  await expect(page.getByTestId("venue-summary")).toBeVisible();
-  await pickDesign(page, "Сучасний");
+  await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
+  await expect(page.getByRole("button", { name: "Сучасний", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(4);
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({ path: testInfo.outputPath("implemented-modern-home.png"), fullPage: false });
   await page.reload();
-  await page.getByTestId("menu-btn").click();
   await expect(page.getByRole("button", { name: "Сучасний", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.keyboard.press("Escape");
   await page
     .getByRole("navigation", { name: "Основна навігація" })
     .getByRole("link", { name: "Поруч", exact: true })
@@ -89,6 +89,12 @@ test("modern home, preference persistence, nearby search/map/list and original r
     .getByRole("link", { name: "Головна", exact: true })
     .click();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(11);
+  await page.reload();
+  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(11);
+  await expect(page.getByRole("button", { name: "Оригінальний", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 test("modern narrow screen retains working list", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
