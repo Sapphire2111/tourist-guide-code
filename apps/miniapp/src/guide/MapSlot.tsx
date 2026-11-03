@@ -52,8 +52,6 @@ export function preloadMap(language?: string): Promise<MapModule> {
         // Повтор после сбоя: и промис, и lazy (он запомнил отказ) сбрасываются — следующий монтаж создаст новый.
         mapModule = null;
         lazyMap = null;
-        // Старый чанк карты после деплоя — один раз автоматически обновляем страницу.
-        if (isChunkLoadError(e)) reloadOnceForChunkError();
         throw e;
       },
     );
@@ -73,6 +71,11 @@ class MapBoundary extends Component<{ fallback: ReactNode; children: ReactNode }
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    // Карту реально показываем и чанк потерян после деплоя — один раз обновляем страницу. Фоновая предзагрузка
+    // (preloadMap) ошибки молча глотает: перезагрузка посреди запроса ассистента хуже, чем нет карты.
+    if (isChunkLoadError(error)) void reloadOnceForChunkError(error);
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;

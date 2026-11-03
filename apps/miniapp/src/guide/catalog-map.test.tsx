@@ -1,16 +1,18 @@
 // Каталог: центр карты (выбранная локация / GPS / QR) и пометка неполной выдачи «Де жити».
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Analytics } from "./analytics.js";
-import { Catalog, selectedCenter } from "./Catalog.js";
+import { Catalog, resolveMapCenter, selectedCenter } from "./Catalog.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import { LOCATION_STORAGE_KEY, LocationProvider } from "./LocationProvider.js";
 import type { GuideApi, SearchParams } from "./types.js";
 
 const centers: unknown[] = [];
+const markers: unknown[] = [];
 vi.mock("./MapSlot.js", () => ({
-  MapSlot: (p: { center: unknown }) => {
+  MapSlot: (p: { center: unknown; centerMarker?: boolean }) => {
     centers.push(p.center);
+    markers.push(p.centerMarker);
     return <div data-testid="map" />;
   },
 }));
@@ -18,6 +20,7 @@ vi.mock("./MapSlot.js", () => ({
 afterEach(() => {
   cleanup();
   centers.length = 0;
+  markers.length = 0;
   window.localStorage.clear();
 });
 
@@ -80,6 +83,32 @@ describe("каталог: центр карты", () => {
     window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [LOC] }));
     await mount(vi.fn(async () => [place]));
     expect(centers.at(-1)).toEqual({ lat: 48.3, lng: 24.6 });
+    // Середина локаций — не точка: метку «Базова точка» не рисуем.
+    expect(markers.at(-1)).toBe(false);
+  });
+
+  it("QR без выбора: метка центра рисуется", async () => {
+    await mount(vi.fn(async () => [place]));
+    expect(markers.at(-1)).toBe(true);
+  });
+
+  it("центр — тот же объект между рендерами (ввод в поиске не пересоздаёт маркеры)", async () => {
+    window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [LOC] }));
+    await mount(vi.fn(async () => [place]));
+    const before = centers.at(-1);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "са" } });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "сад" } });
+    await flush();
+    expect(centers.at(-1)).toBe(before);
+  });
+
+  it("resolveMapCenter: GPS важнее выбранных локаций и QR", () => {
+    const gps = { lat: 1, lng: 2 };
+    const qr = { lat: 9, lng: 9 };
+    const opts = [{ id: "a", name: { uk: "a" }, placeCount: 1, location: { lat: 48, lng: 24 } }];
+    expect(resolveMapCenter(gps, opts, ["a"], qr)).toBe(gps);
+    expect(resolveMapCenter(null, opts, ["a"], qr)).toEqual({ lat: 48, lng: 24 });
+    expect(resolveMapCenter(null, opts, [], qr)).toBe(qr);
   });
 
   it("selectedCenter: середина нескольких пунктов, без координат — null", () => {
@@ -95,14 +124,26 @@ describe("каталог: центр карты", () => {
 });
 
 describe("«Де жити»: неполная выдача", () => {
-  it("api сообщило onPartial — показывается пометка", async () => {
+  it("сбой догрузки — пометка про незагруженные заклади", async () => {
     await mount(
       vi.fn(async (p: SearchParams) => {
-        p.onPartial?.();
+        p.onPartial?.("failed");
         return [place];
       }),
     );
-    expect(screen.getByTestId("catalog-partial").textContent).toContain("Показано не всі заклади");
+    expect(screen.getByTestId("catalog-partial").textContent).toContain("Частину закладів не вдалося");
+  });
+
+  it("усечение по лимиту — нейтральная пометка с числом, без «оновити»", async () => {
+    await mount(
+      vi.fn(async (p: SearchParams) => {
+        p.onPartial?.("truncated");
+        return [place];
+      }),
+    );
+    const text = screen.getByTestId("catalog-partial").textContent!;
+    expect(text).toContain("перші 300");
+    expect(text).not.toContain("оновити");
   });
 
   it("полная выдача — пометки нет", async () => {

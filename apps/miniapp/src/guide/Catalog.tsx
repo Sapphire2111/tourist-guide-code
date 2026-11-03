@@ -1,6 +1,6 @@
 // C04: раздел главной → корневая категория и её подкатегории, поиск по названию, список/карта.
 // Порядок выдачи задаёт сервер (релевантность, реклама — по правилам C-02); клиент только помечает рекламу.
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
@@ -61,6 +61,17 @@ export function selectedCenter(options: LocalityOption[] | null, selected: reado
   };
 }
 
+/** Центр карты каталога: GPS, иначе середина выбранных локаций, QR — только если ничего не выбрано. */
+export function resolveMapCenter(
+  gps: LatLng | null,
+  options: LocalityOption[] | null,
+  selected: readonly string[],
+  qr: LatLng | null,
+): LatLng | null {
+  if (gps) return gps;
+  return selected.length > 0 ? selectedCenter(options, selected) : qr;
+}
+
 function CategoryPlaces({
   root,
   subcategories,
@@ -86,8 +97,12 @@ function CategoryPlaces({
   const byLocation = localityIds.length > 0;
   const point = gps ?? base?.point ?? null;
   // Центр карты: GPS, иначе выбранные локации (середина их центров), QR — только если ничего не выбрано.
-  const mapCenter =
-    gps ?? (byLocation ? selectedCenter(localityOptions, localityIds) : (base?.point ?? null));
+  // Объект стабилен между рендерами (ввод в поиске не должен пересоздавать маркеры карты).
+  const qrPoint = base?.point ?? null;
+  const mapCenter = useMemo(
+    () => resolveMapCenter(gps, localityOptions, localityIds, qrPoint),
+    [gps, localityOptions, localityIds, qrPoint],
+  );
   const mapCenterLabel = gps ? t("miniapp.map.me") : byLocation ? undefined : base?.name;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
@@ -99,7 +114,7 @@ function CategoryPlaces({
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
         .then(async () => {
-          let partial = false;
+          let partial = null as "failed" | "truncated" | null;
           const params = {
             categoryId,
             q: q || undefined,
@@ -108,8 +123,8 @@ function CategoryPlaces({
               ? {
                   max: STAY_MAP_MAX,
                   signal,
-                  onPartial: () => {
-                    partial = true;
+                  onPartial: (reason: "failed" | "truncated") => {
+                    if (partial !== "failed") partial = reason;
                   },
                 }
               : {}),
@@ -208,7 +223,9 @@ function CategoryPlaces({
       )}
       {places.status === "ready" && places.data.partial && (
         <p className="kosiv-muted" role="note" data-testid="catalog-partial">
-          {t("miniapp.catalog.partial")}
+          {places.data.partial === "failed"
+            ? t("miniapp.catalog.partial")
+            : t("miniapp.catalog.truncated", { count: STAY_MAP_MAX })}
         </p>
       )}
       <AsyncView state={places} retry={retry}>
@@ -241,6 +258,7 @@ function CategoryPlaces({
                   places={list}
                   center={mapCenter}
                   centerLabel={mapCenterLabel}
+                  centerMarker={!byLocation || !!gps}
                   // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
                   maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
                 />

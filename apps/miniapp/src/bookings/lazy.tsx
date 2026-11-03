@@ -13,7 +13,7 @@ class ScreenBoundary extends Component<{ fallback: ReactNode; children: ReactNod
   }
   componentDidCatch(error: unknown) {
     // Старый чанк после деплоя: один раз автоматически обновляем страницу (дальше — кнопка).
-    if (isChunkLoadError(error)) reloadOnceForChunkError();
+    if (isChunkLoadError(error)) void reloadOnceForChunkError(error);
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
@@ -30,7 +30,10 @@ export function lazyScreen<P extends object>(
   const get = (): ComponentType<P> =>
     (current ??= lazy(() =>
       load().then(
-        (c) => ({ default: c }),
+        (c) => {
+          lastLoadError = null;
+          return { default: c };
+        },
         (e: unknown) => {
           current = null;
           lastLoadError = e;

@@ -1,5 +1,5 @@
 // Без ключа — заглушка. Повтор загрузки карты: сбой модуля → успешная предзагрузка → следующий экран показывает карту.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@tg/ui";
 import { MapSlot, preloadMap, setMapLoaderForTests } from "./MapSlot.js";
@@ -42,5 +42,28 @@ describe("MapSlot", () => {
     render(ui);
     await flush();
     expect(screen.getByTestId("fake-map")).toBeDefined();
+  });
+
+  it("потерянный чанк: фоновая предзагрузка молчит, показ карты — одна перезагрузка", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+    sessionStorage.clear();
+    setMapLoaderForTests(async () => {
+      throw new TypeError("Importing a module script failed.");
+    });
+    await expect(preloadMap()).rejects.toThrow();
+    await flush();
+    expect(reload).not.toHaveBeenCalled();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(
+      <I18nProvider locale="uk">
+        <MapSlot places={[]} center={null} />
+      </I18nProvider>,
+    );
+    await flush();
+    await flush();
+    await flush();
+    expect(reload).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 });

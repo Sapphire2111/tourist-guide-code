@@ -222,13 +222,13 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         } catch (error) {
           // Сбой догрузки (не первой страницы и не отмена) — показываем уже загруженное.
           if (items.length === 0 || signal?.aborted) throw error;
-          onPartial?.();
+          onPartial?.("failed");
           break;
         }
         items.push(...data.items.map(summaryOf));
         offset = max && items.length < max ? data.nextOffset : null;
         // Дошли до max, а сервер говорит, что места есть ещё, — список усечён.
-        if (max && items.length >= max && data.nextOffset !== null) onPartial?.();
+        if (max && items.length >= max && data.nextOffset !== null) onPartial?.("truncated");
       }
       return max ? items.slice(0, max) : items;
     },
