@@ -118,6 +118,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
       offClick: stub(`${prefix}.offClick`),
     });
   };
+  const handlers: Record<string, ((payload?: unknown) => void)[]> = {};
   const webApp = {
     initData: cfg.initData,
     initDataUnsafe: cfg.initDataUnsafe,
@@ -131,8 +132,18 @@ function telegramInitScript(cfg: InitScriptConfig): void {
     ready: stub("ready"),
     expand: stub("expand", () => (webApp.isExpanded = true)),
     close: stub("close"),
-    onEvent: stub("onEvent"),
-    offEvent: stub("offEvent"),
+    isVersionAtLeast: (v: string) => Number.parseFloat(v) <= 8.0,
+    onEvent(event: string, cb: (payload?: unknown) => void) {
+      calls.push("onEvent");
+      (handlers[event] ??= []).push(cb);
+    },
+    offEvent(event: string, cb: (payload?: unknown) => void) {
+      calls.push("offEvent");
+      handlers[event] = (handlers[event] ?? []).filter((h) => h !== cb);
+    },
+    // Сканер QR (Bot API 6.4+): окно «открывается» записью в вызовы; текст подаёт тест через __telegramEmit.
+    showScanQrPopup: stub("showScanQrPopup"),
+    closeScanQrPopup: stub("closeScanQrPopup"),
     sendData: stub("sendData"),
     // Пользователь соглашается: колбэк с true (как после нажатия «Разрешить» в Telegram).
     requestWriteAccess(cb?: (granted: boolean) => void) {
@@ -142,7 +153,12 @@ function telegramInitScript(cfg: InitScriptConfig): void {
     MainButton: button("MainButton"),
     BackButton: button("BackButton"),
   };
-  Object.assign(window, { Telegram: { WebApp: webApp }, __telegramCalls: calls });
+  Object.assign(window, {
+    Telegram: { WebApp: webApp },
+    __telegramCalls: calls,
+    __telegramEmit: (event: string, payload?: unknown) =>
+      (handlers[event] ?? []).slice().forEach((h) => h(payload)),
+  });
 }
 
 /** Установить эмуляцию Telegram WebApp на страницу (вызывать до page.goto). */
@@ -174,4 +190,13 @@ export async function installTelegramWebApp(page: Page, options: TelegramWebAppO
 /** Какие методы WebApp вызвало приложение (в порядке вызова). */
 export function telegramCalls(page: Page): Promise<string[]> {
   return page.evaluate(() => (window as unknown as { __telegramCalls?: string[] }).__telegramCalls ?? []);
+}
+
+/** Подать событие Telegram в приложение (например, qrTextReceived с распознанным текстом). */
+export function emitTelegramEvent(page: Page, event: string, payload?: unknown): Promise<void> {
+  return page.evaluate(
+    ([e, p]) =>
+      (window as unknown as { __telegramEmit(e: string, p?: unknown): void }).__telegramEmit(e as string, p),
+    [event, payload] as const,
+  );
 }

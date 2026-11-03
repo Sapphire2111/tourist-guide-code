@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
-import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
+import {
+  DEFAULT_LOCALE,
+  pickLocalized,
+  resolveLocale,
+  SUPPORTED_LOCALES,
+  type Locale,
+  type MessageKey,
+} from "@tg/i18n";
 import {
   Button,
   Feature,
@@ -19,7 +26,8 @@ import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
-import { AppTop, Splash } from "./design/Chrome.js";
+import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
+import { resolveScan, type ScanOutcome } from "./scan.js";
 import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
 import { ResortProvider } from "./design/ResortProvider.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
@@ -51,7 +59,7 @@ import { ModeSwitch } from "./partner/parts.js";
 import { PlaceEditor } from "./partner/PlaceEditor.js";
 import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
-import { consumeBack, type TelegramUser, type TelegramWebApp } from "./telegram.js";
+import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
@@ -531,8 +539,43 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
  * Шапка, содержимое экрана и нижняя навигация. Появление экрана — анимацией того же узла (Web Animations), без
  * пересоздания дерева: фокус на h1, BackButton и состояние экранов при смене пути сохраняются.
  */
-function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
-  const [path] = useRoute();
+function Shell({
+  routes,
+  profile,
+  scan,
+}: {
+  routes: ReactNode;
+  profile: boolean;
+  /** Сканер QR (нет — кнопки не показываются). */
+  scan?: (prompt: string) => Promise<ScanOutcome | null>;
+}) {
+  const [path, navigate] = useRoute();
+  const partnerCabinet = useFeatureFlag("module.partner_cabinet");
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanMessage, setScanMessage] = useState<MessageKey | null>(null);
+  const { t } = useT();
+  const scanControl: ScanControl | undefined = scan
+    ? {
+        busy: scanBusy,
+        message: scanMessage,
+        start: () => {
+          setScanMessage(null);
+          setScanBusy(true);
+          void scan(t("miniapp.scan.prompt"))
+            .then((o) => {
+              if (!o) return;
+              if (o.kind === "message") setScanMessage(o.messageKey);
+              else if (o.kind === "invite" && !partnerCabinet) setScanMessage("miniapp.scan.foreign");
+              else if (o.kind === "invite") navigate("/partner/invite", { replace: true });
+              else
+                navigate(o.context.entryType === "hotel" && o.context.venue ? "/about" : "/", {
+                  replace: true,
+                });
+            })
+            .finally(() => setScanBusy(false));
+        },
+      }
+    : undefined;
   const content = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   useEffect(() => {
@@ -548,7 +591,7 @@ function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
   }, [path]);
   return (
     <>
-      <AppTop path={path} profile={profile} />
+      <AppTop path={path} profile={profile} scan={scanControl} />
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>
@@ -589,6 +632,24 @@ export function App({
     setState((s) => (s.status === "ready" ? { ...s, context, contextFailed: undefined } : s));
     return true;
   };
+  // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
+  const scanHandler =
+    session && canScanQr(webApp)
+      ? async (prompt: string): Promise<ScanOutcome | null> => {
+          const text = await scanQr(webApp, prompt);
+          if (text === null) return null;
+          const outcome = await resolveScan(props.api, text);
+          if (outcome.kind === "context")
+            setState((s) =>
+              s.status === "ready"
+                ? { ...s, context: outcome.context, contextFailed: undefined, invite: undefined }
+                : s,
+            );
+          else if (outcome.kind === "invite")
+            setState((s) => (s.status === "ready" ? { ...s, invite: outcome.token } : s));
+          return outcome;
+        }
+      : undefined;
   const effectiveLocale = session ? resolveLocale(session.me.language, SUPPORTED_LOCALES) : locale;
   const flags = useFeatureFlags(props.api, session?.context?.region?.id);
   const context = session?.context ?? null;
@@ -659,6 +720,7 @@ export function App({
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
                         profile={Boolean(session && hasRequiredConsents(session.me))}
+                        scan={scanHandler}
                         routes={
                           <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
                         }
