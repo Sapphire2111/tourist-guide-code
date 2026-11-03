@@ -64,4 +64,37 @@ describe("ModernNearbyResults", () => {
     expect(seen[seen.length - 1]).not.toBe(before);
     expect(seen[seen.length - 1]).toHaveLength(1);
   });
+
+  it("выстраивает места от ближайшего к более далёкому", async () => {
+    const api = {
+      categories: vi.fn(async () => [
+        { id: "c1", parentId: null, name: { uk: "Кафе" }, homeSection: "eat" as const },
+      ]),
+    } as unknown as GuideApi;
+    const env = {
+      api,
+      analytics: { track: vi.fn(), flush: vi.fn(), dispose: vi.fn() },
+      base: null,
+      regionId: "r",
+      signedIn: true,
+    } as unknown as GuideEnv;
+    const list: PlaceSummary[] = [
+      { ...place("far", "Далека полонина"), distanceMeters: 850 },
+      { ...place("near", "Близька кавʼярня"), distanceMeters: 120 },
+      { ...place("mid", "Середня колиба"), distanceMeters: 340 },
+    ];
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={list} radius={1000} base={null} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(seen[seen.length - 1]?.map((p) => p.id)).toEqual(["near", "mid", "far"]);
+    const items = screen.getAllByTestId("place-item");
+    expect(items.map((el) => el.textContent)).toEqual([
+      expect.stringContaining("Близька кавʼярня"),
+      expect.stringContaining("Середня колиба"),
+      expect.stringContaining("Далека полонина"),
+    ]);
+  });
 });

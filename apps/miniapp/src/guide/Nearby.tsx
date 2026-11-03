@@ -247,15 +247,21 @@ export function ModernNearbyResults({
     ]),
   );
   // Стабильная ссылка: иначе карта пересоздаёт маркеры и сбрасывает охват на каждый рендер.
+  // Места в списке под картой всегда идут от ближайшего к самому дальнему.
   const visible = useMemo(
     () =>
-      list.filter(
-        (p) =>
-          (section === "all" || categories.sectionOf(p.categoryId) === section) &&
-          `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
-            .toLocaleLowerCase(locale)
-            .includes(query.trim().toLocaleLowerCase(locale)),
-      ),
+      list
+        .filter(
+          (p) =>
+            (section === "all" || categories.sectionOf(p.categoryId) === section) &&
+            `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
+              .toLocaleLowerCase(locale)
+              .includes(query.trim().toLocaleLowerCase(locale)),
+        )
+        .sort(
+          (a, b) =>
+            (a.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.distanceMeters ?? Number.POSITIVE_INFINITY),
+        ),
     [list, section, query, categories, locale],
   );
   return (
