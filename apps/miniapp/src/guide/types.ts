@@ -158,6 +158,11 @@ export type SearchParams = {
   max?: number;
   /** Отмена (смена подкатегории/текста): догрузка страниц прекращается, результат — ошибка AbortError. */
   signal?: AbortSignal;
+  /**
+   * Выдача неполная (вызывается до завершения search): `failed` — сбой догрузки страницы,
+   * `truncated` — обрезка по `max` (на сервере есть ещё места).
+   */
+  onPartial?: (reason: "failed" | "truncated") => void;
 };
 
 /** Населённый пункт региона для «Локація» (GET /localities). */

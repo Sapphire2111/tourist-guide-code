@@ -26,6 +26,8 @@ export type PlacesMapProps = {
   center: LatLng | null;
   /** Подпись базовой точки. Координаты устройства сюда не передаются (приватность: карта не центрируется на туристе). */
   centerLabel?: string;
+  /** false — только центрировать карту, без метки/круга/пункта легенды (середина выбранных локаций — не точка). */
+  centerMarker?: boolean;
   radius?: number;
   /** Предел приближения при fitBounds (по умолчанию 17). */
   maxZoom?: number;
@@ -148,6 +150,7 @@ export default function PlacesMap({
   places,
   center,
   centerLabel,
+  centerMarker = true,
   radius,
   maxZoom = 17,
   route = false,
@@ -216,7 +219,7 @@ export default function PlacesMap({
     clearOverlays(o);
     const bounds = new libs.core.LatLngBounds();
     let points = 0;
-    if (center) {
+    if (center && centerMarker) {
       const base = document.createElement("div");
       base.className = "kosiv-pin kosiv-pin-base";
       base.style.background = BASE_COLOR;
@@ -246,6 +249,8 @@ export default function PlacesMap({
           ),
         );
       }
+    }
+    if (center) {
       bounds.extend(center);
       points++;
     }
@@ -328,7 +333,7 @@ export default function PlacesMap({
       }
     });
     // Тексты подписей, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
-  }, [libs, map, places, center, centerLabel, radius, maxZoom, route]);
+  }, [libs, map, places, center, centerLabel, centerMarker, radius, maxZoom, route]);
 
   // Значок «Ви тут»: перестраивается только он и круг точности (карта, маркеры мест и границы не трогаются).
   const meLat = me?.lat;
@@ -404,9 +409,9 @@ export default function PlacesMap({
         data-testid="places-map"
         style={{ height: 260, borderRadius: "var(--radius)", overflow: "hidden", background: "#e5e3df" }}
       />
-      {(groups.length > 0 || center) && (
+      {(groups.length > 0 || (center && centerMarker)) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">
-          {center && (
+          {center && centerMarker && (
             <li>
               <i aria-hidden="true" style={{ background: BASE_COLOR }} />
               {centerLabel ?? t("miniapp.map.base")}

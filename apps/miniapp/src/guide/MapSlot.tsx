@@ -2,6 +2,7 @@
 // список рядом остаётся (C05 «ошибка карты»).
 import { Component, lazy, Suspense, useState, type ComponentType, type ReactNode } from "react";
 import { useT } from "@tg/ui";
+import { isChunkLoadError, reloadOnceForChunkError } from "../chunk-reload.js";
 import { MAPS_ORIGIN, mapsAvailable } from "./map-config.js";
 import type { PlacesMapProps } from "./PlacesMap.js";
 
@@ -70,6 +71,11 @@ class MapBoundary extends Component<{ fallback: ReactNode; children: ReactNode }
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    // Карту реально показываем и чанк потерян после деплоя — один раз обновляем страницу. Фоновая предзагрузка
+    // (preloadMap) ошибки молча глотает: перезагрузка посреди запроса ассистента хуже, чем нет карты.
+    if (isChunkLoadError(error)) void reloadOnceForChunkError(error);
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
