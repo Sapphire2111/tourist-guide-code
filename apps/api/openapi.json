@@ -14530,15 +14530,13 @@
           "lang": { "type": "string", "example": "uk" },
           "title": { "type": "string" },
           "url": { "type": "string", "description": "Статья" },
-          "extract": { "type": "string", "description": "Начало статьи (до ~700 символов)" },
-          "truncated": { "type": "boolean", "description": "extract обрезан — пометка «скорочено»" },
           "image": {
             "nullable": true,
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/WikipediaImageDto" }]
           }
         },
-        "required": ["lang", "title", "url", "extract", "truncated", "image"]
+        "required": ["lang", "title", "url", "image"]
       },
       "PlaceCardDto": {
         "type": "object",
@@ -14936,7 +14934,7 @@
           "description": {
             "type": "string",
             "nullable": true,
-            "description": "Описание из обогащения (ИИ-текст, Вікіпедія, Google)"
+            "description": "Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся"
           },
           "descriptionSource": {
             "nullable": true,
@@ -14945,7 +14943,7 @@
           "descriptionUrl": {
             "type": "string",
             "nullable": true,
-            "description": "Статья Вікіпедії (для wikipedia — ссылка обязательна)"
+            "description": "Статья Вікіпедії о месте — ссылка «почитать»; источником текста не считается"
           }
         },
         "required": [

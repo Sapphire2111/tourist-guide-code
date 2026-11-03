@@ -1350,9 +1350,12 @@ export type PlaceEnrichmentWiki = {
   lang: string;
   title: string;
   url: string;
+  /** Начало статьи — только факты для ИИ-пересказа; туристу не показывается (CC BY-SA). */
   extract: string;
-  /** extract — начало статьи (обрезано по предложению); в карточке — пометка «скорочено». */
+  /** extract обрезан по предложению. */
   truncated?: boolean;
+  /** strict — статья принята строгим сопоставлением (--covers-source wikimedia): обычный прогон её не заменяет. */
+  match?: "strict";
   image: {
     url: string;
     width: number | null;

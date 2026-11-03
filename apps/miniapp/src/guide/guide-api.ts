@@ -129,8 +129,6 @@ function richOf(dto: Partial<CardDto>): Partial<PlaceDetail> {
         ? {
             title: wiki.title,
             url: wikiUrl,
-            extract: wiki.extract,
-            truncated: wiki.truncated ?? false,
             image:
               wiki.image && https(wiki.image.url) && https(wiki.image.sourceUrl)
                 ? {

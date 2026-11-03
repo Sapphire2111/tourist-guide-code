@@ -462,12 +462,11 @@ export class WikipediaImageDto {
   @ApiProperty({ type: String, description: "Страница файла на Commons" }) sourceUrl!: string;
 }
 
+/** Ссылка на статью: текст статьи (CC BY-SA) не отдаётся, описание места — пересказ ИИ (aiSummary). */
 export class WikipediaDto {
   @ApiProperty({ type: String, example: "uk" }) lang!: string;
   @ApiProperty({ type: String }) title!: string;
   @ApiProperty({ type: String, description: "Статья" }) url!: string;
-  @ApiProperty({ type: String, description: "Начало статьи (до ~700 символов)" }) extract!: string;
-  @ApiProperty({ type: Boolean, description: "extract обрезан — пометка «скорочено»" }) truncated!: boolean;
   @ApiProperty({ type: WikipediaImageDto, nullable: true }) image!: WikipediaImageDto | null;
 }
 

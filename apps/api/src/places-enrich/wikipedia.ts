@@ -1,6 +1,7 @@
 // Вікіпедія / Wikimedia Commons для пам'яток (places:enrich): статья ищется рядом с точкой места (geosearch) и
 // принимается только при уверенном совпадении названия; опис — uk, иначе en; фото — только файл Commons со
 // свободной лицензией, с автором и ссылкой на страницу файла. Ответы кэшируются в файлы каталога кэша, ключей нет.
+// Режим --covers-source wikimedia сопоставляет строже — см. wiki-match.ts (клиент общий).
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,7 +25,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Общие слова названий: по ним одним совпадение не считается («Водоспад» ≠ любой водоспад). */
-const GENERIC = new Set(
+export const GENERIC: ReadonlySet<string> = new Set(
   [
     "водоспад",
     "водоспади",
@@ -99,12 +100,12 @@ const GENERIC = new Set(
 );
 
 /** Слова названия: нижний регистр, без апострофов и знаков, без общих слов; короче 3 букв — не в счёт. */
-export function distinctiveTokens(name: string): string[] {
+export function distinctiveTokens(name: string, generic: ReadonlySet<string> = GENERIC): string[] {
   return name
     .toLowerCase()
     .replace(/[’'ʼ`]/g, "")
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length >= 3 && !GENERIC.has(t));
+    .filter((t) => t.length >= 3 && !generic.has(t));
 }
 
 /** Слова совпадают с учётом падежных окончаний: общий префикс ≥ 5 букв (или слово целиком, если короче). */
@@ -173,7 +174,7 @@ export function transliterate(s: string): string {
   return [...s.toLowerCase()].map((c) => TRANSLIT[c] ?? c).join("");
 }
 
-type GeoHit = { title: string; lat: number; lon: number; dist: number };
+export type GeoHit = { title: string; lat: number; lon: number; dist: number };
 
 export type WikiPlace = { name: string; location: LonLat };
 
@@ -185,7 +186,25 @@ export type WikiClientOptions = {
   timeoutMs?: number;
   /** Только оценка: без сети, промахи кэша — в planned. */
   planOnly?: boolean;
+  /** Паузы перед повторами при 429/5xx/сети (Retry-After, если дольше); пусто — без повторов. */
+  retryDelaysMs?: readonly number[];
+  /** Не чаще одного запроса за столько мс (вежливый темп к API Wikimedia). */
+  minIntervalMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  /**
+   * Сбой, не снятый повторами (429/5xx/сеть), останавливает сеть до конца прогона: дальше — только кэш. Иначе каждое
+   * следующее место снова прождало бы все паузы (10 мест при устойчивом 429 — 40 запросов и 850 с).
+   */
+  stopOnUnavailable?: boolean;
 };
+
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Пауза из Retry-After (секунды), не больше 2 мин; нет — null. */
+export function retryAfterMs(res: Response): number | null {
+  const v = Number(res.headers.get("retry-after"));
+  return Number.isFinite(v) && v > 0 ? Math.min(v * 1000, 120_000) : null;
+}
 
 export class WikiLimitError extends Error {
   override readonly name = "WikiLimitError";
@@ -198,6 +217,10 @@ export class WikiUnavailableError extends Error {
 
 /** Свободные лицензии Commons (короткие имена). Иное (Fair use, «non-free») — без фото. */
 const FREE_LICENSE = /^(cc[ -]?by|cc[ -]?by[ -]?sa|cc0|public domain|pd\b|attribution|gfdl|fal\b)/i;
+/** Коды ошибок MediaWiki API, которые пройдут сами: повтор прогоном имеет смысл. */
+const TEMPORARY_API_ERROR = /^(ratelimited|maxlag|readonly|internal_api_error)/;
+/** «Автор неизвестен» в Commons — подписи всё равно нет. */
+const UNKNOWN_AUTHOR = /^((автор|author)\s+)?(unknown|anonym|невідом|неизвест|анонім|аноним)/i;
 
 function stripHtml(s: unknown, max = 200): string | null {
   if (typeof s !== "string") return null;
@@ -225,13 +248,55 @@ export function shortExtract(text: string, max = EXTRACT_MAX): string {
 }
 
 export class WikipediaClient {
+  /** Реальных запросов HTTP, включая повторы (--max-wiki-requests считает их же). */
   requests = 0;
   cacheHits = 0;
   planned = 0;
+  /** Повторов после 429/5xx/сети. */
+  retries = 0;
+  /** Причина остановки сети (stopOnUnavailable); null — сеть не останавливалась. */
+  stopped: string | null = null;
+  /** Статьи, отклонённые строгим сопоставлением по типу Wikidata (для отчёта: таблица типов в wiki-match.ts). */
+  readonly typeRejects: { place: string; title: string; classes: string[] }[] = [];
   private readonly fetch: typeof fetch;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private lastAt = 0;
 
   constructor(private readonly options: WikiClientOptions) {
     this.fetch = options.fetch ?? fetch;
+    this.sleep = options.sleep ?? defaultSleep;
+  }
+
+  /** Запрос с темпом и повторами при 429/5xx/сети; после всех повторов — последний ответ или WikiUnavailableError. */
+  private async request(url: string): Promise<Response> {
+    const delays = this.options.retryDelaysMs ?? [];
+    for (let attempt = 0; ; attempt++) {
+      if (this.requests >= this.options.maxRequests)
+        throw new WikiLimitError(`Достигнут лимит запросов к Вікіпедії: ${this.options.maxRequests}`);
+      this.requests++;
+      const gap = (this.options.minIntervalMs ?? 0) - (Date.now() - this.lastAt);
+      if (gap > 0) await this.sleep(gap);
+      this.lastAt = Date.now();
+      let res: Response | undefined;
+      let error: unknown;
+      try {
+        res = await this.fetch(url, {
+          headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT, Accept: "application/json" },
+          signal: AbortSignal.timeout(this.options.timeoutMs ?? 15_000),
+        });
+      } catch (err) {
+        error = err;
+      }
+      const transient = !res || res.status === 429 || res.status >= 500;
+      if (!transient || attempt >= delays.length) {
+        if (res) return res;
+        throw new WikiUnavailableError(`Вікіпедія: ${error instanceof Error ? error.name : "сеть"}`);
+      }
+      const wait = Math.max(delays[attempt]!, res ? (retryAfterMs(res) ?? 0) : 0);
+      await res?.body?.cancel();
+      this.retries++;
+      await this.sleep(wait);
+    }
   }
 
   private async getJson(url: string): Promise<unknown> {
@@ -247,31 +312,55 @@ export class WikipediaClient {
       this.planned++;
       return null;
     }
-    if (this.requests >= this.options.maxRequests)
-      throw new WikiLimitError(`Достигнут лимит запросов к Вікіпедії: ${this.options.maxRequests}`);
-    this.requests++;
+    if (this.stopped) throw new WikiUnavailableError(this.stopped);
     let res: Response;
     try {
-      res = await this.fetch(url, {
-        headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT, Accept: "application/json" },
-        signal: AbortSignal.timeout(this.options.timeoutMs ?? 15_000),
-      });
+      res = await this.request(url);
     } catch (err) {
-      throw new WikiUnavailableError(`Вікіпедія: ${err instanceof Error ? err.name : "сеть"}`);
+      if (err instanceof WikiUnavailableError) this.stopIfAsked(err.message);
+      throw err;
+    }
+    // 429/5xx и прочее — временный сбой: не кэшируется, место считается «не искали» (повтор следующим прогоном).
+    if (!res.ok && res.status !== 404) {
+      const message = `Вікіпедія: HTTP ${res.status}`;
+      this.stopIfAsked(message);
+      throw new WikiUnavailableError(message);
     }
     // 404 (нет статьи) — тоже ответ: кэшируется как null.
-    const data: unknown = res.ok ? await res.json() : res.status === 404 ? null : undefined;
-    // 429/5xx и прочее — временный сбой: не кэшируется, место считается «не искали» (повтор следующим прогоном).
-    if (data === undefined) throw new WikiUnavailableError(`Вікіпедія: HTTP ${res.status}`);
+    let data: unknown = null;
+    if (res.ok) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        // Не JSON (страница ошибки прокси) или обрыв тела: то же, что временный сбой, прогон идёт дальше к записи.
+        const message = `Вікіпедія: не JSON (${err instanceof Error ? err.name : "ошибка"})`;
+        this.stopIfAsked(message);
+        throw new WikiUnavailableError(message);
+      }
+      // Режим Wikimedia: временная ошибка API при 200 — стоп, в кэш не попадает. Постоянная (no-such-entity и подобные)
+      // — обычный ответ: кэшируется, у вызывающих это «нет данных», место без совпадения, прогон идёт дальше.
+      if (this.options.stopOnUnavailable && isObject(data) && "error" in data) {
+        const code = isObject(data.error) && typeof data.error.code === "string" ? data.error.code : null;
+        if (code === null || TEMPORARY_API_ERROR.test(code)) {
+          const message = `Вікіпедія: ошибка API (${code ?? "без кода"})`;
+          this.stopIfAsked(message);
+          throw new WikiUnavailableError(message);
+        }
+      }
+    }
     await mkdir(this.options.cacheDir, { recursive: true });
     await writeFile(file, JSON.stringify(data));
     return data;
   }
 
-  async geosearch(lang: string, at: LonLat): Promise<GeoHit[]> {
+  private stopIfAsked(reason: string): void {
+    if (this.options.stopOnUnavailable) this.stopped = reason;
+  }
+
+  async geosearch(lang: string, at: LonLat, radiusM = WIKI_RADIUS_M, limit = 30): Promise<GeoHit[]> {
     const url =
       `https://${lang}.wikipedia.org/w/api.php?action=query&list=geosearch&format=json&formatversion=2` +
-      `&gscoord=${at.lat.toFixed(5)}%7C${at.lon.toFixed(5)}&gsradius=${WIKI_RADIUS_M}&gslimit=30`;
+      `&gscoord=${at.lat.toFixed(5)}%7C${at.lon.toFixed(5)}&gsradius=${radiusM}&gslimit=${limit}`;
     const data = await this.getJson(url);
     const list = isObject(data) && isObject(data.query) ? data.query.geosearch : undefined;
     if (!Array.isArray(list)) return [];
@@ -282,11 +371,37 @@ export class WikipediaClient {
     );
   }
 
+  /** Статьи по названию (полнотекстовый поиск) с их координатами; статьи без координат не возвращаются. */
+  async searchHits(lang: string, query: string): Promise<GeoHit[]> {
+    const url =
+      `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search` +
+      `&gsrsearch=${encodeURIComponent(query)}&gsrlimit=8&gsrnamespace=0&prop=coordinates`;
+    const data = await this.getJson(url);
+    const pages = isObject(data) && isObject(data.query) ? data.query.pages : undefined;
+    if (!Array.isArray(pages)) return [];
+    return pages.flatMap((p): GeoHit[] => {
+      const c = isObject(p) && Array.isArray(p.coordinates) ? p.coordinates[0] : undefined;
+      return isObject(p) &&
+        typeof p.title === "string" &&
+        isObject(c) &&
+        typeof c.lat === "number" &&
+        typeof c.lon === "number"
+        ? [{ title: p.title, lat: c.lat, lon: c.lon, dist: 0 }]
+        : [];
+    });
+  }
+
   /** Краткое содержание статьи (REST summary): не статья (неоднозначность) — null. */
   async summary(
     lang: string,
     title: string,
-  ): Promise<{ title: string; extract: string; url: string; fileTitle: string | null } | null> {
+  ): Promise<{
+    title: string;
+    extract: string;
+    url: string;
+    fileTitle: string | null;
+    wikidataId: string | null;
+  } | null> {
     const data = await this.getJson(
       `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`,
     );
@@ -304,11 +419,55 @@ export class WikipediaClient {
       const last = new URL(orig).pathname.split("/").pop();
       if (last) fileTitle = decodeURIComponent(last);
     }
-    return { title: typeof data.title === "string" ? data.title : title, extract, url, fileTitle };
+    // Объект Wikidata статьи (строгий режим: тип P31 и фото P18 — только его).
+    const wikidataId =
+      typeof data.wikibase_item === "string" && /^Q\d+$/.test(data.wikibase_item) ? data.wikibase_item : null;
+    return {
+      title: typeof data.title === "string" ? data.title : title,
+      extract,
+      url,
+      fileTitle,
+      wikidataId,
+    };
   }
 
-  /** Фото Commons: адрес превью до 1200 px, автор, лицензия; несвободная лицензия или нет данных — null. */
-  async commonsImage(fileTitle: string): Promise<PlaceEnrichmentWiki["image"]> {
+  /** Значения свойства объекта Wikidata; устаревшие (rank deprecated) — нет. */
+  private async wikidataClaims(qid: string, property: string): Promise<Record<string, unknown>[]> {
+    const data = await this.getJson(
+      `https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=${qid}&property=${property}`,
+    );
+    const claims = isObject(data) && isObject(data.claims) ? data.claims[property] : undefined;
+    if (!Array.isArray(claims)) return [];
+    return claims.filter((c): c is Record<string, unknown> => isObject(c) && c.rank !== "deprecated");
+  }
+
+  /** Файл P18 («зображення») объекта Wikidata или null: rank preferred, иначе первое обычное значение. */
+  async wikidataImage(qid: string): Promise<string | null> {
+    const ranked = await this.wikidataClaims(qid, "P18");
+    const pick = ranked.find((c) => c.rank === "preferred") ?? ranked[0];
+    const snak = pick && isObject(pick.mainsnak) ? pick.mainsnak : undefined;
+    const value = snak && isObject(snak.datavalue) ? snak.datavalue.value : undefined;
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  /** Классы P31 («є одним із») объекта Wikidata: Q-идентификаторы. */
+  async wikidataClasses(qid: string): Promise<string[]> {
+    return (await this.wikidataClaims(qid, "P31")).flatMap((c) => {
+      const snak = isObject(c.mainsnak) ? c.mainsnak : undefined;
+      const value = snak && isObject(snak.datavalue) ? snak.datavalue.value : undefined;
+      const id = isObject(value) ? value.id : undefined;
+      return typeof id === "string" ? [id] : [];
+    });
+  }
+
+  /**
+   * Фото Commons: адрес превью до 1200 px, автор, лицензия; несвободная лицензия или нет данных — null.
+   * requireAuthor (строгий режим) — файл без указанного автора тоже null: подпись обязательна.
+   */
+  async commonsImage(
+    fileTitle: string,
+    opts: { requireAuthor?: boolean } = {},
+  ): Promise<PlaceEnrichmentWiki["image"]> {
     const url =
       "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo" +
       `&iiprop=url%7Cextmetadata&iiurlwidth=1200&titles=${encodeURIComponent(`File:${fileTitle}`)}`;
@@ -329,11 +488,13 @@ export class WikipediaClient {
     const src = clean(info.thumburl) ?? clean(info.url);
     const sourceUrl = httpsUrl(info.descriptionurl);
     if (!src || !sourceUrl || !/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(src)) return null;
+    const author = stripHtml(val("Artist"), 120);
+    if (opts.requireAuthor && (!author || UNKNOWN_AUTHOR.test(author))) return null;
     return {
       url: src,
       width: typeof info.thumbwidth === "number" ? info.thumbwidth : null,
       height: typeof info.thumbheight === "number" ? info.thumbheight : null,
-      author: stripHtml(val("Artist"), 120),
+      author,
       license,
       licenseUrl: httpsUrl(val("LicenseUrl")),
       sourceUrl,

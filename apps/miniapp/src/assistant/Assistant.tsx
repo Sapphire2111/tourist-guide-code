@@ -798,9 +798,9 @@ function AssistantPlace({ item, stop }: { item: AssistantItem; stop: number | nu
             <>
               <p data-testid="assistant-description">{item.description}</p>
               <p className="kosiv-muted assistant-source">
-                {item.descriptionSource === "wikipedia" && item.descriptionUrl ? (
+                {item.descriptionUrl ? (
                   <a href={item.descriptionUrl} target="_blank" rel="noopener noreferrer">
-                    {t("miniapp.assistant.source.wikipedia")}
+                    {t("miniapp.place.wikiReadMore")}
                   </a>
                 ) : item.descriptionSource && (SHOW_AI_LABELS || item.descriptionSource !== "ai") ? (
                   t(`miniapp.assistant.source.${item.descriptionSource}` as MessageKey)

@@ -99,9 +99,11 @@ function Schedule({ schedule }: { schedule: ScheduleInterval[] }) {
 
 // --- галерея ---
 
-type Slide = { url: string; largeUrl: string; alt: string; authors: Author[] };
+/** license и sourceUrl — обложка Wikimedia: лицензия и страница файла, подпись без них неполная. */
+type SlideCredit = { authors: Author[]; license?: string | null; sourceUrl?: string | null };
+type Slide = SlideCredit & { url: string; largeUrl: string; alt: string };
 
-function Credit({ authors, fallback }: { authors: Author[]; fallback?: string }) {
+function Credit({ authors, license, sourceUrl, fallback }: SlideCredit & { fallback?: string }) {
   const { t } = useT();
   if (!authors.length) return fallback ? <>{fallback}</> : null;
   return (
@@ -113,6 +115,12 @@ function Credit({ authors, fallback }: { authors: Author[]; fallback?: string })
           {a.uri ? <ExtLink href={a.uri}>{a.name}</ExtLink> : a.name}
         </span>
       ))}
+      {license && (
+        <>
+          {" · "}
+          {sourceUrl ? <ExtLink href={sourceUrl}>{license}</ExtLink> : license}
+        </>
+      )}
     </>
   );
 }
@@ -202,7 +210,7 @@ function Lightbox({ slides, start, onClose }: { slides: Slide[]; start: number; 
         )}
         <p className="pc-lb-credit">
           <span>{t("miniapp.place.photoCounter", { n: i + 1, total: slides.length })}</span>{" "}
-          <Credit authors={s.authors} />
+          <Credit authors={s.authors} license={s.license} sourceUrl={s.sourceUrl} />
         </p>
         {slides.length > 1 && (
           <button type="button" className="pc-lb-nav" onClick={() => go(1)}>
@@ -253,7 +261,7 @@ function Gallery({ slides: all }: { slides: Slide[] }) {
             />
             {s.authors.length > 0 && (
               <figcaption className="pc-credit">
-                <Credit authors={s.authors} />
+                <Credit authors={s.authors} license={s.license} sourceUrl={s.sourceUrl} />
               </figcaption>
             )}
           </figure>
@@ -398,6 +406,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             largeUrl: place.cover.url,
             alt: name,
             authors: place.cover.credit.authors,
+            license: place.cover.credit.license,
+            sourceUrl: place.cover.credit.sourceUrl,
           },
         ]
       : [];
@@ -423,9 +433,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
   // Автоописание импорта («Ресторан у Яремчі. Джерело: Google Maps.», descriptionAuto от api) не нужно, когда есть
   // содержательный текст; ручное описание (админка, партнёр) показывается всегда.
   const description =
-    place.description && !(place.descriptionAuto && (about || wiki))
-      ? pickLocalized(place.description, locale)
-      : null;
+    place.description && !(place.descriptionAuto && about) ? pickLocalized(place.description, locale) : null;
   const hasGoogle = Boolean(
     place.typeLabel ||
     place.summary ||
@@ -646,17 +654,6 @@ function PlaceView({ place }: { place: PlaceDetail }) {
                 </figcaption>
               </figure>
             )}
-            <p className="pc-m0">
-              {wiki.extract}
-              {wiki.truncated && (
-                <>
-                  {" "}
-                  <span className="pc-muted" data-testid="place-wiki-truncated">
-                    {t("miniapp.place.wikiTruncated")}
-                  </span>
-                </>
-              )}
-            </p>
             <ExtLink href={wiki.url} className="pc-textlink">
               {t("miniapp.place.wikiReadMore")}
             </ExtLink>

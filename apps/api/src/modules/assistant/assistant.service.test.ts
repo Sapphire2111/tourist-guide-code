@@ -339,10 +339,29 @@ describe("AssistantService.query", () => {
     const res = await service.query(REGION, USER, ask("екскурсія", { origin: { lon: 24.5, lat: 48.4 } }));
     expect(res.items.map((i) => i.place.id)).toEqual([near.id, far.id]);
     expect(res.route!.lengthMeters).toBeGreaterThan(4000);
-    expect(res.items[0]).toMatchObject({
-      descriptionSource: "wikipedia",
-      descriptionUrl: "https://uk.wikipedia.org/wiki/M",
+    // Текст статьи туристу не отдаётся: нет пересказа — нет описания (CC BY-SA, только пересказ и ссылка).
+    expect(res.items[0]).toMatchObject({ description: null, descriptionSource: null, descriptionUrl: null });
+  });
+
+  it("описание: пересказ ИИ со ссылкой на статью; без пересказа — описание Google без текста статьи", () => {
+    const wiki = {
+      lang: "uk",
+      title: "M",
+      url: "https://uk.wikipedia.org/wiki/M",
+      extract: "Стаття.",
+      image: null,
+    };
+    expect(describePlace({ google: null, wiki, ai: "Пересказ." })).toEqual({
+      text: "Пересказ.",
+      source: "ai",
+      url: wiki.url,
     });
+    expect(describePlace({ google: google({ summary: "Опис Google" }), wiki, ai: null })).toEqual({
+      text: "Опис Google",
+      source: "google",
+      url: null,
+    });
+    expect(describePlace({ google: null, wiki, ai: null })).toEqual({ text: null, source: null, url: null });
   });
 
   it("модель ответила текстом, отказала или не нашла категорий — «уточніть» без поиска, прежнее намерение сохраняется", async () => {

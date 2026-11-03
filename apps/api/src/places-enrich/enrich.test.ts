@@ -310,6 +310,13 @@ describe("Вікіпедія — только уверенное совпаде�
     expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toMatchObject({
       "User-Agent": expect.stringContaining("TouristGuide"),
     });
+    // Обычный режим как раньше: файл — картинка статьи, без Wikidata; статьи рядом — только geosearch.
+    const urls = f.mock.calls.map((c) => c[0]);
+    expect(urls.find((u) => u.startsWith("https://commons."))).toContain(
+      encodeURIComponent("File:Probiy.jpg"),
+    );
+    expect(urls.some((u) => u.includes("wikidata.org") || u.includes("generator=search"))).toBe(false);
+    expect(urls[0]).toContain("gsradius=1500&gslimit=30");
   });
 
   it("несвободная лицензия — без фото; нет совпадения — null", async () => {
