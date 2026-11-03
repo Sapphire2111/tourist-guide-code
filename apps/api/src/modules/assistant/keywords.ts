@@ -73,6 +73,16 @@ function matches(entry: string, word: string): boolean {
   return entry.endsWith("*") ? word.startsWith(entry.slice(0, -1)) : word === entry;
 }
 
+/**
+ * Слово или фраза — целиком блюдо, кухня или особенность из словаря («суші», «піца з грилю» — нет: «з»), а не
+ * название заведения («Суші Барберрі»)?
+ */
+export function isKnownKeyword(word: string): boolean {
+  const known = (p: string) => KEYWORD_GROUPS.some((g) => g.some((e) => matches(e, p)));
+  const parts = norm(word).split(" ").filter(Boolean);
+  return parts.length > 0 && parts.every(known);
+}
+
 /** Слова → термы поиска: группы синонимов целиком + сами слова (без повторов). */
 export function expandKeywords(words: readonly string[]): string[] {
   const out = new Set<string>();

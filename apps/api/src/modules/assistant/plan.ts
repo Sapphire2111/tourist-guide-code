@@ -66,7 +66,7 @@ const TEMPLATES: Readonly<Record<DayPart, readonly Slot[]>> = {
 };
 const EVENING_ONLY_TEMPLATE: readonly Slot[] = [[...FUN, ...SEE], DINNER, RELAX];
 
-/** Пешком — не дальше, м (по прямой); дальше — на авто. Дальше MAX_HOP_M в план не берём. */
+/** Пешком — не дальше, м (по прямой); дальше — на авто. Между пунктами дальше MAX_HOP_M не переезжаем. */
 export const WALK_MAX_M = 1200;
 export const MAX_HOP_M = 30_000;
 /** Опоздание за конец части дня, мин, — допустимо (вечеря может затянуться). */
@@ -245,14 +245,18 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
         let best: { c: PlanCandidate; s: number; d: number | null } | undefined;
         for (const c of pool) {
           if (used.has(c.id) || !slot.includes(c.category)) continue;
-          const d = at ? haversineMeters(at, c.location) : null;
+          const hop = at ? haversineMeters(at, c.location) : null;
+          // Первый переезд дня от жилья туриста дальше предела (QR отеля в Косові, «план у Буковелі») — день
+          // начинается на месте, без переезда; между пунктами предел действует.
+          const d = hop !== null && hop > MAX_HOP_M && !dayCats.length ? null : hop;
           if (d !== null && d > MAX_HOP_M) continue;
           const arrive = t + (d === null ? 0 : travelOf(d).minutes);
           const duration = DURATION_OF[c.category] ?? 60;
           if (arrive + duration > window.to + OVERRUN_MIN) continue;
           const open = openDuring(c.schedule, day, arrive, arrive + duration);
           if (open === false) continue;
-          let s = score.get(c.id)! - (d === null ? 0 : distancePenalty(d));
+          // Штраф — по фактическому расстоянию: ближние к жилью (если есть) всё равно выше дальних.
+          let s = score.get(c.id)! - (hop === null ? 0 : distancePenalty(hop));
           if (open === null) s -= 0.5;
           // Разнообразие дня: та же категория второй раз — ниже (два музея подряд — скучно).
           if (dayCats.includes(c.category) && ROLE_OF[c.category] !== "eat") s -= 0.8;

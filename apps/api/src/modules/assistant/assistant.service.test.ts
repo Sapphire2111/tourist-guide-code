@@ -666,6 +666,21 @@ describe("блюдо или кухня (ключевые слова)", () => {
     expect(res.items.map((i) => i.place.name.uk)).toEqual(["Доставка суші", "KUMA"]);
   });
 
+  it("nameQuery — название заведения («Суші Барберрі»): синонимами не расширяется", async () => {
+    const named = sushi(1, "Суші Барберрі");
+    const { service, repo } = setup({
+      places: [named],
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(reply(intent({ categories: ["restaurants"], nameQuery: "Суші Барберрі" }))),
+        ),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("Суші Барберрі"));
+    expect(repo.keywordMatches).not.toHaveBeenCalled();
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суші Барберрі"]);
+  });
+
   it("мест больше 10 — до 30 (клиент показывает по 10)", async () => {
     const many = Array.from({ length: 40 }, (_, i) => place(i + 1));
     const { service } = setup({ places: many });
@@ -695,12 +710,25 @@ describe("план відпочинку", () => {
       stop_reason: "tool_use",
     }) as unknown as Anthropic.Message;
 
-  function planSetup(i: AssistantIntent, notes: Promise<Anthropic.Message>) {
+  function planSetup(
+    i: AssistantIntent,
+    notes: Promise<Anthropic.Message>,
+    extra: Parameters<typeof setup>[0] = {},
+  ) {
     const create = vi
-      .fn<(p: Anthropic.MessageCreateParamsNonStreaming) => Promise<Anthropic.Message>>()
+      .fn<
+        (
+          p: Anthropic.MessageCreateParamsNonStreaming,
+          o?: { timeoutMs?: number },
+        ) => Promise<Anthropic.Message>
+      >()
       .mockResolvedValueOnce(reply(i))
       .mockReturnValueOnce(notes);
-    const s = setup({ llm: { create }, searchAt: (q) => (q.categoryId ? bySection[q.categoryId] : []) });
+    const s = setup({
+      llm: { create },
+      searchAt: (q) => (q.categoryId ? bySection[q.categoryId] : []),
+      ...extra,
+    });
     // Суббота 7.11.2026, 9:00 по Киеву.
     s.service.now = () => new Date("2026-11-07T07:00:00Z");
     return { ...s, create };
@@ -779,6 +807,46 @@ describe("план відпочинку", () => {
     const none = await empty.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
     expect(none.plan).toBeNull();
     expect(none.items).toEqual([]);
+  });
+
+  it("жильё за 50 км (QR отеля в Косові), «план у Яремчі» — план не пустой; кандидаты — от центра пункта", async () => {
+    const KOSIV = { lon: 25.09, lat: 48.31 };
+    const all = Object.values(bySection).flat();
+    const { service, guide } = planSetup(
+      planIntent({ locality: "yaremche" }),
+      Promise.resolve(notesReply([])),
+      { placeLocality: Object.fromEntries(all.map((p) => [p.id, YAREMCHE])) },
+    );
+    const res = await service.query(REGION, USER, ask("план у Яремчі", { origin: KOSIV }));
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({
+        categoryId: EAT,
+        origin: YAREMCHE_AT,
+        radius: undefined,
+        localityIds: [YAREMCHE],
+      }),
+    );
+    const stops = res.plan!.days[0]!.parts.flatMap((p) => p.stops);
+    expect(stops.length).toBe(5);
+    expect(stops[0]).toMatchObject({ travel: null, travelMeters: null });
+  });
+
+  it("пояснения — с коротким таймаутом; бюджет плана — 2 единицы, на втором вызове исчерпан — план без пояснений, не 429", async () => {
+    const ok = planSetup(planIntent(), Promise.resolve(notesReply([{ n: 1, text: "Пояснення." }])), {
+      userDailyLimit: 2,
+    });
+    const res = await ok.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(ok.create).toHaveBeenCalledTimes(2);
+    expect(ok.create.mock.calls[1]![1]).toEqual({ timeoutMs: 9000 });
+    expect(res.plan!.days[0]!.parts[0]!.stops[0]!.note).toBe("Пояснення.");
+
+    const tight = planSetup(planIntent(), Promise.resolve(notesReply([{ n: 1, text: "Пояснення." }])), {
+      userDailyLimit: 1,
+    });
+    const cut = await tight.service.query(REGION, USER, ask("план", { origin: YAREMCHE_AT }));
+    expect(tight.create).toHaveBeenCalledTimes(1);
+    expect(cut.plan!.days[0]!.parts.flatMap((p) => p.stops).every((s) => s.note === null)).toBe(true);
   });
 });
 

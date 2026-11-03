@@ -150,6 +150,21 @@ describe("buildPlan", () => {
     expect(stops[1]!.travelMeters).toBeLessThan(1000);
   });
 
+  it("жильё дальше 30 км от пункта (QR отеля в Косові, «план у Буковелі») — план не пустой, день начинается на месте", () => {
+    const plan = buildPlan(
+      [c("nature", 80), c("sights", 80.5), c("restaurants", 81), c("chany", 81.5)],
+      opts({ parts: ["morning", "evening"] }),
+    );
+    const stops = plan.days[0]!.parts.flatMap((p) => p.stops);
+    expect(stops.length).toBe(4);
+    expect(stops[0]).toMatchObject({ travel: null, travelMeters: null, startMinute: 9 * 60 + 30 });
+    expect(stops[1]!.travelMeters).toBeLessThan(1000);
+    // Есть место рядом с жильём — оно первым, дальние не «бесплатны».
+    const near = c("nature", 1, { rating: 4 });
+    const mixed = buildPlan([near, c("nature", 80, { rating: 5 })], opts({ parts: ["morning"] }));
+    expect(mixed.days[0]!.parts[0]!.stops[0]!.placeId).toBe(near.id);
+  });
+
   it("цена: дорогой ресторан при «недорого» — ниже", () => {
     const pricey = c("restaurants", 1, { priceLevel: 4, rating: 4.8 });
     const cheap = c("restaurants", 1.1, { priceLevel: 1, rating: 4.4 });

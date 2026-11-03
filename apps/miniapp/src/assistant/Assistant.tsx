@@ -383,6 +383,7 @@ function AddToMyPlan({
   if (!host || !enabled) return null;
   const add = async () => {
     setState("busy");
+    let createdId: string | null = null;
     try {
       const created = await host.api.createPlan({
         adults: 2,
@@ -391,6 +392,7 @@ function AddToMyPlan({
         days: plan.days.length,
         startDate: plan.days[0]?.date ?? null,
       });
+      createdId = created.id;
       // По одному пункту: api «Мій план» добавляет место галочкой в часть дня.
       for (const d of plan.days)
         for (const p of d.parts)
@@ -400,7 +402,9 @@ function AddToMyPlan({
             });
       navigate(`/plan/saved/${created.id}`);
     } catch {
-      setState("error");
+      // План уже создан — открываем его (что успели добавить, остальное — галочками там), а не создаём второй.
+      if (createdId) navigate(`/plan/saved/${createdId}`);
+      else setState("error");
     }
   };
   return (

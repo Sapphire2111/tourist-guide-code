@@ -32,7 +32,11 @@ export class AssistantUpstreamError extends Error {
 /** Порт модели: создать сообщение (подменяется в тестах). */
 export type AssistantLlm = {
   readonly enabled: boolean;
-  create(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message>;
+  /** timeoutMs — свой предел вызова (короче общего LLM_TIMEOUT_MS), напр. для пояснений к плану. */
+  create(
+    params: Anthropic.MessageCreateParamsNonStreaming,
+    opts?: { timeoutMs?: number },
+  ): Promise<Anthropic.Message>;
 };
 
 const LLM_TIMEOUT_MS = 20_000;
@@ -44,10 +48,13 @@ export function createAnthropicLlm(apiKey: string | undefined): AssistantLlm {
   const log = new Logger("AssistantLlm");
   return {
     enabled: client !== null,
-    async create(params) {
+    async create(params, opts) {
       if (!client) throw new AssistantUpstreamError("config");
       try {
-        return await client.messages.create(params);
+        return await client.messages.create(
+          params,
+          opts?.timeoutMs ? { timeout: opts.timeoutMs } : undefined,
+        );
       } catch (e) {
         if (e instanceof Anthropic.APIConnectionTimeoutError) throw new AssistantUpstreamError("timeout");
         if (e instanceof Anthropic.APIError) {

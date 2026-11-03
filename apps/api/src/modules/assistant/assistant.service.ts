@@ -25,12 +25,13 @@ import {
   type IntentCategory,
   type IntentLocality,
 } from "./intent.js";
-import { expandKeywords, keywordPattern } from "./keywords.js";
+import { expandKeywords, isKnownKeyword, keywordPattern } from "./keywords.js";
 import { NOTES_TOOL, notesRequest, parseNotes, type NoteFacts } from "./plan-notes.js";
 import {
   buildPlan,
   formatMinute,
   hasTimeToday,
+  MAX_HOP_M,
   PLAN_SECTIONS,
   quality,
   startMinuteFrom,
@@ -45,7 +46,7 @@ import {
   type AssistantSpeech,
   type AudioMime,
 } from "./providers.js";
-import { orderRoute } from "./route.js";
+import { haversineMeters, orderRoute } from "./route.js";
 
 /** Мест в ответе «places» (клиент показывает по 10 — «Показати ще»). */
 export const ASSISTANT_PLACES_MAX = 30;
@@ -67,6 +68,8 @@ const WIDEN_BELOW = 5;
 const DESCRIPTION_MAX = 320;
 const NOTE_DESCRIPTION_MAX = 220;
 const TIMEZONE_DEFAULT = "Europe/Kyiv";
+/** Пояснения к плану — не дольше (иначе план без пояснений, а не ожидание общего таймаута Claude). */
+const NOTES_TIMEOUT_MS = 9000;
 
 export type AssistantQuery = {
   text: string;
@@ -94,8 +97,8 @@ type Catalog = {
   nameOf: ReadonlyMap<string, string>;
 };
 
-/** Поиск: где искать (пункты, радиус от точки) — общий для мест и плана. */
-type Scope = { origin?: LonLat; localityIds: readonly string[] };
+/** Где искать: пункты, радиус от точки (общее для мест и плана); localityCenter — центр выбранного пункта. */
+type Scope = { origin?: LonLat; localityIds: readonly string[]; localityCenter?: LonLat };
 
 /** Начало текста до DESCRIPTION_MAX по границе предложения (иначе слова) — без обрыва посреди слова. */
 export function shorten(text: string, max = DESCRIPTION_MAX): string {
@@ -237,7 +240,11 @@ export class AssistantService {
       : intent.radiusMeters !== null && q.origin
         ? []
         : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
-    const scope: Scope = { origin: q.origin, localityIds };
+    const scope: Scope = {
+      origin: q.origin,
+      localityIds,
+      localityCenter: localityRows.find((l) => l.id === localityIds[0])?.location ?? undefined,
+    };
     if (intent.kind === "plan") return this.plan(regionId, userId, intent, catalog, scope);
     return this.select(regionId, intent, catalog, scope);
   }
@@ -335,8 +342,14 @@ export class AssistantService {
     if (!found.length && (intent.categories.length || intent.nameQuery)) {
       relevance = null;
       found = await this.byCategories(regionId, intent, catalog, scope);
-      // Слово модели в nameQuery («суші») — не название: мало по названию — ищем ещё по описаниям и отзывам.
-      if (found.length < WIDEN_BELOW && intent.nameQuery && !intent.keywords.length) {
+      // Слово модели в nameQuery — блюдо из словаря («суші»), а не название заведения («Суші Барберрі»): мало по
+      // названию — ищем ещё по описаниям и отзывам.
+      if (
+        found.length < WIDEN_BELOW &&
+        intent.nameQuery &&
+        !intent.keywords.length &&
+        isKnownKeyword(intent.nameQuery)
+      ) {
         const k = await this.byKeywords(regionId, [intent.nameQuery], intent, catalog, scope);
         const seen = new Set(found.map((p) => p.id));
         const extra = k.found.filter((p) => !seen.has(p.id));
@@ -492,6 +505,10 @@ export class AssistantService {
     // Где искать: выбранные пункты; иначе от точки туриста; иначе — вокруг лучшей пам'ятки региона.
     const byLocality = scope.localityIds.length > 0;
     let center = scope.origin;
+    // В пункте без точки туриста (или она далеко — QR отеля в Косові, «план у Буковелі») — кандидаты ближе к центру
+    // пункта, а не первые по алфавиту.
+    const lc = scope.localityCenter;
+    if (byLocality && lc && (!center || haversineMeters(center, lc) > MAX_HOP_M)) center = lc;
     if (!byLocality && !center) center = await this.planAnchor(regionId, intent, catalog);
     const radius = byLocality || !center ? undefined : (intent.radiusMeters ?? PLAN_RADIUS_DEFAULT);
     const sectionIds = PLAN_SECTIONS.map((code) => catalog.anyIdOf.get(code)).filter((id): id is string =>
@@ -656,7 +673,9 @@ export class AssistantService {
     if (!stops.length) return new Map();
     try {
       await this.budget.spend(userId, BUDGET_UNITS.planNotes);
-      const message = await this.llm.create(notesRequest(stops, { withKids: intent.withKids }));
+      const message = await this.llm.create(notesRequest(stops, { withKids: intent.withKids }), {
+        timeoutMs: NOTES_TIMEOUT_MS,
+      });
       return parseNotes(toolInputOf(message, NOTES_TOOL), new Set(stops.map((s) => s.n)));
     } catch (e) {
       // План без пояснений лучше, чем ошибка: места и время уже подобраны.

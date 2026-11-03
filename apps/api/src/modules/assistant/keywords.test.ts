@@ -1,6 +1,6 @@
 // Unit: ключевые слова блюда или кухни → синонимы и написания → регулярное выражение Postgres по целым словам.
 import { describe, expect, it } from "vitest";
-import { expandKeywords, keywordPattern } from "./keywords.js";
+import { expandKeywords, isKnownKeyword, keywordPattern } from "./keywords.js";
 
 /** Проверка выражения в JS: \m \M Postgres ≈ границы слова (буквы любых алфавитов), \w — буква или цифра. */
 function jsRegex(pattern: string): RegExp {
@@ -32,6 +32,17 @@ describe("expandKeywords", () => {
     expect(expandKeywords(["вареники"])).toEqual(expect.arrayContaining(["вареник*"]));
     expect(expandKeywords(["шаурма"])).toEqual(expect.arrayContaining(["шаверм*", "shawarma"]));
     expect(expandKeywords(["burger"])).toEqual(expect.arrayContaining(["бургер*"]));
+  });
+});
+
+describe("isKnownKeyword", () => {
+  it("блюдо из словаря — да; название заведения — нет", () => {
+    expect(isKnownKeyword("Суші")).toBe(true);
+    expect(isKnownKeyword("піцу")).toBe(true);
+    expect(isKnownKeyword("суші роли")).toBe(true);
+    expect(isKnownKeyword("Суші Барберрі")).toBe(false);
+    expect(isKnownKeyword("Смерека")).toBe(false);
+    expect(isKnownKeyword("  ")).toBe(false);
   });
 });
 

@@ -708,4 +708,57 @@ describe("Assistant: больше мест и план", () => {
     ]);
     expect(window.location.hash).toBe("#/plan/saved/plan-1");
   });
+
+  const renderWithHost = (createPlan: () => Promise<never>, updatePlan: () => Promise<never>) => {
+    const host: HostEnv = {
+      api: { ...noopHostApi(), createPlan, updatePlan },
+      hotelPlaceId: null,
+      entryContextId: null,
+      staff: "no",
+      timeZone: null,
+    };
+    render(
+      <FeatureFlagsProvider flags={{ "module.host_requests": true }}>
+        <HostProvider value={host}>
+          <GuideProvider value={env()}>
+            <Assistant api={fakeAssistant({ ask: async () => planResult() })} initialQuery="план" />
+          </GuideProvider>
+        </HostProvider>
+      </FeatureFlagsProvider>,
+    );
+  };
+
+  it("сбой после создания плана — открывается созданный (частичный) план, второй не создаётся", async () => {
+    const createPlan = vi.fn(async () => ({ id: "plan-2" }) as never);
+    let n = 0;
+    const updatePlan = vi.fn(async () => {
+      if (++n === 2) throw new ApiCallError(500, null);
+      return { id: "plan-2" } as never;
+    });
+    renderWithHost(createPlan, updatePlan);
+    await flush();
+    await flush();
+    fireEvent.click(screen.getByTestId("assistant-plan-add"));
+    await flush();
+    await flush();
+    expect(createPlan).toHaveBeenCalledTimes(1);
+    expect(updatePlan).toHaveBeenCalledTimes(2);
+    expect(window.location.hash).toBe("#/plan/saved/plan-2");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("план не создан (сбой POST) — сообщение об ошибке, кнопку можно нажать снова", async () => {
+    const createPlan = vi.fn(async () => {
+      throw new ApiCallError(500, null);
+    });
+    renderWithHost(createPlan as never, vi.fn() as never);
+    await flush();
+    await flush();
+    fireEvent.click(screen.getByTestId("assistant-plan-add"));
+    await flush();
+    await flush();
+    expect(screen.getByRole("alert").textContent).toContain("Не вдалося додати");
+    expect((screen.getByTestId("assistant-plan-add") as HTMLButtonElement).disabled).toBe(false);
+    expect(window.location.hash).not.toContain("/plan/saved/");
+  });
 });

@@ -36,7 +36,10 @@ export type PlaceRatingFacts = {
 
 export type AssistantLocality = { id: string; code: string; name_i18n: LocalizedText; location: LonLat };
 
-/** Совпадение по ключевым словам: место и вес совпадения (название 4, тип Google 3, описания 2, отзывы до 3). */
+/** Экранирование в тексте jsonb (\n, \r, \t, \") — регулярное выражение для regexp_replace. */
+const JSON_ESCAPES = '\\\\[nrt"]';
+
+/** Совпадение по ключевым словам:место и вес совпадения (название 4, тип Google 3, описания 2, отзывы до 3). */
 export type KeywordMatch = { id: string; score: number };
 
 export type KeywordQuery = {
@@ -128,23 +131,17 @@ export class AssistantRepository {
     const re = q.pattern;
     const name = q.namePattern;
     return withTenant(this.db, regionContext(regionId), async () => {
-      // Отзывы — одной строкой jsonb (regexp_count, PG 15+): каждое упоминание +1, не больше 3.
-      const score = sql<number>`(
-        CASE WHEN coalesce(p.name_i18n->>'uk', '') ~* ${name} OR coalesce(p.name_i18n->>'en', '') ~* ${name} THEN 4 ELSE 0 END
-        + CASE WHEN coalesce(e.google->>'typeLabel', '') ~* ${re} THEN 3 ELSE 0 END
-        + CASE WHEN coalesce(e.ai_summary_uk, '') ~* ${re} OR coalesce(e.google->>'summary', '') ~* ${re}
-            OR coalesce(p.description_i18n->>'uk', '') ~* ${re} THEN 2 ELSE 0 END
-        + LEAST(3, regexp_count(coalesce((e.google->'reviews')::text, ''), ${re}, 1, 'i'))
-      )::int`;
+      const db = currentDb(this.db);
       const cats = [...q.categoryIds];
-      let query = currentDb(this.db)
+      // 1) Кандидаты (раздел, пункты, радиус) и их тексты — каждое поле jsonb извлекается один раз. Отзывы — только
+      // тексты (без автора, языка, ссылок); экранирование JSON (\n, \") — пробел, иначе «\nСуші» не начинает слово.
+      let query = db
         .selectFrom("places as p")
         .innerJoin("categories as c", "c.id", "p.category_id")
         .leftJoin("place_enrichments as e", "e.place_id", "p.id")
         .where("p.status", "=", "published")
         .where("c.active", "=", true)
-        .where("p.location", "is not", null)
-        .where(sql<boolean>`${score} >= ${q.minScore}`);
+        .where("p.location", "is not", null);
       if (cats.length)
         query = query.where((eb) =>
           eb.or([
@@ -167,9 +164,42 @@ export class AssistantRepository {
         const radius = q.radius;
         query = query.where((eb) => withinMeters(geom(eb), point(origin), radius));
       }
-      let rows = query.select("p.id").select(score.as("score")).orderBy(score, "desc");
-      if (origin) rows = rows.orderBy((eb) => distanceMeters(geom(eb), point(origin)));
-      const found = await rows.orderBy("p.id").limit(q.limit).execute();
+      const texts = query
+        .select("p.id")
+        .select(sql<string>`concat_ws(' ', p.name_i18n->>'uk', p.name_i18n->>'en')`.as("names"))
+        .select(sql<string>`coalesce(e.google->>'typeLabel', '')`.as("type_label"))
+        .select(
+          sql<string>`concat_ws(' ', e.ai_summary_uk, e.google->>'summary', p.description_i18n->>'uk')`.as(
+            "texts",
+          ),
+        )
+        .select(
+          sql<string>`regexp_replace(coalesce(jsonb_path_query_array(e.google->'reviews', '$[*].text')::text, ''), ${JSON_ESCAPES}, ' ', 'g')`.as(
+            "reviews",
+          ),
+        )
+        .select((eb) =>
+          (origin ? distanceMeters(geom(eb), point(origin)) : sql<number>`0::float8`).as("distance"),
+        );
+      // 2) Вес — один раз на кандидата: название 4, тип Google 3, описания 2, упоминания в отзывах до 3.
+      const scored = db
+        .selectFrom(texts.as("f"))
+        .select(["f.id", "f.distance"])
+        .select(
+          sql<number>`(CASE WHEN f.names ~* ${name} THEN 4 ELSE 0 END
+            + CASE WHEN f.type_label ~* ${re} THEN 3 ELSE 0 END
+            + CASE WHEN f.texts ~* ${re} THEN 2 ELSE 0 END
+            + LEAST(3, regexp_count(f.reviews, ${re}, 1, 'i')))::int`.as("score"),
+        );
+      const found = await db
+        .selectFrom(scored.as("s"))
+        .select(["s.id", "s.score"])
+        .where("s.score", ">=", q.minScore)
+        .orderBy("s.score", "desc")
+        .orderBy("s.distance")
+        .orderBy("s.id")
+        .limit(q.limit)
+        .execute();
       return found.map((r) => ({ id: r.id, score: Number(r.score) }));
     });
   }
