@@ -38,6 +38,7 @@ afterEach(() => {
   cleanup();
   window.location.hash = "";
   sessionStorage.clear();
+  localStorage.clear();
 });
 
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -206,7 +207,6 @@ describe("Assistant: диалог", () => {
     await flush();
     expect(qr.ask).toHaveBeenCalled();
     expect(qr.ask.mock.calls.at(-1)![0]).not.toHaveProperty("localityIds");
-    localStorage.clear();
   });
 
   it("радиус в подписи — только без названного пункта (по пункту ищем без радиуса)", async () => {
@@ -221,7 +221,7 @@ describe("Assistant: диалог", () => {
     await flush();
     await flush();
     const plain = screen.getByTestId("assistant-reply").textContent;
-    expect(plain).not.toBe("Шукаю: Кафе");
+    expect(plain).toMatch(/^Шукаю: Кафе, у радіусі .*500/);
     cleanup();
     const named = fakeAssistant({
       ask: vi.fn(async () => result({ intent: intent({ radiusMeters: 500, locality: "yaremche" }) })),

@@ -141,11 +141,11 @@ export class AssistantService {
     if (intent.clarify || (!intent.categories.length && !intent.nameQuery))
       return { intent: { ...intent, clarify: true }, items: [], route: null, notes: [] };
     // Населённый пункт, названный в запросе, — главнее выбора туриста; радиус в запросе («в 500 м») без названного
-    // пункта — тоже: поиск от точки туриста, выбор «Локація» не применяется. Выбор — только пункты этого региона.
+    // пункта и с точкой туриста — тоже: поиск от точки, выбор «Локація» не применяется. Выбор — только пункты этого региона.
     const regionLocalities = new Set(localityIdOf.values());
     const localityIds = intent.locality
       ? [localityIdOf.get(intent.locality)!]
-      : intent.radiusMeters !== null
+      : intent.radiusMeters !== null && q.origin
         ? []
         : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
     return this.select(regionId, intent, idOf, q.origin, localityIds);
@@ -210,7 +210,7 @@ export class AssistantService {
       found = found.sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
 
     const notes: AssistantNote[] = [];
-    if (!origin && intent.radiusMeters !== null) notes.push("no_origin");
+    if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
     if (intent.openNow) {
       const open = found.filter((p) => p.openNow === true);
       if (open.length) found = open;

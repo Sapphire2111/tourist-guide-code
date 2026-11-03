@@ -431,6 +431,18 @@ describe("населені пункти", () => {
     );
   });
 
+  it("радиус в запросе без точки туриста — действует выбор туриста, без пометки no_origin", async () => {
+    const { service, guide } = setup({
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ radiusMeters: 500 })))) },
+    });
+    const res = await service.query(REGION, USER, ask("кава поруч", { localityIds: [YAREMCHE] }));
+    expect(guide.search).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ radius: undefined, localityIds: [YAREMCHE] }),
+    );
+    expect(res.notes).not.toContain("no_origin");
+  });
+
   it("радиус в запросе и названный пункт — поиск по пункту из запроса", async () => {
     const { service, guide } = setup({
       llm: {
