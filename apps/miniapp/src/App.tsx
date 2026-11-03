@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import {
   DEFAULT_LOCALE,
@@ -23,6 +23,8 @@ import {
 import { Assistant } from "./assistant/Assistant.js";
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
+import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
+import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -65,6 +67,20 @@ import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
 import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
+// Бронирования (блок 7, флаг module.bookings) — ленивые чанки: в первый экран не входят.
+const BookingFlow = lazy(() =>
+  import("./bookings/TouristScreens.js").then((m) => ({ default: m.BookingFlow })),
+);
+const MyBookings = lazy(() =>
+  import("./bookings/TouristScreens.js").then((m) => ({ default: m.MyBookings })),
+);
+const PartnerBookings = lazy(() =>
+  import("./bookings/PartnerScreens.js").then((m) => ({ default: m.PartnerBookings })),
+);
+const PartnerResources = lazy(() =>
+  import("./bookings/PartnerScreens.js").then((m) => ({ default: m.PartnerResources })),
+);
+
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
 
@@ -86,12 +102,14 @@ export type AppProps = {
   partnerApi?: PartnerApi;
   /** API ассистента (тесты подменяют); по умолчанию — поверх api. */
   assistantApi?: AssistantApi;
+  /** API бронирований (блок 7; тесты подменяют); по умолчанию — поверх api. */
+  bookingsApi?: BookingsApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
 type RoutesProps = Omit<
   AppProps,
-  "startup" | "locale" | "guideApi" | "analytics" | "hostApi" | "partnerApi"
+  "startup" | "locale" | "guideApi" | "analytics" | "hostApi" | "partnerApi" | "bookingsApi"
 > & {
   session?: Session;
   onMe: (me: Me) => void;
@@ -333,13 +351,13 @@ function useFocusHeading(path: string) {
   }, [path]);
 }
 
-const PARTNER_PATH_RE = /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff)?$/;
+const PARTNER_PATH_RE = /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources)?$/;
 
 /**
  * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
  * Приглашение (P14) — /partner/invite, токен только в памяти (session.invite), не в адресе.
  */
-function partnerScreen(path: string, invite: string | undefined): ReactNode {
+function partnerScreen(path: string, invite: string | undefined, bookings: boolean): ReactNode {
   if (path === "/partner") return <PartnerDashboard />;
   if (path === "/partner/new") return <PartnerOnboarding />;
   if (path === "/partner/invite") return <AcceptInvite token={invite ?? ""} />;
@@ -351,6 +369,18 @@ function partnerScreen(path: string, invite: string | undefined): ReactNode {
   if (kind === "place" && !sub) return <PlaceEditor key={id} id={id} />;
   if (kind === "place" && sub === "/offers") return <PartnerOffers key={id} placeId={id} />;
   if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
+  if (bookings && kind === "place" && sub === "/bookings")
+    return (
+      <Suspense fallback={null}>
+        <PartnerBookings key={id} placeId={id} />
+      </Suspense>
+    );
+  if (bookings && kind === "place" && sub === "/resources")
+    return (
+      <Suspense fallback={null}>
+        <PartnerResources key={id} placeId={id} />
+      </Suspense>
+    );
   return null;
 }
 
@@ -393,6 +423,7 @@ function Routes(props: RoutesProps) {
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
   const assistantOn = useFeatureFlag("module.assistant");
+  const bookingsOn = useFeatureFlag("module.bookings");
   const assistantApi = useAssistantApi(props);
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
   // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
@@ -441,6 +472,33 @@ function Routes(props: RoutesProps) {
       </Screen>
     );
   }
+  const bookPlace = bookingsOn ? /^\/book\/([^/]+)$/.exec(path)?.[1] : undefined;
+  if (bookPlace !== undefined) {
+    const id = uuidOf(bookPlace);
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          {id ? (
+            <Suspense fallback={null}>
+              <BookingFlow key={id} placeId={id} />
+            </Suspense>
+          ) : (
+            <p role="alert">{t("common.notFound")}</p>
+          )}
+        </RequireRegion>
+      </Screen>
+    );
+  }
+  if (bookingsOn && path === "/bookings")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Suspense fallback={null}>
+            <MyBookings />
+          </Suspense>
+        </RequireRegion>
+      </Screen>
+    );
   const placeId = placeIdOf(path);
   if (placeId !== undefined)
     return (
@@ -529,6 +587,11 @@ function Routes(props: RoutesProps) {
     return (
       <Screen title={t("miniapp.profile.title")} webApp={webApp}>
         <Profile api={api} me={session.me} webApp={webApp} onChange={onMe} />
+        <Feature flag="module.bookings">
+          <Link to="/bookings" className="kosiv-cta" data-testid="my-bookings-link">
+            {t("miniapp.booking.mine")}
+          </Link>
+        </Feature>
         <Feature flag="module.partner_cabinet">
           <PartnerEntry />
         </Feature>
@@ -536,7 +599,7 @@ function Routes(props: RoutesProps) {
     );
   }
   // Кабинет партнёра (модуль блока 6) при выключенном флаге — как несуществующий путь (T1-22).
-  const partner = partnerCabinet ? partnerScreen(path, session?.invite) : null;
+  const partner = partnerCabinet ? partnerScreen(path, session?.invite, bookingsOn) : null;
   if (partner && !session)
     return (
       <Screen title={t("miniapp.partner.title")} webApp={webApp}>
@@ -663,6 +726,7 @@ export function App({
   analytics,
   hostApi,
   partnerApi,
+  bookingsApi,
   ...props
 }: AppProps) {
   const { webApp } = props;
@@ -741,6 +805,13 @@ export function App({
     [hApi, venue, context, staff],
   );
   const pApi = useMemo(() => partnerApi ?? createPartnerApi(props.api), [partnerApi, props.api]);
+  const bookings = useMemo<BookingsEnv>(
+    () => ({
+      api: bookingsApi ?? createBookingsApi(props.api),
+      timeZone: context?.region?.timezone ?? "Europe/Kyiv",
+    }),
+    [bookingsApi, props.api, context?.region?.timezone],
+  );
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
   // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
   const scanHandler =
@@ -776,13 +847,15 @@ export function App({
                 <LocationProvider venueEntry={venue !== null}>
                   <HostProvider value={host}>
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
-                      <Shell
-                        profile={Boolean(session && hasRequiredConsents(session.me))}
-                        scan={scanHandler}
-                        routes={
-                          <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
-                        }
-                      />
+                      <BookingsProvider value={bookings}>
+                        <Shell
+                          profile={Boolean(session && hasRequiredConsents(session.me))}
+                          scan={scanHandler}
+                          routes={
+                            <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
+                          }
+                        />
+                      </BookingsProvider>
                     </PartnerProvider>
                   </HostProvider>
                 </LocationProvider>

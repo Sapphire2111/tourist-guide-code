@@ -1,5 +1,6 @@
 // P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07/P09 и заявки отеля
-// (P10, блок 5). Только то, что есть в GET /partner/me — без финансов, рейтинга и метрик.
+// (P10, блок 5), бронирования P04 и ресурсы (блок 7, флаг module.bookings). Только то, что есть в GET /partner/me —
+// без финансов, рейтинга и метрик.
 import { useEffect, useId } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Link, Stack, useFeatureFlag, useT } from "@tg/ui";
@@ -14,6 +15,7 @@ export function PartnerDashboard() {
   // Сообщение с другого экрана — один раз: снимается при уходе из кабинета.
   useEffect(() => () => setNotice(null), [setNotice]);
   const hostRequests = useFeatureFlag("module.host_requests");
+  const bookings = useFeatureFlag("module.bookings");
   const orgLabel = useId();
   const placeLabel = useId();
   useRefreshMe();
@@ -102,6 +104,16 @@ export function PartnerDashboard() {
                     {org.abilities.manageOffers && place.modules.includes("offers") && (
                       <Link to={`/partner/place/${place.id}/offers`}>
                         {t("miniapp.partner.offersLink", { count: place.activeOffers })}
+                      </Link>
+                    )}
+                    {bookings && (
+                      <Link to={`/partner/place/${place.id}/bookings`} data-testid="partner-bookings-link">
+                        {t("miniapp.pbooking.title")}
+                      </Link>
+                    )}
+                    {bookings && (
+                      <Link to={`/partner/place/${place.id}/resources`}>
+                        {t("miniapp.pbooking.resourcesLink")}
                       </Link>
                     )}
                     {org.abilities.serviceRequests && hostRequests && place.openServiceRequests !== null && (
