@@ -338,6 +338,25 @@ describe("--from-file: проверка готового сценария", () =
     expect(errors).toMatch(/нереальна/);
     expect(errors).toMatch(/день поза/);
     expect(errors).toMatch(/немає серед опублікованих/);
+    // Повтор места, альтернатива не по сезону, не-localized описание, мусор вместо пунктов — ошибки, не исключения.
+    const twice = {
+      ...draft,
+      items: [draft.items[0]!, { ...draft.items[0]!, dayNo: 1 }, ...draft.items.slice(1)],
+    };
+    expect(checkDraft(twice, byId).join()).toMatch(/повторюється/);
+    const winterAlt = {
+      ...draft,
+      seasons: ["winter" as const],
+      items: [{ ...draft.items[1]!, alternatives: [khomiak.id] }, draft.items[2]!],
+    };
+    expect(checkDraft(winterAlt, byId).join()).toMatch(/альтернатива .* не для сезону winter/);
+    expect(checkDraft({ ...draft, description: "текст" }, byId).join()).toMatch(/опис — не localized/);
+    expect(checkDraft({ ...draft, title: { en: "No uk" } }, byId).join()).toMatch(/назва/);
+    expect(checkDraft({ ...draft, items: [null, 5, "x"] }, byId).join()).toMatch(/пункт 1 — не обʼєкт/);
+    expect(checkDraft(null, byId)).toEqual(["сценарій — не обʼєкт"]);
+    // Регистр id не важен.
+    const upper = { ...draft, items: draft.items.map((i) => ({ ...i, placeId: i.placeId.toUpperCase() })) };
+    expect(checkDraft(upper, byId)).toEqual([]);
     // Зимний сезон для похода на вершину — нет.
     expect(checkDraft({ ...draft, seasons: ["winter"] }, byId).join()).toMatch(/сезону winter/);
   });

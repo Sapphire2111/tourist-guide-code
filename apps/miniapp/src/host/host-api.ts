@@ -224,8 +224,14 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
       (await ok(api.GET("/me/plan", { params: { query: { regionId: region() } } }))).items.map(planOf),
     plan: async (id) =>
       planOf(await ok(api.GET("/me/plan/{id}", { params: { path: { id }, query: { regionId: region() } } }))),
-    savePlan: async (scenarioId) =>
-      planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), scenarioId } }))),
+    savePlan: async (scenarioId, startDate) =>
+      planOf(
+        await ok(
+          api.POST("/me/plan", {
+            body: { regionId: region(), scenarioId, ...(startDate ? { startDate } : {}) },
+          }),
+        ),
+      ),
     createPlan: async (trip) =>
       planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), ...trip } }))),
     updatePlan: async (id, change) =>

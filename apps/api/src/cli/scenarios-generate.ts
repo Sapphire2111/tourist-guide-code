@@ -60,11 +60,11 @@ async function main(): Promise<void> {
     const file = JSON.parse(await readFile(args.fromFile, "utf8")) as { scenarios?: unknown };
     // Файл могли поправить руками — та же проверка программой; невалидные — в отчёт, не в БД.
     const byId = new Map(catalog.places.map((p) => [p.id, p]));
-    const all = (Array.isArray(file.scenarios) ? file.scenarios : []) as ScenarioDraft[];
+    const all: unknown[] = Array.isArray(file.scenarios) ? file.scenarios : [];
     const rejected: { code: string; errors: string[] }[] = [];
-    drafts = all.filter((d) => {
+    drafts = all.filter((d): d is ScenarioDraft => {
       const errors = checkDraft(d, byId);
-      if (errors.length) rejected.push({ code: String(d.code), errors });
+      if (errors.length) rejected.push({ code: String((d as { code?: unknown } | null)?.code), errors });
       return errors.length === 0;
     });
     report.rejected = rejected;

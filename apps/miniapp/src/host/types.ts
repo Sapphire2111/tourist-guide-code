@@ -215,7 +215,8 @@ export type HostApi = {
   plans(): Promise<UserPlan[]>;
   plan(id: string): Promise<UserPlan>;
   /** «Зберегти як план»: план из сценария. */
-  savePlan(scenarioId: string): Promise<UserPlan>;
+  /** startDate (YYYY-MM-DD) — дата поездки: варианты плана — по её сезону. */
+  savePlan(scenarioId: string, startDate?: string | null): Promise<UserPlan>;
   /** «Скласти свій план»: без сценария, с параметрами поездки. */
   createPlan(trip: TripInput): Promise<UserPlan>;
   updatePlan(id: string, change: PlanChange): Promise<UserPlan>;

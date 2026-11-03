@@ -36,7 +36,11 @@ export async function writeDrafts(
   return withTenant(db, regionContext(regionId), async (trx) => {
     const stats: WriteStats = { written: 0, existing: 0, placeUnavailable: [] };
     const audit = new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS);
-    const ids = [...new Set(drafts.flatMap((d) => d.items.flatMap((i) => [i.placeId, ...i.alternatives])))];
+    // id мест — в нижнем регистре (как отдаёт pg и как сравнивает checkDraft): файл могли поправить руками.
+    const lc = (id: string) => id.toLowerCase();
+    const ids = [
+      ...new Set(drafts.flatMap((d) => d.items.flatMap((i) => [i.placeId, ...i.alternatives].map(lc)))),
+    ];
     const ok = new Set(
       ids.length
         ? (
@@ -58,7 +62,7 @@ export async function writeDrafts(
         stats.existing++;
         continue;
       }
-      if (d.items.some((i) => !ok.has(i.placeId))) {
+      if (d.items.some((i) => !ok.has(lc(i.placeId)))) {
         stats.placeUnavailable.push(d.code);
         continue;
       }
@@ -90,11 +94,13 @@ export async function writeDrafts(
               scenario_id: s.id,
               day_no: i.dayNo,
               position,
-              place_id: i.placeId,
+              place_id: lc(i.placeId),
               time_hint: i.timeHint,
               duration_min: i.durationMin,
               note_i18n: i.note,
-              alternatives: i.alternatives.filter((a) => ok.has(a)),
+              alternatives: [...new Set(i.alternatives.map(lc))].filter(
+                (a) => ok.has(a) && a !== lc(i.placeId),
+              ),
             };
           }),
         )
