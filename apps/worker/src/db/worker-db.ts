@@ -9,7 +9,7 @@ import type {
 } from "../queue/handlers.js";
 import { analyticsWriter } from "./analytics-writer.js";
 import { auditPiiPurger } from "./audit-pii-purger.js";
-import { BotApiTelegramSender, bookingsDueProcessor } from "./bookings-due.js";
+import { BotApiTelegramSender, bookingsDueProcessor } from "@tg/queue-contract";
 import { mediaAssetStore } from "./media-assets-store.js";
 import { serviceRequestsAnonymizer } from "./service-requests-anonymizer.js";
 

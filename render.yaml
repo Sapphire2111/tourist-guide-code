@@ -2,7 +2,7 @@
 # Секретов здесь нет: переменные с `sync: false` Render запросит при создании Blueprint,
 # дальше они живут только в Render → сервис → Environment. Как включить — README, «Окружения и конфигурация».
 #
-# Бот и воркер на staging работают в процессе api: Background Worker на Render платный, а отдельный
+# Бот и воркер на staging работают в процессе api (воркер — WORKER_IN_PROCESS=true, пока только bookings.process-due): Background Worker на Render платный, а отдельный
 # free Web Service засыпает через 15 мин без HTTP-трафика (очередь встала бы). Webhook Telegram приходит
 # в api (будит его), фоновые задачи там же (T1-21, T1-28). В prod — отдельные процессы (образы worker/bot).
 # Код бота (T1-28) — apps/bot: POST /telegram/webhook, очередь bot-outbox в Redis; подключение его в процесс
@@ -38,7 +38,7 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-      # События аналитики (T1-25) — сразу в БД из api: worker-рантайм в процесс api ещё не встроен, задачи
+      # События аналитики (T1-25) — сразу в БД из api: очереди analytics в процессе api не разбираются (WORKER_IN_PROCESS — только сроки броней), задачи
       # очереди analytics на staging никто бы не разбирал. После встраивания — убрать (будет queue).
       # Blueprint не подключён: файл сам не применяется — значение выставляется вручную в Render → api → Environment.
       - key: ANALYTICS_SINK
@@ -60,6 +60,10 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      # Фоновые задачи воркера в процессе api (bookings.process-due раз в минуту, advisory lock): выставить true вручную
+      # в Render → api → Environment. Пока api спит (free, 15 мин без HTTP), тиков нет — нужен внешний keep-alive /health.
+      - key: WORKER_IN_PROCESS
         sync: false
       # Вход админа (ADR-0018): ключ HMAC счётчиков неудачных входов, ≥ 32 байт; без него api не стартует.
       - key: ADMIN_LOGIN_HMAC_SECRET

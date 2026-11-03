@@ -2,6 +2,7 @@ import { UnrecoverableError } from "bullmq";
 import {
   toAnalyticsEventRow,
   type AnalyticsEventRow,
+  type BookingsDueProcessor,
   type JobContext,
   type JobName,
   type JobPayloads,
@@ -65,23 +66,7 @@ export interface ServiceRequestsAnonymizer {
   anonymizeExpired(): Promise<number>;
 }
 
-/** Итог задачи сроков броней: числа броней и строк outbox, отправленных воркером. */
-export type BookingsDueResult = {
-  expired: number;
-  completed: number;
-  /** Поставленные отметки напоминаний (туристу и партнёру). */
-  reminded: number;
-  notifications: { sent: number; failed: number; skipped: number };
-};
-
-/**
- * Сроки броней (функции БД bookings_expire_due, bookings_auto_complete — миграция api 0022; напоминания и отправка
- * outbox воркера — 0023).
- */
-export interface BookingsDueProcessor {
-  /** expired по SLA ответа (D-43, D-66), автозавершение (C-27), напоминания и отправка их уведомлений. */
-  processDue(): Promise<BookingsDueResult>;
-}
+export type { BookingsDueProcessor, BookingsDueResult } from "@tg/queue-contract";
 
 /** Очистка dead-letter от записей с истёкшим сроком хранения (dead-letter.ts, DEAD_LETTER_RETENTION_MS). */
 export interface DeadLetterPurger {
