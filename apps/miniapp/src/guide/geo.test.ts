@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelegramLocationManager, TelegramWebApp } from "../telegram.js";
 import { canOpenLocationSettings, requestLocation } from "./geo.js";
-import { textNode } from "./PlacesMap.js";
+import { popupNode } from "./PlacesMap.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -68,9 +68,10 @@ describe("геолокация через Telegram LocationManager", () => {
 
 describe("подписи карты", () => {
   it("название места — текст, не HTML", () => {
-    const node = textNode('<img src=x onerror="alert(1)">');
+    const evil = '<img src=x onerror="alert(1)">';
+    const node = popupNode(evil, evil, "id", "Відкрити", () => undefined);
     expect(node.querySelector("img")).toBeNull();
-    expect(node.textContent).toBe('<img src=x onerror="alert(1)">');
+    expect(node.querySelector("strong")?.textContent).toBe(evil);
   });
 });
 

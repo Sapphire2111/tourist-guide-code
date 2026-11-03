@@ -1,16 +1,24 @@
-// Карта мест через Leaflet (BSD-2-Clause, ~44 КБ gzip). Модуль грузится лениво (MapSlot, preloadMap) — в бюджет
-// первого экрана не входит. Поставщик тайлов — map-tiles.ts (обязательная атрибуция).
-// Карта создаётся один раз; смена мест/радиуса перестраивает только слой маркеров (без пересоздания карты и
-// повторной загрузки тайлов). Маркеры окрашены по разделу категории, подпись — по нажатию, легенда — под картой.
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+// Карта мест на Google Maps JavaScript API (векторная карта, Map ID). Модуль грузится лениво (MapSlot, preloadMap) —
+// в бюджет первого экрана не входит; скрипт API — google-maps.ts (один раз на сессию).
+// Карта берётся из пула и не пересоздаётся: смена мест/радиуса перестраивает только маркеры, круг и линию.
+// Маркеры — AdvancedMarker с цветом и значком раздела категории, рядом стоящие собираются в кластеры
+// (@googlemaps/markerclusterer); подпись — по нажатию (InfoWindow), легенда — под картой.
+import { useEffect, useRef, useState } from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useRoute, useT } from "@tg/ui";
 import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
 import type { LatLng } from "./geo.js";
-import { TILE_PROVIDER } from "./map-tiles.js";
+import {
+  acquireMap,
+  loadMapsApi,
+  mapsAuthFailed,
+  onMapsAuthFailure,
+  releaseMap,
+  type MapsLibs,
+  type PooledMap,
+} from "./google-maps.js";
 import type { HomeSection, PlaceSummary } from "./types.js";
 
 export type PlacesMapProps = {
@@ -21,13 +29,13 @@ export type PlacesMapProps = {
   radius?: number;
   /** Предел приближения при fitBounds (по умолчанию 17). */
   maxZoom?: number;
-  /** Маршрут экскурсии: линия через места в порядке списка (ассистент). */
+  /** Маршрут: линия через места в порядке списка, номера остановок на маркерах (ассистент, план дня). */
   route?: boolean;
   /** Позиция устройства («Ви тут»), если геолокация уже получена. Карту не центрирует и границы не меняет. */
   me?: LatLng | null;
 };
 
-/** Группа маркера: раздел главной категории места или «інше». */
+/** Группа маркера: раздел главной категории места или «Інше». */
 export type MarkerGroup =
   | Extract<HomeSection, "stay" | "eat" | "shop" | "relax" | "fun" | "ski" | "transfer" | "services">
   | "other";
@@ -46,22 +54,50 @@ export const MARKER_COLORS: Record<MarkerGroup, string> = {
 };
 const BASE_COLOR = "#111827";
 
+/** Значки групп: контур 24×24 (stroke белым по цвету группы). Константы, не пользовательские данные. */
+const MARKER_ICONS: Record<MarkerGroup, string> = {
+  stay: "M3 18v-7h18v7M3 11V6M21 11a3 3 0 0 0-3-3h-6v3M7 8.5h.01",
+  eat: "M7 3v18M5 3v5a2 2 0 0 0 4 0V3M17 21V3c-2 0-3 2-3 6s1 4 3 4",
+  shop: "M6 8h12l-1 13H7L6 8zM9 8V6a3 3 0 0 1 6 0v2",
+  relax: "M12 3l5 8h-3l4 6H6l4-6H7l5-8zM12 17v4",
+  fun: "M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.5 6.6 19.4l1.2-6L3.4 9.3l6-.7L12 3z",
+  ski: "M3 20l6-11 4 6 2-3 6 8H3z",
+  transfer: "M5 17V9l2-4h10l2 4v8M5 13h14M8 17v2M16 17v2",
+  services: "M12 11v6M12 7.5h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+  other: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+};
+
 export function markerGroup(section: HomeSection | null): MarkerGroup {
   return section && section in MARKER_COLORS ? (section as MarkerGroup) : "other";
-}
-
-/** Подпись маркера — DOM-узел с textContent: строку Leaflet вставляет как innerHTML (XSS из названия места). */
-export function textNode(text: string): HTMLElement {
-  const span = document.createElement("span");
-  span.textContent = text;
-  return span;
 }
 
 function groupLabel(g: MarkerGroup): MessageKey {
   return g === "other" ? "miniapp.map.other" : (`miniapp.section.${g}` as MessageKey);
 }
 
-/** Содержимое подписи маркера: название, категория, ссылка на карточку (только textContent). */
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Значок маркера места: круг цвета группы, внутри значок раздела или номер остановки маршрута. */
+export function pinNode(group: MarkerGroup, stop: number | null): HTMLElement {
+  const pin = document.createElement("div");
+  pin.className = "kosiv-pin";
+  pin.dataset.group = group;
+  pin.style.background = MARKER_COLORS[group];
+  if (stop !== null) {
+    pin.textContent = String(stop);
+    return pin;
+  }
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", MARKER_ICONS[group]);
+  svg.appendChild(path);
+  pin.appendChild(svg);
+  return pin;
+}
+
+/** Содержимое подписи маркера: название, категория, ссылка на карточку (только textContent — XSS из названия места). */
 export function popupNode(
   name: string,
   category: string,
@@ -86,6 +122,28 @@ export function popupNode(
   return box;
 }
 
+/** Цвет акцента сезона (--app-accent) для кругов карты: у Circle нет CSS, только значение. */
+function accentColor(): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--app-accent").trim();
+  return v || "#2d6a4f";
+}
+
+/** С какого числа маркеров рядом стоящие собираются в кластеры. */
+export const CLUSTER_MIN = 12;
+
+type Libs = { status: "loading" } | { status: "ready"; libs: MapsLibs } | { status: "error" };
+
+/** Объекты карты одного экрана: убираются при смене данных и при уходе (карта возвращается в пул чистой). */
+type Overlays = {
+  clusterer: MarkerClusterer | null;
+  markers: { marker: google.maps.marker.AdvancedMarkerElement; place: PlaceSummary; stop: number | null }[];
+  /** Снятие прочих объектов (база, круг, линия). */
+  other: (() => void)[];
+  listeners: google.maps.MapsEventListener[];
+  /** Отложенная установка вида (requestAnimationFrame). */
+  frame: number | null;
+};
+
 export default function PlacesMap({
   places,
   center,
@@ -100,162 +158,240 @@ export default function PlacesMap({
   const { api } = useGuide();
   const index = useCategoryIndex(api);
   const el = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-  // Отдельный слой «Ви тут»: обновляется независимо от маркеров мест (и маршрута).
-  const meLayerRef = useRef<L.LayerGroup | null>(null);
-  // Тексты подписи маркера читаются при открытии: смена языка не требует пересоздавать маркеры.
+  const [state, setState] = useState<Libs>({ status: "loading" });
+  const [map, setMap] = useState<PooledMap | null>(null);
+  const infoRef = useRef<google.maps.InfoWindow | null>(null);
+  const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
+  // Тексты подписи читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+  const indexRef = useRef(index);
+  indexRef.current = index;
 
-  // Карта и слой тайлов — один раз на экран.
+  // API — один раз на сессию; язык подписей карты — язык интерфейса при первой загрузке.
   useEffect(() => {
-    if (!el.current) return;
-    const tr = tRef.current;
-    const map = L.map(el.current, { zoomControl: false, attributionControl: true });
-    L.control
-      .zoom({ zoomInTitle: tr("miniapp.map.zoomIn"), zoomOutTitle: tr("miniapp.map.zoomOut") })
-      .addTo(map);
-    L.tileLayer(TILE_PROVIDER.url, {
-      maxZoom: TILE_PROVIDER.maxZoom,
-      attribution: TILE_PROVIDER.attribution,
-      ...(TILE_PROVIDER.subdomains ? { subdomains: TILE_PROVIDER.subdomains } : {}),
-      // Меньше запросов тайлов при перетаскивании и зуме на телефоне.
-      updateWhenIdle: true,
-      keepBuffer: 1,
-    }).addTo(map);
-    mapRef.current = map;
-    layerRef.current = L.layerGroup().addTo(map);
-    meLayerRef.current = L.layerGroup().addTo(map);
+    let alive = true;
+    loadMapsApi(localeRef.current).then(
+      // Ключ уже отклонён (gm_authFailure на прошлом экране) — API «загружен», но карта была бы серой заглушкой Google.
+      (libs) => alive && setState(mapsAuthFailed() ? { status: "error" } : { status: "ready", libs }),
+      () => alive && setState({ status: "error" }),
+    );
+    const off = onMapsAuthFailure(() => alive && setState({ status: "error" }));
     return () => {
-      map.remove();
-      mapRef.current = null;
-      layerRef.current = null;
-      meLayerRef.current = null;
+      alive = false;
+      off();
     };
   }, []);
 
-  // Справочник категорий — через ref: подписи читают актуальный при открытии, маркеры не пересоздаются.
-  const indexRef = useRef(index);
-  indexRef.current = index;
-  const markersRef = useRef<{ marker: L.CircleMarker; place: PlaceSummary }[]>([]);
-
-  // Маркеры и границы — только при смене мест, базы или радиуса.
+  // Карта из пула — одна на экран; при уходе возвращается в пул (новой платной загрузки не будет).
+  const libs = state.status === "ready" ? state.libs : null;
   useEffect(() => {
-    const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-    markersRef.current = [];
-    const bounds: L.LatLngExpression[] = [];
-    if (center) {
-      L.circleMarker([center.lat, center.lng], {
-        radius: 9,
-        color: "#ffffff",
-        weight: 3,
-        fillColor: BASE_COLOR,
-        fillOpacity: 1,
-      })
-        .bindTooltip(textNode(centerLabel ?? t("miniapp.map.base")))
-        .addTo(layer);
-      if (radius) L.circle([center.lat, center.lng], { radius, weight: 1, fillOpacity: 0.05 }).addTo(layer);
-      bounds.push([center.lat, center.lng]);
-    }
-    if (route) {
-      const line = places.flatMap((p) =>
-        p.location ? [[p.location.lat, p.location.lng] as L.LatLngTuple] : [],
-      );
-      // Под маркерами (добавлена раньше): порядок обхода — номера в списке под картой.
-      if (line.length > 1)
-        L.polyline(line, { color: BASE_COLOR, weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(layer);
-    }
-    for (const p of places) {
-      if (!p.location) continue;
-      const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
-      // Подпись — только по нажатию (popup): tooltip на тач-экране дублировал бы её.
-      const marker = L.circleMarker([p.location.lat, p.location.lng], {
-        radius: 8,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: MARKER_COLORS[group],
-        fillOpacity: 0.95,
-      })
-        .bindPopup(() => {
-          const idx = indexRef.current;
-          const cat = idx.byId.get(p.categoryId);
-          const g = markerGroup(idx.sectionOf(p.categoryId));
-          const lc = localeRef.current;
-          const tr = tRef.current;
-          const catName = cat ? pickLocalized(cat.name, lc) : tr(groupLabel(g));
-          return popupNode(pickLocalized(p.name, lc), catName, p.id, tr("miniapp.map.open"), (to) =>
-            navigateRef.current(to),
-          );
-        })
-        .addTo(layer);
-      marker.getElement()?.setAttribute("data-group", group);
-      markersRef.current.push({ marker, place: p });
-      bounds.push([p.location.lat, p.location.lng]);
-    }
-    if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom });
-    else if (bounds[0]) map.setView(bounds[0], Math.min(16, maxZoom));
-    else map.setView([48.45, 24.55], 12);
-    // Тексты подписей мест, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, center, centerLabel, radius, maxZoom, route]);
+    if (!libs || !el.current) return;
+    const item = acquireMap(libs, el.current);
+    const info = new libs.maps.InfoWindow();
+    infoRef.current = info;
+    const o = overlays.current;
+    setMap(item);
+    return () => {
+      info.close();
+      infoRef.current = null;
+      clearOverlays(o);
+      o.clusterer?.setMap(null);
+      o.clusterer = null;
+      setMap(null);
+      releaseMap(item);
+    };
+  }, [libs]);
 
-  // Значок «Ви тут»: перестраивается только слой позиции (карта, маркеры мест и границы не трогаются).
+  // Маркеры, круг, линия и границы — только при смене мест, базы, радиуса или режима маршрута.
+  useEffect(() => {
+    if (!libs || !map) return;
+    const o = overlays.current;
+    const m = map.map;
+    infoRef.current?.close();
+    clearOverlays(o);
+    const bounds = new libs.core.LatLngBounds();
+    let points = 0;
+    if (center) {
+      const base = document.createElement("div");
+      base.className = "kosiv-pin kosiv-pin-base";
+      base.style.background = BASE_COLOR;
+      // Не нажимается: подпись — на значке (role=img), а не title маркера (aria-label без роли — нарушение a11y).
+      base.setAttribute("role", "img");
+      base.setAttribute("aria-label", centerLabel ?? tRef.current("miniapp.map.base"));
+      const baseMarker = new libs.marker.AdvancedMarkerElement({
+        map: m,
+        position: center,
+        content: base,
+        zIndex: 900,
+      });
+      o.other.push(() => (baseMarker.map = null));
+      if (radius) {
+        o.other.push(
+          detach(
+            new libs.maps.Circle({
+              map: m,
+              center,
+              radius,
+              strokeColor: "#1d4ed8",
+              strokeWeight: 1,
+              fillColor: "#1d4ed8",
+              fillOpacity: 0.05,
+              clickable: false,
+            }),
+          ),
+        );
+      }
+      bounds.extend(center);
+      points++;
+    }
+    const located = places.filter((p) => p.location);
+    if (route && located.length > 1) {
+      // Пунктир под маркерами: порядок обхода — номера на маркерах и в списке под картой.
+      o.other.push(
+        detach(
+          new libs.maps.Polyline({
+            map: m,
+            path: located.map((p) => ({ lat: p.location!.lat, lng: p.location!.lng })),
+            strokeOpacity: 0,
+            clickable: false,
+            icons: [
+              {
+                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.8, strokeColor: BASE_COLOR, scale: 3 },
+                offset: "0",
+                repeat: "12px",
+              },
+            ],
+          }),
+        ),
+      );
+    }
+    located.forEach((p, i) => {
+      const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
+      const stop = route ? i + 1 : null;
+      const marker = new libs.marker.AdvancedMarkerElement({
+        position: { lat: p.location!.lat, lng: p.location!.lng },
+        title: pickLocalized(p.name, localeRef.current),
+        content: pinNode(group, stop),
+        gmpClickable: true,
+      });
+      marker.addEventListener("gmp-click", () => {
+        const idx = indexRef.current;
+        const cat = idx.byId.get(p.categoryId);
+        const g = markerGroup(idx.sectionOf(p.categoryId));
+        const lc = localeRef.current;
+        const tr = tRef.current;
+        const catName = cat ? pickLocalized(cat.name, lc) : tr(groupLabel(g));
+        const info = infoRef.current;
+        if (!info) return;
+        info.setContent(
+          popupNode(pickLocalized(p.name, lc), catName, p.id, tr("miniapp.map.open"), (to) =>
+            navigateRef.current(to),
+          ),
+        );
+        info.open({ map: m, anchor: marker });
+      });
+      o.markers.push({ marker, place: p, stop });
+      bounds.extend(p.location!);
+      points++;
+    });
+    // Кластеры — только когда маркеров много; маршрут не кластеризуется (видны все остановки по порядку).
+    if (!route && o.markers.length >= CLUSTER_MIN) {
+      o.clusterer ??= new MarkerClusterer({ map: m });
+      o.clusterer.addMarkers(o.markers.map((x) => x.marker));
+    } else for (const { marker } of o.markers) marker.map = m;
+
+    // Вид — в следующем кадре: карта из пула только что вставлена в новый узел, сначала она должна увидеть его
+    // размер (resize), иначе fitBounds посчитает границы по старому (или нулевому) размеру.
+    const core = libs.core;
+    o.frame = requestAnimationFrame(() => {
+      o.frame = null;
+      core.event.trigger(m, "resize");
+      if (points > 1) {
+        // fitBounds без предела: приближение ограничиваем один раз после подгонки (пользователь может приблизить сам).
+        o.listeners.push(
+          core.event.addListenerOnce(m, "idle", () => {
+            if ((m.getZoom() ?? 0) > maxZoom) m.setZoom(maxZoom);
+          }),
+        );
+        m.fitBounds(bounds, 24);
+      } else if (points === 1) {
+        m.setCenter(bounds.getCenter());
+        m.setZoom(Math.min(16, maxZoom));
+      } else {
+        m.setCenter({ lat: 48.45, lng: 24.55 });
+        m.setZoom(12);
+      }
+    });
+    // Тексты подписей, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
+  }, [libs, map, places, center, centerLabel, radius, maxZoom, route]);
+
+  // Значок «Ви тут»: перестраивается только он и круг точности (карта, маркеры мест и границы не трогаются).
   const meLat = me?.lat;
   const meLng = me?.lng;
   const meAccuracy = me?.accuracy;
   const meLabel = t("miniapp.map.me");
   useEffect(() => {
-    const layer = meLayerRef.current;
-    if (!layer) return;
-    layer.clearLayers();
-    if (meLat === undefined || meLng === undefined) return;
+    if (!libs || !map || meLat === undefined || meLng === undefined) return;
+    const position = { lat: meLat, lng: meLng };
+    const items: (() => void)[] = [];
     if (meAccuracy) {
-      L.circle([meLat, meLng], {
-        radius: meAccuracy,
-        className: "kosiv-me-accuracy",
-        interactive: false,
-      }).addTo(layer);
+      const color = accentColor();
+      items.push(
+        detach(
+          new libs.maps.Circle({
+            map: map.map,
+            center: position,
+            radius: meAccuracy,
+            strokeColor: color,
+            strokeWeight: 1,
+            fillColor: color,
+            fillOpacity: 0.12,
+            clickable: false,
+          }),
+        ),
+      );
     }
-    const icon = L.divIcon({
-      className: "kosiv-me",
-      html: '<span class="kosiv-me-pulse"></span><span class="kosiv-me-dot"></span>',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
+    const node = document.createElement("div");
+    node.className = "kosiv-me";
+    node.setAttribute("role", "img");
+    node.setAttribute("aria-label", meLabel);
+    node.dataset.testid = "map-me";
+    const pulse = document.createElement("span");
+    pulse.className = "kosiv-me-pulse";
+    const dot = document.createElement("span");
+    dot.className = "kosiv-me-dot";
+    node.append(pulse, dot);
+    const marker = new libs.marker.AdvancedMarkerElement({
+      map: map.map,
+      position,
+      content: node,
+      zIndex: 1000,
     });
-    const marker = L.marker([meLat, meLng], {
-      icon,
-      title: meLabel,
-      alt: meLabel,
-      keyboard: false,
-      interactive: false,
-      zIndexOffset: 1000,
-    }).addTo(layer);
-    const node = marker.getElement();
-    node?.setAttribute("role", "img");
-    node?.setAttribute("aria-label", meLabel);
-    node?.setAttribute("data-testid", "map-me");
-  }, [meLat, meLng, meAccuracy, meLabel]);
+    items.push(() => (marker.map = null));
+    return () => {
+      for (const off of items) off();
+    };
+  }, [libs, map, meLat, meLng, meAccuracy, meLabel]);
 
   // Пришёл справочник категорий — перекраска без пересоздания маркеров и без закрытия открытой подписи.
   useEffect(() => {
-    for (const { marker, place } of markersRef.current) {
+    for (const { marker, place, stop } of overlays.current.markers) {
       const group = markerGroup(index.sectionOf(place.categoryId));
-      marker.setStyle({ fillColor: MARKER_COLORS[group] });
-      marker.getElement()?.setAttribute("data-group", group);
+      if ((marker.content as HTMLElement | null)?.dataset?.group !== group)
+        marker.content = pinNode(group, stop);
     }
   }, [index]);
 
   const groups = [
     ...new Set(places.filter((p) => p.location).map((p) => markerGroup(index.sectionOf(p.categoryId)))),
   ];
+
+  if (state.status === "error") return <p role="alert">{t("miniapp.map.error")}</p>;
 
   // Карта дублирует список рядом: маркеры — не единственный путь к месту (клавиатура и чтение с экрана — список).
   return (
@@ -264,8 +400,9 @@ export default function PlacesMap({
         ref={el}
         role="region"
         aria-label={t("miniapp.map.label")}
+        aria-busy={map ? undefined : true}
         data-testid="places-map"
-        style={{ height: 260, borderRadius: "var(--radius)", overflow: "hidden" }}
+        style={{ height: 260, borderRadius: "var(--radius)", overflow: "hidden", background: "#e5e3df" }}
       />
       {(groups.length > 0 || center) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">
@@ -285,4 +422,25 @@ export default function PlacesMap({
       )}
     </div>
   );
+}
+
+function clearOverlays(o: Overlays): void {
+  if (o.frame !== null) cancelAnimationFrame(o.frame);
+  o.frame = null;
+  for (const l of o.listeners) l.remove();
+  o.listeners = [];
+  o.clusterer?.clearMarkers();
+  for (const { marker } of o.markers) marker.map = null;
+  o.markers = [];
+  for (const off of o.other) off();
+  o.other = [];
+}
+
+/** Предзагрузка скрипта API (MapSlot.preloadMap): параллельно запросу мест. */
+export function preloadApi(language?: string): Promise<unknown> {
+  return loadMapsApi(language);
+}
+
+function detach(overlay: { setMap(map: null): void }): () => void {
+  return () => overlay.setMap(null);
 }

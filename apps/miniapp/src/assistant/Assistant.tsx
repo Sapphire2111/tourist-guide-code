@@ -57,7 +57,7 @@ export function useIntentSummary(index: CategoryIndex): (intent: AssistantIntent
 }
 
 export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initialQuery?: string }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const guide = useGuide();
   const index = useCategoryIndex(guide.api);
   const summary = useIntentSummary(index);
@@ -114,7 +114,7 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
   // Запрос с главной (#/assistant?q=…) — сразу первой репликой.
   const started = useRef(false);
   useEffect(() => {
-    preloadMap().catch(() => undefined);
+    preloadMap(locale).catch(() => undefined);
     if (started.current || !initialQuery.trim()) return;
     started.current = true;
     ask(initialQuery.trim());

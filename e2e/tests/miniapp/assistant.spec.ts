@@ -84,8 +84,8 @@ test("экскурсия: остановки по порядку, маршрут
   );
   await expect(page.getByText("Зупинка 1")).toBeVisible();
   await expect(page.getByTestId("assistant-place").nth(1)).toContainText("Водоспад Пробій");
-  // Линия маршрута Leaflet — путь SVG поверх карты.
-  await expect(page.getByTestId("places-map").locator("path.leaflet-interactive").first()).toBeVisible();
+  // Линия маршрута (Polyline) и номера остановок на маркерах.
+  await expect(page.getByTestId("places-map").locator('[data-fake="polyline"]')).toBeAttached();
 
   await page.locator("#assistant-next").fill("Як справи?");
   await page.getByRole("button", { name: "Знайти" }).click();
@@ -114,7 +114,7 @@ test("план відпочинку: частини дня, час, поясне
   await expect(stops.first()).toContainText("Водоспад Пробій");
   await expect(page.getByTestId("assistant-plan-note")).toHaveText("Почніть день біля водоспаду.");
   await expect(stops.nth(2)).toContainText("≈ 5 хв пішки");
-  await expect(page.getByTestId("places-map").locator("path.leaflet-interactive").first()).toBeVisible();
+  await expect(page.getByTestId("places-map").locator('[data-fake="polyline"]')).toBeAttached();
   await expectNoSeriousA11yViolations(page);
 });
 
