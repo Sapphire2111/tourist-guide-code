@@ -69,6 +69,20 @@ function Icon({ children, size = 24 }: { children: ReactNode; size?: number }) {
   );
 }
 
+/** Значки-эмодзи разделов на «Що поруч» (чипы, плашка, маркеры, как на эталоне); декор: aria-hidden рядом с подписью. */
+export const SECTION_EMOJI: Record<string, string> = {
+  stay: "🏡",
+  eat: "🍲",
+  shop: "🧀",
+  relax: "♨️",
+  fun: "🎢",
+  ski: "⛷️",
+  transfer: "🚕",
+  services: "🛠️",
+  nearby: "🧭",
+  other: "📍",
+};
+
 /** Линейные иконки разделов и навигации (currentColor). */
 export const ICONS = {
   home: (

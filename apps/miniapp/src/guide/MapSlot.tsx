@@ -86,9 +86,12 @@ export function MapSlot(props: PlacesMapProps) {
   const { t } = useT();
   if (!available())
     return (
-      <p role="note" className="kosiv-muted" data-testid="map-unavailable">
-        {t("miniapp.map.unavailable")}
-      </p>
+      <>
+        <p role="note" className="kosiv-muted" data-testid="map-unavailable">
+          {t("miniapp.map.unavailable")}
+        </p>
+        {props.overlay}
+      </>
     );
   return <LazyMap {...props} />;
 }

@@ -82,7 +82,7 @@ html[data-season] body {
     color 0.28s ease;
 }
 
-/* :where — без специфичности: классы компонентов (.kosiv-tile, .kosiv-nav-item…) задают свой цвет. */
+/* :where — без специфичности: классы компонентов (.kosiv-nav-item…) задают свой цвет. */
 :where(html[data-season]) a {
   color: var(--app-accent-ink);
   text-underline-offset: 3px;
@@ -371,6 +371,33 @@ html[data-season] :focus-visible {
   box-shadow: 0 2px 8px -2px rgba(60, 42, 20, 0.18);
 }
 
+/* Переключатель темы в меню: «День» | «Ніч». */
+.kosiv-themes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+}
+.kosiv-theme {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kosiv-theme[aria-pressed="true"] {
+  background: var(--app-surface);
+  color: var(--app-accent-ink);
+  box-shadow: 0 2px 8px -2px rgba(60, 42, 20, 0.18);
+}
+
 .kosiv-welcome {
   display: flex;
   flex-direction: column;
@@ -631,54 +658,6 @@ html[data-season] :focus-visible {
   border: 1.5px solid var(--app-border);
 }
 
-/* Плитки разделов. */
-.kosiv-sections {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.kosiv-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 10px;
-  min-height: 96px;
-  height: 100%;
-  box-sizing: border-box;
-  padding: 14px;
-  color: var(--app-text);
-  font-weight: 600;
-  font-size: 1rem;
-  line-height: 1.25;
-  text-decoration: none;
-}
-.kosiv-tile-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: var(--app-pill-bg);
-  color: var(--app-accent-ink);
-}
-/* Мелкая подпись под названием плитки («Де жити» — «Готелі, садиби»). */
-.kosiv-tile-hint {
-  margin-top: -6px;
-  color: var(--app-muted);
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-.kosiv-tile[data-tone="alert"] .kosiv-tile-icon {
-  background: var(--app-accent);
-  color: #ffffff;
-}
-
 .kosiv-meta-block {
   display: flex;
   flex-direction: column;
@@ -801,6 +780,11 @@ html[data-season] :focus-visible {
   }
 }
 
+/* Рамка карты: узел карты и плавающие элементы поверх неё (карточка «Поруч»); легенда — вне рамки. */
+.kosiv-map-frame {
+  position: relative;
+}
+
 /* Легенда карты мест: цвет маркера — раздел. */
 .kosiv-map-legend {
   display: flex;
@@ -834,6 +818,7 @@ html[data-season] :focus-visible {
   border-radius: 50%;
   border: 2px solid #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  background: var(--pin-color, #57534e);
   color: #ffffff;
   font-size: 0.8125rem;
   font-weight: 700;
@@ -879,26 +864,6 @@ html[data-season] :focus-visible {
   font-weight: 600;
   color: var(--app-accent-ink);
 }
-.kosiv-range {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.kosiv-range-head {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.kosiv-range input[type="range"] {
-  width: 100%;
-  min-height: 32px;
-  accent-color: var(--app-accent-ink);
-}
-.kosiv-status-line {
-  min-height: 1.4em;
-  margin: 0;
-}
-
 /* Значок «Ви тут» на карте: круг в цветах сезона с пульсирующим ореолом; погрешность: полупрозрачный круг. */
 .kosiv-me {
   position: relative;

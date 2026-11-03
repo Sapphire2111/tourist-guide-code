@@ -457,10 +457,11 @@ describe("шапка", () => {
     expect(document.activeElement).toBe(link);
   });
 
-  it("вне главной: нет h1 и нет ссылок в самой полосе; профиль — только в меню и только при profile", () => {
+  it("вне главной: нет h1 и только «Допомога» в самой полосе; профиль — только в меню и только при profile", () => {
     const view = render(<AppTop path="/help" profile={false} />);
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-    expect(screen.queryByRole("link")).toBeNull();
+    // В полосе только постоянная кнопка «Допомога» (modern).
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#/help"]);
     fireEvent.click(screen.getByRole("button", { name: "Меню" }));
     expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
     view.unmount();

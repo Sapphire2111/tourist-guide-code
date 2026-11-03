@@ -78,14 +78,16 @@ export function onMapsAuthFailure(listener: () => void): () => void {
   return () => authListeners.delete(listener);
 }
 
-export type PooledMap = { div: HTMLDivElement; map: google.maps.Map; busy: boolean };
+export type PooledMap = { div: HTMLDivElement; map: google.maps.Map; busy: boolean; night: boolean };
 
 const pool: PooledMap[] = [];
 let warnedDemo = false;
 
 /** Свободная карта из пула (её узел — в host) или новая. Вид (центр/масштаб) задаёт вызывающий. */
 export function acquireMap(l: MapsLibs, host: HTMLElement): PooledMap {
-  let item = pool.find((p) => !p.busy);
+  // Схема карты задаётся только при создании: тема «Ніч» — своя карта в пуле (новая загрузка лишь при смене темы).
+  const night = document.documentElement.dataset.theme === "night";
+  let item = pool.find((p) => !p.busy && p.night === night);
   if (!item) {
     if (import.meta.env?.PROD && mapsConfig().mapId === DEMO_MAP_ID && !warnedDemo) {
       warnedDemo = true;
@@ -103,10 +105,11 @@ export function acquireMap(l: MapsLibs, host: HTMLElement): PooledMap {
       disableDefaultUI: true,
       zoomControl: true,
       clickableIcons: false,
+      colorScheme: night ? "DARK" : "LIGHT",
       // Как прежде в Leaflet: один палец двигает карту (экран Mini App, карта — небольшой блок).
       gestureHandling: "greedy",
     });
-    item = { div, map, busy: false };
+    item = { div, map, busy: false, night };
     pool.push(item);
   }
   item.busy = true;

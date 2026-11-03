@@ -3,6 +3,8 @@
 // светлая палитра и в тёмной теме Telegram (решение владельца по дизайну): без тёмной полосы шапки.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { TelegramWebApp } from "../telegram.js";
+import { useTheme } from "./ThemeProvider.js";
+import { NIGHT_WINDOW_COLORS, type Theme } from "./theme.js";
 import { isSeason, readSeason, saveSeason, WINDOW_COLORS, type Season } from "./season.js";
 
 type SeasonState = { season: Season; setSeason: (s: Season) => void };
@@ -27,10 +29,14 @@ function safe(call: () => void): void {
  * Цвета окна Telegram под сезон. Фон — Bot API 6.1+; шапка цветом #RRGGBB — 6.9+ (до 6.9 принимает только
  * ключи bg_color/secondary_bg_color и бросает исключение); нижняя панель — 7.10+. Браузер — без вызовов.
  */
-export function syncTelegramColors(webApp: TelegramWebApp | undefined, season: Season): void {
+export function syncTelegramColors(
+  webApp: TelegramWebApp | undefined,
+  season: Season,
+  theme: Theme = "day",
+): void {
   if (!webApp) return;
   const at = (v: string) => !webApp.isVersionAtLeast || webApp.isVersionAtLeast(v);
-  const { bg, surface } = WINDOW_COLORS[season];
+  const { bg, surface } = theme === "night" ? NIGHT_WINDOW_COLORS : WINDOW_COLORS[season];
   if (at("6.1")) safe(() => webApp.setBackgroundColor?.(bg));
   if (at("6.9")) safe(() => webApp.setHeaderColor?.(surface));
   if (at("7.10")) safe(() => webApp.setBottomBarColor?.(surface));
@@ -38,10 +44,11 @@ export function syncTelegramColors(webApp: TelegramWebApp | undefined, season: S
 
 export function SeasonProvider({ webApp, children }: { webApp?: TelegramWebApp; children?: ReactNode }) {
   const [season, setState] = useState<Season>(initialSeason);
+  const { theme } = useTheme();
   useEffect(() => {
     document.documentElement.setAttribute("data-season", season);
-    syncTelegramColors(webApp, season);
-  }, [season, webApp]);
+    syncTelegramColors(webApp, season, theme);
+  }, [season, theme, webApp]);
   const setSeason = useCallback((s: Season) => {
     saveSeason(s);
     setState(s);

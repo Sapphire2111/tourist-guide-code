@@ -4,13 +4,7 @@
 // первый кадр уже в цветах сезона. Отдельный файл, а не inline: CSP сайта не разрешает inline-скрипты.
 // Логика — как в src/design/season.ts (readSeason, WINDOW_COLORS); менять вместе.
 (function () {
-  var design = "modern";
-  try {
-    design = window.localStorage.getItem("tg.design") === "original" ? "original" : "modern";
-  } catch (e) {
-    /* Storage unavailable. */
-  }
-  document.documentElement.setAttribute("data-design", design);
+  document.documentElement.setAttribute("data-design", "modern");
   var m = new Date().getMonth();
   var auto = m === 11 || m < 2 ? "winter" : m < 5 ? "spring" : m < 8 ? "summer" : "autumn";
   var season = auto;
@@ -22,12 +16,21 @@
     // Хранилище недоступно — сезон по дате.
   }
   document.documentElement.setAttribute("data-season", season);
+  // Тема: «День» (по умолчанию) или «Ніч»; повреждённое значение и недоступное хранилище — «День». Как в src/design/theme.ts.
+  var theme = "day";
+  try {
+    if (window.localStorage.getItem("tg.theme") === "night") theme = "night";
+  } catch (e) {
+    // Хранилище недоступно — «День».
+  }
+  document.documentElement.setAttribute("data-theme", theme);
   var colors = {
     winter: ["#F8F9FA", "#FFFFFF"],
     spring: ["#FBF9F5", "#FFFFFF"],
     summer: ["#FDFBF6", "#FFFFFF"],
     autumn: ["#FAF5EE", "#FFFDF9"],
   }[season];
+  if (theme === "night") colors = ["#091913", "#0F261D"];
   var tg = window.Telegram && window.Telegram.WebApp;
   if (!tg || tg.platform === "unknown") return;
   var at = function (v) {

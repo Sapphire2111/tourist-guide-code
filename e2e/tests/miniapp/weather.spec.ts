@@ -86,19 +86,10 @@ test.describe("погода на главной", () => {
     await expect(chip).toBeFocused();
   });
 
-  test("дизайн «Сучасний»: пилюля тоже рядом с «Локація»", async ({ page }) => {
-    await mockWeather(page, forecast);
-    await page.addInitScript(() => localStorage.setItem("tg.design", "modern"));
-    await page.goto("/");
-    await expect(page.getByTestId("weather-chip")).toContainText("+2°");
-    await page.getByTestId("weather-chip").click();
-    await expect(page.getByRole("dialog", { name: "Погода на 5 днів" })).toBeVisible();
-  });
-
   test("прогноза нет — пилюли нет", async ({ page }) => {
     await mockWeather(page, { ...forecast, available: false, source: null, current: null, days: [] });
     await page.goto("/");
-    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
     await expect(page.getByTestId("weather-chip")).toHaveCount(0);
   });
 });

@@ -1,25 +1,31 @@
 // C05 «Що поруч»: места в радиусе от базовой точки (QR) или — по нажатию и с разрешения — от устройства.
 // Подпись «Поруч із вами» только при полученной геолокации, иначе «Поруч із <база>».
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { useDesign } from "../design/DesignProvider.js";
 import { useCategoryIndex } from "./categories.js";
-import { ICONS } from "../design/Ornament.js";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
+import { Button, Link, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
-import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
+import { canOpenLocationSettings, requestLocation, routeUrl, type LatLng } from "./geo.js";
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
-import { AsyncView, PlaceList, useDistance } from "./parts.js";
+import { AsyncView, ExtLink, PlaceList, useDistance } from "./parts.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
 
-/** Ползунок радиуса, м: от 500 м до 10 км шагом 500 м. */
-export const RADIUS_MIN = 500;
-export const RADIUS_MAX = 10_000;
-export const RADIUS_STEP = 500;
+/** Пилюли радиуса, м, поверх карты (эталон «Що поруч»). */
+export const RADIUS_PILLS = [300, 500, 1000, 3000, 5000, 10_000] as const;
+export const RADIUS_MIN = RADIUS_PILLS[0];
+export const RADIUS_MAX = RADIUS_PILLS[RADIUS_PILLS.length - 1]!;
 export const DEFAULT_RADIUS = 500;
-/** Задержка запроса при перетаскивании ползунка, мс. */
+/** Задержка запроса при смене радиуса, мс. */
 export const RADIUS_DEBOUNCE_MS = 350;
+/** Значение вне шага — ближайшая пилюля (границы уже внутри набора). */
+export function snapRadius(m: number): number {
+  return RADIUS_PILLS.reduce<number>(
+    (best, p) => (Math.abs(p - m) < Math.abs(best - m) ? p : best),
+    DEFAULT_RADIUS,
+  );
+}
 /** Не больше стольких ближайших мест на 10 км (сервер сортирует по расстоянию). */
 export const NEARBY_LIMIT = 50;
 /** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
@@ -41,10 +47,21 @@ type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; poi
 export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   const { t, locale } = useT();
   const { webApp, base } = useGuide();
-  const { design } = useDesign();
-  const RangePanel = design === "modern" ? "details" : "div";
+  // Карта открывается большой («full»); «Список ↓» уменьшает её и прокручивает к листу, «Розгорнути» возвращает.
+  const [mapMode, setMapMode] = useState<"full" | "split">("full");
+  const sheet = useRef<HTMLDivElement>(null);
+  const modeChanged = useRef(false);
+  useEffect(() => {
+    if (!modeChanged.current) {
+      modeChanged.current = true;
+      return;
+    }
+    const behavior = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    if (mapMode === "split") sheet.current?.scrollIntoView?.({ block: "start", behavior });
+    else window.scrollTo?.({ top: 0, behavior });
+  }, [mapMode]);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
-  /** Радиус запроса — значение ползунка после паузы в перетаскивании. */
+  /** Радиус запроса — выбранная пилюля после паузы (быстрые нажатия подряд дают один запрос). */
   const [queryRadius, setQueryRadius] = useState<number>(DEFAULT_RADIUS);
   useEffect(() => {
     if (radius === queryRadius) return;
@@ -55,7 +72,6 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   useEffect(() => {
     preloadMap(locale).catch(() => undefined);
   }, [locale]);
-  const radiusText = useRadiusLabel()(radius);
   const [geo, setGeo] = useState<Geo>({ status: useMyLocation ? "locating" : "idle" });
 
   const locate = () => {
@@ -77,97 +93,88 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
       : base?.point
         ? t("miniapp.nearby.nearBase", { base: base.name })
         : null;
+  // Название базы в надзаголовке — золотым акцентом; текст подписи целиком остаётся одной строкой i18n.
+  const accent = geo.status !== "granted" && base?.point && caption ? caption.indexOf(base.name) : -1;
+  const locating = geo.status === "locating";
 
   return (
-    <div className={design === "modern" ? "modern-nearby" : undefined}>
-      <Stack>
-        <div className={design === "modern" ? "modern-nearby-head" : undefined}>
-          {design === "modern" && (
-            <svg
-              className="modern-nearby-art"
-              viewBox="0 0 400 90"
-              preserveAspectRatio="none"
-              aria-hidden="true"
+    <div className="modern-nearby" data-map-mode={mapMode}>
+      <div className="modern-nearby-head">
+        <svg className="modern-nearby-art" viewBox="0 0 400 90" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 75 L55 28 L115 58 L195 14 L270 55 L335 24 L400 52 L400 90 L0 90 Z" />
+          <path d="M0 82 L85 45 L165 70 L255 36 L345 68 L400 48 L400 90 L0 90 Z" />
+          <ellipse cx="200" cy="76" rx="170" ry="12" />
+        </svg>
+        <div className="modern-nearby-titles">
+          <span className="modern-nearby-badge" aria-hidden="true">
+            {SECTION_EMOJI.nearby}
+          </span>
+          <div className="modern-nearby-heading">
+            {caption && (
+              <p data-testid="nearby-caption">
+                {accent >= 0 && base ? (
+                  <>
+                    {caption.slice(0, accent)}
+                    <b>{base.name}</b>
+                    {caption.slice(accent + base.name.length)}
+                  </>
+                ) : (
+                  caption
+                )}
+              </p>
+            )}
+            <h1>{t("miniapp.modern.heading")}</h1>
+          </div>
+          {geo.status !== "granted" && (
+            <button
+              type="button"
+              className="modern-locate"
+              data-testid="nearby-locate"
+              aria-label={locating ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
+              aria-busy={locating}
+              disabled={locating}
+              onClick={locate}
             >
-              <path
-                d="M0 90 L0 38 L70 14 L155 44 L235 12 L320 40 L400 18 L400 90 Z"
-                fill="rgba(255,255,255,0.06)"
-              />
-              <path d="M0 90 L0 58 L95 36 L195 62 L290 32 L400 54 L400 90 Z" fill="rgba(255,255,255,0.08)" />
-              <ellipse cx="200" cy="70" rx="220" ry="18" fill="rgba(255,255,255,0.12)" />
-            </svg>
+              {ICONS.locate}
+            </button>
           )}
-          <div className={design === "modern" ? "modern-nearby-titles" : undefined}>
-            <h1>{t("miniapp.nearby.title")}</h1>
-            {caption && <p data-testid="nearby-caption">{caption}</p>}
-            {design === "modern" && (
-              <span className="modern-nearby-badge" aria-hidden="true">
-                {ICONS.nearby}
-              </span>
-            )}
-          </div>
-          {geo.status === "denied" && (
-            <p role="alert" data-testid="geo-off">
-              {base?.point
-                ? t("miniapp.nearby.geoOff", { base: base.name })
-                : t("miniapp.nearby.geoOffNoBase")}
-            </p>
-          )}
-          {geo.status === "denied" && canOpenLocationSettings(webApp) && (
-            <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
-              {t("miniapp.nearby.openSettings")}
-            </Button>
-          )}
-          <div className={design === "modern" ? "modern-nearby-actions" : undefined}>
-            <RangePanel className="kosiv-range">
-              {design === "modern" && (
-                <summary>
-                  {t("miniapp.nearby.radius")}
-                  <span>{radiusText}</span>
-                </summary>
-              )}
-              <div className="kosiv-range-head">
-                <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
-                <output htmlFor="nearby-radius" data-testid="radius-value">
-                  {radiusText}
-                </output>
-              </div>
-              <input
-                id="nearby-radius"
-                type="range"
-                min={RADIUS_MIN}
-                max={RADIUS_MAX}
-                step={RADIUS_STEP}
-                value={radius}
-                aria-valuetext={radiusText}
-                onChange={(e) => setRadius(Number(e.target.value))}
-              />
-            </RangePanel>
-            {geo.status !== "granted" && (
-              <Button
-                className={design === "modern" ? "modern-locate" : undefined}
-                disabled={geo.status === "locating"}
-                onClick={locate}
-              >
-                {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
-              </Button>
-            )}
-          </div>
+          <button
+            type="button"
+            className="modern-nearby-size"
+            onClick={() => setMapMode((m) => (m === "full" ? "split" : "full"))}
+          >
+            <span aria-hidden="true">{mapMode === "full" ? "📋" : "🗺️"}</span>
+            {t(mapMode === "full" ? "miniapp.modern.listDown" : "miniapp.modern.expand")}
+          </button>
         </div>
-        {point ? (
-          <NearbyPlaces
-            point={point}
-            radius={queryRadius}
-            // Карта строится по местам и базовой точке и на устройство не центрируется; позиция устройства — только значок «Ви тут» (me).
-            base={geo.status === "granted" ? null : (base?.point ?? null)}
-            baseLabel={caption ?? undefined}
-            me={geo.status === "granted" ? geo.point : null}
-          />
-        ) : (
-          geo.status !== "locating" &&
-          geo.status !== "denied" && <p data-testid="nearby-no-point">{t("miniapp.nearby.noBase")}</p>
+        {geo.status === "denied" && (
+          <p role="alert" className="modern-nearby-note" data-testid="geo-off">
+            {base?.point ? t("miniapp.nearby.geoOff", { base: base.name }) : t("miniapp.nearby.geoOffNoBase")}
+          </p>
         )}
-      </Stack>
+        {geo.status === "denied" && canOpenLocationSettings(webApp) && (
+          <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
+            {t("miniapp.nearby.openSettings")}
+          </Button>
+        )}
+      </div>
+      {point ? (
+        <NearbyPlaces
+          point={point}
+          radius={queryRadius}
+          selectedRadius={radius}
+          onRadius={setRadius}
+          sheetRef={sheet}
+          // Карта строится по местам и базовой точке и на устройство не центрируется; позиция устройства — только значок «Ви тут» (me).
+          base={geo.status === "granted" ? null : (base?.point ?? null)}
+          baseLabel={caption ?? undefined}
+          baseTag={base?.name}
+          me={geo.status === "granted" ? geo.point : null}
+        />
+      ) : (
+        geo.status !== "locating" &&
+        geo.status !== "denied" && <p data-testid="nearby-no-point">{t("miniapp.nearby.noBase")}</p>
+      )}
     </div>
   );
 }
@@ -175,20 +182,25 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
 function NearbyPlaces({
   point,
   radius,
+  selectedRadius,
+  onRadius,
+  sheetRef,
   base,
   baseLabel,
+  baseTag,
   me,
 }: {
   point: LatLng;
   radius: number;
+  selectedRadius: number;
+  onRadius: (m: number) => void;
+  sheetRef: RefObject<HTMLDivElement | null>;
   base: LatLng | null;
   baseLabel?: string;
+  baseTag?: string;
   me: LatLng | null;
 }) {
-  const { t } = useT();
   const { api } = useGuide();
-  const { design } = useDesign();
-  const label = useRadiusLabel();
   const [fresh, retry] = useAsync(
     () =>
       api
@@ -202,46 +214,45 @@ function NearbyPlaces({
   const shown = fresh.status === "loading" && last.current.status === "ready" ? last.current : fresh;
   return (
     <AsyncView state={shown} retry={retry}>
-      {({ list, radius: loaded }) =>
-        design === "modern" ? (
-          <ModernNearbyResults
-            list={list}
-            radius={loaded}
-            base={base}
-            baseLabel={baseLabel}
-            me={me}
-            loading={fresh.status === "loading"}
-          />
-        ) : (
-          <Stack>
-            {/* Круг, пустой текст и подписи — по радиусу загруженных данных, не по ползунку. */}
-            <MapSlot
-              places={list}
-              center={base}
-              centerLabel={baseLabel}
-              radius={base ? loaded : undefined}
-              // По геолокации места окружают устройство: без базовой точки не приближаем карту до двора туриста.
-              maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
-              // Позиция устройства: только если геолокация уже получена (отдельный запрос не делаем).
-              me={me}
-            />
-            {/* Статус обновления — под картой, в строке фиксированной высоты: карта не сдвигается. */}
-            <p role="status" className="kosiv-muted kosiv-status-line" data-testid="nearby-status">
-              {fresh.status === "loading"
-                ? t("miniapp.guide.loading")
-                : list.length >= NEARBY_LIMIT
-                  ? t("miniapp.nearby.limited", { n: NEARBY_LIMIT })
-                  : ""}
-            </p>
-            {list.length === 0 ? (
-              <p data-testid="nearby-empty">{t("miniapp.nearby.emptyRadius", { r: label(loaded) })}</p>
-            ) : (
-              <PlaceList places={list} />
-            )}
-          </Stack>
-        )
-      }
+      {({ list, radius: loaded }) => (
+        <ModernNearbyResults
+          list={list}
+          radius={loaded}
+          selectedRadius={selectedRadius}
+          onRadius={onRadius}
+          sheetRef={sheetRef}
+          base={base}
+          baseLabel={baseLabel}
+          baseTag={baseTag}
+          me={me}
+          loading={fresh.status === "loading"}
+        />
+      )}
     </AsyncView>
+  );
+}
+
+/** Капсула радиуса поверх карты: пилюли прокручиваются, активная видна сразу. */
+function RadiusPills({ value, onChange }: { value: number; onChange: (m: number) => void }) {
+  const { t } = useT();
+  const label = useRadiusLabel();
+  const active = snapRadius(value);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    const pill = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!el || !pill) return;
+    // Видна с начала ряда — без прокрутки, как на эталоне; иначе активная у левого края (без обрезка «00 м»).
+    el.scrollLeft = pill.offsetLeft + pill.offsetWidth + 3 <= el.clientWidth ? 0 : pill.offsetLeft - 3;
+  }, [active]);
+  return (
+    <div ref={box} className="modern-radius" role="group" aria-label={t("miniapp.nearby.radius")}>
+      {RADIUS_PILLS.map((m) => (
+        <button type="button" key={m} aria-pressed={m === active} onClick={() => onChange(m)}>
+          {label(m)}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -249,24 +260,33 @@ function NearbyPlaces({
 export function ModernNearbyResults({
   list,
   radius,
+  selectedRadius = radius,
+  onRadius,
+  sheetRef,
   base,
   baseLabel,
+  baseTag,
   me,
   loading,
 }: {
   list: PlaceSummary[];
+  /** Радиус загруженной выборки. */
   radius: number;
+  /** Выбранный радиус (запрос может ещё идти). */
+  selectedRadius?: number;
+  onRadius?: (m: number) => void;
+  sheetRef?: RefObject<HTMLDivElement | null>;
   base: LatLng | null;
   baseLabel?: string;
+  baseTag?: string;
   me: LatLng | null;
   loading: boolean;
 }) {
   const { t, locale } = useT();
-  const { api } = useGuide();
+  const { api, analytics } = useGuide();
   const categories = useCategoryIndex(api);
-  const radiusText = useRadiusLabel()(radius);
+  const radiusLabel = useRadiusLabel();
   const distanceLabel = useDistance();
-  const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<HomeSection | "all">("all");
   const sections = Array.from(
@@ -299,7 +319,7 @@ export function ModernNearbyResults({
   return (
     <div className="modern-nearby-results">
       <div className="modern-map-stage">
-        <div className="modern-map-overlay">
+        <div className="modern-map-overlay" data-map-inset="top">
           <div className="modern-toolbar">
             <label className="modern-search">
               {ICONS.search}
@@ -311,66 +331,87 @@ export function ModernNearbyResults({
                 onChange={(e) => setQuery(e.target.value)}
               />
             </label>
-            <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
-              {(["map", "list"] as const).map((v) => (
-                <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
-                  {v === "map" ? ICONS.plan : ICONS.nearby}
-                  {t(`miniapp.modern.${v}`)}
-                </button>
-              ))}
-            </div>
+            {onRadius && <RadiusPills value={selectedRadius} onChange={onRadius} />}
           </div>
           <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
             <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
+              <span aria-hidden="true">✦</span>
               {t("miniapp.modern.all")}
             </button>
             {sections.map((s) => (
               <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
-                {ICONS[s]}
+                <span aria-hidden="true">{SECTION_EMOJI[s] ?? SECTION_EMOJI.other}</span>
                 {t(`miniapp.section.${s}`)}
               </button>
             ))}
           </div>
         </div>
-        {view === "map" && (
-          <div className="modern-map-panel">
-            <MapSlot
-              places={visible}
-              center={base}
-              centerLabel={baseLabel}
-              radius={base ? radius : undefined}
-              maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
-              me={me}
-            />
-            {closest && (
-              <div className="modern-map-spot">
-                <span className="modern-map-spot-icon" aria-hidden="true">
-                  {ICONS[closestSection ?? "nearby"]}
-                </span>
-                <div className="modern-map-spot-body">
-                  {closestDist && <span className="modern-map-spot-dist">{closestDist}</span>}
-                  <Link to={`/place/${closest.id}`} className="modern-map-spot-title">
-                    {pickLocalized(closest.name, locale)}
+        <div className="modern-map-panel">
+          <MapSlot
+            places={visible}
+            center={base}
+            centerLabel={baseLabel}
+            centerTag={baseTag}
+            radius={base ? radius : undefined}
+            maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
+            me={me}
+            closestId={closest?.id}
+            legend={false}
+            overlay={
+              closest && (
+                <div className="modern-map-spot" data-map-inset="bottom">
+                  <Link to={`/place/${encodeURIComponent(closest.id)}`} className="modern-map-spot-main">
+                    <span className="modern-map-spot-icon" aria-hidden="true">
+                      {SECTION_EMOJI[closestSection ?? "other"] ?? SECTION_EMOJI.other}
+                    </span>
+                    <span className="modern-map-spot-body">
+                      {closestDist && <span className="modern-map-spot-dist">{closestDist}</span>}
+                      <span className="modern-map-spot-title">{pickLocalized(closest.name, locale)}</span>
+                    </span>
                   </Link>
+                  {closest.location && (
+                    <ExtLink
+                      className="modern-map-spot-route"
+                      href={routeUrl(closest.location, me ?? base)}
+                      label={t("miniapp.modern.routeTo", { name: pickLocalized(closest.name, locale) })}
+                      onOpen={() => analytics.track("route_clicked", { placeId: closest.id })}
+                    >
+                      <span aria-hidden="true">🧭</span>
+                      {t("miniapp.modern.route")}
+                    </ExtLink>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )
+            }
+          />
+        </div>
       </div>
-      <div className="modern-results-sheet" aria-busy={loading}>
-        <p role="status" className="modern-results-count" data-testid="nearby-status">
-          {loading ? t("miniapp.guide.loading") : t("miniapp.modern.results", { n: visible.length })}
-        </p>
+      <div className="modern-results-sheet" ref={sheetRef} aria-busy={loading}>
+        <div className="modern-results-head">
+          <div>
+            <p className="modern-results-kicker">
+              <span aria-hidden="true">🔥</span> {t("miniapp.modern.sortKicker")}
+            </p>
+            <p role="status" className="modern-results-count" data-testid="nearby-status">
+              {loading
+                ? t("miniapp.guide.loading")
+                : closestDist
+                  ? t("miniapp.modern.nearest", { n: visible.length, d: closestDist })
+                  : t("miniapp.modern.results", { n: visible.length })}
+            </p>
+          </div>
+          <p className="modern-results-radius" data-testid="radius-value">
+            {t("miniapp.modern.radiusUpTo", { r: radiusLabel(selectedRadius) })}
+          </p>
+        </div>
         {list.length >= NEARBY_LIMIT && <p>{t("miniapp.nearby.limited", { n: NEARBY_LIMIT })}</p>}
-        <p className="modern-origin">{baseLabel ?? t("miniapp.modern.origin")}</p>
         {visible.length ? (
           <PlaceList places={visible} quickRoute routeFrom={me ?? base} />
         ) : (
           <div className="modern-empty" data-testid="nearby-empty">
             <p>
               {list.length === 0
-                ? t("miniapp.nearby.emptyRadius", { r: radiusText })
+                ? t("miniapp.nearby.emptyRadius", { r: radiusLabel(radius) })
                 : t("miniapp.modern.noMatches")}
             </p>
             {(query || section !== "all") && (
