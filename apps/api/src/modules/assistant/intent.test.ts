@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASSISTANT_MODEL,
+  INTENT_SYSTEM,
   INTENT_TOOL,
   intentRequest,
   intentTool,
@@ -22,6 +23,7 @@ const valid = {
   kind: "places",
   categories: ["cafes"],
   nameQuery: null,
+  keywords: [],
   locality: null,
   radiusMeters: 1000,
   priceMin: null,
@@ -30,6 +32,9 @@ const valid = {
   openNow: true,
   clarify: false,
   suggestions: ["cheaper", "kids"],
+  days: null,
+  dayParts: [],
+  start: null,
 };
 
 describe("intentTool", () => {
@@ -122,6 +127,7 @@ describe("parseIntent", () => {
       kind: "places",
       categories: [],
       nameQuery: null,
+      keywords: [],
       locality: null,
       radiusMeters: null,
       priceMin: null,
@@ -130,7 +136,46 @@ describe("parseIntent", () => {
       openNow: false,
       clarify: false,
       suggestions: [],
+      days: null,
+      dayParts: [],
+      start: null,
     });
+  });
+
+  it("ключевые слова: строки, нижний регистр, без повторов и пустых, не больше 8 и не длиннее 40", () => {
+    const out = parseIntent(
+      {
+        ...valid,
+        keywords: ["Суші", " суші ", "sushi", 42, "", "x", ...Array.from({ length: 10 }, (_, i) => `w${i}`)],
+      },
+      CODES,
+    )!;
+    expect(out.keywords).toEqual(["суші", "sushi", "w0", "w1", "w2", "w3", "w4", "w5"]);
+    expect(parseIntent({ ...valid, keywords: ["я".repeat(80)] }, CODES)!.keywords[0]).toHaveLength(40);
+  });
+
+  it("план: дни 1–3 (по умолчанию 1), части дня из списка (все три — весь день), начало; не план — пусто", () => {
+    const plan = parseIntent(
+      { ...valid, kind: "plan", days: 7, dayParts: ["evening", "night"], start: "weekend" },
+      CODES,
+    )!;
+    expect(plan).toMatchObject({ kind: "plan", days: 3, dayParts: ["evening"], start: "weekend" });
+    expect(
+      parseIntent(
+        { ...valid, kind: "plan", days: null, dayParts: ["morning", "afternoon", "evening"] },
+        CODES,
+      ),
+    ).toMatchObject({ days: 1, dayParts: [], start: null });
+    expect(
+      parseIntent({ ...valid, kind: "places", days: 2, dayParts: ["evening"], start: "today" }, CODES),
+    ).toMatchObject({ days: null, dayParts: [], start: null });
+  });
+
+  it("промпт: блюдо — в keywords, не в nameQuery; план — kind plan", () => {
+    expect(INTENT_SYSTEM).toContain("keywords");
+    expect(INTENT_SYSTEM).toContain('kind = "plan"');
+    const schema = intentTool(["cafes"]).input_schema as unknown as { required: string[] };
+    expect(schema.required).toEqual(expect.arrayContaining(["keywords", "days", "dayParts", "start"]));
   });
 });
 

@@ -1,4 +1,5 @@
-// Суточный бюджет ассистента: единицы (запрос к Claude — 1, распознавание голоса — 2) на всё api и на пользователя.
+// Суточный бюджет ассистента: единицы (запрос к Claude — 1, пояснения к плану — 1, распознавание голоса — 2)
+// на всё api и на пользователя.
 // Счётчики — в хранилище rate limit (Redis при REDIS_URL — общий для инстансов и переживает рестарт; иначе память
 // процесса). Redis недоступен — счёт продолжается в памяти процесса (предел не отключается).
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
@@ -14,7 +15,7 @@ import { ASSISTANT_CONFIG, type AssistantConfig } from "./providers.js";
 export const DAILY_LIMIT_DEFAULT = 500;
 export const USER_DAILY_LIMIT_DEFAULT = 40;
 /** Стоимость в единицах. */
-export const BUDGET_UNITS = { query: 1, voice: 2 } as const;
+export const BUDGET_UNITS = { query: 1, voice: 2, planNotes: 1 } as const;
 
 const DAY_MS = 24 * 3600_000;
 

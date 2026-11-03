@@ -137,7 +137,17 @@ export class AssistantController {
       text,
       origin: originOf(body),
       history: (body.history ?? []).map((h) => h.trim()).filter(Boolean),
-      previous: body.previous ? { ...body.previous, locality: body.previous.locality ?? null } : null,
+      // Намерение прошлого ответа: поля, которых не было у старых клиентов, — по умолчанию.
+      previous: body.previous
+        ? {
+            ...body.previous,
+            locality: body.previous.locality ?? null,
+            keywords: body.previous.keywords ?? [],
+            days: body.previous.days ?? null,
+            dayParts: body.previous.dayParts ?? [],
+            start: body.previous.start ?? null,
+          }
+        : null,
       localityIds: body.localityIds ?? [],
     });
   }

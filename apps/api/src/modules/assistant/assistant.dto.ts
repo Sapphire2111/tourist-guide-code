@@ -19,13 +19,21 @@ import { OriginQueryDto, PlaceSummaryDto } from "../guide/index.js";
 import {
   ASSISTANT_KINDS,
   ASSISTANT_SUGGESTIONS,
+  DAY_PARTS,
   INTENT_CATEGORIES_MAX,
+  INTENT_KEYWORD_MAX,
+  INTENT_KEYWORDS_MAX,
   INTENT_NAME_MAX,
+  INTENT_PLAN_DAYS_MAX,
   INTENT_RADIUS_MAX,
   INTENT_RADIUS_MIN,
+  PLAN_STARTS,
   type AssistantKind,
   type AssistantSuggestion,
+  type DayPart,
+  type PlanStart,
 } from "./intent.js";
+import { PLAN_ROLES, PLAN_TRAVELS, type PlanRole, type PlanTravel } from "./plan.js";
 
 // DTO ассистента на главной: запрос текстом (или распознанной речью) → намерение и реальные места каталога.
 // Контекст диалога хранит клиент и присылает с каждым запросом (сервер ничего не хранит): прежние реплики и
@@ -40,7 +48,18 @@ export const ASSISTANT_HISTORY_MAX = 5;
 /** Аудио — не больше 512 КиБ (≈ 1 мин Opus; клиент пишет до 15 с). */
 export const ASSISTANT_AUDIO_MAX_BYTES = 512 * 1024;
 
-export const ASSISTANT_NOTES = ["price_unknown", "none_open", "no_origin"] as const;
+/**
+ * Пояснения выдачи: keyword_none — блюда/кухни из запроса нет ни в одном месте, показаны места категории; widened —
+ * рядом мало, поиск расширен на весь регион (или выбранные пункты); plan_tomorrow — сегодня уже поздно, план с завтра.
+ */
+export const ASSISTANT_NOTES = [
+  "price_unknown",
+  "none_open",
+  "no_origin",
+  "keyword_none",
+  "widened",
+  "plan_tomorrow",
+] as const;
 export type AssistantNote = (typeof ASSISTANT_NOTES)[number];
 
 export const DESCRIPTION_SOURCES = ["ai", "wikipedia", "google"] as const;
@@ -68,6 +87,19 @@ export class AssistantIntentDto {
   @IsString()
   @MaxLength(INTENT_NAME_MAX)
   nameQuery!: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: INTENT_KEYWORDS_MAX,
+    description:
+      "Блюдо, кухня или особенность в нескольких написаниях (поиск по названию, типу, описаниям, отзывам)",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(INTENT_KEYWORDS_MAX)
+  @IsString({ each: true })
+  @MaxLength(INTENT_KEYWORD_MAX, { each: true })
+  keywords?: string[];
 
   @ApiPropertyOptional({
     type: String,
@@ -118,6 +150,41 @@ export class AssistantIntentDto {
   @ArrayMaxSize(ASSISTANT_SUGGESTIONS.length)
   @IsIn(ASSISTANT_SUGGESTIONS, { each: true })
   suggestions!: AssistantSuggestion[];
+
+  @ApiPropertyOptional({
+    type: "integer",
+    nullable: true,
+    minimum: 1,
+    maximum: INTENT_PLAN_DAYS_MAX,
+    description: "План: дней; не план — null",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(INTENT_PLAN_DAYS_MAX)
+  days?: number | null;
+
+  @ApiPropertyOptional({
+    enum: DAY_PARTS,
+    enumName: "AssistantDayPart",
+    isArray: true,
+    description: "План: части дня; пусто — весь день",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(DAY_PARTS.length)
+  @IsIn(DAY_PARTS, { each: true })
+  dayParts?: DayPart[];
+
+  @ApiPropertyOptional({
+    enum: PLAN_STARTS,
+    enumName: "AssistantPlanStart",
+    nullable: true,
+    description: "План: начало (null — сегодня)",
+  })
+  @IsOptional()
+  @IsIn(PLAN_STARTS)
+  start?: PlanStart | null;
 }
 
 export class AssistantQueryDto extends OriginQueryDto {
@@ -189,15 +256,63 @@ export class AssistantRouteDto {
   lengthMeters!: number;
 }
 
+export class AssistantPlanStopDto {
+  @ApiProperty({ type: "integer", description: "Индекс места в items" }) item!: number;
+  @ApiProperty({
+    enum: PLAN_ROLES,
+    enumName: "AssistantPlanRole",
+    description: "see — огляд, fun — активність, eat — їжа, relax — відпочинок",
+  })
+  role!: PlanRole;
+  @ApiProperty({ type: String, example: "13:00", description: "Начало, местное время" }) start!: string;
+  @ApiProperty({ type: "integer", description: "Оценка времени на месте, мин" }) durationMin!: number;
+  @ApiProperty({ enum: PLAN_TRAVELS, enumName: "AssistantPlanTravel", nullable: true })
+  travel!: PlanTravel | null;
+  @ApiProperty({ type: "integer", nullable: true, description: "Переезд от предыдущей точки, мин (оценка)" })
+  travelMinutes!: number | null;
+  @ApiProperty({ type: "integer", nullable: true, description: "Переезд по прямой, м" })
+  travelMeters!: number | null;
+  @ApiProperty({ type: String, nullable: true, description: "Часы работы в этот день по графику каталога" })
+  hours!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Пояснение (Claude по фактам каталога); null — нет",
+  })
+  note!: string | null;
+}
+
+export class AssistantPlanPartDto {
+  @ApiProperty({ enum: DAY_PARTS, enumName: "AssistantDayPart" }) part!: DayPart;
+  @ApiProperty({ type: [AssistantPlanStopDto] }) stops!: AssistantPlanStopDto[];
+}
+
+export class AssistantPlanDayDto {
+  @ApiProperty({ type: "integer" }) dayNo!: number;
+  @ApiProperty({ type: String, format: "date", example: "2026-11-07" }) date!: string;
+  @ApiProperty({ type: [AssistantPlanPartDto] }) parts!: AssistantPlanPartDto[];
+}
+
+export class AssistantPlanDto {
+  @ApiProperty({ type: [AssistantPlanDayDto] }) days!: AssistantPlanDayDto[];
+  @ApiProperty({ type: "integer", description: "Сумма переездов по прямой, м" }) lengthMeters!: number;
+}
+
 export class AssistantResultDto {
   @ApiProperty({ type: AssistantIntentDto }) intent!: AssistantIntentDto;
   @ApiProperty({
     type: [AssistantPlaceDto],
-    description: "Только места каталога; для tour — в порядке обхода",
+    description: "Только места каталога; для tour — в порядке обхода; для plan — в порядке плана",
   })
   items!: AssistantPlaceDto[];
   @ApiProperty({ type: AssistantRouteDto, nullable: true, description: "Маршрут — только для tour" })
   route!: AssistantRouteDto | null;
+  @ApiProperty({
+    type: AssistantPlanDto,
+    nullable: true,
+    description: "План отдыха по дням и частям дня — только для plan",
+  })
+  plan!: AssistantPlanDto | null;
   @ApiProperty({
     enum: ASSISTANT_NOTES,
     enumName: "AssistantNote",

@@ -13363,12 +13363,22 @@
       },
       "AssistantKind": {
         "type": "string",
-        "enum": ["places", "tour"],
+        "enum": ["places", "tour", "plan"],
         "description": "places — места, tour — маршрут"
       },
       "AssistantSuggestion": {
         "type": "string",
-        "enum": ["cheaper", "pricier", "closer", "farther", "kids", "open_now", "tour", "places"]
+        "enum": ["cheaper", "pricier", "closer", "farther", "kids", "open_now", "tour", "places", "plan"]
+      },
+      "AssistantDayPart": {
+        "type": "string",
+        "enum": ["morning", "afternoon", "evening"],
+        "description": "План: части дня; пусто — весь день"
+      },
+      "AssistantPlanStart": {
+        "type": "string",
+        "enum": ["today", "tomorrow", "weekend"],
+        "description": "План: начало (null — сегодня)"
       },
       "AssistantIntentDto": {
         "type": "object",
@@ -13384,6 +13394,12 @@
             "items": { "type": "string" }
           },
           "nameQuery": { "type": "string", "nullable": true, "maxLength": 60 },
+          "keywords": {
+            "maxItems": 8,
+            "description": "Блюдо, кухня или особенность в нескольких написаниях (поиск по названию, типу, описаниям, отзывам)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "locality": {
             "type": "string",
             "nullable": true,
@@ -13402,7 +13418,24 @@
           "withKids": { "type": "boolean" },
           "openNow": { "type": "boolean" },
           "clarify": { "type": "boolean", "description": "Запрос непонятен — уточнить (мест нет)" },
-          "suggestions": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantSuggestion" } }
+          "suggestions": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantSuggestion" } },
+          "days": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 3,
+            "description": "План: дней; не план — null"
+          },
+          "dayParts": {
+            "type": "array",
+            "description": "План: части дня; пусто — весь день",
+            "items": { "$ref": "#/components/schemas/AssistantDayPart" }
+          },
+          "start": {
+            "nullable": true,
+            "description": "План: начало (null — сегодня)",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanStart" }]
+          }
         },
         "required": [
           "kind",
@@ -13507,9 +13540,80 @@
         },
         "required": ["lengthMeters"]
       },
+      "AssistantPlanRole": {
+        "type": "string",
+        "enum": ["see", "fun", "eat", "relax"],
+        "description": "see — огляд, fun — активність, eat — їжа, relax — відпочинок"
+      },
+      "AssistantPlanTravel": { "type": "string", "enum": ["walk", "car"] },
+      "AssistantPlanStopDto": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "integer", "description": "Индекс места в items" },
+          "role": {
+            "description": "see — огляд, fun — активність, eat — їжа, relax — відпочинок",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanRole" }]
+          },
+          "start": { "type": "string", "example": "13:00", "description": "Начало, местное время" },
+          "durationMin": { "type": "integer", "description": "Оценка времени на месте, мин" },
+          "travel": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/AssistantPlanTravel" }] },
+          "travelMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Переезд от предыдущей точки, мин (оценка)"
+          },
+          "travelMeters": { "type": "integer", "nullable": true, "description": "Переезд по прямой, м" },
+          "hours": {
+            "type": "string",
+            "nullable": true,
+            "description": "Часы работы в этот день по графику каталога"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "Пояснение (Claude по фактам каталога); null — нет"
+          }
+        },
+        "required": [
+          "item",
+          "role",
+          "start",
+          "durationMin",
+          "travel",
+          "travelMinutes",
+          "travelMeters",
+          "hours",
+          "note"
+        ]
+      },
+      "AssistantPlanPartDto": {
+        "type": "object",
+        "properties": {
+          "part": { "allOf": [{ "$ref": "#/components/schemas/AssistantDayPart" }] },
+          "stops": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantPlanStopDto" } }
+        },
+        "required": ["part", "stops"]
+      },
+      "AssistantPlanDayDto": {
+        "type": "object",
+        "properties": {
+          "dayNo": { "type": "integer" },
+          "date": { "type": "string", "format": "date", "example": "2026-11-07" },
+          "parts": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantPlanPartDto" } }
+        },
+        "required": ["dayNo", "date", "parts"]
+      },
+      "AssistantPlanDto": {
+        "type": "object",
+        "properties": {
+          "days": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantPlanDayDto" } },
+          "lengthMeters": { "type": "integer", "description": "Сумма переездов по прямой, м" }
+        },
+        "required": ["days", "lengthMeters"]
+      },
       "AssistantNote": {
         "type": "string",
-        "enum": ["price_unknown", "none_open", "no_origin"],
+        "enum": ["price_unknown", "none_open", "no_origin", "keyword_none", "widened", "plan_tomorrow"],
         "description": "Пояснения выдачи"
       },
       "AssistantResultDto": {
@@ -13517,7 +13621,7 @@
         "properties": {
           "intent": { "$ref": "#/components/schemas/AssistantIntentDto" },
           "items": {
-            "description": "Только места каталога; для tour — в порядке обхода",
+            "description": "Только места каталога; для tour — в порядке обхода; для plan — в порядке плана",
             "type": "array",
             "items": { "$ref": "#/components/schemas/AssistantPlaceDto" }
           },
@@ -13527,13 +13631,19 @@
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/AssistantRouteDto" }]
           },
+          "plan": {
+            "nullable": true,
+            "description": "План отдыха по дням и частям дня — только для plan",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanDto" }]
+          },
           "notes": {
             "type": "array",
             "description": "Пояснения выдачи",
             "items": { "$ref": "#/components/schemas/AssistantNote" }
           }
         },
-        "required": ["intent", "items", "route", "notes"]
+        "required": ["intent", "items", "route", "plan", "notes"]
       },
       "AssistantTranscriptDto": {
         "type": "object",

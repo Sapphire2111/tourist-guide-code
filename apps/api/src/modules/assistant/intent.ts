@@ -7,7 +7,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 export const ASSISTANT_MODEL = "claude-sonnet-5-5";
 export const INTENT_TOOL = "search_catalog";
 
-export const ASSISTANT_KINDS = ["places", "tour"] as const;
+export const ASSISTANT_KINDS = ["places", "tour", "plan"] as const;
 export type AssistantKind = (typeof ASSISTANT_KINDS)[number];
 
 /** Чипы-подсказки уточнений (подписи — miniapp.assistant.chip.*). */
@@ -20,6 +20,7 @@ export const ASSISTANT_SUGGESTIONS = [
   "open_now",
   "tour",
   "places",
+  "plan",
 ] as const;
 export type AssistantSuggestion = (typeof ASSISTANT_SUGGESTIONS)[number];
 
@@ -28,6 +29,18 @@ export const INTENT_CATEGORIES_MAX = 3;
 export const INTENT_NAME_MAX = 60;
 export const INTENT_RADIUS_MIN = 300;
 export const INTENT_RADIUS_MAX = 20_000;
+/** Ключевых слов (блюдо, кухня, особенность) — не больше; длина слова. */
+export const INTENT_KEYWORDS_MAX = 8;
+export const INTENT_KEYWORD_MAX = 40;
+/** Дней в плане отдыха ассистента. */
+export const INTENT_PLAN_DAYS_MAX = 3;
+
+/** Части дня плана: ранок, день, вечір. */
+export const DAY_PARTS = ["morning", "afternoon", "evening"] as const;
+export type DayPart = (typeof DAY_PARTS)[number];
+/** Начало плана: сегодня, завтра, ближайшие выходные. */
+export const PLAN_STARTS = ["today", "tomorrow", "weekend"] as const;
+export type PlanStart = (typeof PLAN_STARTS)[number];
 
 /** Намерение туриста: что искать в каталоге. */
 export type AssistantIntent = {
@@ -36,6 +49,11 @@ export type AssistantIntent = {
   categories: string[];
   /** Часть названия места, если турист назвал конкретное место. */
   nameQuery: string | null;
+  /**
+   * Блюдо, кухня или особенность («суші», «піца», «з терасою») в нескольких написаниях (uk/ru/en): поиск по
+   * названию, типу Google, описаниям и отзывам мест каталога, а не только по названию.
+   */
+  keywords: string[];
   /** Код населённого пункта, если турист его назвал («у Буковелі»); иначе null — действует выбор туриста. */
   locality: string | null;
   radiusMeters: number | null;
@@ -47,6 +65,12 @@ export type AssistantIntent = {
   /** Запрос непонятен или не о местах региона — уточнить. */
   clarify: boolean;
   suggestions: AssistantSuggestion[];
+  /** План (kind = plan): дней 1–3; не план — null. */
+  days: number | null;
+  /** План: только названные части дня («ввечері» — evening); пусто — весь день. */
+  dayParts: DayPart[];
+  /** План: начало; null — сегодня. */
+  start: PlanStart | null;
 };
 
 export type IntentCategory = { code: string; name: string; parentName: string | null };
@@ -65,9 +89,11 @@ export const INTENT_SYSTEM = `Ти — модуль розбору запиті�
 - categories — лише коди зі списку категорій регіону в повідомленні. Не вигадуй кодів. Обирай найконкретнішу категорію; якщо підходять кілька — до ${INTENT_CATEGORIES_MAX}.
 - Ти НЕ називаєш місць, цін, рейтингів чи відстаней — їх підбере сервер з каталогу.
 - locality — код населеного пункту зі списку, лише якщо турист сам назвав місцевість («у Буковелі», «в Яремчі»; враховуй синоніми), інакше null.
-- nameQuery — лише якщо турист назвав конкретний заклад чи пам'ятку (частина назви), інакше null.
+- nameQuery — лише якщо турист назвав конкретний заклад чи пам'ятку (частина назви), інакше null. Страва чи кухня («суші», «піца») — не nameQuery, а keywords.
+- keywords — якщо шукають страву, кухню, напій чи особливість («суші», «піца», «бургер», «шаурма», «кава», «вареники», «банош», «з терасою»): до ${INTENT_KEYWORDS_MAX} слів у формах, як вони трапляються в назвах, описах і відгуках, — українською, російською й англійською (напр. «суші», «суши», «sushi», «роли», «роллы»). Категорію (ресторани, кафе тощо) теж обирай. Інакше [].
 - Проживання («готель», «де переночувати», «садиба», «хостел») — категорії розділу проживання зі списку (сам розділ або його підкатегорії); побажання на кшталт «з чаном» не замінюють категорію проживання.
-- kind = "tour", якщо просять екскурсію, маршрут, прогулянку чи «що подивитися» (пам'ятки, музеї, природа); інакше "places".
+- kind = "plan", якщо просять план відпочинку, програму на день чи дні, «що робити сьогодні ввечері», «план на вихідні»: сервер сам складе план з пам'ятками, обідом, вечерею й відпочинком. Тоді days — кількість днів (1–${INTENT_PLAN_DAYS_MAX}; «вихідні» — 2); dayParts — лише названі частини дня (morning — ранок, afternoon — день, evening — вечір; «ввечері» → ["evening"]), інакше []; start — "today", "tomorrow" чи "weekend", якщо названо, інакше null; categories — лише якщо в плані хочуть щось конкретне (водоспади, музеї), інакше [].
+- kind = "tour", якщо просять екскурсію, маршрут, прогулянку чи «що подивитися» (пам'ятки, музеї, природа); інакше "places". Для "places" і "tour": days = null, dayParts = [], start = null.
 - radiusMeters — лише якщо турист вказав відстань або «поруч/ближче/далі»: «поруч» ≈ 1000, «пішки» ≈ 1500; інакше null.
 - priceMin/priceMax — рівень цін 0 (безкоштовно) … 4 (дуже дорого): «недорого/дешевше» → priceMax 1–2, «дорожче/преміум» → priceMin 3; інакше null.
 - withKids — true, якщо згадано дітей; openNow — true, якщо «зараз/відкрито».
@@ -101,6 +127,11 @@ export function intentTool(
           anyOf: [{ type: "string" }, { type: "null" }],
           description: "Частина назви конкретного місця або null",
         },
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: `Страва, кухня чи особливість у кількох написаннях (до ${INTENT_KEYWORDS_MAX}) або []`,
+        },
         locality: {
           anyOf: [
             localities.length ? { type: "string", enum: localities.map((l) => l.code) } : { type: "string" },
@@ -120,11 +151,15 @@ export function intentTool(
         openNow: { type: "boolean" },
         clarify: { type: "boolean" },
         suggestions: { type: "array", items: { type: "string", enum: [...ASSISTANT_SUGGESTIONS] } },
+        days: { ...nullableInt, description: `План: днів 1–${INTENT_PLAN_DAYS_MAX} або null` },
+        dayParts: { type: "array", items: { type: "string", enum: [...DAY_PARTS] } },
+        start: { anyOf: [{ type: "string", enum: [...PLAN_STARTS] }, { type: "null" }] },
       },
       required: [
         "kind",
         "categories",
         "nameQuery",
+        "keywords",
         "locality",
         "radiusMeters",
         "priceMin",
@@ -133,6 +168,9 @@ export function intentTool(
         "openNow",
         "clarify",
         "suggestions",
+        "days",
+        "dayParts",
+        "start",
       ],
       additionalProperties: false,
     },
@@ -176,6 +214,18 @@ export function asData(text: string): string {
 const clampInt = (v: unknown, min: number, max: number): number | null =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : null;
 
+/** Ключевые слова: строки, без лишних пробелов, в нижнем регистре, без повторов, не длиннее предела. */
+export function cleanKeywords(v: unknown): string[] {
+  return [
+    ...new Set(
+      (Array.isArray(v) ? v : [])
+        .filter((k): k is string => typeof k === "string")
+        .map((k) => k.replace(/\s+/g, " ").trim().toLowerCase().slice(0, INTENT_KEYWORD_MAX).trim())
+        .filter((k) => k.length >= 2),
+    ),
+  ].slice(0, INTENT_KEYWORDS_MAX);
+}
+
 /**
  * Проверка ввода инструмента (strict гарантирует форму, но не диапазоны и не принадлежность кодов): неизвестные
  * коды отбрасываются, числа — в допустимых пределах, лишнее — обрезается. Не объект — null (ответ без намерения).
@@ -187,7 +237,7 @@ export function parseIntent(
 ): AssistantIntent | null {
   if (typeof input !== "object" || input === null) return null;
   const o = input as Record<string, unknown>;
-  const kind: AssistantKind = o.kind === "tour" ? "tour" : "places";
+  const kind: AssistantKind = o.kind === "tour" || o.kind === "plan" ? o.kind : "places";
   const categories = [
     ...new Set(
       (Array.isArray(o.categories) ? o.categories : []).filter(
@@ -207,10 +257,14 @@ export function parseIntent(
       ),
     ),
   ].slice(0, 4);
+  const plan = kind === "plan";
+  const parts = Array.isArray(o.dayParts) ? (o.dayParts as unknown[]) : [];
+  const dayParts = plan ? DAY_PARTS.filter((p) => parts.includes(p)) : [];
   return {
     kind,
     categories,
     nameQuery: name.length >= 2 ? name.slice(0, INTENT_NAME_MAX) : null,
+    keywords: cleanKeywords(o.keywords),
     locality: typeof o.locality === "string" && allowedLocalities.has(o.locality) ? o.locality : null,
     radiusMeters: clampInt(o.radiusMeters, INTENT_RADIUS_MIN, INTENT_RADIUS_MAX),
     priceMin,
@@ -219,6 +273,13 @@ export function parseIntent(
     openNow: o.openNow === true,
     clarify: o.clarify === true,
     suggestions,
+    days: plan ? (clampInt(o.days, 1, INTENT_PLAN_DAYS_MAX) ?? 1) : null,
+    // Все три части — то же, что «весь день».
+    dayParts: dayParts.length === DAY_PARTS.length ? [] : dayParts,
+    start:
+      plan && typeof o.start === "string" && (PLAN_STARTS as readonly string[]).includes(o.start)
+        ? (o.start as PlanStart)
+        : null,
   };
 }
 
@@ -230,7 +291,7 @@ export function intentRequest(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: ASSISTANT_MODEL,
-    // Ответ — один вызов инструмента (~150 токенов) и короткое размышление на низком усилии.
+    // Ответ — один вызов инструмента (~200 токенов) и короткое размышление на низком усилии.
     max_tokens: 2000,
     output_config: { effort: "low" },
     system: INTENT_SYSTEM,
@@ -247,10 +308,11 @@ export function intentRequest(
 }
 
 /** Ввод инструмента из ответа модели; отказ, обрыв или ответ без вызова — undefined. */
-export function toolInputOf(m: Pick<Anthropic.Message, "content" | "stop_reason">): unknown {
+export function toolInputOf(
+  m: Pick<Anthropic.Message, "content" | "stop_reason">,
+  tool: string = INTENT_TOOL,
+): unknown {
   if (m.stop_reason === "refusal" || m.stop_reason === "max_tokens") return undefined;
-  const block = m.content.find(
-    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === INTENT_TOOL,
-  );
+  const block = m.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === tool);
   return block?.input;
 }
