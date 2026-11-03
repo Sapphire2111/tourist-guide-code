@@ -7,12 +7,7 @@ import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto } from "../guide/index.js";
 import type { AssistantRepository, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
-import {
-  AssistantService,
-  describe as describePlace,
-  LOCALITY_SEARCH_RADIUS,
-  shorten,
-} from "./assistant.service.js";
+import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
@@ -80,6 +75,8 @@ const reply = (input: unknown, stop: Anthropic.Message["stop_reason"] = "tool_us
     stop_reason: stop,
   }) as unknown as Anthropic.Message;
 
+type SearchArg = { origin?: { lon: number; lat: number }; localityIds?: readonly string[] };
+
 function setup(
   opts: {
     llm?: Partial<AssistantLlm>;
@@ -92,7 +89,7 @@ function setup(
     /** place_id → locality_id. */
     placeLocality?: Record<string, string>;
     /** Выдача каталога в зависимости от точки поиска. */
-    searchAt?: (origin: { lon: number; lat: number } | undefined) => PlaceSummaryDto[] | undefined;
+    searchAt?: (s: SearchArg) => PlaceSummaryDto[] | undefined;
   } = {},
 ) {
   const guide = {
@@ -108,9 +105,12 @@ function setup(
         ],
       }),
     ),
-    search: vi.fn((_r: string, s: { origin?: { lon: number; lat: number } }) =>
+    search: vi.fn((_r: string, s: SearchArg) =>
       Promise.resolve({
-        items: opts.searchAt?.(s.origin) ?? opts.places ?? [place(1), place(2)],
+        // Как каталог: localityIds — только места этих пунктов (place_id → locality_id из opts.placeLocality).
+        items: (opts.searchAt?.(s) ?? opts.places ?? [place(1), place(2)]).filter(
+          (p) => !s.localityIds?.length || s.localityIds.includes(opts.placeLocality?.[p.id] ?? ""),
+        ),
         nextOffset: null,
         radiusMeters: null,
       }),
@@ -134,9 +134,6 @@ function setup(
           location: BUKOVEL_AT,
         },
       ]),
-    ),
-    placeLocalities: vi.fn((_r: string, ids: readonly string[]) =>
-      Promise.resolve(new Map(ids.map((id) => [id, opts.placeLocality?.[id] ?? null]))),
     ),
   };
   const budget = new AssistantBudget({ dailyLimit: opts.dailyLimit, userDailyLimit: opts.userDailyLimit });
@@ -387,11 +384,15 @@ describe("населені пункти", () => {
     const schema = JSON.stringify(tool.input_schema);
     expect(schema).toContain('"polianytsia"');
     expect(schema).toContain("Буковель");
-    // Поиск — от центра Поляниці, не от точки туриста и не в выбранном Яремче.
+    // Поиск — в Поляниці (localityIds), не в выбранном Яремче; точка туриста — для расстояния, без радиуса.
     expect(guide.search).toHaveBeenCalledTimes(1);
     expect(guide.search).toHaveBeenCalledWith(
       REGION,
-      expect.objectContaining({ origin: BUKOVEL_AT, radius: LOCALITY_SEARCH_RADIUS }),
+      expect.objectContaining({
+        origin: { lon: 24.55, lat: 48.45 },
+        radius: undefined,
+        localityIds: [POLIANYTSIA],
+      }),
     );
     expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
     expect(res.intent.locality).toBe("polianytsia");
@@ -408,14 +409,12 @@ describe("населені пункти", () => {
     placeLocality[bukovel.id] = POLIANYTSIA;
     const { service } = setup({
       // Выдача от точки туриста — 60 мест Яремче (Буковеля в первых 50 нет); от центра Поляниці — Буковель.
-      searchAt: (o) => (o === BUKOVEL_AT ? [bukovel] : near.slice(0, 50)),
+      searchAt: (s) => (s.localityIds?.includes(POLIANYTSIA) ? [bukovel] : near.slice(0, 50)),
       llm: { create: vi.fn(() => Promise.resolve(reply(intent({ locality: "polianytsia" })))) },
       placeLocality,
     });
     const res = await service.query(REGION, USER, ask("прокат у Буковелі", { origin: YAREMCHE_AT }));
     expect(res.items.map((i) => i.place.name.uk)).toEqual(["Прокат у Буковелі"]);
-    // Расстояние — от туриста (≈ 13 км), а не от центра пункта.
-    expect(res.items[0]!.place.distanceMeters).toBeGreaterThan(10_000);
   });
 
   it("пункт не назван — действует выбор туриста; чужие id и код от модели вне списка — игнорируются", async () => {

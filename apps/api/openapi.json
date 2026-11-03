@@ -5497,6 +5497,74 @@
         "tags": ["guide"]
       }
     },
+    "/localities": {
+      "get": {
+        "description": "Без аутентификации. Активные пункты (kind settlement) по sortOrder; id — для localityIds в GET /places/search. aliases — другие названия (Буковель → Поляниця) для распознавания в тексте. 404 — региона нет или он не активен.",
+        "operationId": "listGuideLocalities",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GuideLocalityListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Населённые пункты региона («Локація» главной, голосовой ассистент): названия, синонимы, число мест",
+        "tags": ["guide"]
+      }
+    },
     "/places/search": {
       "get": {
         "description": "Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). Rate limit 60/мин. 404 — региона нет или он не активен.",
@@ -5527,7 +5595,7 @@
             "name": "radius",
             "required": false,
             "in": "query",
-            "description": "Радиус, м — только с lat/lng («Що поруч»)",
+            "description": "Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния)",
             "schema": { "minimum": 10, "maximum": 20000, "default": 500, "type": "integer" }
           },
           {
@@ -5543,6 +5611,13 @@
             "in": "query",
             "description": "Текст: название (uk, en) или адрес; без координат — поиск по всему региону",
             "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
+          },
+          {
+            "name": "localityIds",
+            "required": false,
+            "in": "query",
+            "description": "Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую",
+            "schema": { "maxItems": 10, "type": "array", "items": { "type": "string", "format": "uuid" } }
           },
           {
             "name": "available_now",
@@ -12714,6 +12789,39 @@
             "description": "Активные категории региона, плоско (parentId), по sortOrder; подкатегории выключенного раздела не входят",
             "type": "array",
             "items": { "$ref": "#/components/schemas/GuideCategoryDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "GuideLocalityDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "example": "polianytsia" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "aliases": {
+            "example": ["Буковель", "Bukovel"],
+            "description": "Другие названия (курорт, латиница, формы) — для распознавания в тексте запроса",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "sortOrder": { "type": "integer" },
+          "placeCount": { "type": "integer", "description": "Опубликованных мест в пункте" }
+        },
+        "required": ["id", "code", "name", "aliases", "location", "sortOrder", "placeCount"]
+      },
+      "GuideLocalityListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Активные населённые пункты региона по sortOrder",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GuideLocalityDto" }
           }
         },
         "required": ["items"]

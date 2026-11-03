@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ApiError } from "../../common/http/index.js";
 import type { LonLat } from "../../db/index.js";
-import { GuideService, type PlaceSummaryDto } from "../guide/index.js";
+import { GuideService, LOCALITY_ALIASES, type PlaceSummaryDto } from "../guide/index.js";
 import { RegionsRepository } from "../regions/index.js";
 import type {
   AssistantNote,
@@ -27,7 +27,7 @@ import {
   type AssistantSpeech,
   type AudioMime,
 } from "./providers.js";
-import { haversineMeters, orderRoute } from "./route.js";
+import { orderRoute } from "./route.js";
 
 /** Мест в ответе «places». */
 export const ASSISTANT_PLACES_MAX = 10;
@@ -48,20 +48,8 @@ export type AssistantQuery = {
   localityIds?: readonly string[];
 };
 
-/**
- * Алиасы населённых пунктов для модели (курорты, падежи). Временно здесь — после слияния ветки «Локація» заменить на
- * общий LOCALITY_ALIASES (guide/locality-aliases.ts), а фильтр placeLocalities — на localityIds в поиске каталога.
- */
-export const LOCALITY_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  polianytsia: ["Буковель", "Буковелі", "Bukovel", "Поляниця"],
-};
 /** Кандидатов на категорию и пункт при поиске в населённом пункте. */
 const CANDIDATES_WITH_LOCALITY = 50;
-/**
- * Поиск в населённом пункте — от его центра в этом радиусе, затем фильтр по places.locality_id (временно, до общего
- * параметра localityIds в поиске каталога): выдача от точки туриста теряла бы места дальнего пункта.
- */
-export const LOCALITY_SEARCH_RADIUS = 10_000;
 
 type Enrichment = PlaceEnrichmentFacts;
 
@@ -157,10 +145,7 @@ export class AssistantService {
     const localityIds = intent.locality
       ? [localityIdOf.get(intent.locality)!]
       : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
-    const areas = localityRows
-      .filter((l) => localityIds.includes(l.id))
-      .map((l) => ({ id: l.id, center: l.location }));
-    return this.select(regionId, intent, idOf, q.origin, areas);
+    return this.select(regionId, intent, idOf, q.origin, localityIds);
   }
 
   async transcribe(regionId: string, userId: string, audio: Buffer, mime: AudioMime): Promise<string> {
@@ -182,33 +167,26 @@ export class AssistantService {
     intent: AssistantIntent,
     idOf: ReadonlyMap<string, string>,
     origin: LonLat | undefined,
-    areas: readonly { id: string; center: LonLat }[],
+    localityIds: readonly string[],
   ): Promise<AssistantResultDto> {
-    const byLocality = areas.length > 0;
+    const byLocality = localityIds.length > 0;
     const cats = intent.categories.length ? intent.categories.map((code) => idOf.get(code)) : [undefined];
-    // В населённом пункте — от его центра (Буковель из Яремче — дальше любого радиуса от туриста), иначе — от точки
-    // туриста. TODO(локації): localityIds в поиск каталога, когда в GET /places/search появится параметр.
-    const searches = byLocality
-      ? areas.flatMap((a) =>
-          cats.map((categoryId) => ({
-            categoryId,
-            origin: a.center,
-            radius: LOCALITY_SEARCH_RADIUS,
-            limit: CANDIDATES_WITH_LOCALITY,
-          })),
-        )
-      : cats.map((categoryId) => ({
-          categoryId,
-          origin,
-          radius: origin ? (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT) : undefined,
-          limit: CANDIDATES_PER_CATEGORY,
-        }));
+    // В населённых пунктах — localityIds каталога без радиуса (Буковель из Яремче — дальше любого радиуса от туриста);
+    // точка туриста — только для расстояния и порядка. Иначе — в радиусе от точки туриста.
+    const searches = cats.map((categoryId) => ({
+      categoryId,
+      origin,
+      radius: byLocality || !origin ? undefined : (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT),
+      localityIds: byLocality ? [...localityIds] : undefined,
+      limit: byLocality ? CANDIDATES_WITH_LOCALITY : CANDIDATES_PER_CATEGORY,
+    }));
     const pages = await Promise.all(
       searches.map((s) =>
         this.guide.search(regionId, {
           origin: s.origin,
           radius: s.radius,
           categoryId: s.categoryId,
+          localityIds: s.localityIds,
           text: intent.nameQuery ?? undefined,
           limit: s.limit,
           offset: 0,
@@ -221,20 +199,6 @@ export class AssistantService {
       if (seen.has(item.id)) continue;
       seen.add(item.id);
       found.push(item);
-    }
-    if (byLocality) {
-      const localityOf = await this.repo.placeLocalities(
-        regionId,
-        found.map((p) => p.id),
-      );
-      const wanted = new Set(areas.map((a) => a.id));
-      // Расстояние — от точки туриста (поиск шёл от центра пункта), без точки — нет.
-      found = found
-        .filter((p) => wanted.has(localityOf.get(p.id) ?? ""))
-        .map((p) => ({
-          ...p,
-          distanceMeters: origin ? Math.round(haversineMeters(origin, p.location) * 10) / 10 : null,
-        }));
     }
     // Несколько категорий: общий порядок — по расстоянию (с точкой), иначе как пришло.
     if (origin && (pages.length > 1 || byLocality))

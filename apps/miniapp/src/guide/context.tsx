@@ -39,6 +39,7 @@ export function noopGuideApi(): GuideApi {
   const fail = () => Promise.reject(new Error("no api"));
   return {
     categories: fail,
+    localities: fail,
     search: fail,
     place: fail,
     favorites: fail,

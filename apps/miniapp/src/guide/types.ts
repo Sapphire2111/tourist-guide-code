@@ -122,8 +122,18 @@ export type SearchParams = {
   radius?: number;
   categoryId?: string;
   q?: string;
+  /** Населённые пункты «Локація» (id из localities); пусто — весь регион. */
+  localityIds?: readonly string[];
   /** Размер страницы (по умолчанию 50). */
   limit?: number;
+};
+
+/** Населённый пункт региона для «Локація» (GET /localities). */
+export type LocalityOption = {
+  id: string;
+  name: LocalizedText;
+  /** Опубликованных мест; 0 — в выборе не показывается. */
+  placeCount: number;
 };
 
 /** Ошибка «не найдено» (404) — отличается от сбоя сети/сервера. */
@@ -143,6 +153,7 @@ export class UnauthorizedError extends Error {
 /** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
 export type GuideApi = {
   categories(): Promise<Category[]>;
+  localities(): Promise<LocalityOption[]>;
   search(params: SearchParams): Promise<PlaceSummary[]>;
   place(id: string): Promise<PlaceDetail>;
   favorites(): Promise<PlaceSummary[]>;

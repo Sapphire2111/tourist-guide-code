@@ -790,6 +790,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/localities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Населённые пункты региона («Локація» главной, голосовой ассистент): названия, синонимы, число мест
+     * @description Без аутентификации. Активные пункты (kind settlement) по sortOrder; id — для localityIds в GET /places/search. aliases — другие названия (Буковель → Поляниця) для распознавания в тексте. 404 — региона нет или он не активен.
+     */
+    get: operations["listGuideLocalities"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/places/search": {
     parameters: {
       query?: never;
@@ -2786,6 +2806,29 @@ export interface components {
     GuideCategoryListDto: {
       /** @description Активные категории региона, плоско (parentId), по sortOrder; подкатегории выключенного раздела не входят */
       items: components["schemas"]["GuideCategoryDto"][];
+    };
+    GuideLocalityDto: {
+      /** Format: uuid */
+      id: string;
+      /** @example polianytsia */
+      code: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      /**
+       * @description Другие названия (курорт, латиница, формы) — для распознавания в тексте запроса
+       * @example [
+       *       "Буковель",
+       *       "Bukovel"
+       *     ]
+       */
+      aliases: string[];
+      location: components["schemas"]["LonLatDto"] | null;
+      sortOrder: number;
+      /** @description Опубликованных мест в пункте */
+      placeCount: number;
+    };
+    GuideLocalityListDto: {
+      /** @description Активные населённые пункты региона по sortOrder */
+      items: components["schemas"]["GuideLocalityDto"][];
     };
     /**
      * @description Метка платного размещения «Реклама» / «Партнер» (ТЗ §4.3); показывать всегда, если не null
@@ -10245,6 +10288,75 @@ export interface operations {
       };
     };
   };
+  listGuideLocalities: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GuideLocalityListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
   searchPlaces: {
     parameters: {
       query: {
@@ -10254,12 +10366,14 @@ export interface operations {
         lat?: number;
         /** @description Долгота (вместе с lat) */
         lng?: number;
-        /** @description Радиус, м — только с lat/lng («Що поруч») */
+        /** @description Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния) */
         radius?: number;
         /** @description Категория (из GET /categories); раздел включает свои подкатегории */
         category?: string;
         /** @description Текст: название (uk, en) или адрес; без координат — поиск по всему региону */
         q?: string;
+        /** @description Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую */
+        localityIds?: string[];
         /** @description «Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений) */
         available_now?: boolean;
         limit?: number;

@@ -5,6 +5,7 @@ import {
   FavoritesController,
   GuideCategoriesController,
   GuideEmergencyContactsController,
+  GuideLocalitiesController,
   GuidePlacesController,
 } from "./guide.controller.js";
 import { GuideRepository } from "./guide.repository.js";
@@ -12,13 +13,14 @@ import { GuideService } from "./guide.service.js";
 import { GOOGLE_PHOTOS_CONFIG, GooglePhotosService, type GooglePhotosConfig } from "./google-photos.js";
 
 /**
- * Публичный каталог туриста (блок 4, ADR-0019): GET /categories, /places/search, /places/{id}, /emergency-contacts
+ * Публичный каталог туриста (блок 4, ADR-0019): GET /categories, /localities, /places/search, /places/{id}, /emergency-contacts
  * и избранное /favorites. Db — глобальный DatabaseModule; ссылки на фото — MediaService (глобальный MediaModule).
  */
 @Module({
   imports: [RegionsModule, EmergencyContactsModule],
   controllers: [
     GuideCategoriesController,
+    GuideLocalitiesController,
     GuidePlacesController,
     FavoritesController,
     GuideEmergencyContactsController,

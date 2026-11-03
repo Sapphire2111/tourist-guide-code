@@ -23,8 +23,9 @@ import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash } from "./design/Chrome.js";
-import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
-import { ResortProvider } from "./design/ResortProvider.js";
+import { LocationChip } from "./guide/LocationPicker.js";
+import { LocationProvider } from "./guide/LocationProvider.js";
+import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
@@ -228,6 +229,7 @@ function Home(props: RoutesProps) {
   return (
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
+      <LocationChip />
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
           <Onboarding api={api} webApp={webApp} onDone={onMe} />
@@ -241,7 +243,7 @@ function Home(props: RoutesProps) {
       <HomeAssistant {...props} />
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      <ResortPlaces />
+      <HomePlaces />
       <SeasonTags />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
@@ -692,13 +694,12 @@ export function App({
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          {/* Свайпера курортов нет — выдача от QR-контекста / всего региона (сохранённый курорт не фильтрует незаметно). */}
-          <ResortProvider enabled={false} venueEntry={venue !== null}>
-            <main className="kosiv-shell" lang={effectiveLocale}>
-              {state.status === "loading" || state.status === "error" ? (
-                <StartupStatus state={state} />
-              ) : (
-                <GuideProvider value={guide}>
+          <main className="kosiv-shell" lang={effectiveLocale}>
+            {state.status === "loading" || state.status === "error" ? (
+              <StartupStatus state={state} />
+            ) : (
+              <GuideProvider value={guide}>
+                <LocationProvider venueEntry={venue !== null}>
                   <HostProvider value={host}>
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
@@ -709,10 +710,10 @@ export function App({
                       />
                     </PartnerProvider>
                   </HostProvider>
-                </GuideProvider>
-              )}
-            </main>
-          </ResortProvider>
+                </LocationProvider>
+              </GuideProvider>
+            )}
+          </main>
         </SeasonProvider>
       </FeatureFlagsProvider>
     </I18nProvider>

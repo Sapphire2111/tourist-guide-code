@@ -59,6 +59,7 @@ function fakeApi(over: Partial<GuideApi> = {}): GuideApi {
       { id: EAT, parentId: null, name: { uk: "Де поїсти" }, homeSection: "eat" as const },
       { id: CAFE, parentId: EAT, name: { uk: "Кав'ярні" }, homeSection: null },
     ]),
+    localities: vi.fn(async () => []),
     search: vi.fn(async () => [summary(), summary({ id: "p2", recommended: false, adLabel: "advertising" })]),
     place: vi.fn(async () => detail()),
     favorites: vi.fn(async () => []),
