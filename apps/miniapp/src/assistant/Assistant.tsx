@@ -76,8 +76,8 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
     };
   }, []);
   useEffect(() => saveDialog(dialogId.current, turns), [turns]);
-  const point = guide.base?.point ?? null;
-  const { selected: localityIds } = useLocations();
+  const { selected: localityIds, gps } = useLocations();
+  const point = gps ?? guide.base?.point ?? null;
 
   const ask = (text: string) => {
     const id = nextId.current++;

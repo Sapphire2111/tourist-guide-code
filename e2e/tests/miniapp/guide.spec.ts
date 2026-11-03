@@ -131,6 +131,39 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
   });
 
+  test("«Локація»: «Моє місцезнаходження» — поиск вокруг точки устройства; выбор пункта снимает режим", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 48.4535, longitude: 24.5635 });
+    await page.goto("/");
+    await page.getByTestId("location-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Локація" });
+    await sheet.getByRole("checkbox", { name: "Моє місцезнаходження" }).check();
+    await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).toBeChecked();
+    await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).not.toBeChecked();
+    const state = apiMockState.get(page)!;
+    await expect.poll(() => state.searches.at(-1)).toMatchObject({ lat: "48.4535", radius: "500" });
+    await expectNoSeriousA11yViolations(page);
+    await sheet.getByRole("checkbox", { name: "Татарів" }).check();
+    await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).not.toBeChecked();
+    await sheet.getByRole("button", { name: "Готово" }).click();
+    await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
+    await expect.poll(() => state.searches.at(-1)).toMatchObject({ localityIds: LOCALITY_TATARIV });
+  });
+
+  test("«Локація»: отказ в геолокации — сообщение и откат на «Усі локації»", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("location-chip").click();
+    const sheet = page.getByRole("dialog", { name: "Локація" });
+    await sheet.getByRole("checkbox", { name: "Моє місцезнаходження" }).check();
+    await expect(page.getByTestId("location-gps-failed")).toBeVisible();
+    await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).toBeChecked();
+    await sheet.getByRole("button", { name: "Готово" }).click();
+    await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
+  });
+
   test("картка місця: бейджи, маршрут, звонок, обране; события; a11y", async ({ page }) => {
     await page.goto(`/#/place/${CAFE_PLACE}`);
     await expect(page.getByRole("heading", { level: 1, name: "Кав'ярня «Смерека»" })).toBeVisible();

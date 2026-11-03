@@ -4,7 +4,7 @@ import { Link, useT } from "@tg/ui";
 import { useEffect, useState } from "react";
 import { useGuide, type Async } from "../guide/context.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary } from "../guide/types.js";
-import { useLocationCaption, useLocations } from "../guide/LocationProvider.js";
+import { GPS_RADIUS, useLocationCaption, useLocations } from "../guide/LocationProvider.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { ICONS } from "./Ornament.js";
 import { SEASON_CONFIG } from "./season.js";
@@ -48,7 +48,7 @@ export function SeasonTags() {
 export function HomePlaces() {
   const { t } = useT();
   const { api, regionId } = useGuide();
-  const { selected } = useLocations();
+  const { selected, gps } = useLocations();
   const caption = useLocationCaption();
   const [places, setPlaces] = useState<Async<PlaceSummary[]>>({ status: "loading" });
   useEffect(() => {
@@ -59,6 +59,7 @@ export function HomePlaces() {
     api
       .search({
         ...(selected.length ? { localityIds: selected } : {}),
+        ...(gps ? { point: gps, radius: GPS_RADIUS } : {}),
         excludeSections: OWN_MAP_SECTIONS,
         limit: HOME_PLACES,
       })
@@ -69,7 +70,7 @@ export function HomePlaces() {
     return () => {
       alive = false;
     };
-  }, [api, regionId, selected]);
+  }, [api, regionId, selected, gps]);
   if (!regionId) return null;
   // Сбой ленты не мешает главной: разделы ниже работают, лента просто не показывается.
   if (places.status === "error") return null;

@@ -10,7 +10,7 @@ import "./location.css";
 
 export function LocationChip() {
   const { t } = useT();
-  const { options } = useLocations();
+  const { options, gps } = useLocations();
   const names = useLocationNames();
   const [open, setOpen] = useState(false);
   // Стабильная ссылка: иначе эффект листа перезапускался бы на каждый рендер и уводил фокус.
@@ -19,7 +19,9 @@ export function LocationChip() {
   if (!options || options.length < 2) return null;
   const label =
     names.length === 0
-      ? t("miniapp.location.all")
+      ? gps
+        ? t("miniapp.location.mine")
+        : t("miniapp.location.all")
       : names.length === 1
         ? names[0]!
         : t("miniapp.location.more", { name: names[0]!, count: names.length - 1 });
@@ -45,11 +47,14 @@ export function LocationChip() {
 
 function LocationSheet({ onClose }: { onClose: () => void }) {
   const { t, locale } = useT();
-  const { options, selected, setSelected } = useLocations();
+  const { options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps } = useLocations();
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    sheetRef.current?.querySelector<HTMLElement>("input")?.focus();
+    const sheet = sheetRef.current;
+    (
+      sheet?.querySelector<HTMLElement>("input:checked") ?? sheet?.querySelector<HTMLElement>("input")
+    )?.focus();
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const releaseBack = interceptBack(onClose);
@@ -98,7 +103,27 @@ function LocationSheet({ onClose }: { onClose: () => void }) {
         <ul className="loc-list">
           <li>
             <label className="loc-option">
-              <input type="checkbox" checked={selected.length === 0} onChange={() => setSelected([])} />
+              <input type="checkbox" checked={gps !== null || gpsBusy} onChange={selectGps} />
+              <span>{t("miniapp.location.mine")}</span>
+            </label>
+            {gpsBusy && (
+              <p role="status" className="loc-hint">
+                {t("miniapp.location.locating")}
+              </p>
+            )}
+            {gpsFailed && (
+              <p role="alert" className="loc-hint" data-testid="location-gps-failed">
+                {t("miniapp.location.gpsFailed")}
+              </p>
+            )}
+          </li>
+          <li>
+            <label className="loc-option">
+              <input
+                type="checkbox"
+                checked={selected.length === 0 && gps === null && !gpsBusy}
+                onChange={() => setSelected([])}
+              />
               <span>{t("miniapp.location.all")}</span>
             </label>
           </li>

@@ -297,6 +297,10 @@ export const uk = {
   "miniapp.season.autumn.tag4": "Чани",
   "miniapp.location.title": "Локація",
   "miniapp.location.all": "Усі локації",
+  "miniapp.location.mine": "Моє місцезнаходження",
+  "miniapp.location.locating": "Визначаємо, де ви…",
+  "miniapp.location.gpsFailed":
+    "Не вдалося визначити місцезнаходження — дозвольте доступ до геолокації. Показуємо всі локації.",
   "miniapp.location.more": "{name} +{count}",
   "miniapp.location.hint":
     "Позначте один чи кілька населених пунктів — головна, розділи й пошук показуватимуть місця лише там. «Що поруч» шукає довкола вас.",
@@ -1782,6 +1786,10 @@ export const en: Messages = {
   "miniapp.season.autumn.tag4": "Vats",
   "miniapp.location.title": "Location",
   "miniapp.location.all": "All locations",
+  "miniapp.location.mine": "My location",
+  "miniapp.location.locating": "Finding where you are…",
+  "miniapp.location.gpsFailed":
+    "Could not get your location — please allow location access. Showing all locations.",
   "miniapp.location.more": "{name} +{count}",
   "miniapp.location.hint":
     "Tick one or more towns or villages — home, sections and search will show places only there. “Nearby” searches around you.",

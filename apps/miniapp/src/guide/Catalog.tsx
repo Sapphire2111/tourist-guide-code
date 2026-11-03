@@ -6,7 +6,7 @@ import { Button, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
-import { useLocationCaption, useLocations } from "./LocationProvider.js";
+import { GPS_RADIUS, useLocationCaption, useLocations } from "./LocationProvider.js";
 import { MapSlot } from "./MapSlot.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import type { CatalogSection, Category } from "./types.js";
@@ -61,7 +61,7 @@ function CategoryPlaces({
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const { selected: localityIds } = useLocations();
+  const { selected: localityIds, gps } = useLocations();
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
   const [categoryId, setCategoryId] = useState(rootId);
@@ -72,7 +72,7 @@ function CategoryPlaces({
   const [view, setView] = useState<"list" | "map">(mapFirst ? "map" : "list");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
-  const point = base?.point ?? null;
+  const point = gps ?? base?.point ?? null;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -88,11 +88,12 @@ function CategoryPlaces({
             q: q || undefined,
             point,
             ...(byLocation ? { localityIds } : {}),
+            ...(gps ? { radius: GPS_RADIUS } : {}),
             ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
           }),
         )
         .then((list) => ({ list, submitId })),
-    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds],
+    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;

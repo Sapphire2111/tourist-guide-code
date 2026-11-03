@@ -5,11 +5,16 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
-import type { GuideApi } from "../guide/types.js";
+import type { GuideApi, PlaceSummary, SearchParams } from "../guide/types.js";
 import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher } from "./Chrome.js";
 import { LocationChip } from "../guide/LocationPicker.js";
-import { LOCATION_STORAGE_KEY, LocationProvider, useLocations } from "../guide/LocationProvider.js";
+import {
+  GPS_RADIUS,
+  LOCATION_STORAGE_KEY,
+  LocationProvider,
+  useLocations,
+} from "../guide/LocationProvider.js";
 import { HOME_PLACES, HomePlaces, SeasonTags } from "./HomeParts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
 import {
@@ -215,7 +220,12 @@ describe("локації", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Усі локації" }));
     await flush();
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
-    expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
+    // Явное «Усі локації» запоминается (GPS по умолчанию не включается), пунктов в хранилище нет.
+    expect(JSON.parse(localStorage.getItem(LOCATION_STORAGE_KEY)!)).toEqual({
+      regionId: "region",
+      ids: [],
+      mode: "all",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Готово" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -443,6 +453,96 @@ describe("шапка", () => {
     fireEvent.click(screen.getByRole("button", { name: "Меню" }));
     expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe("#/profile");
     expect(screen.queryByTestId("resort-swiper")).toBeNull();
+  });
+});
+
+function stubGeolocation(result: { lat: number; lng: number } | null) {
+  vi.stubGlobal("navigator", {
+    ...navigator,
+    geolocation: {
+      getCurrentPosition: (ok: (p: unknown) => void, fail: () => void) =>
+        result ? ok({ coords: { latitude: result.lat, longitude: result.lng, accuracy: 20 } }) : fail(),
+    },
+  });
+}
+
+describe("локація: моє місцезнаходження", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const mount = (search: (params: SearchParams) => Promise<PlaceSummary[]>) =>
+    render(
+      <GuideProvider value={env(search)}>
+        <LocationProvider>
+          <LocationChip />
+          <HomePlaces />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+
+  it("по умолчанию (ничего не выбрано, точка доступна) — поиск вокруг точки; выбор пункта снимает режим и наоборот", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    const search = vi.fn(async (_params: SearchParams) => [place]);
+    mount(search);
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({
+      point: { lat: 48.45, lng: 24.55, accuracy: 20 },
+      radius: GPS_RADIUS,
+      excludeSections: ["stay"],
+      limit: HOME_PLACES,
+    });
+    const chip = screen.getByTestId("location-chip");
+    expect(chip.textContent).toContain("Моє місцезнаходження");
+    expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Моє місцезнаходження");
+    fireEvent.click(chip);
+    expect((screen.getByRole("checkbox", { name: "Моє місцезнаходження" }) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Татарів" }));
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({
+      localityIds: [TATARIV],
+      excludeSections: ["stay"],
+      limit: HOME_PLACES,
+    });
+    expect(chip.textContent).toContain("Татарів");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ radius: GPS_RADIUS }));
+    expect(search.mock.calls.at(-1)![0]).not.toHaveProperty("localityIds");
+    expect(chip.textContent).toContain("Моє місцезнаходження");
+  });
+
+  it("нет точки — по умолчанию «Усі локації» без сообщений; явный выбор при отказе — сообщение и откат", async () => {
+    stubGeolocation(null);
+    const search = vi.fn(async (_params: SearchParams) => [place]);
+    mount(search);
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
+    const chip = screen.getByTestId("location-chip");
+    expect(chip.textContent).toContain("Усі локації");
+    fireEvent.click(chip);
+    expect(screen.queryByTestId("location-gps-failed")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));
+    await flush();
+    await flush();
+    expect(screen.getByTestId("location-gps-failed").textContent).toContain("Не вдалося визначити");
+    expect((screen.getByRole("checkbox", { name: "Усі локації" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Моє місцезнаходження" }) as HTMLInputElement).checked).toBe(
+      false,
+    );
+    expect(chip.textContent).toContain("Усі локації");
+  });
+
+  it("явное «Усі локації» запоминается: GPS по умолчанию не включается", async () => {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "region", ids: [], mode: "all" }));
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    const search = vi.fn(async (_params: SearchParams) => [place]);
+    mount(search);
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
   });
 });
 
