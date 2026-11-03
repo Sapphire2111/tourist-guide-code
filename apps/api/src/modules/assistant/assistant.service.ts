@@ -107,6 +107,8 @@ export type AssistantQuery = {
   previous: AssistantIntent | null;
   /** Населённые пункты, выбранные туристом (фильтр «Локація»); названный в запросе — главнее. */
   localityIds?: readonly string[];
+  /** Ответ на уточняющие вопросы плана: намерение — previous с ответами, без вызова модели. */
+  answer?: boolean;
 };
 
 /** Кандидатов на категорию и пункт при поиске в населённом пункте. */
@@ -249,29 +251,37 @@ export class AssistantService {
     }));
     const localityIdOf = new Map(localityRows.map((l) => [l.code, l.id]));
 
-    await this.budget.spend(userId, BUDGET_UNITS.query);
-    let message;
-    try {
-      message = await this.llm.create(
-        intentRequest(
-          categories,
-          {
-            history: q.history,
-            previous: q.previous,
-            text: q.text,
-            hasOrigin: Boolean(q.origin),
-          },
-          localities,
-        ),
-      );
-    } catch (e) {
-      throw upstream(e);
-    }
-    // Отказ модели, обрыв или ответ без вызова инструмента — «уточніть запит», а не ошибка.
     const allowed = new Set(catalog.idOf.keys());
-    const intent =
-      parseIntent(toolInputOf(message), allowed, new Set(localityIdOf.keys())) ??
-      clarifyIntent(q.previous, allowed);
+    const allowedLocalities = new Set(localityIdOf.keys());
+    const prevPlan = q.previous?.kind === "plan" ? q.previous : null;
+    let intent: AssistantIntent;
+    if (q.answer && prevPlan) {
+      // Ответ на уточнения (чипы области и передвижения): намерение — прежнее с ответами, проверенное как ответ
+      // модели (коды каталога, пределы); модель не вызывается — без единицы бюджета и без 2–5 с ожидания.
+      intent = { ...parseIntent(prevPlan, allowed, allowedLocalities)!, clarify: false };
+    } else {
+      await this.budget.spend(userId, BUDGET_UNITS.query);
+      let message;
+      try {
+        message = await this.llm.create(
+          intentRequest(
+            categories,
+            {
+              history: q.history,
+              previous: q.previous,
+              text: q.text,
+              hasOrigin: Boolean(q.origin),
+            },
+            localities,
+          ),
+        );
+      } catch (e) {
+        throw upstream(e);
+      }
+      // Отказ модели, обрыв или ответ без вызова инструмента — «уточніть запит», а не ошибка.
+      intent =
+        parseIntent(toolInputOf(message), allowed, allowedLocalities) ?? clarifyIntent(q.previous, allowed);
+    }
     const nothing =
       !intent.categories.length && !intent.nameQuery && !intent.keywords.length && !intent.related.length;
     if (intent.clarify || (intent.kind !== "plan" && nothing))
@@ -281,12 +291,25 @@ export class AssistantService {
       [...new Set(ids.map((id) => id.toLowerCase()))].filter((id) => regionLocalities.has(id));
     if (intent.kind === "plan") {
       // Ответы на уточнения (область, передвижение) — в прежнем намерении; модель могла их не повторить.
-      const prev = q.previous?.kind === "plan" ? q.previous : null;
+      const prev = prevPlan;
       intent.scope ??= prev?.scope ?? null;
       intent.transport ??= prev?.transport ?? null;
       intent.scopeLocalityIds = intent.scope === "localities" ? inRegion(prev?.scopeLocalityIds ?? []) : [];
       // Пункты не выбраны (или чужие) — как по всему региону.
       if (intent.scope === "localities" && !intent.scopeLocalityIds.length) intent.scope = "region";
+      // Модель не перекрывает ответ на уточнение: «обрані локації» — пункты из ответа (не пункт и не радиус модели);
+      // «Пішки» — способ передвижения, а не радиус «пішки ≈ 1500 м» (если турист не назвал расстояние числом).
+      if (intent.scope === "localities") {
+        intent.locality = null;
+        intent.radiusMeters = null;
+      }
+      if (
+        intent.transport === "foot" &&
+        intent.radiusMeters !== null &&
+        (prev?.radiusMeters ?? null) === null &&
+        !/\d/.test(q.text)
+      )
+        intent.radiusMeters = null;
       // Многодневный план без области или передвижения — сначала уточнить (места не ищем).
       if ((intent.days ?? 1) >= 2) {
         const questions: AssistantQuestion[] = [];
@@ -659,33 +682,31 @@ export class AssistantService {
     let areas: LonLat[] = [];
 
     if (multiArea) {
-      // 1) Пам'ятки и активности: по региону — лучшие по рейтингу (без радиуса), по пунктам — в этих пунктах.
+      // 1) Пам'ятки и активности — лучшие по рейтингу: по всему региону или в выбранных пунктах (без радиуса).
       const sightIds = PLAN_AREA_SECTIONS.map((code) => catalog.anyIdOf.get(code)).filter(
         (id): id is string => Boolean(id),
       );
       const limit = Math.min(PLAN_CANDIDATES_MAX * 2, PLAN_REGION_SIGHTS_PER_DAY * days.length);
-      if (byLocality) {
-        const pages = await Promise.all(
-          sightIds.map((categoryId) =>
-            this.guide.search(regionId, {
-              categoryId,
-              localityIds: [...scope.localityIds],
-              limit: perSection,
-              offset: 0,
-            }),
-          ),
-        );
-        add(pages.flatMap((x) => x.items));
-      } else {
-        const ids = await this.repo.topRated(regionId, { categoryIds: sightIds, limit });
-        if (ids.length) add((await this.guide.search(regionId, { ids, limit: ids.length, offset: 0 })).items);
-      }
+      const top = await this.repo.topRated(regionId, {
+        categoryIds: sightIds,
+        localityIds: byLocality ? scope.localityIds : undefined,
+        limit,
+      });
+      if (top.length)
+        add((await this.guide.search(regionId, { ids: top, limit: top.length, offset: 0 })).items);
       if (intent.keywords.length || intent.related.length) await wanted({});
       const sightFacts = await this.repo.ratings(regionId, [...places.keys()]);
       const sights = [...places.values()].map((p) =>
         planCandidate(p, catalog, sightFacts.get(p.id), null, { wanted: wantedOf(p) }),
       );
       areas = planAreas(sights, days.length, { ...opts, origin: scope.origin, transport });
+      // Районов нет (пам'яток с координатами не нашлось) — запасной вариант: план вокруг якоря, как без районов.
+      if (!areas.length) {
+        places.clear();
+        wantedIds.clear();
+      }
+    }
+    if (areas.length) {
       // 2) Вокруг каждого района — еда и отдых (пешком — и пам'ятки рядом: район компактный).
       const aroundIds = (foot ? PLAN_SECTIONS : PLAN_AROUND_SECTIONS)
         .map((code) => catalog.anyIdOf.get(code))
@@ -709,6 +730,7 @@ export class AssistantService {
       // День начинается в районе: переезд от жилья — между днями (transfer), не первым пунктом дня.
       planOrigin = undefined;
     } else {
+      // Без районов (один день, «тут», один пункт или запасной вариант).
       // Где искать: выбранные пункты; иначе от точки туриста; иначе — вокруг лучшей пам'ятки региона.
       let center = scope.origin;
       // В пункте без точки туриста (или она далеко — QR отеля в Косові, «план у Буковелі») — кандидаты ближе к центру

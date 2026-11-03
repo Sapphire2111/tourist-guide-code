@@ -45,6 +45,8 @@ export type AssistantAsk = {
   previous: AssistantIntent | null;
   /** Выбор «Локація»; пункт, названный в запросе, сервер ставит выше. */
   localityIds?: readonly string[];
+  /** Ответ на уточняющие вопросы: намерение — previous с ответами, сервер не вызывает модель. */
+  answer?: boolean;
 };
 
 export type AssistantApi = {
@@ -103,7 +105,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
     return regionId;
   };
   return {
-    ask: async ({ text, point, history, previous, localityIds }) =>
+    ask: async ({ text, point, history, previous, localityIds, answer }) =>
       resultOf(
         await ok(
           api.POST("/assistant/query", {
@@ -114,6 +116,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
               history: history.slice(-HISTORY_MAX).map((h) => h.slice(0, TEXT_MAX)),
               ...(previous ? { previous } : {}),
               ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
+              ...(answer && previous ? { answer: true } : {}),
             },
           }),
         ),

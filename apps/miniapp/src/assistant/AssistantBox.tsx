@@ -88,7 +88,7 @@ export function AssistantBox({
         : t(`miniapp.assistant.${placeholderKey ?? "placeholder"}` as MessageKey);
   // Есть текст (или голос недоступен) — круглая кнопка отправляет; иначе — микрофон.
   const typing = draft.trim().length > 0 || !recorder.supported;
-  const micLabel = refine ? t("miniapp.assistant.refine.placeholder") : t("miniapp.assistant.mic");
+  const micLabel = t("miniapp.assistant.mic");
 
   return (
     <form

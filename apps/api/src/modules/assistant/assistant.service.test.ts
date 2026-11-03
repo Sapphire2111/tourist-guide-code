@@ -118,7 +118,11 @@ function setup(
     schedules?: Record<string, ScheduleRows>;
     timezone?: string;
     /** Лучшие места региона по рейтингу (план «по всьому регіону»). */
-    topRated?: (q: { categoryIds: readonly string[]; limit: number }) => string[];
+    topRated?: (q: {
+      categoryIds: readonly string[];
+      localityIds?: readonly string[];
+      limit: number;
+    }) => string[];
   } = {},
 ) {
   const guide = {
@@ -189,8 +193,9 @@ function setup(
       ),
     ),
     schedules: vi.fn(() => Promise.resolve(new Map(Object.entries(opts.schedules ?? {})))),
-    topRated: vi.fn((_r: string, q: { categoryIds: readonly string[]; limit: number }) =>
-      Promise.resolve(opts.topRated?.(q) ?? []),
+    topRated: vi.fn(
+      (_r: string, q: { categoryIds: readonly string[]; localityIds?: readonly string[]; limit: number }) =>
+        Promise.resolve(opts.topRated?.(q) ?? []),
     ),
     localities: vi.fn(() =>
       Promise.resolve([
@@ -994,10 +999,15 @@ describe("план відпочинку", () => {
       ]),
       searchAt: (q) => (q.ids ? all : q.categoryId ? section[q.categoryId] : []),
       keywordMatches: (q) => (q.minScore === 3 ? [{ id: bus.id, score: 4 }] : []),
+      topRated: () => [...yaremche, ...bukovel].filter((p) => p.categoryId === NATURE).map((p) => p.id),
     });
     const res = await service.query(REGION, USER, ask("Обрані локації: Яремче, Поляниця", { previous }));
-    // Чужой пункт отброшен.
+    // Чужой пункт отброшен; пам'ятки — лучшие по рейтингу в выбранных пунктах.
     expect(res.intent.scopeLocalityIds).toEqual([YAREMCHE, POLIANYTSIA]);
+    expect(repo.topRated).toHaveBeenCalledWith(
+      REGION,
+      expect.objectContaining({ localityIds: [YAREMCHE, POLIANYTSIA] }),
+    );
     const plan = res.plan!;
     expect(plan.days).toHaveLength(2);
     for (const d of plan.days)
@@ -1012,6 +1022,82 @@ describe("план відпочинку", () => {
     expect(t.busStations.map((i) => res.items[i]!.place.id)).toEqual([bus.id]);
     // Автостанция — по названию или типу Google, а не упоминанию в отзывах.
     expect(repo.keywordMatches).toHaveBeenCalledWith(REGION, expect.objectContaining({ minScore: 3 }));
+  });
+
+  it("ответ чипами (answer): намерение из previous без вызова модели и без единицы бюджета", async () => {
+    const data = regionData([0, 30]);
+    const previous = planIntent({ days: 2, withKids: true, scope: "region", transport: "car" });
+    const { service, create } = planSetup(planIntent({ days: 2 }), Promise.resolve(notesReply([])), {
+      topRated: () => data.sightIds,
+      searchAt: (q) => (q.ids ? data.all : q.categoryId ? data.section[q.categoryId] : []),
+      // Одна единица — только на пояснения: разбор моделью не тратит.
+      userDailyLimit: 1,
+    });
+    // Подменённые поля previous проверяются как ответ модели: чужой код категории отброшен.
+    const res = await service.query(
+      REGION,
+      USER,
+      ask("По всьому Прикарпаттю, На авто", {
+        previous: { ...previous, categories: ["hacked"] },
+        answer: true,
+      }),
+    );
+    expect(res.intent).toMatchObject({
+      kind: "plan",
+      days: 2,
+      scope: "region",
+      transport: "car",
+      categories: [],
+    });
+    expect(res.plan!.days).toHaveLength(2);
+    // Вызов модели — только пояснения к плану.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((create.mock.calls[0]![0].tools![0] as Anthropic.Tool).name).toBe(NOTES);
+  });
+
+  it("ответ через модель: пункт и радиус модели не перекрывают «обрані локації» и «Пішки»", async () => {
+    const previous = planIntent({
+      days: 2,
+      scope: "localities",
+      scopeLocalityIds: [YAREMCHE],
+      transport: null,
+    });
+    const { service } = planSetup(
+      // Модель «додумала»: пункт Буковель и «пішки» ≈ 1500 м.
+      planIntent({ days: 2, locality: "polianytsia", radiusMeters: 1500, transport: "foot" }),
+      Promise.resolve(notesReply([])),
+    );
+    const res = await service.query(REGION, USER, ask("Пішки (без авто)", { origin: YAREMCHE_AT, previous }));
+    expect(res.intent).toMatchObject({
+      scope: "localities",
+      scopeLocalityIds: [YAREMCHE],
+      locality: null,
+      radiusMeters: null,
+      transport: "foot",
+    });
+    // «Пішки» без области в previous: радиус модели (1500) — не радиус туриста.
+    const foot = planSetup(
+      planIntent({ days: 2, radiusMeters: 1500, transport: "foot" }),
+      Promise.resolve(notesReply([])),
+    );
+    const r2 = await foot.service.query(
+      REGION,
+      USER,
+      ask("Пішки", { origin: YAREMCHE_AT, previous: planIntent({ days: 2, scope: "here" }) }),
+    );
+    expect(r2.intent.radiusMeters).toBeNull();
+  });
+
+  it("по региону, но пам'яток для районов нет — запасной план вокруг якоря, а не пусто", async () => {
+    const { service, repo } = planSetup(
+      planIntent({ days: 2, scope: "region", transport: "car" }),
+      Promise.resolve(notesReply([])),
+      { topRated: () => [] },
+    );
+    const res = await service.query(REGION, USER, ask("2 дні по всьому регіону", { origin: YAREMCHE_AT }));
+    expect(repo.topRated).toHaveBeenCalled();
+    expect(res.plan).not.toBeNull();
+    expect(res.plan!.days.every((d) => !d.transfer)).toBe(true);
   });
 });
 

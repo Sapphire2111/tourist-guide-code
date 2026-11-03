@@ -23,6 +23,7 @@ import {
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { AssistantSessionProvider } from "./assistant/session.js";
+import { goBack } from "./back.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
@@ -150,26 +151,7 @@ type RoutesProps = Omit<
  * «Назад» (на главную, replace — без новой записи истории): в Telegram — нативная BackButton, в браузере — обычная кнопка.
  * Не history.back(): при входе по прямой ссылке он увёл бы из приложения.
  */
-/**
- * Пути экранов в порядке переходов (последние). «Назад» из экрана, открытого из ассистента (карточка места), —
- * обратно в ассистент по истории (как системное «назад» Android), а не на главную: диалог и прокрутка на месте.
- */
-const routeTrail: string[] = [];
-const TRAIL_MAX = 20;
-function useRouteTrail(path: string) {
-  useEffect(() => {
-    if (routeTrail[routeTrail.length - 1] !== path) routeTrail.push(path);
-    if (routeTrail.length > TRAIL_MAX) routeTrail.shift();
-  }, [path]);
-}
-/** Вернуться на прежний экран по истории, если это ассистент; иначе — на главную. */
-function goBack(navigate: (to: string, opts?: { replace?: boolean }) => void) {
-  const current = routeTrail[routeTrail.length - 1];
-  const previous = routeTrail[routeTrail.length - 2];
-  if (previous === "/assistant" && current !== "/assistant") window.history.back();
-  else navigate("/", { replace: true });
-}
-
+/** «Назад»: из экрана, открытого из ассистента (метка в истории), — обратно в ассистент; иначе — на главную. */
 function Back({ webApp }: { webApp?: TelegramWebApp }) {
   const { t } = useT();
   const [, navigate] = useRoute();
@@ -455,7 +437,6 @@ function Routes(props: RoutesProps) {
   const { t } = useT();
   const [path] = useRoute();
   useFocusHeading(path);
-  useRouteTrail(path);
   const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   useInviteRedirect(session?.invite, partnerCabinet);
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.

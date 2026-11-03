@@ -3417,6 +3417,8 @@ export interface components {
       history?: string[];
       /** @description Населённые пункты, выбранные туристом («Локація»); названный в реплике — главнее */
       localityIds?: string[];
+      /** @description Ответ на уточняющие вопросы плана: намерение — previous (scope, scopeLocalityIds, transport), модель не вызывается */
+      answer?: boolean;
       /** @description Намерение прошлого ответа (для уточнений) */
       previous?: components["schemas"]["AssistantIntentDto"];
     };

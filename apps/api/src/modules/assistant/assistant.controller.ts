@@ -153,6 +153,7 @@ export class AssistantController {
           }
         : null,
       localityIds: body.localityIds ?? [],
+      answer: body.answer === true,
     });
   }
 

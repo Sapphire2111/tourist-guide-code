@@ -271,6 +271,15 @@ export class AssistantQueryDto extends OriginQueryDto {
   @IsUUID("all", { each: true })
   localityIds?: string[];
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      "Ответ на уточняющие вопросы плана: намерение — previous (scope, scopeLocalityIds, transport), модель не вызывается",
+  })
+  @IsOptional()
+  @IsBoolean()
+  answer?: boolean;
+
   @ApiPropertyOptional({ type: AssistantIntentDto, description: "Намерение прошлого ответа (для уточнений)" })
   @IsOptional()
   @ValidateNested()

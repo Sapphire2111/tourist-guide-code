@@ -200,4 +200,28 @@ describe.skipIf(!dockerAvailable)(`Ассистент: ключевые слов
     // Чужой регион — не видно.
     expect((await repo.ratings(base.regions.b, [placeId("kuma")])).size).toBe(0);
   });
+
+  it("topRated: раздел — с подкатегориями (parent_id), порядок по рейтингу и отзывам; черновик и чужой регион не видны", async () => {
+    const ours = (ids: string[]) =>
+      ids.flatMap((id) => {
+        const p = PLACES.find((x) => placeId(x.key) === id);
+        return p ? [p.key] : [];
+      });
+    // Корень «Де поїсти» — места подкатегорий (restaurants, cafes) через parent_id; отели — нет.
+    const eat = ours(await repo.topRated(base.regions.a, { categoryIds: [categoryId("eat")], limit: 500 }));
+    // KUMA: 4.6 и 120 отзывов — выше мест без рейтинга (по умолчанию 4); дальше — по id.
+    expect(eat[0]).toBe("kuma");
+    expect([...eat].sort()).toEqual(["author", "barberri", "drying", "far", "kitsune", "kuma", "review"]);
+    // Сама подкатегория (c.id): только кафе.
+    const cafes = ours(
+      await repo.topRated(base.regions.a, { categoryIds: [categoryId("cafes")], limit: 500 }),
+    );
+    expect([...cafes].sort()).toEqual(["drying", "far", "kitsune", "review"]);
+    // Чужой регион: своё место не видно в регионе a и наоборот.
+    const other = ours(
+      await repo.topRated(base.regions.b, { categoryIds: [categoryId("eat", "b")], limit: 500 }),
+    );
+    expect(other).toEqual(["other"]);
+    expect(await repo.topRated(base.regions.a, { categoryIds: [], limit: 10 })).toEqual([]);
+  });
 });

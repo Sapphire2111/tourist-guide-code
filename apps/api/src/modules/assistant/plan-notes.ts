@@ -11,9 +11,9 @@ export const NOTE_MAX = 160;
 export const NOTES_STOPS_MAX = 18;
 /**
  * Большой план (5–7 дней, пунктов больше NOTES_STOPS_MAX): пояснения короче и только к пам'яткам и активностям
- * (еда и отдых понятны без слов), не больше NOTES_COMPACT_STOPS_MAX — тот же один вызов Claude в бюджете.
+ * (еда и отдых понятны без слов), не больше NOTES_COMPACT_STOPS_MAX (24) — тот же один вызов Claude в бюджете.
  */
-export const NOTES_COMPACT_STOPS_MAX = 30;
+export const NOTES_COMPACT_STOPS_MAX = 24;
 export const NOTE_COMPACT_MAX = 100;
 
 /** Пункты для пояснений: все (до NOTES_STOPS_MAX) или сжатый набор большого плана. */
@@ -106,7 +106,7 @@ export function notesRequest(
   return {
     model: ASSISTANT_MODEL,
     // ≈ 60 токенов на пункт (сжато — ≈ 40); запас на короткое размышление.
-    max_tokens: ctx.compact ? 3000 : 2500,
+    max_tokens: ctx.compact ? 4000 : 2500,
     output_config: { effort: "low" },
     system: NOTES_SYSTEM,
     tool_choice: { type: "auto", disable_parallel_tool_use: true },

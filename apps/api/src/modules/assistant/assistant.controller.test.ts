@@ -129,6 +129,7 @@ describe("POST /assistant/query", () => {
         transport: null,
       },
       localityIds: [LOCALITY],
+      answer: false,
     });
   });
 

@@ -14615,6 +14615,10 @@
             "type": "array",
             "items": { "type": "string", "format": "uuid" }
           },
+          "answer": {
+            "type": "boolean",
+            "description": "Ответ на уточняющие вопросы плана: намерение — previous (scope, scopeLocalityIds, transport), модель не вызывается"
+          },
           "previous": {
             "description": "Намерение прошлого ответа (для уточнений)",
             "allOf": [{ "$ref": "#/components/schemas/AssistantIntentDto" }]

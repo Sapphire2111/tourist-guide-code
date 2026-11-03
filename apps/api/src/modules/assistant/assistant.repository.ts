@@ -109,10 +109,13 @@ export class AssistantRepository {
    * Лучшие опубликованные места разделов (категория или её корень — из списка) по всему региону: рейтинг Google с
    * поправкой на число отзывов и рекомендацию (как quality плана). Для плана «по всьому регіону» — без радиуса.
    */
-  topRated(regionId: string, q: { categoryIds: readonly string[]; limit: number }): Promise<string[]> {
+  topRated(
+    regionId: string,
+    q: { categoryIds: readonly string[]; localityIds?: readonly string[]; limit: number },
+  ): Promise<string[]> {
     if (!q.categoryIds.length) return Promise.resolve([]);
     return withTenant(this.db, regionContext(regionId), async () => {
-      const rows = await currentDb(this.db)
+      let query = currentDb(this.db)
         .selectFrom("places as p")
         .innerJoin("categories as c", "c.id", "p.category_id")
         .leftJoin("place_enrichments as e", "e.place_id", "p.id")
@@ -122,7 +125,10 @@ export class AssistantRepository {
         .where("p.location", "is not", null)
         .where((eb) =>
           eb.or([eb("c.id", "in", [...q.categoryIds]), eb("c.parent_id", "in", [...q.categoryIds])]),
-        )
+        );
+      // Выбранные пункты (план по нескольким пунктам) — только их места.
+      if (q.localityIds?.length) query = query.where("p.locality_id", "in", [...q.localityIds]);
+      const rows = await query
         .orderBy(
           sql`coalesce((e.google->>'rating')::float8, 4)
             + 0.4 * log(1 + coalesce((e.google->>'ratingCount')::int, 0))

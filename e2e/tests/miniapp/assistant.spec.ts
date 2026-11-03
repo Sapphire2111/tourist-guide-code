@@ -132,6 +132,30 @@ test("«Назад» Telegram из карточки места: тот же сп
   await expect(page.getByTestId("assistant-place")).toHaveCount(12);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolled - 80);
   expect(mock.queries).toHaveLength(1);
+  // Вход прямо на #/assistant (одна запись истории): «Назад» — на главную, из Mini App не выходит.
+  const press = () =>
+    page.evaluate(() =>
+      (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
+    );
+  await press();
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(page.getByTestId("home-sections")).toBeVisible();
+});
+
+test("«Назад» из карточки, открытой не из ассистента, — на главную; вход по ссылке на #/assistant — не выход", async ({
+  page,
+}) => {
+  await installAssistantMock(page);
+  await page.goto("/#/assistant?q=" + encodeURIComponent("Де поїсти суші"));
+  await expect(page.getByTestId("assistant-place")).toHaveCount(10);
+  // Карточка по адресу (replace, как QR → «Про заклад»): без метки «из ассистента».
+  await page.evaluate(() => window.location.replace("#/place/00000000-0000-4000-8000-000000000300"));
+  await expect(page).toHaveURL(/#\/place\//);
+  await page.evaluate(() =>
+    (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
+  );
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(page.getByTestId("home-sections")).toBeVisible();
 });
 
 test("«5 днів з дітьми»: уточнение области и передвижения чипами; без авто — переезд с такси и подсказкой", async ({
@@ -148,6 +172,8 @@ test("«5 днів з дітьми»: уточнение области и пе�
   await expect(page.getByRole("heading", { name: "План відпочинку" })).toBeVisible();
   expect(mock.queries[1]).toMatchObject({
     text: "По всьому Прикарпаттю, Пішки (без авто)",
+    // Ответ на уточнения — структурой, без повторного разбора моделью.
+    answer: true,
     previous: { kind: "plan", days: 5, scope: "region", transport: "foot", scopeLocalityIds: [] },
   });
   await expect(page.getByTestId("assistant-plan-travel").first()).toContainText("🚶");

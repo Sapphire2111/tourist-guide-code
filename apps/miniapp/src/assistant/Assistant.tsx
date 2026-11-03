@@ -2,7 +2,8 @@
 // обогащение); модель на сервере выбирает лишь категории и фильтры. Уточнения — следующей репликой или чипом;
 // контекст диалога (прежние реплики и намерение) хранится здесь и отправляется с каждым запросом.
 import { SHOW_AI_LABELS } from "../ai-labels.js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { pushFromAssistant } from "../back.js";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
@@ -83,7 +84,7 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
   const { selected: localityIds, gps } = useLocations();
   const point = gps ?? guide.base?.point ?? null;
 
-  const ask = (text: string, previousOverride?: AssistantIntent) => {
+  const ask = (text: string, previousOverride?: AssistantIntent, answer = false) => {
     // Контекст — завершённые реплики этого диалога и намерение последнего ответа (с ответами на уточнения).
     const done = turns.filter((x) => x.state.status === "ready");
     const lastReady = done[done.length - 1];
@@ -94,6 +95,8 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
       point,
       previous,
       ...(localityIds.length ? { localityIds } : {}),
+      // Ответ на уточнения — структурой в previous, без повторного разбора моделью.
+      ...(answer ? { answer: true } : {}),
     });
   };
 
@@ -125,104 +128,122 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
   const questions = result?.questions ?? [];
 
   return (
-    <Stack>
-      <h1>{t("miniapp.assistant.title")}</h1>
-      <p className="kosiv-muted">{t("miniapp.assistant.hint")}</p>
-      {turns.length > 0 && (
-        <ol
-          className="assistant-dialog"
-          aria-label={t("miniapp.assistant.dialog")}
-          data-testid="assistant-dialog"
-        >
-          {turns.map((turn) => (
-            <li key={turn.id}>
-              <p className="assistant-you">
-                <strong>{t("miniapp.assistant.you")}:</strong> {turn.text}
-              </p>
-              <p
-                className="assistant-reply"
-                role={turn.state.status === "error" ? "alert" : undefined}
-                data-testid="assistant-reply"
-              >
-                {turn.state.status === "loading"
-                  ? t("miniapp.assistant.thinking")
-                  : turn.state.status === "error"
-                    ? errorText(turn.state.error, "miniapp.assistant.error")
-                    : turn.state.data.intent.clarify
-                      ? t("miniapp.assistant.clarify")
-                      : summary(turn.state.data.intent)}
-              </p>
-            </li>
-          ))}
-        </ol>
-      )}
-      {/* Ответ на последнюю реплику: количество объявляется читалкой. */}
-      <p role="status" className="kosiv-muted" data-testid="assistant-status">
-        {busy
-          ? t("miniapp.assistant.thinking")
-          : result && questions.length
-            ? t("miniapp.assistant.question.status")
-            : result && !result.intent.clarify
-              ? result.items.length
-                ? t("miniapp.assistant.found", { n: result.items.length })
-                : t("miniapp.assistant.empty")
-              : ""}
-      </p>
-      {result && questions.length > 0 && (
-        <PlanQuestions
-          key={`q${last!.id}`}
-          intent={result.intent}
-          questions={questions}
-          busy={busy}
-          onAnswer={(text, previous) => ask(text, previous)}
-        />
-      )}
-      {/* key — новый ответ начинает список и дни плана сначала; состояние экрана — из провайдера. */}
-      {result && (
-        <ResultView
-          key={`r${last!.id}`}
-          result={result}
-          shown={ui?.shown || PAGE_SIZE}
-          onShown={(shown) => setUi({ shown })}
-          dayIndex={ui?.dayIndex ?? 0}
-          onDay={(dayIndex) => setUi({ dayIndex })}
-        />
-      )}
-      {result && questions.length === 0 && result.intent.suggestions.length > 0 && (
-        <div
-          role="group"
-          aria-label={t("miniapp.assistant.chips")}
-          className="kosiv-tags"
-          data-testid="assistant-chips"
-        >
-          {result.intent.suggestions.map((s) => {
-            const label = t(`miniapp.assistant.chip.${s}` as MessageKey);
-            return (
-              <button key={s} type="button" className="kosiv-tag" disabled={busy} onClick={() => ask(label)}>
-                {label}
-              </button>
-            );
-          })}
+    // Переход из ответа в экран приложения (карточка места) — запись истории с меткой: «Назад» вернёт сюда.
+    <div className="assistant-screen" onClickCapture={markLinkFromAssistant}>
+      <Stack>
+        <h1>{t("miniapp.assistant.title")}</h1>
+        <p className="kosiv-muted">{t("miniapp.assistant.hint")}</p>
+        {turns.length > 0 && (
+          <ol
+            className="assistant-dialog"
+            aria-label={t("miniapp.assistant.dialog")}
+            data-testid="assistant-dialog"
+          >
+            {turns.map((turn) => (
+              <li key={turn.id}>
+                <p className="assistant-you">
+                  <strong>{t("miniapp.assistant.you")}:</strong> {turn.text}
+                </p>
+                <p
+                  className="assistant-reply"
+                  role={turn.state.status === "error" ? "alert" : undefined}
+                  data-testid="assistant-reply"
+                >
+                  {turn.state.status === "loading"
+                    ? t("miniapp.assistant.thinking")
+                    : turn.state.status === "error"
+                      ? errorText(turn.state.error, "miniapp.assistant.error")
+                      : turn.state.data.intent.clarify
+                        ? t("miniapp.assistant.clarify")
+                        : summary(turn.state.data.intent)}
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
+        {/* Ответ на последнюю реплику: количество объявляется читалкой. */}
+        <p role="status" className="kosiv-muted" data-testid="assistant-status">
+          {busy
+            ? t("miniapp.assistant.thinking")
+            : result && questions.length
+              ? t("miniapp.assistant.question.status")
+              : result && !result.intent.clarify
+                ? result.items.length
+                  ? t("miniapp.assistant.found", { n: result.items.length })
+                  : t("miniapp.assistant.empty")
+                : ""}
+        </p>
+        {result && questions.length > 0 && (
+          <PlanQuestions
+            key={`q${last!.id}`}
+            intent={result.intent}
+            questions={questions}
+            busy={busy}
+            onAnswer={(text, previous) => ask(text, previous, true)}
+          />
+        )}
+        {/* key — новый ответ начинает список и дни плана сначала; состояние экрана — из провайдера. */}
+        {result && (
+          <ResultView
+            key={`r${last!.id}`}
+            result={result}
+            shown={ui?.shown || PAGE_SIZE}
+            onShown={(shown) => setUi({ shown })}
+            dayIndex={ui?.dayIndex ?? 0}
+            onDay={(dayIndex) => setUi({ dayIndex })}
+          />
+        )}
+        {result && questions.length === 0 && result.intent.suggestions.length > 0 && (
+          <div
+            role="group"
+            aria-label={t("miniapp.assistant.chips")}
+            className="kosiv-tags"
+            data-testid="assistant-chips"
+          >
+            {result.intent.suggestions.map((s) => {
+              const label = t(`miniapp.assistant.chip.${s}` as MessageKey);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className="kosiv-tag"
+                  disabled={busy}
+                  onClick={() => ask(label)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {turns.length > 0 && (
+          <Button onClick={reset} disabled={busy}>
+            {t("miniapp.assistant.newDialog")}
+          </Button>
+        )}
+        {/* Одна строка ввода: пустой диалог — начальный запрос; есть ответы — уточнения, закреплена внизу. */}
+        <div className={turns.length ? "assistant-dock" : undefined}>
+          <AssistantBox
+            api={api}
+            onSubmit={(text) => ask(text)}
+            busy={busy}
+            id="assistant-next"
+            variant={turns.length ? "refine" : "start"}
+            autoFocus={!initialQuery && !turns.length}
+          />
         </div>
-      )}
-      {turns.length > 0 && (
-        <Button onClick={reset} disabled={busy}>
-          {t("miniapp.assistant.newDialog")}
-        </Button>
-      )}
-      {/* Одна строка ввода: пустой диалог — начальный запрос; есть ответы — уточнения, закреплена внизу. */}
-      <div className={turns.length ? "assistant-dock" : undefined}>
-        <AssistantBox
-          api={api}
-          onSubmit={(text) => ask(text)}
-          busy={busy}
-          id="assistant-next"
-          variant={turns.length ? "refine" : "start"}
-          autoFocus={!initialQuery && !turns.length}
-        />
-      </div>
-    </Stack>
+      </Stack>
+    </div>
   );
+}
+
+/** Ссылка #/… внутри ответа (обычный клик) — переход pushState с меткой «из ассистента». */
+function markLinkFromAssistant(e: MouseEvent<HTMLDivElement>) {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
+  if (!(a instanceof HTMLAnchorElement) || a.target === "_blank") return;
+  e.preventDefault();
+  pushFromAssistant(a.getAttribute("href")!);
 }
 
 /**
@@ -319,10 +340,12 @@ function PlanQuestions({
   };
 
   return (
-    <section className="assistant-questions" data-testid="assistant-questions" aria-live="polite">
+    <section className="assistant-questions" data-testid="assistant-questions">
       {askScope && (
         <div role="group" aria-labelledby="assistant-q-scope" className="assistant-question">
-          <h2 id="assistant-q-scope">{t("miniapp.assistant.question.scope")}</h2>
+          <h2 id="assistant-q-scope" aria-live="polite">
+            {t("miniapp.assistant.question.scope")}
+          </h2>
           <div className="kosiv-tags">
             {canHere && (
               <button
@@ -405,7 +428,9 @@ function PlanQuestions({
       )}
       {askTransport && (
         <div role="group" aria-labelledby="assistant-q-transport" className="assistant-question">
-          <h2 id="assistant-q-transport">{t("miniapp.assistant.question.transport")}</h2>
+          <h2 id="assistant-q-transport" aria-live="polite">
+            {t("miniapp.assistant.question.transport")}
+          </h2>
           <div className="kosiv-tags">
             {(["car", "foot"] as const).map((v) => {
               const label = t(`miniapp.assistant.transport.${v}` as MessageKey);

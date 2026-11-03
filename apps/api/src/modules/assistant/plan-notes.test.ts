@@ -73,7 +73,7 @@ describe("parseNotes", () => {
 });
 
 describe("notesSubset (большой план)", () => {
-  it("до 18 пунктов — все; больше — только огляд и активності, до 30, коротше", () => {
+  it("до 18 пунктов — все; больше — только огляд и активності, до 24, коротше", () => {
     const small = Array.from({ length: 18 }, (_, i) => stop(i + 1, { role: i % 2 ? "eat" : "see" }));
     expect(notesSubset(small)).toEqual({ stops: small, compact: false });
     const big = Array.from({ length: 63 }, (_, i) =>

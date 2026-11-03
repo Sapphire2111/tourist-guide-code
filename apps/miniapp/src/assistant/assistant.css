@@ -18,8 +18,11 @@
   background: var(--app-surface, #fff);
   box-shadow: 0 6px 18px -8px rgba(60, 42, 20, 0.25);
 }
+/* Фокус в поле — заметное кольцо 2px вокруг всей пилюли (у поля своей обводки нет). */
 .assistant-pill:focus-within {
   border-color: var(--app-accent-ink, #8a3b1f);
+  outline: 2px solid var(--app-accent-ink, #8a3b1f);
+  outline-offset: 2px;
 }
 .assistant-pill-icon {
   flex: none;
@@ -97,8 +100,20 @@
   padding: 0 16px;
   font-size: 0.875rem;
 }
+/* Пустая live-область — скрыта визуально, но остаётся в дереве доступности (объявления не теряются). */
 .assistant-status:empty {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.assistant-screen {
+  display: contents;
 }
 /* Примеры запросов — одна прокручиваемая строка. */
 .assistant-examples {
