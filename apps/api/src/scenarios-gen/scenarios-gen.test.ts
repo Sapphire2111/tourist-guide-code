@@ -45,12 +45,15 @@ import {
 import { chooseOrders, planEstimate, runOrders, summarize, type Order } from "./run.js";
 import {
   checkDraft,
+  DESCRIPTION_ASK_MAX,
   draftToGen,
   NOTE_ASK_MAX,
   NOTE_MAX,
   openEnough,
   realisticMinutes,
   stripSchedule,
+  TITLE_ASK_MAX,
+  TITLE_MAX,
   trimNote,
   validateScenario,
   type ScenarioDraft,
@@ -760,6 +763,60 @@ describe("примечание без обрыва", () => {
     expect(again.fixes.join()).not.toMatch(/примітку/);
     const byId = new Map([m, lunch, museum].map((x) => [x.id, x]));
     expect(checkDraft(first, byId)).toEqual([]);
+  });
+});
+
+describe("назва и опис без обрыва", () => {
+  const set = setOf([probii, lunch, chan]);
+  const items = [item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)];
+  const check = (over: Partial<GenScenario>) =>
+    validateScenario(brief("waterfalls"), set, scenario(items, over));
+  const long = "Дуже довга назва сценарію про водоспади Карпат ".repeat(3).trim();
+  const byId = new Map([probii, lunch, chan].map((x) => [x.id, x]));
+  const draft = () => check({}).draft!;
+
+  it("длинная назва (uk и en) — ошибка, а не обрезка", () => {
+    expect(check({ title_uk: long }).draft).toBeNull();
+    expect(check({ title_uk: long }).errors.join()).toMatch(/назва довша/);
+    expect(check({ title_en: long }).errors.join()).toMatch(/англійська назва довша/);
+    expect(check({ title_uk: "Яремче: маршрут:" }).errors.join()).toMatch(/обірвана/);
+    expect(check({ title_uk: "а".repeat(TITLE_MAX) }).errors).toEqual([]);
+  });
+
+  it("длинный опис — по законченному предложению, с записью в fixes; лимиты названы модели и критику", () => {
+    const first = "Неспішний день біля водоспадів і обід поруч.";
+    const r = check({ description_uk: `${first} ${"Далі ".repeat(90)}` });
+    expect(r.draft!.description!.uk).toBe(first);
+    expect(r.fixes.join()).toMatch(/опис скорочено/);
+    const none = check({ description_uk: "а далі ".repeat(70) });
+    expect(none.draft!.description).toBeNull();
+    expect(none.fixes.join()).toMatch(/опис прибрано/);
+    for (const prompt of [SYSTEM_PROMPT, CRITIC_SYSTEM]) {
+      expect(prompt).toContain(`до ${TITLE_ASK_MAX} символів`);
+      expect(prompt).toContain(`до ${DESCRIPTION_ASK_MAX} символів`);
+    }
+  });
+
+  it("checkDraft отклоняет оборванное из журнала и пропускает целое", () => {
+    const d = draft();
+    expect(checkDraft(d, byId)).toEqual([]);
+    const withNote = (uk: string) => ({
+      ...d,
+      items: [{ ...d.items[0]!, note: { uk } }, ...d.items.slice(1)],
+    });
+    expect(checkDraft(withNote("Поводьтеся тихо. Вра"), byId).join()).toMatch(/примітка \(uk\) обірвана/);
+    expect(checkDraft(withNote("Сюди зручно. Правило розвороту:"), byId).join()).toMatch(/обірвана/);
+    expect(checkDraft(withNote("Зранку. Графік: пн 09:00-13:00,14:00-18"), byId).join()).toMatch(/обірвана/);
+    expect(checkDraft(withNote("Зранку. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд."), byId)).toEqual(
+      [],
+    );
+    // Старая проверка резала назву ровно на 80 символов.
+    const cut = long.slice(0, 80);
+    expect(checkDraft({ ...d, title: { uk: cut } }, byId).join()).toMatch(/назва \(uk\) довша/);
+    expect(checkDraft({ ...d, title: { uk: "Назва", en: cut } }, byId).join()).toMatch(/назва \(en\) довша/);
+    expect(checkDraft({ ...d, description: { uk: "День біля води. Обід поб" } }, byId).join()).toMatch(
+      /опис \(uk\) обірваний/,
+    );
   });
 });
 

@@ -195,7 +195,38 @@ export function trimNote(raw: string, max: number = NOTE_MAX): string {
   return s.length <= max && !DANGLING.test(s) ? s : "";
 }
 
-const clean = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(0, max).trim();
+/**
+ * Назва: модели называем TITLE_ASK_MAX. Предел программы 79, а не 80: прежняя проверка резала ровно на 80, и такая длина
+ * в старом журнале означает обрезанную назву. Не режем: назва видна туристу первой, длиннее — ошибка и повторная попытка.
+ * DTO допускает 200, БД длину не ограничивает.
+ */
+export const TITLE_ASK_MAX = 60;
+export const TITLE_MAX = 79;
+/** Описание: модели — DESCRIPTION_ASK_MAX, программа режет по предложению на DESCRIPTION_MAX (DTO — 2000). */
+export const DESCRIPTION_ASK_MAX = 250;
+export const DESCRIPTION_MAX = 400;
+
+const squeeze = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** Что не так с названием; null — можно показывать. */
+function titleProblem(raw: string, label: string): string | null {
+  const t = squeeze(raw);
+  if (t.length > TITLE_MAX)
+    return `${label} довша за ${TITLE_MAX} символів (${t.length}) — скороти до ${TITLE_ASK_MAX}`;
+  if (DANGLING.test(t)) return `${label} обірвана: «${t}»`;
+  return null;
+}
+
+/** Текст с оборванным концом или длиннее предела (то, что trimNote изменил бы). */
+const isTorn = (raw: string, max: number) => trimNote(raw, max) !== squeeze(raw);
+
+/** Примечание из готового черновика: совет целый, приписка «Графік: …» дописана до конца. */
+function noteTorn(raw: string): boolean {
+  const all = squeeze(raw);
+  const advice = squeeze(stripSchedule(all));
+  return isTorn(advice, NOTE_MAX) || (advice !== all && !ENDS_SENTENCE.test(all));
+}
+
 const BAD_TEXT = /https?:|www\.|[<>`*#]|\+?\d[\d\s-]{8,}/i;
 
 export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario): ValidationResult {
@@ -376,9 +407,19 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
 
   if (b.target && !used.has(b.target.placeId)) errors.push(`немає обовʼязкового пункту «${b.target.name}»`);
 
-  const title = clean(gen.title_uk, 80);
-  const description = clean(gen.description_uk, 400);
+  const title = squeeze(gen.title_uk);
+  const titleEn = squeeze(gen.title_en);
+  const askedDescription = squeeze(gen.description_uk);
+  const description = trimNote(askedDescription, DESCRIPTION_MAX);
+  if (description !== askedDescription)
+    fixes.push(
+      description
+        ? `опис скорочено до закінченого речення (${askedDescription.length} → ${description.length} символів)`
+        : `опис прибрано — немає закінченого речення (${askedDescription.length} символів)`,
+    );
   if (title.length < 3) errors.push("назва порожня");
+  for (const problem of [titleProblem(title, "назва"), titleProblem(titleEn, "англійська назва")])
+    if (problem) errors.push(problem);
   if (BAD_TEXT.test(title) || BAD_TEXT.test(description))
     errors.push("у назві чи описі посилання або розмітка");
   // Аудитория и формат (діти, без авто, дощ, лижі, дні) — только из заказа; модель добавляет лишь описательные теги.
@@ -425,7 +466,7 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
   return {
     draft: {
       code: b.code,
-      title: { uk: title, ...(gen.title_en.trim() ? { en: clean(gen.title_en, 80) } : {}) },
+      title: { uk: title, ...(titleEn ? { en: titleEn } : {}) },
       description: description ? { uk: description } : null,
       days: b.days,
       tags: SCENARIO_TAGS.filter((t) => tags.has(t)),
@@ -463,10 +504,18 @@ export function checkDraft(raw: unknown, places: ReadonlyMap<string, GenPlace>):
   const d = raw as Partial<Record<keyof ScenarioDraft, unknown>>;
   const e: string[] = [];
   if (typeof d.code !== "string" || !CODE_RE.test(d.code)) e.push(`код «${String(d.code)}» не латиницею`);
-  if (!isLocalizedText(d.title) || clean(d.title.uk, 80).length < 3) e.push("назва — не localized з uk");
-  else if (d.title.uk.length > 200) e.push("назва довша за 200 символів");
-  if (d.description !== null && d.description !== undefined && !isLocalizedText(d.description))
-    e.push("опис — не localized з uk");
+  if (!isLocalizedText(d.title) || squeeze(d.title.uk).length < 3) e.push("назва — не localized з uk");
+  else
+    for (const [lang, t] of Object.entries(d.title)) {
+      const problem = titleProblem(t ?? "", `назва (${lang})`);
+      if (problem) e.push(problem);
+    }
+  if (d.description !== null && d.description !== undefined) {
+    if (!isLocalizedText(d.description)) e.push("опис — не localized з uk");
+    else
+      for (const [lang, t] of Object.entries(d.description))
+        if (isTorn(t ?? "", DESCRIPTION_MAX)) e.push(`опис (${lang}) обірваний або задовгий: «${t}»`);
+  }
   const days =
     Number.isInteger(d.days) && (d.days as number) >= 1 && (d.days as number) <= 5 ? (d.days as number) : 0;
   if (!days) e.push(`днів ${String(d.days)} — має бути 1…5`);
@@ -499,6 +548,9 @@ export function checkDraft(raw: unknown, places: ReadonlyMap<string, GenPlace>):
     if (!minutesOk) e.push(`${at}: тривалість ${String(minutes)} поза 5…1440`);
     if (it.note !== null && it.note !== undefined && !isLocalizedText(it.note))
       e.push(`${at}: примітка — не localized`);
+    else if (isLocalizedText(it.note))
+      for (const [lang, t] of Object.entries(it.note))
+        if (noteTorn(t ?? "")) e.push(`${at}: примітка (${lang}) обірвана або задовга: «${t}»`);
     const alts = it.alternatives;
     if (
       !Array.isArray(alts) ||
