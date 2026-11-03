@@ -65,18 +65,24 @@ export type Async<T> =
   | { status: "ready"; data: T };
 
 /** Загрузка данных с повтором: `const [state, retry] = useAsync(() => api.x(), [deps])`. */
-export function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): [Async<T>, () => void] {
+export function useAsync<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  deps: readonly unknown[],
+): [Async<T>, () => void] {
   const [state, setState] = useState<Async<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
+    // Смена зависимостей отменяет прежнюю загрузку (догрузка страниц «Де жити» не продолжается впустую).
+    const abort = new AbortController();
     setState({ status: "loading" });
-    load().then(
+    load(abort.signal).then(
       (data) => alive && setState({ status: "ready", data }),
       (error: unknown) => alive && setState({ status: "error", error }),
     );
     return () => {
       alive = false;
+      abort.abort();
     };
     // load меняется на каждый рендер — зависимости передаёт вызывающий.
     // eslint-disable-next-line react-hooks/exhaustive-deps

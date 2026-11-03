@@ -104,8 +104,16 @@ describe("таблица типов → категорий", () => {
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Polianytsia")).toBeUndefined();
     // kids по названию — только при типе Google; садочки, школи, лікарні — нет.
     expect(mapCategory({}, "Дитячий майданчик")).toBeUndefined();
-    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий садок «Сонечко»")).toBe("sights");
-    expect(mapCategory({ primaryType: "tourist_attraction" }, "ДЮСШ дитяча")).toBe("sights");
+    // …а садочки, ДЮСШ і загальноосвітні школи з tourist_attraction — не наші (no_category).
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий садок «Сонечко»")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "ДЮСШ дитяча")).toBeUndefined();
+    expect(
+      mapCategory({ primaryType: "tourist_attraction" }, "Яремчанська ЗОШ І-ІІІ ступенів"),
+    ).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа №2")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ворохтянський ліцей")).toBeUndefined();
+    // Школи ремесел — для туриста.
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа гончарства")).toBe("sights");
     // Мелочи: шини, мийка килимів, квест.
     expect(mapCategory({ primaryType: "store" }, "Мийка килимів")).toBe("stores");
     expect(mapCategory({ primaryType: "store" }, "Entire Home")).toBe("stores");

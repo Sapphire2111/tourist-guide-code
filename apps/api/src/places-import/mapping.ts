@@ -410,6 +410,12 @@ const NOT_A_VENUE =
 const PARCEL_LOCKER = /поштомат|parcel ?locker/i;
 /** Дитячі табори (зміни на тиждень, не розвага для туриста) с типом playground. */
 const CAMP = /табір|camp/i;
+/**
+ * Садочки, ДЮСШ і загальноосвітні школи (ЗОШ, «школа №», ліцей, гімназія) — не для туриста, хоч Google і ставить
+ * їм tourist_attraction; школи ремесел/лиж («Школа гончарства», лижна школа) сюди не потрапляють.
+ */
+const NOT_TOURIST_EDU =
+  /садок|садочок|дюсш|спортивна школа|загальноосвітн|ліце[йю]|гімназі|(^|[^а-яіїєґ])(днз|здо|зош)([^а-яіїєґ]|$)|школа\s*(№|n\s*\d|[іi]{1,3}[\s-]+ступ)/i;
 
 /** Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. */
 export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name: string): string | undefined {
@@ -417,6 +423,8 @@ export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name:
   // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
   if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(name.trim())) return undefined;
   const code = refineByName(name, byType);
+  // Слабый тип без уточнения по названию: садочок/школа — не заведение для туриста.
+  if (code === byType && LABEL_TYPES.has(byType) && NOT_TOURIST_EDU.test(name)) return undefined;
   if (code === "post" && PARCEL_LOCKER.test(name)) return undefined;
   if ((code === "kids" || code === "entertainment") && CAMP.test(name)) return undefined;
   return code;

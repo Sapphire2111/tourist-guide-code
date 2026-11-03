@@ -94,7 +94,7 @@ describe.skipIf(!dockerAvailable)(`Каталог (блок 3, миграция 
     expect(defs.places_region_status_category_idx).toMatch(/\(region_id, status, category_id\)/);
   });
 
-  it("seed: корни — разделы SEED_CATEGORIES (9 с «Сервіси»), места с графиком; повторный запуск ничего не дублирует", async () => {
+  it("seed: корни — разделы SEED_CATEGORIES (все разделы главной, с «Де жити», «Сервіси», «Гірські лижі»), места с графиком; повторный запуск ничего не дублирует", async () => {
     const count = async () =>
       Object.fromEntries(
         await Promise.all(

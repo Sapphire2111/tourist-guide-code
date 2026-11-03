@@ -181,7 +181,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       const data = await ok(api.GET("/localities", { params: { query: { regionId: region() } } }));
       return data.items.map((l) => ({ id: l.id, name: l.name, placeCount: l.placeCount }));
     },
-    search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max }) => {
+    search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max, signal }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
@@ -196,9 +196,17 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       const items: PlaceSummary[] = [];
       let offset: number | null = 0;
       while (offset !== null) {
-        const data: { items: SummaryDto[]; nextOffset: number | null } = await ok(
-          api.GET("/places/search", { params: { query: offset ? { ...query, offset } : query } }),
-        );
+        signal?.throwIfAborted();
+        let data: { items: SummaryDto[]; nextOffset: number | null };
+        try {
+          data = await ok(
+            api.GET("/places/search", { params: { query: offset ? { ...query, offset } : query }, signal }),
+          );
+        } catch (error) {
+          // Сбой догрузки (не первой страницы и не отмена) — показываем уже загруженное.
+          if (items.length === 0 || signal?.aborted) throw error;
+          break;
+        }
         items.push(...data.items.map(summaryOf));
         offset = max && items.length < max ? data.nextOffset : null;
       }

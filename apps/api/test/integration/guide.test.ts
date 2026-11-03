@@ -332,6 +332,24 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
       categoryId("museums"),
     ]);
     try {
+      // Число мест: доп. категория учитывается (ассистент не отбросит подкатегорию), «east» вдобавок
+      // в «Кафе» — раздел «Де поїсти» считает его один раз.
+      const before = (await service.categories(base.regions.a)).items;
+      await sql(`INSERT INTO place_extra_categories (region_id, place_id, category_id) VALUES ($1, $2, $3)`, [
+        base.regions.a,
+        placeId("east"),
+        categoryId("cafes"),
+      ]);
+      const count = (items: { id: string; placeCount: number }[], code: string) =>
+        items.find((c) => c.id === categoryId(code))!.placeCount;
+      const after = (await service.categories(base.regions.a)).items;
+      expect(count(after, "museums")).toBeGreaterThanOrEqual(1);
+      expect(count(after, "cafes")).toBe(count(before, "cafes") + 1);
+      expect(count(after, "eat")).toBe(count(before, "eat"));
+      await sql(`DELETE FROM place_extra_categories WHERE place_id = $1 AND category_id = $2`, [
+        placeId("east"),
+        categoryId("cafes"),
+      ]);
       const search = (params: Partial<SearchParams>) =>
         service.search(base.regions.a, { origin: ORIGIN, radius: 5000, limit: 50, offset: 0, ...params });
       expect(keysOf((await search({ categoryId: categoryId("museums") })).items)).toEqual(["east"]);

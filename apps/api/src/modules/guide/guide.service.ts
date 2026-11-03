@@ -93,13 +93,8 @@ export class GuideService {
   async categories(regionId: string): Promise<GuideCategoryListDto> {
     return this.inRegion(regionId, async () => {
       const rows = await this.repo.activeCategories();
-      const own = await this.repo.publishedCountByCategory();
-      const total = new Map<string, number>();
-      for (const c of rows) {
-        const n = own.get(c.id) ?? 0;
-        total.set(c.id, (total.get(c.id) ?? 0) + n);
-        if (c.parent_id) total.set(c.parent_id, (total.get(c.parent_id) ?? 0) + n);
-      }
+      // Основная и дополнительные категории мест, без дублей; раздел — вместе с подкатегориями.
+      const { own, tree } = await this.repo.publishedCountByCategory();
       return {
         items: rows.map((c) => ({
           id: c.id,
@@ -109,7 +104,7 @@ export class GuideService {
           icon: c.icon,
           homeSection: c.home_section,
           sortOrder: c.sort_order,
-          placeCount: total.get(c.id) ?? 0,
+          placeCount: (c.parent_id ? own.get(c.id) : tree.get(c.id)) ?? 0,
         })),
       };
     });

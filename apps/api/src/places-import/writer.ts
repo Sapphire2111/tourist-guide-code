@@ -39,6 +39,8 @@ export type WriteStats = {
   recategorized: number;
   /** Места импорта, которые по новым правилам не наши (collect.rejectedIds), — в архив, если админка не трогала. */
   archivedRejected: number;
+  /** google_place_id заархивированных «не наших» (в аудит прогона). */
+  archivedIds: string[];
   /** Места импорта в БД, которых не было в этой выгрузке (только отчёт; null — выгрузка неполная, не считалось). */
   missingFromGoogle: number | null;
   missingExamples: string[];
@@ -100,6 +102,7 @@ export async function writePlaces(
       suspendedIds: [],
       recategorized: 0,
       archivedRejected: 0,
+      archivedIds: [],
       extraCategoriesWritten: 0,
       missingFromGoogle: null,
       missingExamples: [],
@@ -270,15 +273,29 @@ export async function writePlaces(
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
       stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
 
-      // Дополнительные категории импорта пересобираются (новые правила); поставленные админкой (manual) не
-      // трогаются — совпадение с ними ON CONFLICT DO NOTHING.
-      const batchIds = batch.map((p) => placeId.get(p.googlePlaceId)!);
-      await trx
-        .deleteFrom("place_extra_categories")
-        .where("place_id", "in", batchIds)
-        .where("source", "=", "import")
+      // Дополнительные категории импорта пересобираются (новые правила) только у мест, где основную категорию
+      // ставил импорт: админка сменила категорию — набор места её, импорт его не трогает. Поставленные админкой
+      // (manual) не трогаются — совпадение с ними ON CONFLICT DO NOTHING.
+      const ownRows = await trx
+        .selectFrom("places")
+        .select("google_place_id")
+        .where(
+          "id",
+          "in",
+          batch.map((p) => placeId.get(p.googlePlaceId)!),
+        )
+        .whereRef("import_category_id", "=", "category_id")
         .execute();
-      const extras = batch.flatMap((p) =>
+      const own = new Set(ownRows.map((r) => r.google_place_id!));
+      const ownBatch = batch.filter((p) => own.has(p.googlePlaceId));
+      const batchIds = ownBatch.map((p) => placeId.get(p.googlePlaceId)!);
+      if (batchIds.length)
+        await trx
+          .deleteFrom("place_extra_categories")
+          .where("place_id", "in", batchIds)
+          .where("source", "=", "import")
+          .execute();
+      const extras = ownBatch.flatMap((p) =>
         p.extraCategoryCodes
           .filter((code) => code !== p.categoryCode && categoryId.has(code))
           .map((code) => ({
@@ -341,7 +358,8 @@ export async function writePlaces(
     }
 
     // Уже импортированные места, которые по новым правилам не наши (метки «только пункт/бренд», поштомати, табори),
-    // — в архив; только опубликованные и только если категорию ставил импорт (админка не меняла).
+    // — в архив; только опубликованные, только если категорию ставил импорт (админка не меняла), у места нет
+    // организации-партнёра и пользователи его не трогали (в журнале аудита нет действий user — как в 0020).
     const rejected = [...new Set(options.rejectedIds ?? [])];
     for (let from = 0; from < rejected.length; from += BATCH) {
       const rows = await trx
@@ -350,9 +368,23 @@ export async function writePlaces(
         .where("source", "=", "google")
         .where("status", "=", "published")
         .whereRef("import_category_id", "=", "category_id")
+        .where("organization_id", "is", null)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom("audit_logs as a")
+                .select(eb.lit(1).as("one"))
+                .where("a.entity_type", "=", "place")
+                .where("a.actor_type", "=", "user")
+                .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
+            ),
+          ),
+        )
         .where("google_place_id", "in", rejected.slice(from, from + BATCH))
-        .returning("id")
+        .returning("google_place_id")
         .execute();
+      stats.archivedIds.push(...rows.map((r) => r.google_place_id!));
       stats.archivedRejected += rows.length;
     }
 
@@ -384,6 +416,7 @@ export async function writePlaces(
         recategorized: stats.recategorized,
         extraCategoriesWritten: stats.extraCategoriesWritten,
         archivedRejected: stats.archivedRejected,
+        archivedIds: stats.archivedIds,
         schedulesRejected: stats.schedulesRejected,
         missingFromGoogle: stats.missingFromGoogle,
         schedulesWritten: stats.schedulesWritten,

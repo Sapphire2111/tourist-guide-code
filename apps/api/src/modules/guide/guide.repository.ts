@@ -129,16 +129,46 @@ export class GuideRepository {
       .execute();
   }
 
-  /** Число опубликованных мест по категории (только своей, без подкатегорий). */
-  async publishedCountByCategory(): Promise<Map<string, number>> {
-    const rows = await this.q
-      .selectFrom("places")
-      .select(["places.category_id", (eb) => eb.fn.countAll<string>().as("n")])
-      .where("places.status", "=", "published")
-      .where("places.location", "is not", null)
-      .groupBy("places.category_id")
+  /**
+   * Число опубликованных мест по категориям — основной и дополнительной (place_extra_categories), без дублей:
+   * own — места самой категории; tree — места корня вместе с активными подкатегориями (место в нескольких
+   * подкатегориях раздела считается один раз).
+   */
+  async publishedCountByCategory(): Promise<{ own: Map<string, number>; tree: Map<string, number> }> {
+    const q = this.q.with("pc", (db) =>
+      db
+        .selectFrom("places")
+        .select(["places.id as place_id", "places.category_id"])
+        .where("places.status", "=", "published")
+        .where("places.location", "is not", null)
+        .union(
+          db
+            .selectFrom("place_extra_categories as x")
+            .innerJoin("places as xp", "xp.id", "x.place_id")
+            .select(["x.place_id", "x.category_id"])
+            .where("xp.status", "=", "published")
+            .where("xp.location", "is not", null),
+        ),
+    );
+    const own = await q
+      .selectFrom("pc")
+      .select(["pc.category_id", (eb) => eb.fn.count<string>("pc.place_id").distinct().as("n")])
+      .groupBy("pc.category_id")
       .execute();
-    return new Map(rows.map((r) => [r.category_id, Number(r.n)]));
+    const tree = await q
+      .selectFrom("pc")
+      .innerJoin("categories as c", "c.id", "pc.category_id")
+      .select([
+        (eb) => eb.fn.coalesce("c.parent_id", "c.id").as("root_id"),
+        (eb) => eb.fn.count<string>("pc.place_id").distinct().as("n"),
+      ])
+      .where("c.active", "=", true)
+      .groupBy((eb) => eb.fn.coalesce("c.parent_id", "c.id"))
+      .execute();
+    return {
+      own: new Map(own.map((r) => [r.category_id, Number(r.n)])),
+      tree: new Map(tree.map((r) => [r.root_id, Number(r.n)])),
+    };
   }
 
   // --- населённые пункты ---

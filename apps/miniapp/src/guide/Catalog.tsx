@@ -78,7 +78,7 @@ function CategoryPlaces({
   const [submitId, setSubmitId] = useState(0);
   const pendingSubmit = useRef<number | null>(null);
   const [places, retry] = useAsync(
-    () =>
+    (signal) =>
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
@@ -88,7 +88,7 @@ function CategoryPlaces({
             q: q || undefined,
             point,
             ...(byLocation ? { localityIds } : {}),
-            ...(mapFirst ? { max: STAY_MAP_MAX } : {}),
+            ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
           }),
         )
         .then((list) => ({ list, submitId })),
