@@ -20,7 +20,6 @@ import {
   useRoute,
   useT,
 } from "@tg/ui";
-import { Assistant } from "./assistant/Assistant.js";
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
@@ -53,18 +52,10 @@ import { Health } from "./Health.js";
 import { About } from "./host/About.js";
 import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/context.js";
 import { createHostApi } from "./host/host-api.js";
-import { MyRequests, StaffRequests } from "./host/Requests.js";
 import type { HostApi } from "./host/types.js";
-import { MyPlan, NewPlanScreen, SavedPlanScreen, ScenarioScreen } from "./plan/MyPlan.js";
 import { PartnerProvider, usePartnerOrgs } from "./partner/context.js";
-import { PartnerDashboard } from "./partner/Dashboard.js";
-import { AcceptInvite } from "./partner/Invite.js";
-import { PartnerOffers } from "./partner/Offers.js";
-import { PartnerOnboarding } from "./partner/Onboarding.js";
 import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
 import { ModeSwitch } from "./partner/parts.js";
-import { PlaceEditor } from "./partner/PlaceEditor.js";
-import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
 import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
@@ -77,6 +68,46 @@ const PartnerBookings = lazyScreen(() =>
 const PartnerResources = lazyScreen(() =>
   import("./bookings/PartnerScreens.js").then((m) => m.PartnerResources),
 );
+// Экраны вне главной (ассистент, план, заявки, кабинет партнёра) — тоже ленивые чанки: основной бандл меньше,
+// первый экран быстрее разбирается на слабых Android. Карта — своим чанком (guide/MapSlot.tsx).
+const SCREEN_ERROR = "miniapp.screen.loadError";
+const Assistant = lazyScreen(() => import("./assistant/Assistant.js").then((m) => m.Assistant), SCREEN_ERROR);
+const MyPlan = lazyScreen(() => import("./plan/MyPlan.js").then((m) => m.MyPlan), SCREEN_ERROR);
+const NewPlanScreen = lazyScreen(() => import("./plan/MyPlan.js").then((m) => m.NewPlanScreen), SCREEN_ERROR);
+const SavedPlanScreen = lazyScreen(
+  () => import("./plan/MyPlan.js").then((m) => m.SavedPlanScreen),
+  SCREEN_ERROR,
+);
+const ScenarioScreen = lazyScreen(
+  () => import("./plan/MyPlan.js").then((m) => m.ScenarioScreen),
+  SCREEN_ERROR,
+);
+const MyRequests = lazyScreen(() => import("./host/Requests.js").then((m) => m.MyRequests), SCREEN_ERROR);
+const StaffRequests = lazyScreen(
+  () => import("./host/Requests.js").then((m) => m.StaffRequests),
+  SCREEN_ERROR,
+);
+const PartnerDashboard = lazyScreen(
+  () => import("./partner/Dashboard.js").then((m) => m.PartnerDashboard),
+  SCREEN_ERROR,
+);
+const AcceptInvite = lazyScreen(
+  () => import("./partner/Invite.js").then((m) => m.AcceptInvite),
+  SCREEN_ERROR,
+);
+const PartnerOffers = lazyScreen(
+  () => import("./partner/Offers.js").then((m) => m.PartnerOffers),
+  SCREEN_ERROR,
+);
+const PartnerOnboarding = lazyScreen(
+  () => import("./partner/Onboarding.js").then((m) => m.PartnerOnboarding),
+  SCREEN_ERROR,
+);
+const PlaceEditor = lazyScreen(
+  () => import("./partner/PlaceEditor.js").then((m) => m.PlaceEditor),
+  SCREEN_ERROR,
+);
+const PartnerStaff = lazyScreen(() => import("./partner/Staff.js").then((m) => m.PartnerStaff), SCREEN_ERROR);
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).

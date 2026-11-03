@@ -2,6 +2,7 @@
 // сообщение и «Спробувати ще раз» вместо белого экрана; React.lazy запоминает отказ, поэтому при сбое он
 // сбрасывается и повтор создаёт новый lazy. Пока чанк грузится — «Завантаження…».
 import { Component, lazy, Suspense, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import type { MessageKey } from "@tg/i18n";
 import { Button, useT } from "@tg/ui";
 
 class ScreenBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
@@ -14,7 +15,11 @@ class ScreenBoundary extends Component<{ fallback: ReactNode; children: ReactNod
   }
 }
 
-export function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> {
+/** Ленивый экран; `errorKey` — текст сбоя загрузки чанка (по умолчанию — для бронирований). */
+export function lazyScreen<P extends object>(
+  load: () => Promise<ComponentType<P>>,
+  errorKey: MessageKey = "miniapp.booking.screenError",
+): ComponentType<P> {
   let current: ComponentType<P> | null = null;
   const get = (): ComponentType<P> =>
     (current ??= lazy(() =>
@@ -36,7 +41,7 @@ export function lazyScreen<P extends object>(load: () => Promise<ComponentType<P
         key={attempt}
         fallback={
           <div className="kosiv-card kosiv-empty" data-testid="screen-load-error">
-            <p role="alert">{t("miniapp.booking.screenError")}</p>
+            <p role="alert">{t(errorKey)}</p>
             <Button onClick={() => setAttempt((n) => n + 1)}>{t("miniapp.guide.retry")}</Button>
           </div>
         }

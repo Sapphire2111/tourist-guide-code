@@ -1,0 +1,36 @@
+name: Keep-alive staging
+
+# Render free усыпляет web-сервис после ~15 мин без HTTP-трафика; первый запрос будит его ~30–60 с — всё это время
+# Mini App висит на заставке (вход POST /auth/telegram ждёт api). Пинг GET /health каждые 10 мин держит api
+# staging бодрым. Репозиторий публичный — минуты бесплатны; секретов нет (адрес публичный).
+# Ограничения: GitHub запускает schedule с задержкой (обычно минуты, в часы пик — дольше) — поэтому 10 мин, а не 14;
+# Render free даёт 750 ч инстанса в месяц на workspace — одного api 24/7 (~744 ч) хватает, второго — уже нет.
+# Отключить: Actions → Keep-alive staging → Disable workflow.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: GET /health
+        shell: bash
+        run: |
+          # Только код и время ответа — тело и заголовки в лог не пишутся.
+          # Холодный старт дольше таймаута одной попытки — повтор (запрос уже разбудил сервис).
+          for attempt in 1 2 3; do
+            out=$(curl -s -o /dev/null --max-time 60 -w '%{http_code} %{time_total}' https://tg-api-staging.onrender.com/health || true)
+            echo "attempt $attempt: HTTP ${out:-000} s"
+            case "$out" in 200\ *) exit 0 ;; esac
+            sleep 5
+          done
+          echo "::warning::staging api не ответил 200 на /health"
