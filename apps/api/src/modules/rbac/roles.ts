@@ -154,6 +154,12 @@ const ORG_MANAGER_PERMISSIONS: readonly PermissionCode[] = [
   "media.upload",
   "offer.manage",
   "host_module.settings.edit",
+  // Бронирования (блок 7): ресурсы и правила, отказ, альтернатива, исправление no_show, телефон клиента (C-20).
+  "resource.manage",
+  "availability.edit",
+  "booking.reject",
+  "booking.propose_alternative",
+  "booking.admin.read",
 ];
 
 /** Владелец (S-05, S-06): всё по своей организации, включая отправку на модерацию и сотрудников. */
