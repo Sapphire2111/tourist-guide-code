@@ -130,6 +130,17 @@ export const IMPORT_QUERIES: readonly string[] = [
   "Укрпошта",
   "пральня",
   "перукарня",
+  // Авто, активний відпочинок, гірські лижі (03.11.2026)
+  "паркінг",
+  "евакуатор",
+  "джипінг",
+  "рафтинг",
+  "зіплайн",
+  "конні прогулянки",
+  "гірськолижний курорт",
+  "сервіс лиж",
+  "лижна школа",
+  "прокат сноубордів",
   // Природа й пам'ятки
   "водоспад",
   "оглядовий майданчик",
@@ -153,6 +164,8 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
       icon: "banknote",
     },
     { code: "fuel", parent: "transfer", name: { uk: "АЗС", en: "Gas stations" }, icon: "fuel" },
+    { code: "parking", parent: "transfer", name: { uk: "Паркінги", en: "Parking" }, icon: "parking" },
+    { code: "tow-trucks", parent: "transfer", name: { uk: "Евакуатори", en: "Tow trucks" }, icon: "truck" },
     {
       code: "ev-charging",
       parent: "transfer",
@@ -176,6 +189,33 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
     // (зиплайн, родельбан, кино) — уже импортированные места переразмечаются при следующем импорте.
     { code: "kids", parent: "fun", name: { uk: "Для дітей", en: "For kids" }, icon: "baby" },
     { code: "adult-fun", parent: "fun", name: { uk: "Для дорослих", en: "For adults" }, icon: "dice" },
+    // Раздел «Гірські лижі» (0020)
+    {
+      code: "ski-resorts",
+      parent: "ski",
+      name: { uk: "Гірськолижні курорти й траси", en: "Ski resorts and slopes" },
+      icon: "mountain-snow",
+    },
+    { code: "ski-lifts", parent: "ski", name: { uk: "Підйомники", en: "Ski lifts" }, icon: "cable-car" },
+    {
+      code: "ski-rental",
+      parent: "ski",
+      name: { uk: "Прокат лиж і сноубордів", en: "Ski and snowboard rental" },
+      icon: "snowflake",
+    },
+    { code: "ski-service", parent: "ski", name: { uk: "Сервіс лиж", en: "Ski service" }, icon: "wrench" },
+    {
+      code: "ski-schools",
+      parent: "ski",
+      name: { uk: "Лижні школи й інструктори", en: "Ski schools and instructors" },
+      icon: "graduation-cap",
+    },
+    {
+      code: "ski-shops",
+      parent: "ski",
+      name: { uk: "Магазини лижного спорядження", en: "Ski gear shops" },
+      icon: "shopping-bag",
+    },
     // Раздел «Сервіси» (0020)
     {
       code: "tech-repair",
@@ -189,7 +229,7 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
       name: { uk: "Мобільний зв'язок", en: "Mobile operators" },
       icon: "smartphone",
     },
-    { code: "car-wash", parent: "services", name: { uk: "Автомийки", en: "Car wash" }, icon: "droplets" },
+    { code: "car-wash", parent: "transfer", name: { uk: "Автомийки", en: "Car wash" }, icon: "droplets" },
     {
       code: "post",
       parent: "services",

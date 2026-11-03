@@ -24,6 +24,7 @@ const TABLES = [
   "categories",
   "localities",
   "place_badge_events",
+  "place_extra_categories",
   "place_media",
   "place_schedule_exceptions",
   "place_schedules",

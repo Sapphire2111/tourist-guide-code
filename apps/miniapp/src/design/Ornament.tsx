@@ -162,18 +162,27 @@ export const ICONS = {
       <circle cx="17" cy="6" r="2" />
     </Icon>
   ),
+  // Гора зі снігом і лижі.
+  ski: (
+    <Icon>
+      <path d="M3 18l6-11 3 5 2-3 5 9z" />
+      <path d="M8.5 9.5l1.5 1.5 1.5-1.5" />
+      <path d="M4 21l16-3" />
+    </Icon>
+  ),
   nearby: (
     <Icon>
       <path d="M12 21s-6-5.3-6-11a6 6 0 0112 0c0 5.7-6 11-6 11z" />
       <circle cx="12" cy="10" r="2.2" />
     </Icon>
   ),
+  // «Авто»: легковик збоку.
   transfer: (
     <Icon>
-      <path d="M5 16V8a3 3 0 013-3h8a3 3 0 013 3v8z" />
-      <path d="M5 12h14M8 19v-3M16 19v-3" />
-      <circle cx="8.5" cy="14" r=".6" />
-      <circle cx="15.5" cy="14" r=".6" />
+      <path d="M3 16v-3l2-5h11l3 5h2v3h-2" />
+      <path d="M9 16h6M5 13h14" />
+      <circle cx="7" cy="16.5" r="1.8" />
+      <circle cx="17" cy="16.5" r="1.8" />
     </Icon>
   ),
   services: (

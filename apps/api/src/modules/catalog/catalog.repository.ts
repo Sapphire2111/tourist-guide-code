@@ -420,6 +420,17 @@ export class CatalogRepository {
     return r.numDeletedRows > 0n;
   }
 
+  /** Дополнительные категории места (0020): место видно и в этих разделах. */
+  async placeExtraCategoryIds(placeId: string): Promise<string[]> {
+    const rows = await this.q
+      .selectFrom("place_extra_categories")
+      .select("category_id")
+      .where("place_id", "=", placeId)
+      .orderBy("category_id")
+      .execute();
+    return rows.map((r) => r.category_id);
+  }
+
   async placeTagIds(placeId: string): Promise<string[]> {
     const rows = await this.q
       .selectFrom("place_tags")

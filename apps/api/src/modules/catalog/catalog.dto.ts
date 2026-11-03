@@ -457,6 +457,12 @@ export class PlaceDto {
   verifiedAt!: string | null;
   @ApiProperty({ type: [String], description: "id тегов" }) tagIds!: string[];
   @ApiProperty({
+    type: [String],
+    description:
+      "id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже",
+  })
+  extraCategoryIds!: string[];
+  @ApiProperty({
     type: Boolean,
     description:
       "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)",
@@ -492,6 +498,7 @@ export const toPlaceDto = (
   recommended: p.recommended,
   verifiedAt: p.verified_at?.toISOString() ?? null,
   tagIds: p.tagIds ?? [],
+  extraCategoryIds: ("extraCategoryIds" in p ? p.extraCategoryIds : undefined) ?? [],
   hostCapable,
   organizationId: p.organization_id ?? null,
   createdAt: p.created_at.toISOString(),

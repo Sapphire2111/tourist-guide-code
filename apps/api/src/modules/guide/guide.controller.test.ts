@@ -176,7 +176,7 @@ describe("GET /places/search", () => {
       expect.objectContaining({ excludeSections: undefined }),
     );
     await http().get(`/places/search?regionId=${REGION}&exclude_section=hotels`).expect(400);
-    const many = Array.from({ length: 11 }, () => "stay").join(",");
+    const many = Array.from({ length: 20 }, () => "stay").join(",");
     await http().get(`/places/search?regionId=${REGION}&exclude_section=${many}`).expect(400);
   });
 

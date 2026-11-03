@@ -149,23 +149,52 @@ export class GuideRepository {
       const radius = s.radius;
       query = query.where((eb) => withinMeters(geom(eb), point(origin), radius));
     }
+    // Категория или раздел — по основной ИЛИ дополнительной категории места (0020, place_extra_categories).
     if (categoryId)
       query = query.where((eb) =>
-        eb.or([eb("places.category_id", "=", categoryId), eb("categories.parent_id", "=", categoryId)]),
+        eb.or([
+          eb("places.category_id", "=", categoryId),
+          eb("categories.parent_id", "=", categoryId),
+          eb.exists(
+            eb
+              .selectFrom("place_extra_categories as x")
+              .innerJoin("categories as xc", "xc.id", "x.category_id")
+              .select("x.place_id")
+              .whereRef("x.place_id", "=", "places.id")
+              .where((w) => w.or([w("x.category_id", "=", categoryId), w("xc.parent_id", "=", categoryId)])),
+          ),
+        ]),
       );
     const exclude = s.excludeSections ?? [];
     if (exclude.length)
-      query = query.where((eb) =>
-        eb.not(
-          eb.exists(
-            eb
-              .selectFrom("categories as root")
-              .select("root.id")
-              .whereRef("root.id", "=", eb.fn.coalesce("categories.parent_id", "categories.id"))
-              .where("root.home_section", "in", [...exclude]),
+      query = query
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom("categories as root")
+                .select("root.id")
+                .whereRef("root.id", "=", eb.fn.coalesce("categories.parent_id", "categories.id"))
+                .where("root.home_section", "in", [...exclude]),
+            ),
           ),
-        ),
-      );
+        )
+        // …и по дополнительным категориям: место «Де жити» с доп. категорией тоже не показывается.
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom("place_extra_categories as x")
+                .innerJoin("categories as xc", "xc.id", "x.category_id")
+                .innerJoin("categories as xr", (j) =>
+                  j.on((o) => o("xr.id", "=", o.fn.coalesce("xc.parent_id", "xc.id"))),
+                )
+                .select("x.place_id")
+                .whereRef("x.place_id", "=", "places.id")
+                .where("xr.home_section", "in", [...exclude]),
+            ),
+          ),
+        );
     const pattern = text === undefined ? undefined : likeContains(text);
     if (pattern !== undefined)
       query = query.where(

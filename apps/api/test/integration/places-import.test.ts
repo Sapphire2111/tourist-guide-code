@@ -26,6 +26,7 @@ const APP_PASSWORD = "tg_api_places_import_test";
 const place = (id: string, over: Partial<MappedPlace> = {}): MappedPlace => ({
   googlePlaceId: id,
   categoryCode: "restaurants",
+  extraCategoryCodes: [],
   localityCode: "yaremche",
   name: `Ресторан ${id}`,
   description: "Ресторан у Яремчі. Джерело: Google Maps.",
@@ -371,5 +372,40 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     expect(await cat("gR2")).toEqual({ code: "museums", status: "published", untouched: false });
     expect(await cat("gR3")).toMatchObject({ code: "post", status: "archived" });
     expect(await cat("gR4")).toMatchObject({ code: "souvenirs", status: "published" });
+  });
+
+  it("дополнительные категории (0020): импорт пересобирает свои, ручные (manual) не трогает", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX1", { categoryCode: "car-service", extraCategoryCodes: ["help"] })],
+      t,
+    );
+    const extras = async () =>
+      (
+        await sql(
+          `SELECT c.code, x.source FROM place_extra_categories x JOIN places p ON p.id = x.place_id
+           JOIN categories c ON c.id = x.category_id WHERE p.google_place_id = 'gX1' ORDER BY c.code`,
+        )
+      ).rows;
+    expect(await extras()).toEqual([{ code: "help", source: "import" }]);
+    // Админка добавила «Сувеніри» вручную.
+    await sql(
+      `INSERT INTO place_extra_categories (region_id, place_id, category_id, source)
+       SELECT p.region_id, p.id, c.id, 'manual' FROM places p JOIN categories c ON c.region_id = p.region_id
+       WHERE p.google_place_id = 'gX1' AND c.code = 'souvenirs'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX1", { categoryCode: "car-service", extraCategoryCodes: ["active"] })],
+      t,
+    );
+    expect(r.extraCategoriesWritten).toBe(1);
+    expect(await extras()).toEqual([
+      { code: "active", source: "import" },
+      { code: "souvenirs", source: "manual" },
+    ]);
   });
 });

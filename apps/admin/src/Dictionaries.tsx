@@ -18,6 +18,7 @@ const HOME_SECTIONS = [
   "shop",
   "relax",
   "fun",
+  "ski",
   "nearby",
   "transfer",
   "services",

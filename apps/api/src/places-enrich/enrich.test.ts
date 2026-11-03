@@ -141,6 +141,7 @@ describe("normalizeDetails", () => {
 const place = (over: Partial<MappedPlace> = {}): MappedPlace => ({
   googlePlaceId: PLACE_ID,
   categoryCode: "restaurants",
+  extraCategoryCodes: [],
   localityCode: "yaremche",
   name: "Woodstone",
   description: "Ресторан у Яремчі. Джерело: Google Maps.",

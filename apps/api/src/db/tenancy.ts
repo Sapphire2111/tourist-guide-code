@@ -58,6 +58,7 @@ export const TABLE_TENANCY = {
   tags: "tenant",
   places: "tenant",
   place_tags: "tenant",
+  place_extra_categories: "tenant",
   place_schedules: "tenant",
   place_schedule_exceptions: "tenant",
   place_media: "tenant",

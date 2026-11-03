@@ -24,6 +24,8 @@ export const SEED_CATEGORIES: readonly {
   name: Text;
   icon: string;
   home: HomeSection;
+  /** Порядок корня; без него — по позиции (i × 10). Разделы после 0020 — между старыми (импорт заводит их в БД). */
+  sortOrder?: number;
   children: readonly { code: string; name: Text; icon: string }[];
 }[] = [
   {
@@ -79,6 +81,15 @@ export const SEED_CATEGORIES: readonly {
     ],
   },
   {
+    // Подкатегории (курорти, підйомники, прокат, сервіс, школи, магазини) заводит импорт мест.
+    code: "ski",
+    name: { uk: "Гірські лижі", en: "Skiing" },
+    icon: "mountain-snow",
+    home: "ski",
+    sortOrder: 45,
+    children: [],
+  },
+  {
     code: "nearby",
     name: { uk: "Що поруч", en: "Nearby" },
     icon: "map-pin",
@@ -86,13 +97,15 @@ export const SEED_CATEGORIES: readonly {
     children: [{ code: "nature", name: { uk: "Пам'ятки природи", en: "Nature sights" }, icon: "trees" }],
   },
   {
+    // «Авто» (до 03.11.2026 — «Трансфер»; код прежний — ссылки и home_section не ломаются).
     code: "transfer",
-    name: { uk: "Трансфер", en: "Transfer" },
+    name: { uk: "Авто", en: "Car" },
     icon: "car",
     home: "transfer",
     children: [
       { code: "taxi", name: { uk: "Таксі", en: "Taxi" }, icon: "taxi" },
       { code: "rental", name: { uk: "Прокат авто", en: "Car rental" }, icon: "car" },
+      { code: "car-service", name: { uk: "СТО й шиномонтаж", en: "Car service and tyres" }, icon: "wrench" },
     ],
   },
   {
@@ -101,6 +114,7 @@ export const SEED_CATEGORIES: readonly {
     name: { uk: "Сервіси", en: "Services" },
     icon: "wrench",
     home: "services",
+    sortOrder: 65,
     children: [],
   },
   {
@@ -111,7 +125,6 @@ export const SEED_CATEGORIES: readonly {
     children: [
       { code: "pharmacies", name: { uk: "Аптеки", en: "Pharmacies" }, icon: "pill" },
       { code: "hospitals", name: { uk: "Лікарні", en: "Hospitals" }, icon: "hospital" },
-      { code: "car-service", name: { uk: "СТО", en: "Car service" }, icon: "wrench" },
     ],
   },
 ];
@@ -397,7 +410,7 @@ export async function seedCatalog(
           name_i18n: c.name,
           icon: c.icon,
           home_section: c.home,
-          sort_order: i * 10,
+          sort_order: c.sortOrder ?? i * 10,
         })
         .onConflict((oc) => oc.doNothing())
         .execute();

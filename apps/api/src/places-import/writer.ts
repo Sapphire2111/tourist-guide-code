@@ -33,6 +33,8 @@ export type WriteStats = {
   suspendedClosed: number;
   /** google_place_id снятых с публикации (в аудит прогона). */
   suspendedIds: string[];
+  /** Дополнительных категорий от импорта записано (place_extra_categories, source = import). */
+  extraCategoriesWritten: number;
   /** Места импорта, переразмеченные новыми правилами (категорию ставил импорт, админка не меняла). */
   recategorized: number;
   /** Места импорта, которые по новым правилам не наши (collect.rejectedIds), — в архив, если админка не трогала. */
@@ -98,6 +100,7 @@ export async function writePlaces(
       suspendedIds: [],
       recategorized: 0,
       archivedRejected: 0,
+      extraCategoriesWritten: 0,
       missingFromGoogle: null,
       missingExamples: [],
     };
@@ -141,8 +144,7 @@ export async function writePlaces(
           name_i18n: root.name,
           icon: root.icon,
           home_section: root.home,
-          // «Сервіси» — перед «Халепа?» и в регионах со старым seed (там help = 70, по индексу до 0020).
-          sort_order: root.code === "services" ? 65 : i * 10,
+          sort_order: root.sortOrder ?? i * 10,
         })
         .onConflict((oc) => oc.columns(["region_id", "code"]).doNothing())
         .returning("id")
@@ -268,6 +270,34 @@ export async function writePlaces(
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
       stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
 
+      // Дополнительные категории импорта пересобираются (новые правила); поставленные админкой (manual) не
+      // трогаются — совпадение с ними ON CONFLICT DO NOTHING.
+      const batchIds = batch.map((p) => placeId.get(p.googlePlaceId)!);
+      await trx
+        .deleteFrom("place_extra_categories")
+        .where("place_id", "in", batchIds)
+        .where("source", "=", "import")
+        .execute();
+      const extras = batch.flatMap((p) =>
+        p.extraCategoryCodes
+          .filter((code) => code !== p.categoryCode && categoryId.has(code))
+          .map((code) => ({
+            region_id: regionId,
+            place_id: placeId.get(p.googlePlaceId)!,
+            category_id: categoryId.get(code)!,
+            source: "import" as const,
+          })),
+      );
+      if (extras.length) {
+        const written = await trx
+          .insertInto("place_extra_categories")
+          .values(extras)
+          .onConflict((oc) => oc.columns(["place_id", "category_id"]).doNothing())
+          .returning("place_id")
+          .execute();
+        stats.extraCategoriesWritten += written.length;
+      }
+
       // График: заменяется целиком только у мест, где Google отдал непустой график, прошедший правила каталога
       // (scheduleProblems — те же, что у админки). Нет графика или он плохой — существующий не трогается; плохая
       // строка не доходит до INSERT и не откатывает всю транзакцию.
@@ -352,6 +382,7 @@ export async function writePlaces(
         suspendedClosed: stats.suspendedClosed,
         suspendedIds: stats.suspendedIds,
         recategorized: stats.recategorized,
+        extraCategoriesWritten: stats.extraCategoriesWritten,
         archivedRejected: stats.archivedRejected,
         schedulesRejected: stats.schedulesRejected,
         missingFromGoogle: stats.missingFromGoogle,

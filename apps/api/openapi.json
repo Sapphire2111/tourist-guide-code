@@ -11924,7 +11924,19 @@
       },
       "HomeSection": {
         "type": "string",
-        "enum": ["about", "stay", "eat", "shop", "relax", "fun", "nearby", "transfer", "services", "help"]
+        "enum": [
+          "about",
+          "stay",
+          "eat",
+          "shop",
+          "relax",
+          "fun",
+          "ski",
+          "nearby",
+          "transfer",
+          "services",
+          "help"
+        ]
       },
       "CategoryDto": {
         "type": "object",
@@ -12114,6 +12126,11 @@
             "description": "Дата перевірки інформації"
           },
           "tagIds": { "description": "id тегов", "type": "array", "items": { "type": "string" } },
+          "extraCategoryIds": {
+            "description": "id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "hostCapable": {
             "type": "boolean",
             "description": "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)"
@@ -12142,6 +12159,7 @@
           "recommended",
           "verifiedAt",
           "tagIds",
+          "extraCategoryIds",
           "hostCapable",
           "organizationId",
           "createdAt",

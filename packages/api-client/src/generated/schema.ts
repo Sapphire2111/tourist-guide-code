@@ -2431,6 +2431,7 @@ export interface components {
       | "shop"
       | "relax"
       | "fun"
+      | "ski"
       | "nearby"
       | "transfer"
       | "services"
@@ -2554,6 +2555,8 @@ export interface components {
       verifiedAt: string | null;
       /** @description id тегов */
       tagIds: string[];
+      /** @description id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже */
+      extraCategoryIds: string[];
       /** @description Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5) */
       hostCapable: boolean;
       /**

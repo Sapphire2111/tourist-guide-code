@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
 import { GuideRepository, GuideService } from "../../src/modules/guide/index.js";
-import { coverEtag } from "../../src/modules/guide/guide.service.js";
+import { coverEtag, type SearchParams } from "../../src/modules/guide/guide.service.js";
 import { GoogleQuota } from "../../src/places-enrich/quota.js";
 import type { MediaService } from "../../src/modules/media/index.js";
 import { RegionsRepository } from "../../src/modules/regions/index.js";
@@ -322,6 +322,34 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
         categoryId("restaurants"),
         placeId("east"),
       ]);
+    }
+  });
+
+  it("дополнительная категория (0020): место — и в разделе доп. категории, и в своём; исключение раздела — по обеим", async () => {
+    await sql(`INSERT INTO place_extra_categories (region_id, place_id, category_id) VALUES ($1, $2, $3)`, [
+      base.regions.a,
+      placeId("east"),
+      categoryId("museums"),
+    ]);
+    try {
+      const search = (params: Partial<SearchParams>) =>
+        service.search(base.regions.a, { origin: ORIGIN, radius: 5000, limit: 50, offset: 0, ...params });
+      expect(keysOf((await search({ categoryId: categoryId("museums") })).items)).toEqual(["east"]);
+      expect(keysOf((await search({ categoryId: categoryId("fun") })).items)).toContain("east");
+      expect(keysOf((await search({ categoryId: categoryId("restaurants") })).items)).toEqual(["east"]);
+      // Исключение раздела «Розваги» — и по дополнительной категории.
+      expect(keysOf((await search({ excludeSections: ["fun"] })).items)).not.toContain("east");
+      // Карточка — основная категория.
+      expect((await service.place(base.regions.a, placeId("east"), {}))!.category.id).toBe(
+        categoryId("restaurants"),
+      );
+      // RLS: регион Б доп. категорий региона А не видит.
+      const seen = await withTenant(appDb, regionContext(base.regions.b), (trx) =>
+        trx.selectFrom("place_extra_categories").selectAll().execute(),
+      );
+      expect(seen).toEqual([]);
+    } finally {
+      await sql(`DELETE FROM place_extra_categories WHERE place_id = $1`, [placeId("east")]);
     }
   });
 

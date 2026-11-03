@@ -593,6 +593,7 @@ export const HOME_SECTIONS = [
   "shop",
   "relax",
   "fun",
+  "ski",
   "nearby",
   "transfer",
   "services",
@@ -690,6 +691,17 @@ export interface PlaceTagsTable {
   region_id: RegionId;
   place_id: ColumnType<string, string, never>;
   tag_id: ColumnType<string, string, never>;
+  created_at: CreatedAt;
+}
+
+/** Дополнительная категория места (0020): кто поставил — импорт Google или админка. */
+export type PlaceExtraCategorySource = "manual" | "import";
+
+export interface PlaceExtraCategoriesTable {
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  category_id: ColumnType<string, string, never>;
+  source: ColumnType<PlaceExtraCategorySource, PlaceExtraCategorySource | undefined, never>;
   created_at: CreatedAt;
 }
 
@@ -1264,6 +1276,7 @@ export interface Database {
   tags: TagsTable;
   places: PlacesTable;
   place_tags: PlaceTagsTable;
+  place_extra_categories: PlaceExtraCategoriesTable;
   place_schedules: PlaceSchedulesTable;
   place_schedule_exceptions: PlaceScheduleExceptionsTable;
   place_media: PlaceMediaTable;
