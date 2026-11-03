@@ -1,7 +1,9 @@
 // Адаптер HostApi поверх @tg/api-client: DTO блока 5 (HostModule, заявки, сценарии, UserPlan) → модель экранов.
 // Регион — regionId из контекста входа (GET /context), как у гида.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
+import { API_URL } from "../api.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
+import { safeIcon } from "../weather/weather-api.js";
 import {
   ApiCallError,
   ConflictError,
@@ -56,6 +58,7 @@ function daysOf(days: { dayNo: number; items: ItemDto[] }[]): PlanDay[] {
         alternatives: i.alternatives.map(placeOf),
         distanceMeters: i.distanceFromPreviousMeters,
         slot: i.slot,
+        ...("weatherWarnings" in i && i.weatherWarnings.length ? { weatherWarnings: i.weatherWarnings } : {}),
       })),
   }));
 }
@@ -99,6 +102,13 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
       })),
     })),
   })),
+  // Старый ответ api без погоды — без погоды. Иконки — только наш прокси (safeIcon).
+  weather: (p.weather ?? []).map(({ dayNo, ...w }) => ({
+    ...w,
+    day: dayNo,
+    iconUrl: safeIcon(w.iconUrl, API_URL),
+  })),
+  weatherSource: p.weatherSource ?? null,
 });
 
 /** Правка плана → тело PATCH /me/plan/{id}. */

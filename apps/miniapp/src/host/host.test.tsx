@@ -306,6 +306,8 @@ describe("C09 Мій план", () => {
     trip: { adults: 2, children: 0, withCar: true, days: 1 },
     base: null,
     options: [],
+    weather: [],
+    weatherSource: null,
     ...over,
   });
 

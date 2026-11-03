@@ -2,10 +2,12 @@
 // План пользователя — параметры поездки (дорослі, діти, з авто / без, днів) и по каждой части дня (ранок, день,
 // вечір, «якщо дощ») список с галочками: отмеченное — в плане, ниже — 3–5 вариантов из каталога (что это, чому
 // підходить, скільки йти/їхати); галочка — PATCH addItem, снятая — removeItemId. «Скласти свій план» — план без
-// сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24).
+// сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24). Погода (module.weather, при дате начала):
+// в заголовке дня — иконка и t°, в дне — предупреждения; дождь — «якщо дощ» раскрыт; горный поход в опасный день —
+// с предупреждением; подпись источника под днями.
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
+import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
@@ -16,6 +18,7 @@ import {
   PLAN_SLOTS,
   type PlanChange,
   type PlanDay,
+  type PlanDayWeather,
   type PlanItem,
   type PlanOption,
   type PlanPlace,
@@ -26,6 +29,13 @@ import {
   type TripInput,
   type UserPlan,
 } from "../host/types.js";
+import {
+  formatTemp,
+  useConditionText,
+  WarningList,
+  WeatherAttribution,
+  WeatherIcon,
+} from "../weather/Weather.js";
 import { takePlanPartial } from "./partial-notice.js";
 import "./plan.css";
 
@@ -556,6 +566,7 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
     }
   };
   const edit: Edit = { busy, apply: (c, done, focus) => void apply(c, done, focus) };
+  const weatherOn = useFeatureFlag("module.weather");
   const { trip } = plan;
   return (
     <Stack>
@@ -579,6 +590,11 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
         {plan.base && (
           <p className="kosiv-muted" style={{ margin: "0 0 8px" }}>
             {t("miniapp.plan.trip.base", { name: pickLocalized(plan.base, locale) })}
+          </p>
+        )}
+        {weatherOn && !plan.startDate && (
+          <p className="kosiv-muted" style={{ margin: "0 0 8px" }} data-testid="plan-weather-nodate">
+            {t("miniapp.plan.weather.noDate")}
           </p>
         )}
         {editTrip ? (
@@ -609,10 +625,12 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
             date={dayDate(plan.startDate, d.day, locale)}
             initiallyOpen={d.day === openDay(plan.startDate, plan.schedule.length)}
             options={plan.options.find((o) => o.day === d.day)?.slots ?? []}
+            weather={plan.weather.find((w) => w.day === d.day) ?? null}
             edit={edit}
           />
         ))}
       </div>
+      {plan.weatherSource && plan.weather.length > 0 && <WeatherAttribution source={plan.weatherSource} />}
     </Stack>
   );
 }
@@ -664,15 +682,18 @@ function DaySection({
   date,
   initiallyOpen,
   options,
+  weather,
   edit,
 }: {
   day: PlanDay;
   date: string | null;
   initiallyOpen: boolean;
   options: { slot: PlanSlot; options: PlanOption[] }[];
+  weather: PlanDayWeather | null;
   edit: Edit;
 }) {
   const { t } = useT();
+  const text = useConditionText();
   const [open, setOpen] = useState(initiallyOpen);
   const bodyId = `day-${day.day}-body`;
   return (
@@ -681,17 +702,38 @@ function DaySection({
         <Disclosure open={open} onToggle={() => setOpen((o) => !o)} controls={bodyId}>
           {t("miniapp.plan.day", { n: day.day })}
           {date && <span className="kosiv-muted plan-day-date"> · {date}</span>}
+          {weather && (
+            <span className="plan-day-weather" data-testid="plan-day-weather">
+              <WeatherIcon
+                condition={weather.condition}
+                iconUrl={weather.iconUrl}
+                label={text(weather)}
+                size={20}
+              />
+              {[formatTemp(weather.temperatureMax), formatTemp(weather.temperatureMin)]
+                .filter(Boolean)
+                .join(" / ")}
+              {weather.warnings.length > 0 && <span aria-hidden="true">⚠️</span>}
+            </span>
+          )}
           <span className="plan-day-count" data-testid="day-chosen">
             {t("miniapp.plan.chosenCount", { n: day.items.filter((i) => i.slot !== "rain").length })}
           </span>
         </Disclosure>
       </h2>
       <div id={bodyId} className="plan-day-body" hidden={!open}>
+        {weather && <WarningList warnings={weather.warnings} testId="plan-day-warnings" />}
+        {weather?.noMountains && (
+          <p className="kosiv-muted plan-weather-note" data-testid="plan-no-mountains">
+            {t("miniapp.plan.weather.noMountains")}
+          </p>
+        )}
         {PLAN_SLOTS.map((slot) => (
           <SlotSection
             key={slot}
             day={day.day}
             slot={slot}
+            rainy={weather?.rainy ?? false}
             items={day.items.filter((i) => i.slot === slot)}
             options={options.find((s) => s.slot === slot)?.options ?? []}
             edit={edit}
@@ -712,19 +754,26 @@ const OPTIONS_VISIBLE = 3;
 function SlotSection({
   day,
   slot,
+  rainy = false,
   items,
   options,
   edit,
 }: {
   day: number;
   slot: PlanSlot;
+  /** По прогнозу дождь — «якщо дощ» раскрыт сразу. */
+  rainy?: boolean;
   items: PlanItem[];
   options: PlanOption[];
   edit: Edit;
 }) {
   const { t } = useT();
   const headingId = `day-${day}-${slot}`;
-  const [open, setOpen] = useState(slot !== "rain" || items.length > 0);
+  const [open, setOpen] = useState(slot !== "rain" || items.length > 0 || rainy);
+  // Прогноз изменился (план перечитан) и обещает дождь — раскрыть «якщо дощ»; свернуть сам не сворачиваем.
+  useEffect(() => {
+    if (rainy) setOpen(true);
+  }, [rainy]);
   const list = (opts: PlanOption[]) => (
     <ul className="plan-choices" aria-label={t("miniapp.plan.options")}>
       {opts.map((o) => (
@@ -740,6 +789,11 @@ function SlotSection({
   );
   const body = (
     <>
+      {slot === "rain" && rainy && (
+        <p className="plan-note" data-testid="plan-rain-forecast">
+          <span aria-hidden="true">🌧️</span> {t("miniapp.plan.weather.rain")}
+        </p>
+      )}
       {slot === "rain" && <p className="kosiv-muted plan-note">{t("miniapp.plan.rainHint")}</p>}
       {items.length ? (
         <ul className="plan-choices" aria-labelledby={headingId}>
@@ -942,6 +996,16 @@ function ChosenRow({ item, edit }: { item: PlanItem; edit: Edit }) {
       onChange={() => edit.apply({ remove: item.id }, t("miniapp.plan.removed", { name }), item.place?.id)}
     >
       {item.time && <span className="kosiv-chip">{item.time}</span>}
+      {item.weatherWarnings && item.weatherWarnings.length > 0 && (
+        <span className="plan-reason" role="note" data-testid="plan-item-weather">
+          <span aria-hidden="true">⚠️</span>{" "}
+          {t("miniapp.plan.weather.hike", {
+            warnings: item.weatherWarnings
+              .map((w) => t(`miniapp.weather.warning.${w}` as MessageKey).toLowerCase())
+              .join(", "),
+          })}
+        </span>
+      )}
       {d && <span className="plan-reason">{t("miniapp.plan.distance", { n: d })}</span>}
       {item.note && <span className="plan-reason">{pickLocalized(item.note, locale)}</span>}
       <span className="plan-chips">

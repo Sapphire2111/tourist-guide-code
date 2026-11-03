@@ -80,6 +80,11 @@ services:
         value: "300"
       - key: GOOGLE_PHOTO_MONTHLY_LIMIT
         value: "1000"
+      # Погода (флаг module.weather): Google Weather по GOOGLE_MAPS_API_KEY, сверх предела — Open-Meteo.
+      - key: GOOGLE_WEATHER_DAILY_LIMIT
+        value: "300"
+      - key: GOOGLE_WEATHER_MONTHLY_LIMIT
+        value: "5000"
       # Ассистент на главной (флаг module.assistant): Claude API; голос — Speech-to-Text по GOOGLE_MAPS_API_KEY.
       # Без ключа ассистент отвечает 503. Выставляется вручную в Render → api → Environment.
       - key: ANTHROPIC_API_KEY

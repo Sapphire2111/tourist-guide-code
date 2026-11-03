@@ -1181,6 +1181,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/weather": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Прогноз погоды на 1–7 дней с предупреждениями — из ближайшей точки прогноза (не дальше 30 км)
+     * @description Без аутентификации. Прогноз хранится у нас по точкам (центры населённых пунктов, горные точки); источник — Google Weather, запасной — Open-Meteo. Нет точки рядом или прогноза — 200 с available: false и пустыми days (не 500). Подпись источника — по полю source. 404 — флаг module.weather выключен.
+     */
+    get: operations["getWeather"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/weather/icons/{file}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Иконка погоды Google (прокси): адрес — iconUrl прогноза
+     * @description Без аутентификации. SVG с maps.gstatic.com через api — Mini App к Google не ходит. Cache-Control public на неделю. 404 — иконки нет.
+     */
+    get: operations["getWeatherIcon"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/scenarios": {
     parameters: {
       query?: never;
@@ -3879,6 +3919,99 @@ export interface components {
       /** @default ORG_STAFF */
       role: components["schemas"]["PlaceStaffRole"];
     };
+    /**
+     * @description google — подпись «Includes weather data from Google»; open-meteo — «Дані: Open-Meteo»
+     * @enum {string}
+     */
+    WeatherSource: "google" | "open-meteo";
+    WeatherPointDto: {
+      lat: number;
+      lng: number;
+      /** @description Высота точки по рельефу источника, м (Google — null) */
+      elevation: number | null;
+    };
+    /**
+     * @description Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl
+     * @enum {string}
+     */
+    WeatherCondition:
+      | "clear"
+      | "partly_cloudy"
+      | "cloudy"
+      | "fog"
+      | "drizzle"
+      | "rain"
+      | "heavy_rain"
+      | "showers"
+      | "thunderstorm"
+      | "snow"
+      | "heavy_snow"
+      | "sleet"
+      | "freezing_rain"
+      | "hail"
+      | "windy";
+    WeatherNowDto: {
+      /** @description Время замера (ISO) */
+      time: string | null;
+      /** @description °C */
+      temperature: number | null;
+      /** @description Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl */
+      condition: components["schemas"]["WeatherCondition"] | null;
+      /** @description Описание источника на украинском (Google); Open-Meteo — null */
+      description: string | null;
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
+      iconUrl: string | null;
+      /** @description км/ч */
+      windSpeed: number | null;
+      isDay: boolean | null;
+    };
+    /**
+     * @description Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C
+     * @enum {string}
+     */
+    WeatherWarning: "thunderstorm" | "heavy_rain" | "strong_wind" | "frost" | "heavy_snow" | "ice" | "heat";
+    WeatherDayDto: {
+      /**
+       * Format: date
+       * @description Местная дата точки
+       */
+      date: string;
+      /** @description Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl */
+      condition: components["schemas"]["WeatherCondition"] | null;
+      /** @description Описание источника на украинском (Google); Open-Meteo — null */
+      description: string | null;
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
+      iconUrl: string | null;
+      /** @description °C */
+      temperatureMax: number | null;
+      /** @description °C */
+      temperatureMin: number | null;
+      /** @description Осадки за сутки, мм */
+      precipitationSum: number | null;
+      /** @description Вероятность осадков, % */
+      precipitationProbabilityMax: number | null;
+      /** @description Снег за сутки, см */
+      snowfallSum: number | null;
+      /** @description Ветер, км/ч */
+      windSpeedMax: number | null;
+      /** @description Порывы ветра, км/ч */
+      windGustsMax: number | null;
+      /** @description Ожидается дождь — показать запасной план «якщо дощ» */
+      rainy: boolean;
+      /** @description Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C */
+      warnings: components["schemas"]["WeatherWarning"][];
+    };
+    WeatherForecastDto: {
+      /** @description false — источник недоступен: прогноза нет (клиент ничего не показывает) */
+      available: boolean;
+      /** @description google — подпись «Includes weather data from Google»; open-meteo — «Дані: Open-Meteo» */
+      source: components["schemas"]["WeatherSource"] | null;
+      point: components["schemas"]["WeatherPointDto"] | null;
+      /** @example Europe/Kyiv */
+      timezone: string | null;
+      current: components["schemas"]["WeatherNowDto"] | null;
+      days: components["schemas"]["WeatherDayDto"][];
+    };
     /** @enum {string} */
     ScenarioTag:
       | "one_day"
@@ -4010,6 +4143,8 @@ export interface components {
       slot: components["schemas"]["PlanSlot"];
       /** @description Пункт заменён пользователем */
       replaced: boolean;
+      /** @description Горный поход в день с опасной погодой у вершины/места (гроза, сильный ветер, снегопад, гололёд, мороз): предупредить туриста; пусто — нет предупреждений или прогноза */
+      weatherWarnings: components["schemas"]["WeatherWarning"][];
     };
     UserPlanDayDto: {
       dayNo: number;
@@ -4073,6 +4208,40 @@ export interface components {
       dayNo: number;
       slots: components["schemas"]["PlanSlotOptionsDto"][];
     };
+    PlanDayWeatherDto: {
+      /**
+       * Format: date
+       * @description Местная дата точки
+       */
+      date: string;
+      /** @description Погода одним словом — свой текст и иконка клиента, если у источника нет iconUrl */
+      condition: components["schemas"]["WeatherCondition"] | null;
+      /** @description Описание источника на украинском (Google); Open-Meteo — null */
+      description: string | null;
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
+      iconUrl: string | null;
+      /** @description °C */
+      temperatureMax: number | null;
+      /** @description °C */
+      temperatureMin: number | null;
+      /** @description Осадки за сутки, мм */
+      precipitationSum: number | null;
+      /** @description Вероятность осадков, % */
+      precipitationProbabilityMax: number | null;
+      /** @description Снег за сутки, см */
+      snowfallSum: number | null;
+      /** @description Ветер, км/ч */
+      windSpeedMax: number | null;
+      /** @description Порывы ветра, км/ч */
+      windGustsMax: number | null;
+      /** @description Ожидается дождь — показать запасной план «якщо дощ» */
+      rainy: boolean;
+      /** @description Предупреждения: thunderstorm — гроза; heavy_rain — от 20 мм; strong_wind — порывы от 60 км/ч или ветер от 40 км/ч; frost — от −10 °C; heavy_snow — от 10 см; ice — ледяной дождь/морось; heat — от 32 °C */
+      warnings: components["schemas"]["WeatherWarning"][];
+      dayNo: number;
+      /** @description Погода опасна для гор: горные походы в вариантах дня не предлагаются */
+      noMountains: boolean;
+    };
     UserPlanDto: {
       /** Format: uuid */
       id: string;
@@ -4091,6 +4260,10 @@ export interface components {
       plan: components["schemas"]["UserPlanDayDto"][];
       /** @description Варианты на выбор по дням и частям дня; в списке GET /me/plan — пусто */
       options: components["schemas"]["PlanDayOptionsDto"][];
+      /** @description Прогноз по дням плана (только в пределах прогноза, 7 дней, и при startDate; в списке GET /me/plan — пусто). rainy — раскрыть «якщо дощ» */
+      weather: components["schemas"]["PlanDayWeatherDto"][];
+      /** @description Источник прогноза для подписи; null — прогноза нет */
+      weatherSource: components["schemas"]["WeatherSource"] | null;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -5259,7 +5432,8 @@ export interface components {
       | "module.qr_transactions"
       | "module.reviews"
       | "module.ambassadors"
-      | "module.assistant";
+      | "module.assistant"
+      | "module.weather";
     FeatureFlagValueDto: {
       key: components["schemas"]["FeatureFlagKey"];
       enabled: boolean;
@@ -13031,6 +13205,148 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getWeather: {
+    parameters: {
+      query: {
+        /** @description Широта */
+        lat: number;
+        /** @description Долгота */
+        lng: number;
+        /** @description Дней прогноза, начиная с сегодняшнего (по местному времени точки) */
+        days?: number;
+        /** @description Регион туриста (GET /context) — для флага module.weather региона */
+        regionId?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WeatherForecastDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getWeatherIcon: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        file: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description image/svg+xml */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

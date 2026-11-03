@@ -27,6 +27,7 @@ import {
   type ScenarioStatus,
 } from "../../db/index.js";
 import { LonLatDto } from "../catalog/index.js";
+import { WEATHER_SOURCES, WEATHER_WARNINGS, WeatherDayDto, type WeatherWarning } from "../weather/index.js";
 import { PLAN_DAYS_MAX, type OptionReason, type Travel } from "./plan-options.js";
 
 // DTO планировщика (блок 5, C09, S-04; ADR-0020): готовые сценарии региона, «Мій план» пользователя, CRUD сценариев
@@ -325,6 +326,27 @@ export class ScenarioDto extends ScenarioSummaryDto {
 
 export class UserPlanItemDto extends ScenarioItemDto {
   @ApiProperty({ type: Boolean, description: "Пункт заменён пользователем" }) replaced!: boolean;
+
+  @ApiProperty({
+    enum: WEATHER_WARNINGS,
+    enumName: "WeatherWarning",
+    isArray: true,
+    description:
+      "Горный поход в день с опасной погодой у вершины/места (гроза, сильный ветер, снегопад, гололёд, мороз): " +
+      "предупредить туриста; пусто — нет предупреждений или прогноза",
+  })
+  weatherWarnings!: WeatherWarning[];
+}
+
+/** Погода дня плана (дата = startDate + dayNo − 1, точка — базовая точка плана). */
+export class PlanDayWeatherDto extends WeatherDayDto {
+  @ApiProperty({ type: "integer" }) dayNo!: number;
+
+  @ApiProperty({
+    type: Boolean,
+    description: "Погода опасна для гор: горные походы в вариантах дня не предлагаются",
+  })
+  noMountains!: boolean;
 }
 
 export class UserPlanDayDto {
@@ -432,6 +454,22 @@ export class UserPlanDto {
     description: "Варианты на выбор по дням и частям дня; в списке GET /me/plan — пусто",
   })
   options!: PlanDayOptionsDto[];
+  @ApiProperty({
+    type: [PlanDayWeatherDto],
+    description:
+      "Прогноз по дням плана (только в пределах прогноза, 7 дней, и при startDate; в списке GET /me/plan — пусто). " +
+      "rainy — раскрыть «якщо дощ»",
+  })
+  weather!: PlanDayWeatherDto[];
+
+  @ApiProperty({
+    enum: WEATHER_SOURCES,
+    enumName: "WeatherSource",
+    nullable: true,
+    description: "Источник прогноза для подписи; null — прогноза нет",
+  })
+  weatherSource!: (typeof WEATHER_SOURCES)[number] | null;
+
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) updatedAt!: string;
 }

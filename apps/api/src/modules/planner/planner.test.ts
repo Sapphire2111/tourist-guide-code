@@ -26,6 +26,7 @@ import {
   RoleAssignmentsRepository,
 } from "../rbac/index.js";
 import type { RegionsRepository } from "../regions/index.js";
+import type { Forecast, WeatherDay, WeatherService } from "../weather/index.js";
 import { planItemsFromScenario } from "./plan-rules.js";
 import { PlannerModule } from "./planner.module.js";
 import type { CatalogPlaceRow, PlannerRepository, PlanPlaceRow } from "./planner.repository.js";
@@ -173,7 +174,10 @@ const place = (n: number, status = "published"): PlanPlaceRow => ({
   status,
 });
 
-function plannerService(repo: Partial<Record<keyof PlannerRepository, unknown>>) {
+function plannerService(
+  repo: Partial<Record<keyof PlannerRepository, unknown>>,
+  weather?: Pick<WeatherService, "snapshotAt" | "flushRefresh">,
+) {
   const { db } = recordingDb({});
   const items = [
     item({ id: P(501), position: 0, place_id: P(10), alternatives: [P(11), P(12)] }),
@@ -196,6 +200,7 @@ function plannerService(repo: Partial<Record<keyof PlannerRepository, unknown>>)
       full as unknown as PlannerRepository,
       { findById: (id: string) => Promise.resolve({ id, status: "active" }) } as unknown as RegionsRepository,
       {} as AuditService,
+      weather as WeatherService | undefined,
     ),
   };
 }
@@ -462,6 +467,85 @@ describe("PlannerService: параметри поїздки і варіанти 
     await service.plan(REGION, USER, PLAN);
     await service.plan(REGION, USER, PLAN);
     expect(repo.catalogPlaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("погода: по датам дней; гроза — без горных походов в вариантах дня и предупреждение у выбранного похода", async () => {
+    const wday = (date: string, over: Partial<WeatherDay> = {}): WeatherDay => ({
+      date,
+      condition: "clear",
+      description: null,
+      iconUrl: null,
+      temperatureMax: 12,
+      temperatureMin: 3,
+      precipitationSum: 0,
+      precipitationProbabilityMax: 5,
+      snowfallSum: 0,
+      windSpeedMax: 10,
+      windGustsMax: 20,
+      rainy: false,
+      warnings: [],
+      ...over,
+    });
+    const forecast: Forecast = {
+      source: "google",
+      latitude: 48,
+      longitude: 24,
+      elevation: null,
+      timezone: "Europe/Kyiv",
+      current: null,
+      days: [
+        wday("2026-11-10", { condition: "thunderstorm", rainy: true, warnings: ["thunderstorm"] }),
+        wday("2026-11-11"),
+      ],
+    };
+    const forecastAt = vi.fn(() => Promise.resolve(forecast));
+    const flushRefresh = vi.fn();
+    const hike = { ...planItemsFromScenario([item({ place_id: P(10), time_hint: "10:00:00" })])[0]! };
+    const row = customRow({ start_date: "2026-11-10", days: 3, children: 0, items: [hike] });
+    const mountains = [
+      catalogRow(10, "nature", { name_i18n: { uk: "Гора Хом'як" } }),
+      catalogRow(8, "nature", { name_i18n: { uk: "Вершина Петрос" } }),
+    ];
+    const { service } = plannerService(
+      {
+        findPlan: vi.fn(() => Promise.resolve(row)),
+        catalogPlaces: vi.fn(() => Promise.resolve([...catalog, ...mountains])),
+        firstLocality: vi.fn(() =>
+          Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
+        ),
+      },
+      { snapshotAt: forecastAt, flushRefresh },
+    );
+    const dto = await service.plan(REGION, USER, PLAN);
+    // Снимки — внутри транзакции, фоновое обновление — после неё.
+    expect(flushRefresh).toHaveBeenCalledTimes(1);
+    expect(dto.weatherSource).toBe("google");
+    // День 3 (12.11) — вне прогноза: погоды нет.
+    expect(dto.weather.map((w) => [w.dayNo, w.date, w.rainy, w.noMountains])).toEqual([
+      [1, "2026-11-10", true, true],
+      [2, "2026-11-11", false, false],
+    ]);
+    const ids = (day: number) =>
+      dto.options.find((d) => d.dayNo === day)!.slots.flatMap((s) => s.options.map((o) => o.place.id));
+    expect(ids(1)).not.toContain(P(8));
+    expect(ids(2)).toContain(P(8));
+    expect(dto.plan[0]!.items[0]).toMatchObject({ place: { id: P(10) }, weatherWarnings: ["thunderstorm"] });
+    expect(forecastAt).toHaveBeenCalledWith(expect.anything(), { mountain: true });
+    // Без даты начала — погоды нет и источник не спрашивается.
+    forecastAt.mockClear();
+    const noDate = plannerService(
+      {
+        findPlan: vi.fn(() => Promise.resolve({ ...row, start_date: null })),
+        catalogPlaces: vi.fn(() => Promise.resolve(catalog)),
+        firstLocality: vi.fn(() =>
+          Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
+        ),
+      },
+      { snapshotAt: forecastAt, flushRefresh },
+    );
+    const plain = await noDate.service.plan(REGION, USER, PLAN);
+    expect(plain).toMatchObject({ weather: [], weatherSource: null });
+    expect(forecastAt).not.toHaveBeenCalled();
   });
 
   it("базовая точка — опубликованное место: отсчёт от него, в ответе — его название", async () => {
