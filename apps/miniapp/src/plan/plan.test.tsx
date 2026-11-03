@@ -21,7 +21,13 @@ afterEach(() => {
 const HOTEL = "00000000-0000-4000-8000-000000000201";
 const PLAN = "00000000-0000-4000-8000-000000000901";
 
-function setup(ui: ReactNode, api: Partial<HostApi>, env: Partial<HostEnv> = {}, signedIn = true) {
+function setup(
+  ui: ReactNode,
+  api: Partial<HostApi>,
+  env: Partial<HostEnv> = {},
+  signedIn = true,
+  flags: Record<string, boolean> = {},
+) {
   const host: HostEnv = {
     api: { ...noopHostApi(), ...api },
     hotelPlaceId: HOTEL,
@@ -32,7 +38,7 @@ function setup(ui: ReactNode, api: Partial<HostApi>, env: Partial<HostEnv> = {},
   };
   return render(
     <I18nProvider locale="uk">
-      <FeatureFlagsProvider flags={{ "module.host_requests": true }}>
+      <FeatureFlagsProvider flags={{ "module.host_requests": true, ...flags }}>
         <GuideProvider
           value={{ api: noopGuideApi(), analytics: noopAnalytics, base: null, regionId: "r", signedIn }}
         >
@@ -89,7 +95,78 @@ const plan = (over: Partial<UserPlan> = {}): UserPlan => ({
       ],
     },
   ],
+  weather: [],
+  weatherSource: null,
   ...over,
+});
+
+describe("Мій план: погода", () => {
+  const day = {
+    day: 1,
+    date: "2026-11-10",
+    condition: "thunderstorm" as const,
+    description: "Гроза",
+    iconUrl: null,
+    temperatureMax: 9.4,
+    temperatureMin: -1.2,
+    precipitationSum: 12,
+    precipitationProbabilityMax: 80,
+    snowfallSum: null,
+    windSpeedMax: 30,
+    windGustsMax: 70,
+    rainy: true,
+    warnings: ["thunderstorm" as const, "strong_wind" as const],
+    noMountains: true,
+  };
+  it("день: иконка и t°, предупреждения, без гор, «якщо дощ» раскрыт; поход — с предупреждением; подпись Google", async () => {
+    const hike = {
+      id: "i1",
+      time: "10:00",
+      place: { id: "p1", name: { uk: "Гора Хом'як" } },
+      note: null,
+      alternatives: [],
+      distanceMeters: null,
+      slot: "morning" as const,
+      weatherWarnings: ["thunderstorm" as const],
+    };
+    setup(
+      <SavedPlanScreen id={PLAN} />,
+      {
+        plan: async () =>
+          plan({ schedule: [{ day: 1, items: [hike] }], weather: [day], weatherSource: "google" }),
+      },
+      {},
+      true,
+      { "module.weather": true },
+    );
+    const w = await screen.findByTestId("plan-day-weather");
+    expect(w.textContent).toContain("+9° / −1°");
+    expect(within(w).getByRole("img", { name: "Гроза" })).toBeTruthy();
+    expect(screen.getByTestId("plan-day-warnings").textContent).toContain(
+      "Сильний вітер — у горах небезпечно",
+    );
+    expect(screen.getByTestId("plan-no-mountains")).toBeTruthy();
+    // «Якщо дощ» раскрыт сам: по прогнозу дождь.
+    expect(screen.getByTestId("plan-rain-forecast")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Якщо дощ/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("plan-item-weather").textContent).toContain("Похід у гори: гроза");
+    expect(screen.getByTestId("weather-source").textContent).toBe(
+      "Source: Includes weather data from Google.",
+    );
+  });
+
+  it("без даты начала — подсказка про погоду; без флага — ничего; «якщо дощ» без дождя свёрнут", async () => {
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan({ startDate: null }) }, {}, true, {
+      "module.weather": true,
+    });
+    expect(await screen.findByTestId("plan-weather-nodate")).toBeTruthy();
+    expect(screen.queryByTestId("weather-source")).toBeNull();
+    expect(screen.getByRole("button", { name: /Якщо дощ/ }).getAttribute("aria-expanded")).toBe("false");
+    cleanup();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan({ startDate: null }) });
+    await screen.findByTestId("trip-line");
+    expect(screen.queryByTestId("plan-weather-nodate")).toBeNull();
+  });
 });
 
 describe("Мій план: параметри поїздки", () => {

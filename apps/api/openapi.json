@@ -15680,7 +15680,7 @@
           "iconUrl": {
             "type": "string",
             "nullable": true,
-            "description": "Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition"
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
           },
           "windSpeed": { "type": "number", "nullable": true, "description": "км/ч" },
           "isDay": { "type": "boolean", "nullable": true }
@@ -15709,7 +15709,7 @@
           "iconUrl": {
             "type": "string",
             "nullable": true,
-            "description": "Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition"
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
           },
           "temperatureMax": { "type": "number", "nullable": true, "description": "°C" },
           "temperatureMin": { "type": "number", "nullable": true, "description": "°C" },
@@ -16128,7 +16128,7 @@
           "iconUrl": {
             "type": "string",
             "nullable": true,
-            "description": "Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition"
+            "description": "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition"
           },
           "temperatureMax": { "type": "number", "nullable": true, "description": "°C" },
           "temperatureMin": { "type": "number", "nullable": true, "description": "°C" },

@@ -3959,7 +3959,7 @@ export interface components {
       condition: components["schemas"]["WeatherCondition"] | null;
       /** @description Описание источника на украинском (Google); Open-Meteo — null */
       description: string | null;
-      /** @description Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition */
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
       iconUrl: string | null;
       /** @description км/ч */
       windSpeed: number | null;
@@ -3980,7 +3980,7 @@ export interface components {
       condition: components["schemas"]["WeatherCondition"] | null;
       /** @description Описание источника на украинском (Google); Open-Meteo — null */
       description: string | null;
-      /** @description Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition */
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
       iconUrl: string | null;
       /** @description °C */
       temperatureMax: number | null;
@@ -4206,7 +4206,7 @@ export interface components {
       condition: components["schemas"]["WeatherCondition"] | null;
       /** @description Описание источника на украинском (Google); Open-Meteo — null */
       description: string | null;
-      /** @description Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition */
+      /** @description Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition */
       iconUrl: string | null;
       /** @description °C */
       temperatureMax: number | null;

@@ -31,7 +31,7 @@ const DESCRIPTION = {
 const ICON = {
   type: String,
   nullable: true,
-  description: "Иконка Google (https://maps.gstatic.com/weather/….svg); null — своя по condition",
+  description: "Иконка Google через прокси api (…/weather/icons/<имя>.svg); null — своя по condition",
 } as const;
 
 export class WeatherQueryDto {
