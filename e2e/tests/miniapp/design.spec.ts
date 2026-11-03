@@ -86,16 +86,25 @@ test("modern narrow screen retains working list", async ({ page }) => {
   await expect(page.getByTestId("place-item").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   // На 320 px панель поверх карты — два ряда без наезда, цели радиуса и категорий не меньше 44 px.
-  const search = await page.locator(".modern-search").boundingBox();
-  const radius = await page.locator(".modern-radius").boundingBox();
-  const chips = await page.locator(".modern-filters button").first().boundingBox();
-  expect(search!.y).toBe(radius!.y);
-  expect(radius!.x).toBeGreaterThanOrEqual(search!.x + search!.width);
-  expect(chips!.y).toBeGreaterThanOrEqual(search!.y + search!.height);
+  // Замер одним вызовом: экран ещё может доезжать анимацией появления.
+  const { search, radius, chips } = await page.evaluate(() => {
+    const box = (s: string) => {
+      const b = document.querySelector(s)!.getBoundingClientRect();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    };
+    return {
+      search: box(".modern-search"),
+      radius: box(".modern-radius"),
+      chips: box(".modern-filters button"),
+    };
+  });
+  expect(search.y).toBe(radius.y);
+  expect(radius.x).toBeGreaterThanOrEqual(search.x + search.width);
+  expect(chips.y).toBeGreaterThanOrEqual(search.y + search.height);
   // Расширение цели — псевдоэлемент: точка выше видимой пилюли всё ещё попадает в неё.
   const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent, {
-    x: chips!.x + chips!.width / 2,
-    y: chips!.y - 3,
+    x: chips.x + chips.width / 2,
+    y: chips.y - 3,
   });
   expect(hit).toContain("Усі поруч");
 });

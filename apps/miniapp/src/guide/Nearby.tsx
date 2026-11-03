@@ -242,10 +242,8 @@ function RadiusPills({ value, onChange }: { value: number; onChange: (m: number)
     const el = box.current;
     const pill = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!el || !pill) return;
-    // По центру; если соседняя пилюля обрезалась бы слева («00 м») — активная с левого края.
-    const centered = pill.offsetLeft - (el.clientWidth - pill.offsetWidth) / 2;
-    const prev = pill.previousElementSibling as HTMLElement | null;
-    el.scrollLeft = prev && centered > prev.offsetLeft - 3 ? pill.offsetLeft - 3 : centered;
+    // Видна с начала ряда — без прокрутки, как на эталоне; иначе активная у левого края (без обрезка «00 м»).
+    el.scrollLeft = pill.offsetLeft + pill.offsetWidth + 3 <= el.clientWidth ? 0 : pill.offsetLeft - 3;
   }, [active]);
   return (
     <div ref={box} className="modern-radius" role="group" aria-label={t("miniapp.nearby.radius")}>

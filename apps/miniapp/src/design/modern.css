@@ -1056,7 +1056,7 @@ html[data-design="modern"] .kosiv-pin[data-closest="true"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   margin-top: 8px;
   border-radius: 20px;
   background-color: rgb(255 255 255 / 92%);
@@ -1191,7 +1191,7 @@ html[data-design="modern"] a.modern-map-spot-route {
 }
 .modern-results-count {
   font-family: var(--font-heading);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
   -webkit-text-stroke: 0.25px currentcolor;
   line-height: 1.12;

@@ -60,7 +60,22 @@ const SHOTS: {
   night?: boolean;
   full?: boolean;
   open?: string;
+  click?: string;
+  noMap?: boolean;
 }[] = [
+  { name: "nearby-split-390-day", path: "/#/nearby", width: 390, height: 844, click: "Список ↓" },
+  {
+    name: "nearby-split-390-night",
+    path: "/#/nearby",
+    width: 390,
+    height: 844,
+    night: true,
+    click: "Список ↓",
+  },
+  { name: "menu-390-night", path: "/#/nearby", width: 390, height: 844, night: true, click: "Меню" },
+  { name: "menu-390-day", path: "/#/nearby", width: 390, height: 844, click: "Меню" },
+  { name: "nomap-390-day", path: "/#/nearby", width: 390, height: 844, noMap: true },
+  { name: "nomap-390-night", path: "/#/nearby", width: 390, height: 844, night: true, noMap: true },
   { name: "nearby-390-day", path: "/#/nearby", width: 390, height: 844 },
   { name: "nearby-390-night", path: "/#/nearby", width: 390, height: 844, night: true },
   { name: "nearby-320-day", path: "/#/nearby", width: 320, height: 740 },
@@ -106,6 +121,7 @@ const SHOTS: {
 
 for (const shot of SHOTS.filter((s) => !ONLY || new RegExp(ONLY).test(s.name))) {
   test(shot.name, async ({ page }) => {
+    if (shot.noMap) await page.addInitScript(() => delete (window as unknown as { google?: unknown }).google);
     apiMockState.get(page)!.consents = [
       { kind: "terms", version: "2026-11-01-draft" },
       { kind: "privacy", version: "2026-11-01-draft" },
@@ -151,6 +167,10 @@ for (const shot of SHOTS.filter((s) => !ONLY || new RegExp(ONLY).test(s.name))) 
       await page.getByRole("link", { name: shot.open }).click();
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(300);
+    }
+    if (shot.click) {
+      await page.getByRole("button", { name: shot.click }).click();
+      await page.waitForTimeout(400);
     }
     await page.screenshot({ path: `${DIR}/${shot.name}.png`, fullPage: shot.full ?? false });
   });

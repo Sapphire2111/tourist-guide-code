@@ -166,8 +166,12 @@ test.describe("QR отеля demoHotel01", () => {
     // Нижняя навигация липкая — галочку сперва в центр экрана.
     const hotel = page.getByRole("checkbox", { name: "Тестовий готель" });
     await hotel.evaluate((el) => el.scrollIntoView({ block: "center" }));
-    await hotel.uncheck();
+    // click, а не uncheck: снятая галочка убирает пункт, а uncheck после клика перечитывает её состояние и ждёт
+    // уже исчезнувший элемент до таймаута, если ответ пришёл раньше проверки (гонка самого теста, не приложения).
+    await expect(hotel).toBeChecked();
+    await hotel.click();
     await expect(page.getByTestId("plan-item")).toHaveCount(1);
+    await expect(hotel).toHaveCount(0);
 
     await page.getByRole("link", { name: "До списку" }).click();
     await expect(page.getByTestId("saved-plan")).toHaveCount(1);
