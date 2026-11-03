@@ -160,7 +160,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         id: categoryId,
         parentId: null,
         code: "relax",
-        name: { uk: "Де відпочити" },
+        name: { uk: "Релакс" },
         icon: null,
         homeSection: "relax",
         sortOrder: 0,
