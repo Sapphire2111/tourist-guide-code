@@ -196,7 +196,8 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       const items: PlaceSummary[] = [];
       let offset: number | null = 0;
       while (offset !== null) {
-        signal?.throwIfAborted();
+        // Не throwIfAborted: его нет в Safari iOS < 15.4.
+        if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
         let data: { items: SummaryDto[]; nextOffset: number | null };
         try {
           data = await ok(

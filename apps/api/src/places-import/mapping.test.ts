@@ -111,7 +111,19 @@ describe("таблица типов → категорий", () => {
       mapCategory({ primaryType: "tourist_attraction" }, "Яремчанська ЗОШ І-ІІІ ступенів"),
     ).toBeUndefined();
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа №2")).toBeUndefined();
-    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ворохтянський ліцей")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа І-ІІІ ступенів")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ліцей №1")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Гімназія № 3")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ворохтянський опорний ліцей")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Загальноосвітня школа")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитсадок «Казка»")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ясла-садок «Берізка»")).toBeUndefined();
+    // Сади, старі гімназії, готелі «Ліцей», школи ремесел і лиж — не садочки/школи.
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Японський садок")).toBe("sights");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Вишневий садок")).toBe("sights");
+    expect(mapCategory({ primaryType: "historical_landmark" }, "Стара гімназія")).toBe("sights");
+    expect(mapCategory({ primaryType: "hotel" }, "Готель Ліцей")).toBe("hotels");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Лижна школа")).toBeDefined();
     // Школи ремесел — для туриста.
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа гончарства")).toBe("sights");
     // Мелочи: шини, мийка килимів, квест.
