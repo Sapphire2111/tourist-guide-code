@@ -251,13 +251,16 @@ export function WeatherSheet({ forecast, onClose }: { forecast: Forecast; onClos
           </button>
         </div>
         {warnings.length > 0 && (
-          <ul className="wx-warnings" role="alert" data-testid="weather-warnings">
-            {warnings.map(({ w, day }) => (
-              <li key={`${day}-${w}`}>
-                <span aria-hidden="true">⚠️</span> {day}: {t(`miniapp.weather.warning.${w}` as MessageKey)}
-              </li>
-            ))}
-          </ul>
+          // role="alert" — на обёртке: на самом <ul> он отменил бы роль списка.
+          <div role="alert">
+            <ul className="wx-warnings" data-testid="weather-warnings">
+              {warnings.map(({ w, day }) => (
+                <li key={`${day}-${w}`}>
+                  <span aria-hidden="true">⚠️</span> {day}: {t(`miniapp.weather.warning.${w}` as MessageKey)}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         <ul className="wx-days" data-testid="weather-days">
           {forecast.days.map((d, i) => {
