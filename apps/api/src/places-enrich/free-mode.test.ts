@@ -458,6 +458,81 @@ describe("обложки", () => {
     );
   });
 
+  it("только Wikimedia: Google не вызывается вовсе, 429 — пауза и повтор, без фото Commons — без обложки", async () => {
+    let wikiCalls = 0;
+    const fetchImpl = vi.fn((url: string) => {
+      if (!url.includes("wikimedia"))
+        return Promise.resolve(new Response(Buffer.from("img"), { status: 200 }));
+      wikiCalls++;
+      return Promise.resolve(
+        wikiCalls === 1
+          ? new Response("", { status: 429, headers: { "retry-after": "3" } })
+          : wikiCalls === 3
+            ? new Response("", { status: 404 })
+            : new Response(Buffer.from("img"), { status: 200 }),
+      );
+    }) as unknown as typeof fetch;
+    const google = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: await tmp(),
+      maxRequests: 100,
+      fetch: fetchImpl,
+    });
+    const wiki = {
+      lang: "uk",
+      title: "Говерла",
+      url: "https://uk.wikipedia.org/wiki/Говерла",
+      extract: "…",
+      image: {
+        url: "https://upload.wikimedia.org/h.jpg",
+        width: 1200,
+        height: 900,
+        author: "MSha",
+        license: "CC BY-SA 4.0",
+        licenseUrl: null,
+        sourceUrl: "https://commons.wikimedia.org/wiki/File:H.jpg",
+      },
+    };
+    const photos = [{ name: "places/a/photos/p1", width: 800, height: 600, authors: [] }];
+    const g = { ...fromSearch(raw("a"), null), photos };
+    const sleeps: number[] = [];
+    const rows: unknown[][] = [];
+    const stats = await runCovers(
+      [
+        { ...place("w1"), address: null, google: g, wiki },
+        { ...place("w2"), address: null, google: g, wiki },
+        { ...place("g"), address: null, google: g, wiki: null },
+      ],
+      {
+        google,
+        db: recordingDb({}, (q) => {
+          if (q.sql.startsWith('select "id" from "places"')) return [{ id: "pid" }];
+          if (q.sql.startsWith('insert into "place_cover_photos"')) rows.push([...q.parameters]);
+          return [];
+        }).db,
+        regionId: "0190f5c2-7d3e-7000-8000-00000000000a",
+        existing: new Set(),
+        write: true,
+        fetch: fetchImpl,
+        resize,
+        wikimediaOnly: true,
+        retryDelaysMs: [1000],
+        sleep: (ms) => {
+          sleeps.push(ms);
+          return Promise.resolve();
+        },
+      },
+    );
+    // w1: 429 → пауза 3 с → записана; w2: 404 — без обложки (Google не подставляется); g: нет фото Commons.
+    expect(stats).toMatchObject({ written: 1, wikimedia: 1, google: 0, failed: 1, noWikiImage: 1 });
+    expect(sleeps).toEqual([3000]);
+    expect(vi.mocked(fetchImpl).mock.calls.every((c) => String(c[0]).includes("wikimedia"))).toBe(true);
+    expect(google.requests).toMatchObject({ photoMedia: 0, photoDownload: 0, details: 0, detailsIds: 0 });
+    // Автор и лицензия Commons сохраняются с файлом.
+    expect(JSON.stringify(rows)).toContain("MSha");
+    expect(JSON.stringify(rows)).toContain("CC BY-SA 4.0");
+  });
+
   it("без записи (план/dry-run) — только подсчёт, без запросов", async () => {
     const fetchMock = vi.fn();
     const google = new GooglePlacesClient({

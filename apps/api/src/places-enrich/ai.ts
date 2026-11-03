@@ -104,9 +104,19 @@ export const SYSTEM_PROMPT = `Ти пишеш короткий текст для
 - До 300 символів. Звичайний нейтральний стиль путівника.
 - Якщо фактів замало для змістовного тексту, відповідай рівно: ${AI_NO_DATA}`;
 
+/**
+ * Текст Вікіпедії (CC BY-SA) — только источник фактов: пересказ своими словами, без дословных фраз. Правило
+ * добавляется лишь при фактах из Вікіпедії (тексты мест без неё не перегенерируются).
+ */
+export const WIKI_RULE = `
+- Факт «Вікіпедія» — лише джерело фактів (висота, розташування, історія тощо): перекажи їх своїми словами, не копіюй речень і зворотів зі статті дослівно.`;
+
+export const systemPrompt = (facts: AiFacts) =>
+  facts["Вікіпедія"] ? `${SYSTEM_PROMPT}${WIKI_RULE}` : SYSTEM_PROMPT;
+
 export function factsHash(facts: AiFacts): string {
   return createHash("sha256")
-    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${SYSTEM_PROMPT}|${JSON.stringify(facts)}`)
+    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${systemPrompt(facts)}|${JSON.stringify(facts)}`)
     .digest("hex")
     .slice(0, 32);
 }
@@ -118,7 +128,7 @@ export function requestParams(facts: AiFacts): Anthropic.MessageCreateParamsNonS
     max_tokens: AI_MAX_TOKENS,
     // Короткий текст по фактам: низкое усилие — дешевле, качество достаточное.
     output_config: { effort: "low" },
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(facts),
     messages: [{ role: "user", content: `Факти про місце (JSON):\n${JSON.stringify(facts, null, 1)}` }],
   };
 }

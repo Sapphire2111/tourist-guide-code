@@ -39,6 +39,11 @@ export type EnrichArgs = {
   monthlyLimit: number;
   /** Скачать обложки (одна на место) в place_cover_photos. */
   covers: boolean;
+  /**
+   * Источник обложек: any — Wikimedia, иначе Google; wikimedia — только Wikimedia, и тогда Google не вызывается
+   * вовсе: места — из БД региона (опубликованные места импорта), без Place Details и фото Google.
+   */
+  coversSource: "any" | "wikimedia";
   /** Запросов в минуту к Google (равномерный темп; 0 — без темпа). 1000 запросов при 30/мин ≈ 33 мин. */
   rpm: number;
 };
@@ -81,6 +86,7 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
     details: true,
     monthlyLimit: 1000,
     covers: false,
+    coversSource: "any",
     rpm: DEFAULT_RPM,
   };
   let maxAiSet = false;
@@ -120,6 +126,13 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
       case "--covers":
         args.covers = true;
         break;
+      case "--covers-source": {
+        const v = value();
+        if (v !== "any" && v !== "wikimedia")
+          throw new EnrichArgsError("places:enrich: --covers-source — any или wikimedia");
+        args.coversSource = v;
+        break;
+      }
       case "--rpm": // запросов/мин к Google; 1000 запросов при 30/мин ≈ 33 мин
         args.rpm = int(0);
         break;
@@ -172,6 +185,10 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
   if (args.ai && !maxAiSet && !args.plan)
     throw new EnrichArgsError(
       "places:enrich: с --ai укажите --max-ai N (сколько текстов можно сгенерировать)",
+    );
+  if (args.coversSource === "wikimedia" && (args.plan || args.fromImportCache))
+    throw new EnrichArgsError(
+      "places:enrich: --covers-source wikimedia берёт места из БД — без --plan и --from-import-cache",
     );
   return args;
 }

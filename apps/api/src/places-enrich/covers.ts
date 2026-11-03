@@ -9,6 +9,7 @@ import {
   type GooglePlacesClient,
 } from "../places-import/google-client.js";
 import type { EnrichedPlace } from "./enrich.js";
+import { retryAfterMs } from "./wikipedia.js";
 
 export const COVER_WIDTH = 400;
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
@@ -47,12 +48,34 @@ export class WikimediaUnavailableError extends Error {
   constructor(
     message: string,
     readonly rateLimited = false,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
   }
 }
 
-async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
+/** Скачивание файла Commons с повторами при 429/5xx/сети (паузы delaysMs; Retry-After — если дольше). */
+async function download(
+  url: string,
+  fetchImpl: typeof fetch,
+  retry: {
+    delaysMs?: readonly number[] | undefined;
+    sleep?: ((ms: number) => Promise<void>) | undefined;
+  } = {},
+): Promise<Buffer> {
+  const delays = retry.delaysMs ?? [];
+  const sleep = retry.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await downloadOnce(url, fetchImpl);
+    } catch (err) {
+      if (!(err instanceof WikimediaUnavailableError) || attempt >= delays.length) throw err;
+      await sleep(Math.max(delays[attempt]!, err.retryAfterMs ?? 0));
+    }
+  }
+}
+
+async function downloadOnce(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)) throw new Error("Не файл Wikimedia");
   let res: Response;
   try {
@@ -65,7 +88,11 @@ async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   }
   if (res.status === 429 || res.status >= 500) {
     await res.body?.cancel();
-    throw new WikimediaUnavailableError(`Wikimedia: HTTP ${res.status}`, res.status === 429);
+    throw new WikimediaUnavailableError(
+      `Wikimedia: HTTP ${res.status}`,
+      res.status === 429,
+      retryAfterMs(res),
+    );
   }
   if (!res.ok) throw new Error(`Wikimedia: HTTP ${res.status}`);
   let buf: Buffer;
@@ -91,14 +118,23 @@ export const hasCoverSource = (p: Pick<EnrichedPlace, "google" | "wiki">) =>
  */
 export async function makeCover(
   p: Pick<EnrichedPlace, "google" | "wiki">,
-  deps: { google: GooglePlacesClient; fetch?: typeof fetch; resize?: Resize; googleStopped?: boolean },
+  deps: {
+    google: GooglePlacesClient;
+    fetch?: typeof fetch;
+    resize?: Resize;
+    googleStopped?: boolean;
+    retryDelaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+  },
 ): Promise<Cover | null> {
   const resize = deps.resize ?? sharpResize;
   const img = p.wiki?.image;
   const photo = p.google?.photos[0];
   if (img) {
     try {
-      const r = await resize(await download(img.url, deps.fetch ?? fetch));
+      const r = await resize(
+        await download(img.url, deps.fetch ?? fetch, { delaysMs: deps.retryDelaysMs, sleep: deps.sleep }),
+      );
       return {
         bytes: r.data,
         mime: "image/webp",
@@ -190,6 +226,8 @@ export type CoverStats = {
   wikiUnavailable: number;
   /** Отложены: поминутная квота Google (429 после всех повторов) — повторить прогоном позже. */
   rateLimited: number;
+  /** Только Wikimedia: у места нет надёжного фото Commons (P18 объекта статьи) — без обложки. */
+  noWikiImage: number;
 };
 
 /** Обложки для мест без неё; запись — только с db (иначе — подсчёт). */
@@ -204,6 +242,10 @@ export async function runCovers(
     fetch?: typeof fetch;
     resize?: Resize;
     log?: (s: string) => void;
+    /** Только Wikimedia: Google не вызывается вовсе; места без фото Commons — без обложки (noWikiImage). */
+    wikimediaOnly?: boolean;
+    retryDelaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
   },
 ): Promise<CoverStats> {
   const stats: CoverStats = {
@@ -216,11 +258,16 @@ export async function runCovers(
     deferred: 0,
     wikiUnavailable: 0,
     rateLimited: 0,
+    noWikiImage: 0,
   };
-  let googleStopped = false;
+  let googleStopped = Boolean(deps.wikimediaOnly);
   // После 429 от Wikimedia — к ней больше не обращаться до конца прогона.
   let wikiStopped = false;
   for (const p of places) {
+    if (deps.wikimediaOnly && !p.wiki?.image) {
+      if (!deps.existing.has(p.googlePlaceId)) stats.noWikiImage++;
+      continue;
+    }
     if (!hasCoverSource(p)) continue;
     if (deps.existing.has(p.googlePlaceId)) {
       stats.existing++;

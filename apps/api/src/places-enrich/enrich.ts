@@ -16,6 +16,7 @@ import {
   WikiLimitError,
   WikiUnavailableError,
   type WikipediaClient,
+  wikiRadius,
 } from "./wikipedia.js";
 
 export type EnrichedPlace = {
@@ -234,7 +235,11 @@ export async function enrich(
     if (wikipedia && opts.wiki !== false && WIKI_CATEGORIES.has(p.categoryCode) && !stats.wikiLimitReached) {
       try {
         stats.wikiSearched++;
-        item.wiki = await findWikipedia(wikipedia, { name: p.name, location: p.at });
+        item.wiki = await findWikipedia(wikipedia, {
+          name: p.name,
+          location: p.at,
+          radiusM: wikiRadius(p.categoryCode),
+        });
         if (item.wiki) {
           stats.wikiFound++;
           if (item.wiki.image) stats.wikiWithImage++;
