@@ -27,32 +27,32 @@
 
 html[data-design="modern"] {
   --font-heading: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
-  --shadow-card: 0 10px 28px -10px rgb(20 36 28 / 10%), 0 2px 6px rgb(20 36 28 / 4%);
-  --app-bg: #f4f1e8;
-  --app-surface: #fcfbf7;
-  --app-surface-2: #ece7da;
-  --app-border: #d8d0be;
-  --app-text: #16241c;
-  --app-muted: #4a584e;
-  --app-accent: #9e3818;
-  --app-accent-ink: #8c2f12;
-  --app-accent-2: #1b5e3f;
-  --app-pill-bg: #f9e6d6;
-  --color-bg: #f4f1e8;
-  --color-surface: #ece7da;
-  --color-text: #16241c;
-  --color-muted: #4a584e;
-  --color-button: #9e3818;
+  --shadow-card: 0 12px 30px -10px rgb(15 34 26 / 14%), 0 2px 6px rgb(15 34 26 / 6%);
+  --app-bg: #eae4d7;
+  --app-surface: #faf7f0;
+  --app-surface-2: #e2dac9;
+  --app-border: #cdc2ad;
+  --app-text: #12241b;
+  --app-muted: #45544a;
+  --app-accent: #9e3616;
+  --app-accent-ink: #8a2c0f;
+  --app-accent-2: #14593d;
+  --app-pill-bg: #f9e4d2;
+  --color-bg: #eae4d7;
+  --color-surface: #e2dac9;
+  --color-text: #12241b;
+  --color-muted: #45544a;
+  --color-button: #9e3616;
   --color-button-text: #ffffff;
-  --color-link: #8c2f12;
+  --color-link: #8a2c0f;
 }
 
 html[data-design="modern"] body {
   background-color: var(--app-bg);
   background-image:
-    radial-gradient(circle at 85% 0%, rgb(245 158 11 / 12%), transparent 42%),
-    radial-gradient(circle at 12% 18%, rgb(27 94 63 / 10%), transparent 48%),
-    linear-gradient(180deg, #efeadd 0%, #f4f1e8 260px, #f4f1e8 100%);
+    radial-gradient(circle at 86% 2%, rgb(245 158 11 / 16%), transparent 38%),
+    radial-gradient(circle at 12% 14%, rgb(20 89 61 / 14%), transparent 44%),
+    linear-gradient(180deg, #e2dbc9 0%, #eae4d7 280px, #eae4d7 100%);
 }
 
 html[data-design="modern"] .kosiv-top {
@@ -63,15 +63,17 @@ html[data-design="modern"] .kosiv-top {
       var(--tg-content-safe-area-inset-top, 0px) + 8px
   );
   background-color: var(--app-surface);
-  border-bottom: 1px solid var(--app-border);
+  border-bottom: 1.5px solid var(--app-border);
+  box-shadow: 0 4px 16px -8px rgb(15 34 26 / 12%);
 }
 html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
   width: 44px;
   min-width: 44px;
   height: 44px;
   border-radius: 14px;
-  background-color: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background-color: #12281f;
+  color: #fde68a;
+  border: 1px solid #295240;
 }
 
 .modern-help {
@@ -81,11 +83,11 @@ html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
   gap: 5px;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 10px;
+  padding: 0 11px;
   border-radius: 14px;
-  background-color: #fbeae6;
-  border: 1px solid #ebbfb4;
-  color: #8c2318;
+  background-color: #9e2a1c;
+  border: 1px solid #7d1f14;
+  color: #fff8f0;
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
@@ -96,7 +98,7 @@ html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
 }
 
 html[data-design="modern"] .kosiv-content {
-  gap: 18px;
+  gap: 16px;
 }
 html[data-design="modern"] .kosiv-content h1 {
   font-size: clamp(25px, 6.8vw, 33px);
@@ -116,38 +118,42 @@ html[data-design="modern"] .kosiv-welcome {
 }
 html[data-design="modern"] .kosiv-welcome-hello {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--app-muted);
 }
 html[data-design="modern"] .kosiv-welcome-sub {
   font-size: 13px;
 }
 
-/* Плашка локації та погоди на головній: просторове скло в дусі Чорногори */
+/* Плашка локації та погоди на головній: темний карпатський смарагд і бурштин */
 html[data-design="modern"] .loc-chip,
 html[data-design="modern"] .wx-chip {
-  background-color: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background-color: #132a20;
+  color: #fff8f0;
+  border: 1px solid #2b5442;
   border-radius: 16px;
-  box-shadow: 0 4px 14px -6px rgb(20 36 28 / 10%);
+  box-shadow: 0 6px 18px -6px rgb(15 34 26 / 24%);
+}
+html[data-design="modern"] .loc-chip svg {
+  color: #fbbf24;
 }
 
 /* Поле ШІ-асистента з акцентом живої ватри */
 html[data-design="modern"] .assistant-pill {
   background-color: var(--app-surface);
-  border: 1.5px solid #d5c7b2;
+  border: 1.5px solid #c9b89e;
   border-radius: 22px;
-  box-shadow: 0 10px 26px -12px rgb(158 56 24 / 16%);
+  box-shadow: 0 12px 28px -12px rgb(158 54 22 / 20%);
 }
 html[data-design="modern"] .assistant-pill:focus-within {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 3px rgb(158 56 24 / 16%);
+  box-shadow: 0 0 0 3px rgb(158 54 22 / 18%);
 }
 
 .modern-home {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 /* Герой-панорама «Живий Горизонт Чорногори та Мольфарська Ватра» */
@@ -160,12 +166,12 @@ html[data-design="modern"] .assistant-pill:focus-within {
   overflow: hidden;
   padding: 22px 18px;
   border-radius: 26px;
-  background-color: #13281f;
+  background-color: #0e241b;
   background-image:
-    radial-gradient(circle at 86% 22%, rgb(245 158 11 / 24%), transparent 46%),
-    linear-gradient(155deg, #0f221a 0%, #19362a 58%, #2c221a 100%);
-  border: 1px solid #294a3b;
-  box-shadow: 0 16px 36px -12px rgb(15 34 26 / 30%);
+    radial-gradient(circle at 84% 24%, rgb(245 158 11 / 28%), transparent 46%),
+    linear-gradient(155deg, #0b1d15 0%, #163628 56%, #2c2119 100%);
+  border: 1.5px solid #2d5644;
+  box-shadow: 0 18px 40px -12px rgb(11 29 21 / 38%);
   color: #fff8f0;
 }
 .modern-intro > div {
@@ -182,15 +188,15 @@ html[data-design="modern"] .modern-intro h2 {
   color: #fff8f0;
 }
 .modern-intro p {
-  color: #e6dfd0;
+  color: #e5dec9;
   font-size: 13.5px;
   line-height: 1.5;
   max-width: 290px;
   margin: 0;
 }
 .modern-mountains {
-  width: 32%;
-  max-width: 142px;
+  width: 34%;
+  max-width: 148px;
   flex-shrink: 0;
   color: #f59e0b;
 }
@@ -201,13 +207,13 @@ html[data-design="modern"] .modern-intro h2 {
   align-items: center;
   gap: 12px;
   padding: 15px 16px;
-  background-color: var(--app-surface);
-  background-image: linear-gradient(135deg, #fcfbf7 0%, #f8efe4 100%);
-  border: 1px solid #decbb6;
+  background-color: #142b21;
+  background-image: linear-gradient(135deg, #12281f 0%, #243326 100%);
+  border: 1.5px solid #315c48;
   border-radius: 22px;
-  color: var(--app-text);
+  color: #fff8f0;
   text-decoration: none;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 12px 28px -10px rgb(15 34 26 / 28%);
 }
 .modern-host-icon {
   display: grid;
@@ -215,8 +221,8 @@ html[data-design="modern"] .modern-intro h2 {
   width: 44px;
   height: 46px;
   border-radius: 14px;
-  background-color: #fae5d0;
-  color: #8c2f12;
+  background-color: #2b4d3c;
+  color: #fcd34d;
   flex-shrink: 0;
 }
 .modern-host > span:nth-child(2) {
@@ -227,11 +233,12 @@ html[data-design="modern"] .modern-intro h2 {
 }
 .modern-host strong {
   font-size: 15px;
+  color: #fff8f0;
   overflow-wrap: anywhere;
 }
 .modern-host small {
   font-size: 11.5px;
-  color: var(--app-muted);
+  color: #cfe0d7;
 }
 .modern-host-link {
   margin-left: auto;
@@ -240,10 +247,10 @@ html[data-design="modern"] .modern-intro h2 {
   align-items: center;
   font-size: 12px;
   font-weight: 700;
-  color: #8c2f12;
+  color: #fde68a;
 }
 
-/* Bento-сітка головних намірів */
+/* Bento-сітка головних намірів у стилі Мольфарської Ватри та Чорногори */
 .modern-intentions {
   list-style: none;
   margin: 0;
@@ -254,7 +261,7 @@ html[data-design="modern"] .modern-intro h2 {
 }
 .modern-intention {
   height: 100%;
-  min-height: 146px;
+  min-height: 148px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -264,48 +271,64 @@ html[data-design="modern"] .modern-intro h2 {
   overflow: hidden;
   padding: 18px 16px;
   border-radius: 24px;
-  background-color: #fbf0e4;
-  background-image: linear-gradient(160deg, #fdf6ee 0%, #f8e3ce 100%);
-  color: #18261e;
+  background-color: #1f241f;
+  background-image:
+    radial-gradient(circle at 90% 15%, rgb(234 88 12 / 26%), transparent 54%),
+    linear-gradient(160deg, #1d2922 0%, #2e2119 100%);
+  color: #fff8f0;
   text-decoration: none;
-  border: 1px solid #e6cab0;
-  box-shadow: 0 8px 22px -10px rgb(43 33 24 / 12%);
+  border: 1.5px solid #593e2e;
+  box-shadow: 0 12px 26px -10px rgb(18 36 27 / 24%);
   transition:
     transform 0.16s ease,
     border-color 0.16s ease,
     box-shadow 0.16s ease;
 }
 .modern-intention[data-kind="nearby"] {
-  background-color: #e5f1ea;
-  background-image: linear-gradient(160deg, #eff7f2 0%, #d8ebe0 100%);
-  border-color: #bad6c7;
+  background-color: #0f291e;
+  background-image:
+    radial-gradient(circle at 88% 18%, rgb(16 185 129 / 24%), transparent 54%),
+    linear-gradient(160deg, #0d251b 0%, #183f2e 100%);
+  border-color: #2e634c;
+  color: #fff8f0;
 }
 .modern-intention[data-kind="relax"] {
-  background-color: #f9ebe3;
-  background-image: linear-gradient(160deg, #fdf3ee 0%, #f3dcd0 100%);
-  border-color: #e3c2b2;
+  background-color: #fdf3e7;
+  background-image: linear-gradient(160deg, #fff9f2 0%, #f6dec4 100%);
+  border-color: #d9b28c;
+  color: #16241c;
 }
 .modern-intention[data-kind="fun"] {
-  background-color: #f4eedc;
-  background-image: linear-gradient(160deg, #faf6ea 0%, #ebe1c5 100%);
-  border-color: #d9cca8;
+  background-color: #e4f1ea;
+  background-image: linear-gradient(160deg, #f2f9f5 0%, #cfe6da 100%);
+  border-color: #9ac2ad;
+  color: #12261c;
 }
 .modern-intention > svg:first-child {
-  width: 34px;
-  height: 34px;
-  padding: 6px;
-  border-radius: 12px;
-  background-color: rgb(255 255 255 / 72%);
-  color: #8c2f12;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 13px;
+  background-color: #3d281d;
+  color: #fdba74;
 }
 .modern-intention[data-kind="nearby"] > svg:first-child {
-  color: #14593d;
+  background-color: #1b4332;
+  color: #6ee7b7;
+}
+.modern-intention[data-kind="relax"] > svg:first-child {
+  background-color: #9e3616;
+  color: #fff8f0;
+}
+.modern-intention[data-kind="fun"] > svg:first-child {
+  background-color: #14593d;
+  color: #fff8f0;
 }
 .modern-intention > svg:last-child {
   position: absolute;
   right: 14px;
   top: 18px;
-  opacity: 0.65;
+  opacity: 0.72;
 }
 .modern-intention span {
   max-width: 180px;
@@ -315,35 +338,35 @@ html[data-design="modern"] .modern-intro h2 {
   letter-spacing: -0.03em;
 }
 .modern-intention:hover {
-  border-color: #9e3818;
+  border-color: #f59e0b;
   transform: translateY(-2px);
-  box-shadow: 0 12px 26px -10px rgb(20 36 28 / 18%);
+  box-shadow: 0 16px 30px -10px rgb(15 34 26 / 30%);
 }
 
-/* Велика кнопка геолокації «Що поруч зі мною зараз» */
+/* Велика кнопка геолокації «Що поруч зі мною зараз» (Полум'я Ватри) */
 .modern-location-action {
-  min-height: 52px;
+  min-height: 54px;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 18px;
-  border-radius: 20px;
-  background-color: #163327;
-  background-image: linear-gradient(135deg, #142f24 0%, #1f4736 100%);
-  border: 1px solid #2b5944;
+  border-radius: 22px;
+  background-color: #9e3616;
+  background-image: linear-gradient(135deg, #b33c18 0%, #872b0f 100%);
+  border: 1.5px solid #d97706;
   color: #fff8f0;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 14.5px;
+  font-weight: 750;
   text-decoration: none;
-  box-shadow: 0 10px 24px -10px rgb(20 47 36 / 32%);
+  box-shadow: 0 12px 28px -10px rgb(158 54 22 / 40%);
 }
 .modern-location-action > svg:first-child {
-  color: #fbbf24;
+  color: #fde68a;
   flex-shrink: 0;
 }
 .modern-location-action > svg:last-child {
   margin-left: auto;
-  color: #a7f3d0;
+  color: #fde68a;
   flex-shrink: 0;
 }
 
@@ -361,25 +384,25 @@ html[data-design="modern"] .modern-intro h2 {
   justify-content: center;
   gap: 7px;
   padding: 10px 6px;
-  border: 1px solid var(--app-border);
+  border: 1.5px solid var(--app-border);
   border-radius: 18px;
   color: var(--app-text);
   text-decoration: none;
   text-align: center;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 700;
   background-color: var(--app-surface);
-  box-shadow: 0 4px 12px -6px rgb(20 36 28 / 8%);
+  box-shadow: 0 6px 16px -8px rgb(15 34 26 / 12%);
 }
 .modern-utilities svg {
   width: 22px;
   height: 22px;
-  color: #8c2f12;
+  color: #14593d;
 }
 
 /* Картки місць у списках */
 html[data-design="modern"] .kosiv-place {
-  border-width: 1px;
+  border-width: 1.5px;
   border-color: var(--app-border);
   background-color: var(--app-surface);
   box-shadow: var(--shadow-card);
@@ -394,28 +417,31 @@ html[data-design="modern"] .kosiv-place-title {
 }
 /* Виразний бейдж відстані в картці місця */
 html[data-design="modern"] .kosiv-place-head > .kosiv-chip {
-  background-color: #e3f1eb;
-  color: #114b33;
-  border: 1px solid #b5d6c7;
-  font-weight: 700;
+  background-color: #14593d;
+  color: #ffffff;
+  border: 1px solid #0e422d;
+  font-weight: 750;
   font-variant-numeric: tabular-nums;
 }
 
-/* Нижня навігація (просторовий док) */
+/* Нижня навігація: темний смарагдовий просторовий док із золотим вогнем ватри */
 html[data-design="modern"] .kosiv-nav {
-  background-color: rgb(252 251 247 / 95%);
-  backdrop-filter: blur(18px);
+  background-color: #0f261d;
   border-radius: 24px 24px 0 0;
-  box-shadow: 0 -6px 28px rgb(20 36 28 / 8%);
-  border-top: 1px solid var(--app-border);
+  box-shadow: 0 -8px 30px rgb(9 25 19 / 28%);
+  border-top: 1.5px solid #295240;
 }
 html[data-design="modern"] .kosiv-nav-item {
   font-size: 11px;
   font-weight: 650;
+  color: #dce7e1;
+}
+html[data-design="modern"] .kosiv-nav-item[aria-current="page"] {
+  color: #fde68a;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] .kosiv-nav-icon {
-  background-color: #163327;
-  color: #fde68a;
+  background-color: #f59e0b;
+  color: #10221a;
   border-radius: 14px;
 }
 
@@ -432,55 +458,183 @@ html[data-design="modern"] .kosiv-nav-item[aria-current="page"] .kosiv-nav-icon 
 .modern-nearby > .tg-stack {
   gap: 10px !important;
 }
-.modern-nearby > .tg-stack > h1 {
+
+/* Компактна карпатська шапка «Поруч» із радіусом і геолокацією */
+.modern-nearby-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 22px;
+  background-color: #10261e;
+  background-image:
+    radial-gradient(circle at 88% 18%, rgb(245 158 11 / 22%), transparent 48%),
+    linear-gradient(155deg, #0d2119 0%, #18382b 100%);
+  border: 1.5px solid #295240;
+  color: #fff8f0;
+  box-shadow: 0 12px 28px -12px rgb(9 25 19 / 32%);
+}
+.modern-nearby-titles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.modern-nearby-titles > h1 {
   margin: 0;
-  font-size: clamp(22px, 6vw, 28px);
+  font-size: clamp(20px, 5.5vw, 25px) !important;
+  color: #fff8f0;
 }
 .modern-nearby [data-testid="nearby-caption"] {
   margin: 0;
-  padding: 9px 14px;
-  border-radius: 14px;
-  background-color: #e3f1eb;
-  border: 1px solid #bdd9cc;
-  color: #123828;
-  font-size: 13.5px;
-  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  background-color: #1a3c2e;
+  border: 1px solid #356650;
+  color: #fde68a;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.modern-nearby-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .modern-nearby .kosiv-range {
-  padding: 10px 14px;
-  background-color: var(--app-surface);
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
-  box-shadow: 0 3px 10px -4px rgb(20 36 28 / 8%);
+  flex: 1 1 170px;
+  padding: 8px 12px;
+  background-color: #173629;
+  border: 1px solid #315e4a;
+  border-radius: 14px;
+  color: #fff8f0;
 }
+.modern-nearby .kosiv-range summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff8f0;
+  cursor: pointer;
+}
+.modern-nearby .kosiv-range summary span {
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background-color: #f59e0b;
+  color: #10221a;
+  font-weight: 800;
+}
+.modern-nearby .kosiv-range summary span::after {
+  content: "⌄" / "";
+  padding-left: 6px;
+}
+/* Підпис і значення вже в summary — другий рядок лишаємо тільки скрінрідеру */
+.modern-nearby .kosiv-range-head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.modern-nearby .kosiv-range[open] summary {
+  margin-bottom: 10px;
+}
+html[data-design="modern"] .modern-nearby .modern-locate {
+  flex: 1 1 auto;
+  background-color: #9e3616;
+  color: #ffffff;
+  border: 1px solid #d97706;
+  border-radius: 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 6px 12px;
+}
+
 .modern-nearby-results {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+}
+
+/* Сцена великої карти з компактною скляною панеллю керування */
+.modern-map-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 26px;
+  background-color: #11281f;
+  background-image: linear-gradient(180deg, #132d23 0%, #0e221a 100%);
+  border: 1.5px solid #2b5442;
+  box-shadow: 0 20px 44px -14px rgb(9 25 19 / 38%);
+}
+.modern-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 .modern-search {
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
+  padding: 0 11px;
+  border: 1px solid #356650;
+  border-radius: 14px;
   background-color: var(--app-surface);
   color: #114b33;
-  box-shadow: 0 3px 10px -4px rgb(20 36 28 / 6%);
+  min-width: 0;
 }
 html[data-design="modern"] .modern-search input {
   border: 0;
   background: transparent;
-  padding: 11px 10px;
+  padding: 10px 8px;
   min-width: 0;
   width: 100%;
   box-shadow: none;
+  font-size: 13.5px;
 }
+.modern-view-switch {
+  display: flex;
+  border: 1px solid #315c4a;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 14px;
+  background-color: #1a382c;
+}
+.modern-view-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 11px;
+  font: 700 12.5px var(--font-body);
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #e2ece7;
+  cursor: pointer;
+}
+.modern-view-switch button svg {
+  width: 16px;
+  height: 16px;
+}
+.modern-view-switch button[aria-pressed="true"] {
+  background-color: #f59e0b;
+  color: #10221a;
+}
+
 .modern-filters {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 2px 2px 4px;
+  padding: 2px 1px 4px;
   scrollbar-width: thin;
 }
 .modern-filters button {
@@ -490,88 +644,66 @@ html[data-design="modern"] .modern-search input {
   gap: 6px;
   min-height: 44px;
   border-radius: 9999px;
-  border: 1px solid var(--app-border);
+  border: 1px solid #315c4a;
   padding: 6px 13px;
-  background-color: var(--app-surface);
-  color: var(--app-text);
-  font: 650 13px var(--font-body);
+  background-color: #1a382c;
+  color: #f3efe6;
+  font: 650 12.5px var(--font-body);
   cursor: pointer;
 }
 .modern-filters button svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
 }
 .modern-filters button[aria-pressed="true"] {
   color: #ffffff;
-  background-color: #14593d;
-  border-color: #14593d;
-}
-.modern-view-switch {
-  display: flex;
-  border: 1px solid var(--app-border);
-  padding: 3px;
-  gap: 4px;
-  border-radius: 16px;
-  background-color: var(--app-surface);
-}
-.modern-view-switch button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  flex: 1;
-  min-height: 44px;
-  font: 700 13.5px var(--font-body);
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--app-text);
-  cursor: pointer;
-}
-.modern-view-switch button[aria-pressed="true"] {
-  background-color: #14593d;
-  color: #ffffff;
+  background-color: #b83d18;
+  border-color: #f59e0b;
 }
 
 /* Велике вікно карти майже на весь екран при відкритті «Поруч» */
 .modern-map-panel {
   overflow: hidden;
-  padding: 6px;
-  border: 1.5px solid #b7d3c6;
-  border-radius: 24px;
-  background-color: var(--app-surface);
-  box-shadow: 0 18px 40px -14px rgb(16 38 29 / 20%);
+  border: 1.5px solid #366852;
+  border-radius: 20px;
+  background-color: #163327;
 }
 html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
-  height: clamp(380px, 60vh, 540px) !important;
+  height: clamp(420px, 66vh, 580px) !important;
   border-radius: 18px !important;
 }
 html[data-design="modern"] .modern-map-panel .kosiv-map-legend {
-  padding: 6px 8px 4px;
+  padding: 8px 10px;
+  margin: 0;
+  background-color: #163327;
+  color: #f3efe6;
 }
 .modern-map-panel > p {
   padding: 18px;
+  margin: 0;
+  background-color: var(--app-surface);
+  color: var(--app-text);
 }
 
-/* Шторка-список під картою: місця впорядковані від ближчого до дальшого */
+/* Шторка-список під картою: місця впорядковані від ближчого до дальшого (#1, #2, #3...) */
 .modern-results-sheet {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 2px;
   padding: 22px 14px 18px;
-  border-radius: 26px;
-  background-color: rgb(252 251 247 / 90%);
-  border: 1px solid var(--app-border);
-  box-shadow: 0 -6px 26px -12px rgb(20 36 28 / 12%);
+  border-radius: 28px;
+  background-color: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  box-shadow: 0 -8px 30px -12px rgb(15 34 26 / 18%);
+  counter-reset: nearby-rank;
 }
 .modern-results-sheet::before {
   content: "";
-  width: 42px;
+  width: 44px;
   height: 4px;
   border-radius: 9999px;
-  background-color: #c7beaa;
+  background-color: #b8ad96;
   align-self: center;
   margin-top: -8px;
   margin-bottom: 2px;
@@ -588,6 +720,28 @@ html[data-design="modern"] .modern-map-panel .kosiv-map-legend {
   color: var(--app-muted);
   font-size: 12.5px;
 }
+
+/* Нумерація карток за відстанню (від найближчого до найдальшого) */
+.modern-results-sheet .kosiv-place {
+  position: relative;
+  counter-increment: nearby-rank;
+}
+.modern-results-sheet .kosiv-place:first-child {
+  border-color: #d97706;
+  background-image: linear-gradient(160deg, #fffdf9 0%, #fdf2e4 100%);
+}
+.modern-results-sheet .kosiv-place:first-child .kosiv-place-head > .kosiv-chip {
+  background-color: #9e3616;
+  border-color: #7c280e;
+  color: #ffffff;
+}
+.modern-results-sheet .kosiv-place-title::before {
+  content: "#" counter(nearby-rank) " ";
+  color: #9e3616;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .modern-empty {
   padding: 24px 18px;
   border-radius: 20px;
@@ -617,50 +771,6 @@ html[data-design="modern"] .modern-map-panel .kosiv-map-legend {
   z-index: 1;
 }
 
-/* Компактна панель радіуса залишає місце великій карті на першому екрані */
-.modern-nearby .kosiv-range summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 24px;
-  gap: 12px;
-  font-size: 14px;
-  font-weight: 650;
-  cursor: pointer;
-}
-.modern-nearby .kosiv-range summary span {
-  padding: 2px 10px;
-  border-radius: 9999px;
-  background-color: #e3f1eb;
-  color: #114b33;
-  font-weight: 700;
-}
-.modern-nearby .kosiv-range summary span::after {
-  content: "⌄" / "";
-  padding-left: 8px;
-}
-/* Підпис і значення вже в summary — другий рядок лишаємо тільки скрінрідеру */
-.modern-nearby .kosiv-range-head {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.modern-nearby .kosiv-range[open] summary {
-  margin-bottom: 12px;
-}
-html[data-design="modern"] .modern-nearby .modern-locate {
-  background-color: var(--app-surface);
-  color: #114b33;
-  border: 1px solid #b5d6c7;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 700;
-  min-height: 44px;
-  padding: 8px 14px;
-}
 html[data-design="modern"] .kosiv-content .modern-search input[type="search"] {
   border: 0;
   background: transparent;
@@ -678,18 +788,26 @@ html[data-design="modern"] [data-testid="plan-custom"],
 html[data-design="modern"] [data-testid="scenario-item"],
 html[data-design="modern"] [data-testid="saved-plan"] {
   background-color: var(--app-surface) !important;
-  border: 1px solid var(--app-border) !important;
+  border: 1.5px solid var(--app-border) !important;
   border-radius: 22px !important;
   box-shadow: var(--shadow-card);
 }
 html[data-design="modern"] [data-testid="plan-custom"] {
-  background-image: linear-gradient(145deg, #fcfbf7 0%, #f9ece0 100%) !important;
-  border-color: #dfc6b0 !important;
+  background-color: #13281f !important;
+  background-image: linear-gradient(145deg, #10241b 0%, #24382c 100%) !important;
+  border-color: #2e5945 !important;
+  color: #fff8f0 !important;
+}
+html[data-design="modern"] [data-testid="plan-custom"] a {
+  color: #fde68a !important;
+}
+html[data-design="modern"] [data-testid="plan-custom"] .kosiv-muted {
+  color: #d6e4dc !important;
 }
 html[data-design="modern"] .plan-slot {
   border-radius: 22px;
   background-color: var(--app-surface);
-  border: 1px solid var(--app-border);
+  border: 1.5px solid var(--app-border);
   box-shadow: var(--shadow-card);
 }
 html[data-design="modern"] .plan-choice {
@@ -703,12 +821,12 @@ html[data-design="modern"] .plan-toggle {
 }
 html[data-design="modern"] .pc-gallery {
   border-radius: 24px;
-  box-shadow: 0 14px 32px -12px rgb(20 36 28 / 18%);
+  box-shadow: 0 14px 32px -12px rgb(20 36 28 / 22%);
 }
 html[data-design="modern"] .pc-section {
   border-radius: 22px;
   background-color: var(--app-surface);
-  border: 1px solid var(--app-border);
+  border: 1.5px solid var(--app-border);
   box-shadow: var(--shadow-card);
 }
 html[data-design="modern"] .pc-action {
@@ -725,6 +843,9 @@ html[data-design="modern"] .pc-action {
   .design-switch button {
     padding: 8px 7px;
     font-size: 11px;
+  }
+  .modern-toolbar {
+    grid-template-columns: 1fr;
   }
 }
 @media (prefers-reduced-motion: reduce) {

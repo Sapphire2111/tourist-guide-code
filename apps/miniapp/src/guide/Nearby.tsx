@@ -81,51 +81,59 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   return (
     <div className={design === "modern" ? "modern-nearby" : undefined}>
       <Stack>
-        <h1>{t("miniapp.nearby.title")}</h1>
-        {caption && <p data-testid="nearby-caption">{caption}</p>}
-        {geo.status === "denied" && (
-          <p role="alert" data-testid="geo-off">
-            {base?.point ? t("miniapp.nearby.geoOff", { base: base.name }) : t("miniapp.nearby.geoOffNoBase")}
-          </p>
-        )}
-        {geo.status === "denied" && canOpenLocationSettings(webApp) && (
-          <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
-            {t("miniapp.nearby.openSettings")}
-          </Button>
-        )}
-        <RangePanel className="kosiv-range">
-          {design === "modern" && (
-            <summary>
-              {t("miniapp.nearby.radius")}
-              <span>{radiusText}</span>
-            </summary>
-          )}
-          <div className="kosiv-range-head">
-            <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
-            <output htmlFor="nearby-radius" data-testid="radius-value">
-              {radiusText}
-            </output>
+        <div className={design === "modern" ? "modern-nearby-head" : undefined}>
+          <div className={design === "modern" ? "modern-nearby-titles" : undefined}>
+            <h1>{t("miniapp.nearby.title")}</h1>
+            {caption && <p data-testid="nearby-caption">{caption}</p>}
           </div>
-          <input
-            id="nearby-radius"
-            type="range"
-            min={RADIUS_MIN}
-            max={RADIUS_MAX}
-            step={RADIUS_STEP}
-            value={radius}
-            aria-valuetext={radiusText}
-            onChange={(e) => setRadius(Number(e.target.value))}
-          />
-        </RangePanel>
-        {geo.status !== "granted" && (
-          <Button
-            className={design === "modern" ? "modern-locate" : undefined}
-            disabled={geo.status === "locating"}
-            onClick={locate}
-          >
-            {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
-          </Button>
-        )}
+          {geo.status === "denied" && (
+            <p role="alert" data-testid="geo-off">
+              {base?.point
+                ? t("miniapp.nearby.geoOff", { base: base.name })
+                : t("miniapp.nearby.geoOffNoBase")}
+            </p>
+          )}
+          {geo.status === "denied" && canOpenLocationSettings(webApp) && (
+            <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
+              {t("miniapp.nearby.openSettings")}
+            </Button>
+          )}
+          <div className={design === "modern" ? "modern-nearby-actions" : undefined}>
+            <RangePanel className="kosiv-range">
+              {design === "modern" && (
+                <summary>
+                  {t("miniapp.nearby.radius")}
+                  <span>{radiusText}</span>
+                </summary>
+              )}
+              <div className="kosiv-range-head">
+                <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
+                <output htmlFor="nearby-radius" data-testid="radius-value">
+                  {radiusText}
+                </output>
+              </div>
+              <input
+                id="nearby-radius"
+                type="range"
+                min={RADIUS_MIN}
+                max={RADIUS_MAX}
+                step={RADIUS_STEP}
+                value={radius}
+                aria-valuetext={radiusText}
+                onChange={(e) => setRadius(Number(e.target.value))}
+              />
+            </RangePanel>
+            {geo.status !== "granted" && (
+              <Button
+                className={design === "modern" ? "modern-locate" : undefined}
+                disabled={geo.status === "locating"}
+                onClick={locate}
+              >
+                {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
+              </Button>
+            )}
+          </div>
+        </div>
         {point ? (
           <NearbyPlaces
             point={point}
@@ -266,47 +274,51 @@ export function ModernNearbyResults({
   );
   return (
     <div className="modern-nearby-results">
-      <label className="modern-search">
-        {ICONS.search}
-        <input
-          type="search"
-          value={query}
-          aria-label={t("miniapp.modern.search")}
-          placeholder={t("miniapp.modern.search")}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
-        <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
-          {t("miniapp.modern.all")}
-        </button>
-        {sections.map((s) => (
-          <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
-            {ICONS[s]}
-            {t(`miniapp.section.${s}`)}
-          </button>
-        ))}
-      </div>
-      <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
-        {(["map", "list"] as const).map((v) => (
-          <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
-            {v === "map" ? ICONS.plan : ICONS.nearby}
-            {t(`miniapp.modern.${v}`)}
-          </button>
-        ))}
-      </div>
-      {view === "map" && (
-        <div className="modern-map-panel">
-          <MapSlot
-            places={visible}
-            center={base}
-            centerLabel={baseLabel}
-            radius={base ? radius : undefined}
-            maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
-            me={me}
-          />
+      <div className="modern-map-stage">
+        <div className="modern-toolbar">
+          <label className="modern-search">
+            {ICONS.search}
+            <input
+              type="search"
+              value={query}
+              aria-label={t("miniapp.modern.search")}
+              placeholder={t("miniapp.modern.search")}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
+            {(["map", "list"] as const).map((v) => (
+              <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
+                {v === "map" ? ICONS.plan : ICONS.nearby}
+                {t(`miniapp.modern.${v}`)}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+        <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
+          <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
+            {t("miniapp.modern.all")}
+          </button>
+          {sections.map((s) => (
+            <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
+              {ICONS[s]}
+              {t(`miniapp.section.${s}`)}
+            </button>
+          ))}
+        </div>
+        {view === "map" && (
+          <div className="modern-map-panel">
+            <MapSlot
+              places={visible}
+              center={base}
+              centerLabel={baseLabel}
+              radius={base ? radius : undefined}
+              maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
+              me={me}
+            />
+          </div>
+        )}
+      </div>
       <div className="modern-results-sheet" aria-busy={loading}>
         <p role="status" className="modern-results-count" data-testid="nearby-status">
           {loading ? t("miniapp.guide.loading") : t("miniapp.modern.results", { n: visible.length })}
