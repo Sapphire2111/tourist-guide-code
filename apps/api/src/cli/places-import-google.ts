@@ -27,7 +27,7 @@ try {
     maxRequests: args.maxRequests,
   });
   console.log(`Кэш ответов Google: ${args.cacheDir}; лимит запросов: ${args.maxRequests}`);
-  const { places, stats, closedIds, seenIds } = await collect(client, {
+  const { places, stats, closedIds, rejectedIds, seenIds } = await collect(client, {
     categoryNames: CATEGORY_NAMES,
     log: console.log,
   });
@@ -59,6 +59,7 @@ try {
     try {
       const written = await writePlaces(db, args.region, places, new Date(), {
         closedIds,
+        rejectedIds,
         seenIds,
         complete: !stats.limitReached && stats.pagesFailed === 0,
       });
@@ -70,7 +71,8 @@ try {
       );
       console.log(
         `Снято с публикации (закрыты навсегда): ${written.suspendedClosed}; графиков отклонено правилами: ` +
-          `${written.schedulesRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
+          `${written.schedulesRejected}; переразмечено ${written.recategorized}, в архив (не наши по новым правилам) ` +
+          `${written.archivedRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
       );
       if (storage) {
         const ids = await googlePlaceIds(db, written.regionId);

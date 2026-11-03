@@ -298,14 +298,31 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     });
     for (const k of ["north", "west-rec", "west-ad", "east", "far"])
       expect(keysOf(noEat.items)).not.toContain(k);
-    const noStay = await service.search(base.regions.a, {
-      origin: ORIGIN,
-      radius: 5000,
-      excludeSections: ["stay"],
-      limit: 50,
-      offset: 0,
-    });
-    expect(keysOf(noStay.items)).toContain("east");
+    // Место подкатегории stay («Готелі») исключается, остальные остаются; без параметра — находится.
+    await sql(`UPDATE places SET category_id = $1 WHERE id = $2`, [categoryId("hotels"), placeId("east")]);
+    try {
+      const noStay = await service.search(base.regions.a, {
+        origin: ORIGIN,
+        radius: 5000,
+        excludeSections: ["stay"],
+        limit: 50,
+        offset: 0,
+      });
+      expect(keysOf(noStay.items)).not.toContain("east");
+      expect(keysOf(noStay.items)).toContain("north");
+      const withStay = await service.search(base.regions.a, {
+        origin: ORIGIN,
+        radius: 5000,
+        limit: 50,
+        offset: 0,
+      });
+      expect(keysOf(withStay.items)).toContain("east");
+    } finally {
+      await sql(`UPDATE places SET category_id = $1 WHERE id = $2`, [
+        categoryId("restaurants"),
+        placeId("east"),
+      ]);
+    }
   });
 
   it("текст без координат: весь регион, без неопубликованных и чужого региона; рекомендованные выше", async () => {

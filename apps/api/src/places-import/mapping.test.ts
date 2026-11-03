@@ -97,6 +97,19 @@ describe("таблица типов → категорий", () => {
     expect(mapCategory({ primaryType: "playground" }, "Яремче")).toBeUndefined();
     expect(mapCategory({ primaryType: "playground" }, "Дитячий табір")).toBeUndefined();
     expect(mapCategory({ primaryType: "hotel" }, "Готель Буковель")).toBe("hotels");
+    // Сильный тип — заведение, даже если название — только курорт.
+    expect(mapCategory({ primaryType: "ski_resort" }, "Буковель")).toBe("active");
+    expect(mapCategory({ primaryType: "hotel" }, "Карпати")).toBe("hotels");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Polianytsia")).toBeUndefined();
+    // kids по названию — только при типе Google; садочки, школи, лікарні — нет.
+    expect(mapCategory({}, "Дитячий майданчик")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий садок «Сонечко»")).toBe("sights");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "ДЮСШ дитяча")).toBe("sights");
+    // Мелочи: шини, мийка килимів, квест.
+    expect(mapCategory({ primaryType: "store" }, "Мийка килимів")).toBe("stores");
+    expect(mapCategory({ primaryType: "store" }, "Entire Home")).toBe("stores");
+    expect(mapCategory({ primaryType: "store" }, "Tire service")).toBe("car-service");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Квест по Яремчу")).toBe("sights");
     expect(mapCategory({}, "Нова Пошта. Поштомат №35404")).toBeUndefined();
     expect(mapCategory({ primaryType: "post_office" }, "Нова Пошта. Поштове відділення №2")).toBe("post");
     expect(mapCategory({ primaryType: "childrens_camp" }, "Дитячий табір в Карпатах")).toBeUndefined();

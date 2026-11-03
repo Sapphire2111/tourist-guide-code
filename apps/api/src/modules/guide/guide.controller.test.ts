@@ -156,6 +156,30 @@ describe("GET /places/search", () => {
     });
   });
 
+  it("exclude_section: список через запятую и повтором; пустое — как без него; чужое значение и лишние — 400", async () => {
+    const { http, service } = await start();
+    await http().get(`/places/search?regionId=${REGION}&exclude_section=stay,help`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ excludeSections: ["stay", "help"] }),
+    );
+    await http()
+      .get(`/places/search?regionId=${REGION}&exclude_section=stay&exclude_section=eat`)
+      .expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ excludeSections: ["stay", "eat"] }),
+    );
+    await http().get(`/places/search?regionId=${REGION}&exclude_section=`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ excludeSections: undefined }),
+    );
+    await http().get(`/places/search?regionId=${REGION}&exclude_section=hotels`).expect(400);
+    const many = Array.from({ length: 11 }, () => "stay").join(",");
+    await http().get(`/places/search?regionId=${REGION}&exclude_section=${many}`).expect(400);
+  });
+
   it("lat без lng (и наоборот) — 400 по недостающему полю; вне диапазонов — 400", async () => {
     const { http, service } = await start();
     expect(fields((await http().get(`/places/search?regionId=${REGION}&lat=48`).expect(400)).body)).toEqual([

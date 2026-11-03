@@ -40,6 +40,12 @@ export function Catalog({ section }: { section: CatalogSection }) {
   );
 }
 
+/**
+ * Сколько мест «Де жити» показывать на карте: страницы по 50 (6 запросов). Кластеризации нет — 300 маркеров
+ * Leaflet держит без заметных тормозов; на курорте мест проживания меньше (Буковель ~180 по выгрузке Google).
+ */
+export const STAY_MAP_MAX = 300;
+
 /** Сколько ждать базовую точку перед поиском без неё, мс. */
 export const BASE_WAIT_MS = 4_000;
 
@@ -61,8 +67,9 @@ function CategoryPlaces({
   const [categoryId, setCategoryId] = useState(rootId);
   const [draft, setDraft] = useState(initialQuery);
   const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
-  // «Де жити» — карта главная (все места ночёвки сразу на карте), список вторичен.
-  const [view, setView] = useState<"list" | "map">(root?.homeSection === "stay" ? "map" : "list");
+  // «Де жити» — карта главная (все места ночёвки сразу на карте, до STAY_MAP_MAX), список вторичен.
+  const mapFirst = root?.homeSection === "stay";
+  const [view, setView] = useState<"list" | "map">(mapFirst ? "map" : "list");
   // Курорт свайпера — места в радиусе от его центра; «Усе Прикарпаття» — как раньше (от базовой точки QR).
   const area = resort.area;
   const point = area ? area.center : (base?.point ?? null);
@@ -76,7 +83,15 @@ function CategoryPlaces({
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (!area && base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() => api.search({ categoryId, q: q || undefined, point, ...(radius ? { radius } : {}) }))
+        .then(() =>
+          api.search({
+            categoryId,
+            q: q || undefined,
+            point,
+            ...(radius ? { radius } : {}),
+            ...(mapFirst ? { max: STAY_MAP_MAX } : {}),
+          }),
+        )
         .then((list) => ({ list, submitId })),
     [api, categoryId, q, submitId, area ? false : base?.pending, point?.lat, point?.lng, radius],
   );

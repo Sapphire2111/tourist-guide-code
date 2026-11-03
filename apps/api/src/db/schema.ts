@@ -671,6 +671,8 @@ export interface PlacesTable {
   source: ColumnType<PlaceSource, PlaceSource | undefined, PlaceSource>;
   /** id места Google (0016); UNIQUE в регионе, только у source = google. */
   google_place_id: Nullable<string>;
+  /** Категория, поставленная импортом Google (0020); = category_id — админка категорию не меняла. */
+  import_category_id: ColumnType<string | null, string | null | undefined, string | null>;
   /** Последняя сверка с Google (0016). */
   last_synced_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   /** Организация партнёра (0017); NULL — место админки/импорта. */

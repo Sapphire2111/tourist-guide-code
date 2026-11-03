@@ -74,6 +74,7 @@ const SLOT_CATEGORIES: Record<PlanSlot, readonly string[]> = {
   afternoon: [
     "restaurants",
     "kolyby",
+    "kids",
     "nature",
     "sights",
     "museums",
@@ -83,13 +84,14 @@ const SLOT_CATEGORIES: Record<PlanSlot, readonly string[]> = {
     "souvenirs",
     "markets",
   ],
-  evening: ["restaurants", "kolyby", "chany", "spa", "cafes"],
+  // «Для дорослих» (боулінг, караоке, клуби) — вечером и только без детей (adultsOnly).
+  evening: ["restaurants", "kolyby", "chany", "spa", "cafes", "adult-fun"],
   // Под крышей: музеи, кафе, ресторации, чаны и SPA, сувенирные лавки; аттракционы — только с тегом «У дощ».
   rain: ["museums", "cafes", "restaurants", "kolyby", "chany", "spa", "souvenirs", "stores"],
 };
 
 /** С детьми — сначала то, что интересно детям. */
-const KIDS_FIRST = new Set(["museums", "entertainment", "nature", "sights", "active", "cafes"]);
+const KIDS_FIRST = new Set(["kids", "museums", "entertainment", "nature", "sights", "active", "cafes"]);
 
 const L = "\\p{L}";
 const word = (src: string) => new RegExp(`(^|[^${L}])(${src})([^${L}]|$)`, "iu");
@@ -110,9 +112,9 @@ export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKin
   return p.category;
 }
 
-/** Не для детей: бары и ночная жизнь (признак — категория и название из Google). */
+/** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
 export function adultsOnly(p: Pick<CatalogPlace, "category" | "names">): boolean {
-  return placeKind(p) === "bar" || p.names.some((n) => NIGHTLIFE_RE.test(n));
+  return p.category === "adult-fun" || placeKind(p) === "bar" || p.names.some((n) => NIGHTLIFE_RE.test(n));
 }
 
 /** Часть дня пункта: выбранная или по времени (до 12 — ранок, до 17 — день, далі — вечір; без часу — день). */

@@ -1,4 +1,4 @@
-// C02: 8 кнопок разделов главной + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
+// C02: кнопки разделов главной (HOME_SECTIONS) + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
 import { Link, useT } from "@tg/ui";
 import type { MessageKey } from "@tg/i18n";
 import { ICONS } from "../design/Ornament.js";

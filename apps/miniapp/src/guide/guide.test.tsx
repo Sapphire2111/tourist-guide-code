@@ -368,6 +368,19 @@ describe("адаптер api и аналитика", () => {
     expect(url.searchParams.getAll("exclude_section")).toEqual([]);
     await api.search({ point: { lat: 48.45, lng: 24.56 }, radius: 500, excludeSections: ["stay"] });
     expect(new URL(urls[1]!).searchParams.getAll("exclude_section")).toEqual(["stay"]);
+    // max — догрузка страниц по nextOffset до max мест.
+    const paged = vi.fn(async (req: Request) => {
+      const offset = Number(new URL(req.url).searchParams.get("offset") ?? 0);
+      return Response.json({
+        items: [dto, dto],
+        nextOffset: offset < 4 ? offset + 2 : null,
+        radiusMeters: null,
+      });
+    });
+    const pagedApi = createGuideApi(createApiClient({ baseUrl: "http://api.test", fetch: paged }), REGION);
+    expect(await pagedApi.search({ limit: 2, max: 5 })).toHaveLength(5);
+    expect(paged).toHaveBeenCalledTimes(3);
+    expect(await pagedApi.search({ limit: 2 })).toHaveLength(2);
     expect(p).toMatchObject({
       location: { lat: 48.45, lng: 24.56 },
       cover: { url: "https://cdn/800", alt: { uk: "Фасад" } },

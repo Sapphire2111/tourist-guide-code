@@ -51,6 +51,11 @@ export type CollectResult = {
   stats: CollectStats;
   /** Закрытые навсегда (в радиусе пунктов): уже импортированные такие места снимаются с публикации. */
   closedIds: string[];
+  /**
+   * id мест в радиусе, которые по текущим правилам не наши (без категории: метки «только название пункта»,
+   * поштомати, табори…) — уже импортированные такие места запись архивирует, если админка их не трогала.
+   */
+  rejectedIds: string[];
   /** Все id, которые Google вернул за прогон (для отчёта «пропали из выдачи»). */
   seenIds: string[];
   /** Ответы Google по id (рейтинг, описание, тип, имена фото) — places:enrich --from-import-cache. */
@@ -160,6 +165,7 @@ export async function collect(
   };
   const places: MappedPlace[] = [];
   const closedIds: string[] = [];
+  const rejectedIds: string[] = [];
   for (const p of raw.values()) {
     const r = mapPlace(p, localities, opts.categoryNames);
     if (!r.ok) {
@@ -175,6 +181,7 @@ export async function collect(
       )
         closedIds.push(p.id);
       if (r.reason === "no_category") {
+        rejectedIds.push(p.id);
         inc(stats.unmappedTypes, p.primaryType ?? p.types?.[0] ?? "(нет типа)");
         if (stats.unmappedExamples.length < 30)
           stats.unmappedExamples.push(
@@ -195,5 +202,5 @@ export async function collect(
   }
   stats.imported = places.length;
   places.sort((a, b) => a.googlePlaceId.localeCompare(b.googlePlaceId));
-  return { places, stats, closedIds, seenIds: [...raw.keys()], rawById: raw };
+  return { places, stats, closedIds, rejectedIds, seenIds: [...raw.keys()], rawById: raw };
 }

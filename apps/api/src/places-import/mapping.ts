@@ -246,7 +246,7 @@ const TECH = /телефон|смартфон|ноутбук|комп.ютер|�
 const OPERATOR = /київстар|kyivstar|vodafone|водафон|lifecell|лайфсел/i;
 const POST = /нова пошта|nova poshta|укрпошта|ukrposhta|meest|міст експрес|поштомат/i;
 const ADULT =
-  /більярд|billiard|боулінг|bowling|караоке|karaoke|квест|quest|escape|картинг|karting|пейнтбол|paintball|лазертаг|нічний клуб|night ?club/i;
+  /більярд|billiard|боулінг|bowling|караоке|karaoke|квест[- ]?(кімнат|рум)|quest ?room|escape ?room|картинг|karting|пейнтбол|paintball|лазертаг|нічний клуб|night ?club/i;
 
 /** Правила по названию: первое совпавшее; `when` — к каким категориям по типам применимо. */
 const NAME_RULES: readonly {
@@ -297,11 +297,16 @@ const NAME_RULES: readonly {
   // Нова пошта у Google — courier_service, как и евакуатори й перевізники: «пошта» только по названию.
   { test: (n) => POST.test(n), code: "post", when: (t) => WEAK.has(t) },
   {
-    test: (n) => /шиномонтаж|вулканіз|tire/i.test(n),
+    test: (n) => /шиномонтаж|вулканіз|\btires?\b/i.test(n),
     code: "car-service",
     when: (t) => WEAK.has(t) || t === "car-wash",
   },
-  { test: (n) => /автомий|мийка|car ?wash/i.test(n), code: "car-wash", when: (t) => WEAK.has(t) },
+  // «Мийка килимів» — не автомийка.
+  {
+    test: (n) => /автомий|мийка|car ?wash/i.test(n) && !/килим/i.test(n),
+    code: "car-wash",
+    when: (t) => WEAK.has(t),
+  },
   { test: (n) => /перукар|барбер|barber|салон краси/i.test(n), code: "beauty", when: (t) => WEAK.has(t) },
   { test: (n) => /пральн|хімчист|laundry/i.test(n), code: "laundry", when: (t) => WEAK.has(t) },
   // Розваги за аудиторією: бар з більярдом/караоке — теж «для дорослих».
@@ -311,10 +316,12 @@ const NAME_RULES: readonly {
     when: (t) => WEAK.has(t) || t === "cafes" || t === "kids",
   },
   {
-    // Дитячі табори (тижневі зміни) і дитячі магазини — не розвага для туриста.
-    test: (n) => /дитяч|для дітей|kids|батут|зоопарк/i.test(n) && !/табір|camp|магазин|одяг|іграш/i.test(n),
+    // Только при типе Google (без типа «дитяч…» — садочки, школи, лікарні); табори, магазини, школи — не розвага.
+    test: (n) =>
+      /дитяч|для дітей|kids|батут|зоопарк/i.test(n) &&
+      !/табір|camp|магазин|одяг|іграш|садок|школ|дюсш|бібліотек|поліклінік|лікарн|стоматолог/i.test(n),
     code: "kids",
-    when: (t) => WEAK.has(t) && t !== "stores",
+    when: (t) => t !== undefined && WEAK.has(t) && t !== "stores",
   },
   { test: (n) => /таксі|такси|taxi|трансфер/i.test(n), code: "taxi", when: (t) => t === undefined },
   { test: (n) => /аптек/i.test(n), code: "pharmacies", when: (t) => t === undefined },
@@ -345,7 +352,7 @@ function refineByName(name: string, byType: string | undefined): string | undefi
  * «Яремче») или платёжного бренда («Mastercard», «Visa») — такие точки пользователи Google ставят с любым типом.
  */
 const NOT_A_VENUE =
-  /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|ворохта|bukovel|yaremche|vorokhta|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
+  /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|ворохта|bukovel|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
 /** Поштомати (без персоналу, их сотни) засоряют карту — берём только відділення й пункти. */
 const PARCEL_LOCKER = /поштомат|parcel ?locker/i;
 /** Дитячі табори (зміни на тиждень, не розвага для туриста) с типом playground. */
@@ -353,24 +360,24 @@ const CAMP = /табір|camp/i;
 
 /** Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. */
 export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name: string): string | undefined {
-  if (NOT_A_VENUE.test(name.trim())) return undefined;
-  const code = categoryByTypesAndName(p, name);
+  const byType = categoryByTypes(p);
+  // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
+  if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(name.trim())) return undefined;
+  const code = refineByName(name, byType);
   if (code === "post" && PARCEL_LOCKER.test(name)) return undefined;
   if (code === "kids" && CAMP.test(name)) return undefined;
   return code;
 }
 
-function categoryByTypesAndName(
-  p: Pick<GooglePlace, "primaryType" | "types">,
-  name: string,
-): string | undefined {
-  const candidates = [p.primaryType, ...(p.types ?? [])].filter((t): t is string => !!t);
-  let byType: string | undefined;
-  for (const t of candidates) {
-    byType = categoryOfType(t);
-    if (byType) break;
+/** Слабые категории по типам, при которых название-метка (NOT_A_VENUE) значит «не заведение»; без active. */
+const LABEL_TYPES = new Set([...WEAK].filter((t) => t !== "active"));
+
+function categoryByTypes(p: Pick<GooglePlace, "primaryType" | "types">): string | undefined {
+  for (const t of [p.primaryType, ...(p.types ?? [])]) {
+    const code = t ? categoryOfType(t) : undefined;
+    if (code) return code;
   }
-  return refineByName(name, byType);
+  return undefined;
 }
 
 // --- часы работы ---

@@ -44,6 +44,8 @@ describe("placeKind / adultsOnly", () => {
     expect(placeKind({ category: "restaurants", names: ["Бар-ресторан"] })).toBe("restaurants");
     expect(adultsOnly({ category: "entertainment", names: ["Нічний клуб «Ніч»"] })).toBe(true);
     expect(adultsOnly({ category: "cafes", names: ["Кав'ярня"] })).toBe(false);
+    expect(adultsOnly({ category: "adult-fun", names: ["Боулінг"] })).toBe(true);
+    expect(adultsOnly({ category: "kids", names: ["Дитячий майданчик"] })).toBe(false);
   });
 
   it("часть дня — выбранная или по времени", () => {
@@ -122,6 +124,14 @@ describe("slotOptions", () => {
     expect(slotOptions("evening", BASE, places, car, new Set()).find((o) => o.placeId === P(1))!.kind).toBe(
       "bar",
     );
+  });
+
+  it("«Для дітей» — днём и первыми с детьми; «Для дорослих» — вечером и только без детей", () => {
+    const places = [place(1, "kids", 300), place(2, "museums", 100), place(3, "adult-fun", 100)];
+    const day = slotOptions("afternoon", BASE, places, kids, new Set()).map((o) => o.placeId);
+    expect(day[0]).toBe(P(1));
+    expect(slotOptions("evening", BASE, places, car, new Set()).map((o) => o.placeId)).toContain(P(3));
+    expect(slotOptions("evening", BASE, places, kids, new Set()).map((o) => o.placeId)).not.toContain(P(3));
   });
 
   it("якщо дощ: только под крышей (музеи, кафе, чаны…); природа нет; магазины — только ТРЦ; тег «У дощ» — да", () => {

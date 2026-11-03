@@ -326,4 +326,50 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     const partial = await writePlaces(appDb, "test-region", [], new Date(), { seenIds: [], complete: false });
     expect(partial.missingFromGoogle).toBeNull();
   });
+
+  it("переразметка (0020): категорию импорта меняют новые правила, правку админки — нет; «не наши» — в архив", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gR1", { categoryCode: "entertainment" }),
+        place("gR2", { categoryCode: "entertainment" }),
+        place("gR3", { categoryCode: "post" }),
+        place("gR4", { categoryCode: "post" }),
+      ],
+      t,
+    );
+    const cat = async (id: string) =>
+      (
+        await sql(
+          `SELECT c.code, p.status, p.import_category_id = p.category_id AS untouched
+           FROM places p JOIN categories c ON c.id = p.category_id WHERE p.google_place_id = $1`,
+          [id],
+        )
+      ).rows[0];
+    expect(await cat("gR1")).toEqual({ code: "entertainment", status: "published", untouched: true });
+    // Админка перенесла gR2 в «Музеї» и gR4 в «Сувеніри».
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'museums' AND region_id = places.region_id)
+       WHERE google_place_id = 'gR2'`,
+    );
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'souvenirs' AND region_id = places.region_id)
+       WHERE google_place_id = 'gR4'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gR1", { categoryCode: "kids" }), place("gR2", { categoryCode: "kids" })],
+      t,
+      { rejectedIds: ["gR3", "gR4"] },
+    );
+    expect(r.recategorized).toBe(1);
+    expect(r.archivedRejected).toBe(1);
+    expect(await cat("gR1")).toEqual({ code: "kids", status: "published", untouched: true });
+    expect(await cat("gR2")).toEqual({ code: "museums", status: "published", untouched: false });
+    expect(await cat("gR3")).toMatchObject({ code: "post", status: "archived" });
+    expect(await cat("gR4")).toMatchObject({ code: "souvenirs", status: "published" });
+  });
 });
