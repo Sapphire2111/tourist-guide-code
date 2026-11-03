@@ -54,6 +54,7 @@ export type CatalogErrorReason =
   | "category_not_found"
   | "locality_not_found"
   | "tags_not_found"
+  | "extra_categories_invalid"
   | "invalid_transition"
   | "not_publishable"
   | "moderation_required"
@@ -121,7 +122,14 @@ export type PlaceInput = {
   telegram?: string | null;
   verifiedAt?: string | null;
   tagIds?: string[];
+  /** Дополнительные категории (0020): активные разделы и их подкатегории, не основная, не больше MAX_EXTRA_CATEGORIES. */
+  extraCategoryIds?: string[];
 };
+
+export const MAX_EXTRA_CATEGORIES = 5;
+
+/** Действие аудита «админка правила доп. категории места» (читает импорт Google, places-import/writer.ts). */
+export const EXTRA_CATEGORIES_EDIT_ACTION = "place.extra_categories.edit";
 
 export type PlaceDetails = PlaceRecord & { tagIds: string[]; extraCategoryIds?: string[] };
 
@@ -186,7 +194,11 @@ export function requireRegionContext(): string {
 }
 
 /** Снимок места для аудита (без служебных полей). */
-function placeSnapshot(p: PlaceRecord, tagIds?: readonly string[]): JsonObject {
+function placeSnapshot(
+  p: PlaceRecord,
+  tagIds?: readonly string[],
+  extraCategoryIds?: readonly string[],
+): JsonObject {
   return {
     status: p.status,
     categoryId: p.category_id,
@@ -201,6 +213,7 @@ function placeSnapshot(p: PlaceRecord, tagIds?: readonly string[]): JsonObject {
     recommended: p.recommended,
     verifiedAt: p.verified_at?.toISOString() ?? null,
     ...(tagIds ? { tagIds: [...tagIds] } : {}),
+    ...(extraCategoryIds ? { extraCategoryIds: [...extraCategoryIds] } : {}),
   };
 }
 
@@ -216,6 +229,26 @@ export class CatalogService {
     @Inject(CatalogRepository) private readonly repo: CatalogRepository,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Отдельная запись об изменении доп. категорий: по ней (action = EXTRA_CATEGORIES_EDIT_ACTION, актор-пользователь)
+   * импорт Google узнаёт, что набор места правила админка, и больше его не пересобирает — в том числе когда админ
+   * очистил список (строк нет, а след остался).
+   */
+  private async recordExtraEdit(
+    meta: AuditMeta,
+    placeId: string,
+    before: readonly string[],
+    after: readonly string[],
+  ): Promise<void> {
+    await this.record(meta, {
+      action: EXTRA_CATEGORIES_EDIT_ACTION,
+      entityType: "place",
+      entityId: placeId,
+      oldValues: { extraCategoryIds: [...before] },
+      newValues: { extraCategoryIds: [...after] },
+    });
+  }
 
   private async record(meta: AuditMeta, entry: Omit<AuditEntry, keyof AuditMeta>): Promise<void> {
     await this.audit.record(currentDb(this.db), { ...meta, ...entry });
@@ -494,7 +527,7 @@ export class CatalogService {
     return { ...place, tagIds, extraCategoryIds };
   }
 
-  private async checkRefs(input: Partial<PlaceInput>): Promise<void> {
+  private async checkRefs(input: Partial<PlaceInput>, mainCategoryId?: string): Promise<void> {
     if (input.categoryId !== undefined) {
       await this.repo.shareLockCategory(input.categoryId);
       if (!(await this.repo.findCategory(input.categoryId))) throw new CatalogError("category_not_found");
@@ -504,6 +537,16 @@ export class CatalogService {
     if (input.tagIds) {
       const unique = [...new Set(input.tagIds)];
       if ((await this.repo.countTags(unique)) !== unique.length) throw new CatalogError("tags_not_found");
+    }
+    if (input.extraCategoryIds) {
+      const unique = [...new Set(input.extraCategoryIds)];
+      const main = (input.categoryId ?? mainCategoryId)?.toLowerCase();
+      if (
+        unique.length > MAX_EXTRA_CATEGORIES ||
+        unique.some((c) => c.toLowerCase() === main) ||
+        (await this.repo.countAssignableCategories(unique)) !== unique.length
+      )
+        throw new CatalogError("extra_categories_invalid");
     }
   }
 
@@ -527,13 +570,16 @@ export class CatalogService {
     );
     const tagIds = [...new Set(input.tagIds ?? [])].sort();
     await this.repo.replacePlaceTags(created.id, tagIds);
+    const extraCategoryIds = [...new Set(input.extraCategoryIds ?? [])].sort();
+    if (extraCategoryIds.length) await this.repo.replacePlaceExtraCategories(created.id, extraCategoryIds);
     await this.record(meta, {
       action: "place.create",
       entityType: "place",
       entityId: created.id,
-      newValues: placeSnapshot(created, tagIds),
+      newValues: placeSnapshot(created, tagIds, extraCategoryIds),
     });
-    return { ...created, tagIds };
+    if (extraCategoryIds.length) await this.recordExtraEdit(meta, created.id, [], extraCategoryIds);
+    return { ...created, tagIds, extraCategoryIds };
   }
 
   /** Правка сразу в живую версию (§1.6 — без PlaceRevision); опубликованное место должно остаться готовым. */
@@ -541,7 +587,13 @@ export class CatalogService {
     requireRegionContext();
     const before = (await this.repo.lockPlace(id)) ?? notFound();
     const tagsBefore = await this.repo.placeTagIds(id);
-    await this.checkRefs(input);
+    const extrasBefore = await this.repo.placeExtraCategoryIds(id);
+    await this.checkRefs(input, before.category_id);
+    // Новая основная категория не должна дублироваться в старых дополнительных — снять её оттуда.
+    const newMain = input.categoryId?.toLowerCase();
+    const extraWanted =
+      input.extraCategoryIds ??
+      (newMain && extrasBefore.includes(newMain) ? extrasBefore.filter((c) => c !== newMain) : undefined);
     const patch: PlacePatch = {
       category_id: input.categoryId,
       locality_id: input.localityId,
@@ -562,14 +614,19 @@ export class CatalogService {
     const after = (await guarded(() => this.repo.updatePlace(id, patch))) ?? notFound();
     const tagIds = input.tagIds ? [...new Set(input.tagIds)].sort() : tagsBefore;
     if (input.tagIds) await this.repo.replacePlaceTags(id, tagIds);
+    const extraCategoryIds = extraWanted ? [...new Set(extraWanted)].sort() : extrasBefore;
+    // Набор не изменился — строки не трогаем (иначе import молча стал бы manual).
+    const extrasChanged = !!extraWanted && extraCategoryIds.join() !== extrasBefore.join();
+    if (extrasChanged) await this.repo.replacePlaceExtraCategories(id, extraCategoryIds);
     await this.record(meta, {
       action: "place.edit",
       entityType: "place",
       entityId: id,
-      oldValues: placeSnapshot(before, tagsBefore),
-      newValues: placeSnapshot(after, tagIds),
+      oldValues: placeSnapshot(before, tagsBefore, extrasBefore),
+      newValues: placeSnapshot(after, tagIds, extraCategoryIds),
     });
-    return { ...after, tagIds };
+    if (extrasChanged) await this.recordExtraEdit(meta, id, extrasBefore, extraCategoryIds);
+    return { ...after, tagIds, extraCategoryIds };
   }
 
   /** Удалить можно только ни разу не публиковавшееся место без истории бейджа; остальное — в архив. */

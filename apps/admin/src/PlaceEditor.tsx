@@ -48,6 +48,7 @@ type PlaceForm = {
   categoryId: string;
   localityId: string;
   tagIds: string[];
+  extraCategoryIds: string[];
 };
 
 function toForm(p?: Place): PlaceForm {
@@ -63,14 +64,22 @@ function toForm(p?: Place): PlaceForm {
     categoryId: p?.categoryId ?? "",
     localityId: p?.localityId ?? "",
     tagIds: p?.tagIds ?? [],
+    extraCategoryIds: p?.extraCategoryIds ?? [],
   };
 }
 
 /** Форма → тело POST/PATCH: пустые необязательные поля — null. */
-export function placeBody(f: PlaceForm) {
+export function placeBody(f: PlaceForm, originalExtra?: readonly string[]) {
   const lat = f.lat.trim() === "" ? NaN : Number(f.lat);
   const lon = f.lon.trim() === "" ? NaN : Number(f.lon);
   const opt = (v: string) => (v.trim() === "" ? null : v.trim());
+  // Основная категория в дополнительных не дублируется; при правке набор шлётся, только если изменился
+  // (иначе строки импорта стали бы ручными).
+  const extra = f.extraCategoryIds.filter((id) => id !== f.categoryId);
+  const extraChanged =
+    !originalExtra ||
+    extra.length !== originalExtra.length ||
+    extra.some((id) => !originalExtra.includes(id));
   return {
     name: toLocalized(f.name) ?? { uk: "" },
     description: toLocalized(f.description),
@@ -82,25 +91,29 @@ export function placeBody(f: PlaceForm) {
     categoryId: f.categoryId,
     localityId: opt(f.localityId),
     tagIds: f.tagIds,
+    ...(extraChanged ? { extraCategoryIds: extra } : {}),
   };
 }
 
-function PlaceFields({
-  form,
-  set,
-  extraCategoryIds = [],
-}: {
-  form: PlaceForm;
-  set: (patch: Partial<PlaceForm>) => void;
-  /** Дополнительные категории (0020) — только показ: ставит импорт Google. */
-  extraCategoryIds?: string[];
-}) {
+/** Максимум дополнительных категорий (как в API). */
+const MAX_EXTRA_CATEGORIES = 5;
+
+function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<PlaceForm>) => void }) {
   const { api } = useAdmin();
   const { t } = useT();
   const l = useLocalized();
   const [cats] = useLoad(() => call(api.GET("/admin/categories")), []);
   const [tags] = useLoad(() => call(api.GET("/admin/tags")), []);
   const [localities] = useLoad(() => call(api.GET("/admin/localities")), []);
+  // Дополнительные: активные разделы и подкатегории активных разделов, кроме основной (уже выбранные — чтобы
+  // можно снять).
+  const allCats = cats?.ok ? cats.data.items : [];
+  const extraOptions = allCats.filter(
+    (c) =>
+      c.id !== form.categoryId &&
+      ((c.active && (c.parentId === null || allCats.find((p) => p.id === c.parentId)?.active)) ||
+        form.extraCategoryIds.includes(c.id)),
+  );
   return (
     <>
       <LocalizedField
@@ -129,15 +142,6 @@ function PlaceFields({
           options={(cats?.ok ? cats.data.items : []).map((c) => ({ value: c.id, label: l(c.name) }))}
           onChange={(categoryId) => set({ categoryId })}
         />
-        {extraCategoryIds.length > 0 && (
-          <p data-testid="extra-categories" style={{ margin: 0 }}>
-            {t("admin.field.extraCategories")}:{" "}
-            {extraCategoryIds
-              .map((id) => (cats?.ok ? cats.data.items.find((c) => c.id === id) : undefined))
-              .map((c, i) => (c ? l(c.name) : extraCategoryIds[i]))
-              .join(", ")}
-          </p>
-        )}
         <SelectField
           label={t("admin.field.locality")}
           value={form.localityId}
@@ -182,6 +186,41 @@ function PlaceFields({
           onChange={(telegram) => set({ telegram })}
         />
       </div>
+      {extraOptions.length > 0 && (
+        <fieldset
+          data-testid="extra-categories"
+          style={{ border: "1px solid #c4c7cc", borderRadius: 6, margin: 0 }}
+        >
+          <legend>{t("admin.field.extraCategories")}</legend>
+          <p style={{ margin: "0 0 8px" }}>
+            {t("admin.field.extraCategoriesHint", { max: MAX_EXTRA_CATEGORIES })}
+            {form.extraCategoryIds.length >= MAX_EXTRA_CATEGORIES && (
+              <strong role="status">
+                {" "}
+                {t("admin.field.extraCategoriesLimit", { max: MAX_EXTRA_CATEGORIES })}
+              </strong>
+            )}
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            {extraOptions.map((c) => (
+              <CheckboxField
+                key={c.id}
+                label={l(c.name)}
+                checked={form.extraCategoryIds.includes(c.id)}
+                onChange={(on) =>
+                  set({
+                    extraCategoryIds: on
+                      ? form.extraCategoryIds.length < MAX_EXTRA_CATEGORIES
+                        ? [...form.extraCategoryIds, c.id]
+                        : form.extraCategoryIds
+                      : form.extraCategoryIds.filter((x) => x !== c.id),
+                  })
+                }
+              />
+            ))}
+          </div>
+        </fieldset>
+      )}
       {tags?.ok && tags.data.items.length > 0 && (
         <fieldset style={{ border: "1px solid #c4c7cc", borderRadius: 6, margin: 0 }}>
           <legend>{t("admin.tags")}</legend>
@@ -361,7 +400,7 @@ function Editor({ place }: { place?: Place }) {
   const save = async () => {
     setBusy(true);
     setNotice(null);
-    const body = placeBody(form);
+    const body = placeBody(form, current?.extraCategoryIds);
     const res = current
       ? await call(api.PATCH("/admin/places/{id}", { params: { path: { id: current.id } }, body }))
       : await call(api.POST("/admin/places", { body }));
@@ -397,11 +436,7 @@ function Editor({ place }: { place?: Place }) {
         error={error}
         busy={busy}
       >
-        <PlaceFields
-          form={form}
-          set={(patch) => setForm((f) => ({ ...f, ...patch }))}
-          extraCategoryIds={place?.extraCategoryIds}
-        />
+        <PlaceFields form={form} set={(patch) => setForm((f) => ({ ...f, ...patch }))} />
         <Notice text={notice} />
       </Form>
       {current && (

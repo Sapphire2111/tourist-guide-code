@@ -770,8 +770,12 @@ function Choice({
   const id = useId();
   // Галочка меняется сразу (пока идёт PATCH); ответ сервера — источник истины, ошибка — галочка как была.
   const [pending, setPending] = useState(false);
+  // Сбрасываем только при переходе занято → свободно: отложенный эффект первого рендера иначе
+  // выполняется после клика и затирает setPending(true) (галочка «не ставится»).
+  const wasBusy = useRef(false);
   useEffect(() => {
-    if (!busy) setPending(false);
+    if (wasBusy.current && !busy) setPending(false);
+    wasBusy.current = busy;
   }, [busy]);
   const shown = pending ? !checked : checked;
   return (

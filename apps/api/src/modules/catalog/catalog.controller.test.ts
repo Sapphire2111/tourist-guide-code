@@ -400,6 +400,65 @@ describe("места: валидация, публикация, бейдж, ау
     expect(phone.status).toBe(400);
   });
 
+  it("доп. категории: подкатегории активных разделов, не основная, лимит; запись manual + аудит; чужой регион и права — отказ", async () => {
+    const { server, data } = await start([REGION_ADMIN_A]);
+    const place = id("a", 4);
+    const sub = (n: number, active = true, parent: string | null = id("a", 2)) => ({
+      ...data.categories![0]!,
+      id: id("a", 40 + n),
+      parent_id: parent,
+      code: `sub-${n}`,
+      home_section: null,
+      active,
+    });
+    data.categories!.push(sub(1), sub(2), sub(3, false), sub(4, true, null));
+    data.place_extra_categories = [
+      { region_id: A, place_id: place, category_id: id("a", 41), source: "import", created_at: T0 },
+    ];
+    const patch = (body: Record<string, unknown>) =>
+      request(server).patch(`/admin/places/${place}`).send(body);
+    // основная, неактивная, подкатегория чужого региона, неизвестная — 422; больше лимита — 400; список не изменился
+    data.categories!.push({ ...sub(5), id: id("b", 45), region_id: B, parent_id: id("b", 2) });
+    for (const extraCategoryIds of [[id("a", 2)], [id("a", 43)], [id("b", 45)], [id("a", 99)]]) {
+      const res = await patch({ extraCategoryIds });
+      expect(res.status, JSON.stringify(extraCategoryIds)).toBe(422);
+      expect(errorOf(res).messageKey).toBe("errors.catalog.invalidReference");
+    }
+    const tooMany = await patch({ extraCategoryIds: [1, 2, 3, 4, 5, 6].map((n) => id("a", 60 + n)) });
+    expect(tooMany.status).toBe(400);
+    expect(data.place_extra_categories!.map((r) => r.category_id)).toEqual([id("a", 41)]);
+    // тот же набор не перезаписывает строки (import остаётся import) и не пишет аудит
+    expect((await patch({ extraCategoryIds: [id("a", 41)] })).status).toBe(200);
+    expect(data.place_extra_categories!.map((r) => r.source)).toEqual(["import"]);
+    expect(data.audit_logs!.filter((l) => l.action === "place.extra_categories.edit")).toHaveLength(0);
+    // корневой активный раздел (импорт ставит «Халепа?») — допустим
+    expect((await patch({ extraCategoryIds: [id("a", 44)] })).status).toBe(200);
+    const ok = await patch({ extraCategoryIds: [id("a", 42)] });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect((ok.body as { extraCategoryIds: string[] }).extraCategoryIds).toEqual([id("a", 42)]);
+    expect(data.place_extra_categories!.map((r) => [r.category_id, r.source])).toEqual([
+      [id("a", 42), "manual"],
+    ]);
+    const log = data.audit_logs!.filter((l) => l.action === "place.edit").at(-1)!;
+    expect(log.old_values).toMatchObject({ extraCategoryIds: [id("a", 44)] });
+    expect(log.new_values).toMatchObject({ extraCategoryIds: [id("a", 42)] });
+    // без поля список не трогается; пустой массив очищает
+    expect((await patch({ phone: null })).status).toBe(200);
+    expect(data.place_extra_categories).toHaveLength(1);
+    expect((await patch({ extraCategoryIds: [] })).status).toBe(200);
+    expect(data.place_extra_categories).toHaveLength(0);
+    // Каждое изменение набора оставляет отдельную запись аудита (по ней импорт не трогает набор); без изменений — нет.
+    expect(data.audit_logs!.filter((l) => l.action === "place.extra_categories.edit")).toHaveLength(3);
+  });
+
+  it("доп. категории: модератор без place.edit — 403", async () => {
+    const { server } = await start([MODERATOR_A]);
+    const res = await request(server)
+      .patch(`/admin/places/${id("a", 4)}`)
+      .send({ extraCategoryIds: [] });
+    expect(res.status).toBe(403);
+  });
+
   it("публикация без alt text у фото — 422 errors.place.notPublishable с причиной; с alt — published и аудит", async () => {
     const { server, data } = await start([REGION_ADMIN_A]);
     const place = id("a", 4);

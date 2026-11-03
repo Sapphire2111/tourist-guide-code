@@ -2,6 +2,7 @@
 // пам'яток. Общий для --plan (только оценка), --dry-run и записи. Запросы мимо кэша ограничены лимитами клиентов.
 import type { PlaceEnrichmentGoogle, PlaceEnrichmentWiki } from "../db/index.js";
 import {
+  GoogleRateLimitedError,
   MonthlyLimitError,
   NoApiKeyError,
   RequestLimitError,
@@ -56,6 +57,8 @@ export type EnrichStats = {
   monthlyLimitReached: boolean;
   /** Мест, которым Details не достались из-за предела (продолжить в следующем месяце). */
   detailsDeferred: number;
+  /** Мест, отложенных из-за поминутной квоты Google (429 после всех повторов) — повторить прогоном позже. */
+  rateLimited: number;
   /** Мест с данными из кэша импорта (без платного Details). */
   fromImport: number;
   wikiLimitReached: boolean;
@@ -136,6 +139,7 @@ export async function enrich(
     googleLimitReached: false,
     monthlyLimitReached: false,
     detailsDeferred: 0,
+    rateLimited: 0,
     fromImport: 0,
     wikiLimitReached: false,
     skippedByCategory: 0,
@@ -164,6 +168,7 @@ export async function enrich(
     // Платный Place Details (Atmosphere) — кроме утилитарных категорий; предел (месячный/запросов) — данные из
     // кэша импорта, остальное — в следующем прогоне (ответы кэшируются, повтор продолжает с непройденных).
     let g: PlaceEnrichmentGoogle | null = null;
+    let rateLimited = false;
     if (opts.details !== false && !opts.skipDetails?.has(p.categoryCode)) {
       try {
         const raw = await google.placeDetails(p.googlePlaceId);
@@ -176,6 +181,11 @@ export async function enrich(
           // Без ключа Details не из кэша не получить — пропуск (данные из кэша импорта, если есть), прогон идёт дальше.
           if (!warnedNoKeyDetails) log("Нет GOOGLE_MAPS_API_KEY: Place Details не из кэша пропущены.");
           warnedNoKeyDetails = true;
+          stats.detailsDeferred++;
+        } else if (err instanceof GoogleRateLimitedError) {
+          log(`Details ${p.googlePlaceId}: ${err.message}`);
+          stats.rateLimited++;
+          rateLimited = true;
           stats.detailsDeferred++;
         } else if (!(err instanceof RequestLimitError)) throw err;
         else {
@@ -190,7 +200,7 @@ export async function enrich(
     if (fromImport) {
       // Бесплатно: тип, описание, рейтинг из кэша поиска + фото с авторами запросом «id,photos» (IDs Only).
       let photos: Record<string, unknown> | null = null;
-      if (opts.freePhotos !== false) {
+      if (opts.freePhotos !== false && !rateLimited) {
         try {
           photos = await google.placePhotos(p.googlePlaceId);
         } catch (err) {
@@ -198,7 +208,14 @@ export async function enrich(
             // Без ключа фото не из кэша не получить — шаг пропускается, прогон идёт дальше.
             if (!warnedNoKey) log("Нет GOOGLE_MAPS_API_KEY: фото мест не из кэша пропущены.");
             warnedNoKey = true;
+          } else if (err instanceof GoogleRateLimitedError) {
+            log(`Фото ${p.googlePlaceId}: ${err.message}`);
+            stats.rateLimited++;
           } else if (!(err instanceof RequestLimitError)) throw err;
+          else if (!stats.googleLimitReached) {
+            log(err.message);
+            stats.googleLimitReached = true;
+          }
         }
       }
       g = fromSearch(fromImport, photos);

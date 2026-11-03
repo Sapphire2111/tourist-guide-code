@@ -275,7 +275,8 @@ export async function writePlaces(
 
       // Дополнительные категории импорта пересобираются (новые правила) только у мест, где основную категорию
       // ставил импорт: админка сменила категорию — набор места её, импорт его не трогает. Поставленные админкой
-      // (manual) не трогаются — совпадение с ними ON CONFLICT DO NOTHING.
+      // (manual) не трогаются — совпадение с ними ON CONFLICT DO NOTHING. Если админка правила доп. категории места
+      // (аудит place.extra_categories.edit, даже когда список очищен) — импорт его набор не пересобирает вовсе.
       const ownRows = await trx
         .selectFrom("places")
         .select("google_place_id")
@@ -285,6 +286,19 @@ export async function writePlaces(
           batch.map((p) => placeId.get(p.googlePlaceId)!),
         )
         .whereRef("import_category_id", "=", "category_id")
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom("audit_logs as a")
+                .select(eb.lit(1).as("one"))
+                .where("a.entity_type", "=", "place")
+                .where("a.action", "=", "place.extra_categories.edit")
+                .where("a.actor_type", "=", "user")
+                .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
+            ),
+          ),
+        )
         .execute();
       const own = new Set(ownRows.map((r) => r.google_place_id!));
       const ownBatch = batch.filter((p) => own.has(p.googlePlaceId));
