@@ -20,21 +20,63 @@ function offline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
+/** Сколько ждать проверочный запрос, мс; таймаут — считаем сетевым сбоем, не деплоем. */
+const CHECK_TIMEOUT_MS = 5_000;
+
+/** fetch с таймаутом через AbortController (AbortSignal.timeout есть не во всех старых WebView). */
+async function fetchChecked(url: string): Promise<Response | null> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = setTimeout(() => ctrl?.abort(), CHECK_TIMEOUT_MS);
+  let raceTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // Гонка с таймером — запасной вариант, если abort не прервал fetch.
+    return await Promise.race([
+      fetch(url, { cache: "no-store", signal: ctrl?.signal }),
+      new Promise<null>((resolve) => {
+        raceTimer = setTimeout(() => resolve(null), CHECK_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    clearTimeout(raceTimer);
+  }
+}
+
+/** Адрес входного модульного скрипта в HTML (хэш меняется с каждой сборкой). */
+function entryScript(html: string): string | null {
+  const m = /<script[^>]*type=["']module["'][^>]*src=["']([^"']+)["']/i.exec(html);
+  return m ? new URL(m[1]!, location.href).pathname : null;
+}
+
+function currentEntry(): string | null {
+  const el =
+    typeof document !== "undefined"
+      ? document.querySelector<HTMLScriptElement>("script[type=module][src]")
+      : null;
+  return el ? new URL(el.src, location.href).pathname : null;
+}
+
 /**
- * Чанк потерян из-за деплоя (а не сети)? Адрес берём из текста ошибки (Chrome/Firefox); запрос вернул HTML или
- * не-2xx — файла уже нет. Запрос упал — сеть, не деплой. Адреса нет (Safari) — считаем деплоем, если онлайн.
+ * Чанк потерян из-за деплоя (а не сети)? Адрес берём из текста ошибки (Chrome/Firefox): запрос вернул HTML или
+ * не-2xx — файла уже нет. Адреса нет (iOS) — смотрим index.html: другой хэш входного скрипта — деплой; тот же —
+ * чанк недоступен по другой причине; сравнить нельзя — «сервер отвечает» считаем деплоем. Запрос упал или завис
+ * (таймаут) — сеть, не деплой.
  */
 export async function chunkLostByDeploy(error: unknown): Promise<boolean> {
   if (offline()) return false;
   const text = String((error as { message?: unknown } | null)?.message ?? "");
   const url = /https?:\/\/[^\s"')]+/.exec(text)?.[0];
-  if (!url) return true;
-  try {
-    const res = await fetch(url, { cache: "no-store" });
+  if (url) {
+    const res = await fetchChecked(url);
+    if (!res) return false;
     return !res.ok || (res.headers.get("content-type") ?? "").includes("text/html");
-  } catch {
-    return false;
   }
+  const res = await fetchChecked(location.pathname || "/");
+  if (!res || !res.ok) return false;
+  const [latest, mine] = [entryScript(await res.text().catch(() => "")), currentEntry()];
+  return latest && mine ? latest !== mine : true;
 }
 
 /**
@@ -60,9 +102,12 @@ export async function reloadOnceForChunkError(error?: unknown, now = Date.now())
   return true;
 }
 
-/** Кнопка «Спробувати ще раз»: ошибка чанка при наличии сети — перезагрузка; офлайн — обычный повтор import(). */
-export function reloadForChunkError(error: unknown): boolean {
-  if (!isChunkLoadError(error) || offline()) return false;
+/**
+ * Кнопка «Спробувати ще раз»: ошибка чанка и это деплой — перезагрузка (true); иначе (сеть, не чанк) false —
+ * вызывающий повторяет import().
+ */
+export async function reloadForChunkError(error: unknown): Promise<boolean> {
+  if (!isChunkLoadError(error) || !(await chunkLostByDeploy(error))) return false;
   location.reload();
   return true;
 }

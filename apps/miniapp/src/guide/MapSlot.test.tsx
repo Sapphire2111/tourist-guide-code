@@ -46,7 +46,11 @@ describe("MapSlot", () => {
 
   it("потерянный чанк: фоновая предзагрузка молчит, показ карты — одна перезагрузка", async () => {
     const reload = vi.fn();
-    vi.stubGlobal("location", { reload });
+    vi.stubGlobal("location", { reload, pathname: "/", href: "http://localhost/" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html></html>")),
+    );
     sessionStorage.clear();
     setMapLoaderForTests(async () => {
       throw new TypeError("Importing a module script failed.");

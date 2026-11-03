@@ -55,7 +55,9 @@ export function lazyScreen<P extends object>(
             <Button
               onClick={() => {
                 // Чанк потерян после деплоя — повтор import() бесполезен, перезагружаем страницу.
-                if (!reloadForChunkError(lastLoadError)) setAttempt((n) => n + 1);
+                void reloadForChunkError(lastLoadError).then((reloaded) => {
+                  if (!reloaded) setAttempt((n) => n + 1);
+                });
               }}
             >
               {t("miniapp.guide.retry")}
