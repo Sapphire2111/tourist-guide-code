@@ -6,9 +6,9 @@ export type Design = "original" | "modern";
 export const DESIGN_STORAGE_KEY = "tg.design";
 export function readDesign(): Design {
   try {
-    return localStorage.getItem(DESIGN_STORAGE_KEY) === "modern" ? "modern" : "original";
+    return localStorage.getItem(DESIGN_STORAGE_KEY) === "original" ? "original" : "modern";
   } catch {
-    return "original";
+    return "modern";
   }
 }
 const Context = createContext<{ design: Design; setDesign: (design: Design) => void }>({
