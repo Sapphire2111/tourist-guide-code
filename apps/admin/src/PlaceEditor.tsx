@@ -69,10 +69,17 @@ function toForm(p?: Place): PlaceForm {
 }
 
 /** Форма → тело POST/PATCH: пустые необязательные поля — null. */
-export function placeBody(f: PlaceForm) {
+export function placeBody(f: PlaceForm, originalExtra?: readonly string[]) {
   const lat = f.lat.trim() === "" ? NaN : Number(f.lat);
   const lon = f.lon.trim() === "" ? NaN : Number(f.lon);
   const opt = (v: string) => (v.trim() === "" ? null : v.trim());
+  // Основная категория в дополнительных не дублируется; при правке набор шлётся, только если изменился
+  // (иначе строки импорта стали бы ручными).
+  const extra = f.extraCategoryIds.filter((id) => id !== f.categoryId);
+  const extraChanged =
+    !originalExtra ||
+    extra.length !== originalExtra.length ||
+    extra.some((id) => !originalExtra.includes(id));
   return {
     name: toLocalized(f.name) ?? { uk: "" },
     description: toLocalized(f.description),
@@ -84,8 +91,7 @@ export function placeBody(f: PlaceForm) {
     categoryId: f.categoryId,
     localityId: opt(f.localityId),
     tagIds: f.tagIds,
-    // Основная категория в дополнительных не дублируется.
-    extraCategoryIds: f.extraCategoryIds.filter((id) => id !== f.categoryId),
+    ...(extraChanged ? { extraCategoryIds: extra } : {}),
   };
 }
 
@@ -99,13 +105,13 @@ function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<Plac
   const [cats] = useLoad(() => call(api.GET("/admin/categories")), []);
   const [tags] = useLoad(() => call(api.GET("/admin/tags")), []);
   const [localities] = useLoad(() => call(api.GET("/admin/localities")), []);
-  // Дополнительные: активные подкатегории активных разделов, кроме основной (уже выбранные — чтобы можно снять).
+  // Дополнительные: активные разделы и подкатегории активных разделов, кроме основной (уже выбранные — чтобы
+  // можно снять).
   const allCats = cats?.ok ? cats.data.items : [];
   const extraOptions = allCats.filter(
     (c) =>
-      c.parentId !== null &&
       c.id !== form.categoryId &&
-      ((c.active && allCats.find((p) => p.id === c.parentId)?.active) ||
+      ((c.active && (c.parentId === null || allCats.find((p) => p.id === c.parentId)?.active)) ||
         form.extraCategoryIds.includes(c.id)),
   );
   return (
@@ -188,6 +194,12 @@ function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<Plac
           <legend>{t("admin.field.extraCategories")}</legend>
           <p style={{ margin: "0 0 8px" }}>
             {t("admin.field.extraCategoriesHint", { max: MAX_EXTRA_CATEGORIES })}
+            {form.extraCategoryIds.length >= MAX_EXTRA_CATEGORIES && (
+              <strong role="status">
+                {" "}
+                {t("admin.field.extraCategoriesLimit", { max: MAX_EXTRA_CATEGORIES })}
+              </strong>
+            )}
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             {extraOptions.map((c) => (
@@ -388,7 +400,7 @@ function Editor({ place }: { place?: Place }) {
   const save = async () => {
     setBusy(true);
     setNotice(null);
-    const body = placeBody(form);
+    const body = placeBody(form, current?.extraCategoryIds);
     const res = current
       ? await call(api.PATCH("/admin/places/{id}", { params: { path: { id: current.id } }, body }))
       : await call(api.POST("/admin/places", { body }));

@@ -295,11 +295,14 @@ export class PartnerOnboardingResultDto {
 }
 
 /**
- * Правка карточки (P06): поля как в админке, без verifiedAt. ORG_MANAGER не меняет поля личности места (categoryId,
+ * Правка карточки (P06): поля как в админке, без verifiedAt и extraCategoryIds (дополнительные разделы ставит только админка). ORG_MANAGER не меняет поля личности места (categoryId,
  * localityId, name, address, location) — 403 identity_fields_forbidden; у опубликованного места их не меняет никто —
  * 409 errors.partner.identityChangeRequiresModeration.
  */
-export class UpdatePartnerPlaceDto extends OmitType(UpdatePlaceDto, ["verifiedAt"] as const) {}
+export class UpdatePartnerPlaceDto extends OmitType(UpdatePlaceDto, [
+  "verifiedAt",
+  "extraCategoryIds",
+] as const) {}
 
 // --- фото ---
 

@@ -345,6 +345,26 @@ describe("места", () => {
       extraCategoryIds: ["x1"],
     });
   });
+
+  it("placeBody: при правке extraCategoryIds шлётся, только если набор изменился", () => {
+    const form = {
+      name: { uk: "К", en: "" },
+      description: { uk: "", en: "" },
+      address: { uk: "", en: "" },
+      lat: "",
+      lon: "",
+      phone: "",
+      website: "",
+      telegram: "",
+      categoryId: "c",
+      localityId: "",
+      tagIds: [],
+      extraCategoryIds: ["x1", "x2"],
+    };
+    expect(placeBody(form, ["x2", "x1"])).not.toHaveProperty("extraCategoryIds");
+    expect(placeBody(form, ["x1"])).toHaveProperty("extraCategoryIds", ["x1", "x2"]);
+    expect(placeBody({ ...form, extraCategoryIds: [] }, ["x1"])).toHaveProperty("extraCategoryIds", []);
+  });
 });
 
 describe("QR и ошибки", () => {

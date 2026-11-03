@@ -828,8 +828,9 @@ export const uk = {
   "admin.field.address": "Адреса",
   "admin.field.category": "Категорія",
   "admin.field.extraCategories": "Також у розділах",
+  "admin.field.extraCategoriesLimit": "Не більше {max}.",
   "admin.field.extraCategoriesHint":
-    "Підкатегорії інших розділів, де місце показується додатково (до {max}). Збережені вручну імпорт Google не змінює.",
+    "Розділи й підкатегорії, де місце показується додатково (до {max}). Збережені вручну імпорт Google не змінює.",
   "admin.field.locality": "Населений пункт",
   "admin.field.timezone": "Часовий пояс (IANA)",
   "admin.field.language": "Типова мова",

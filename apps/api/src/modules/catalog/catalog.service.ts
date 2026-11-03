@@ -122,7 +122,7 @@ export type PlaceInput = {
   telegram?: string | null;
   verifiedAt?: string | null;
   tagIds?: string[];
-  /** Дополнительные категории (0020): подкатегории активных разделов, не основная, не больше MAX_EXTRA_CATEGORIES. */
+  /** Дополнительные категории (0020): активные разделы и их подкатегории, не основная, не больше MAX_EXTRA_CATEGORIES. */
   extraCategoryIds?: string[];
 };
 
@@ -544,7 +544,7 @@ export class CatalogService {
       if (
         unique.length > MAX_EXTRA_CATEGORIES ||
         unique.some((c) => c.toLowerCase() === main) ||
-        (await this.repo.countActiveSubcategories(unique)) !== unique.length
+        (await this.repo.countAssignableCategories(unique)) !== unique.length
       )
         throw new CatalogError("extra_categories_invalid");
     }
@@ -615,7 +615,9 @@ export class CatalogService {
     const tagIds = input.tagIds ? [...new Set(input.tagIds)].sort() : tagsBefore;
     if (input.tagIds) await this.repo.replacePlaceTags(id, tagIds);
     const extraCategoryIds = extraWanted ? [...new Set(extraWanted)].sort() : extrasBefore;
-    if (extraWanted) await this.repo.replacePlaceExtraCategories(id, extraCategoryIds);
+    // Набор не изменился — строки не трогаем (иначе import молча стал бы manual).
+    const extrasChanged = !!extraWanted && extraCategoryIds.join() !== extrasBefore.join();
+    if (extrasChanged) await this.repo.replacePlaceExtraCategories(id, extraCategoryIds);
     await this.record(meta, {
       action: "place.edit",
       entityType: "place",
@@ -623,8 +625,7 @@ export class CatalogService {
       oldValues: placeSnapshot(before, tagsBefore, extrasBefore),
       newValues: placeSnapshot(after, tagIds, extraCategoryIds),
     });
-    if (extraWanted && extraCategoryIds.join() !== extrasBefore.join())
-      await this.recordExtraEdit(meta, id, extrasBefore, extraCategoryIds);
+    if (extrasChanged) await this.recordExtraEdit(meta, id, extrasBefore, extraCategoryIds);
     return { ...after, tagIds, extraCategoryIds };
   }
 
