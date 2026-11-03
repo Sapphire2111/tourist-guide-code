@@ -12,6 +12,7 @@ import { GooglePlacesClient } from "../../src/places-import/google-client.js";
 import type { MappedPlace } from "../../src/places-import/mapping.js";
 import { importPhotos } from "../../src/places-import/photos.js";
 import { googlePlaceIds, writePlaces } from "../../src/places-import/writer.js";
+import { ALL_LOCALITIES } from "../../src/places-import/targeted.js";
 import { seedCatalog, SEED_PLACES } from "../../src/seed/seed-catalog.js";
 import { seedBase, type SeedBaseResult } from "../../src/seed/seed.js";
 import { startDatabase, stopDatabase, type TestDatabase } from "./support/containers.js";
@@ -510,5 +511,87 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     );
     expect(r.extraCategoriesWritten).toBe(0);
     expect(await extras()).toEqual([]);
+  });
+
+  it("точечный импорт: Косів через options.localities, без пункту — NULL, категория закреплена; широкий прогон её не меняет и не архивирует", async () => {
+    const t = new Date("2026-11-03T10:00:00Z");
+    // Уже было от широкого импорта как «готель» (категорию ставил импорт) — точечный перезакрепляет.
+    await writePlaces(appDb, "test-region", [place("gT3", { categoryCode: "hotels" })], t);
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gT1", { categoryCode: "nature", localityCode: "", week: null, at: { lon: 24.5, lat: 48.16 } }),
+        place("gT2", { categoryCode: "museums", localityCode: "kosiv", at: { lon: 25.09, lat: 48.32 } }),
+        place("gT3", { categoryCode: "nature" }),
+      ],
+      t,
+      { localities: ALL_LOCALITIES, pinCategory: true },
+    );
+    expect(r).toMatchObject({
+      inserted: 2,
+      updated: 1,
+      localitiesCreated: 1,
+      suspendedClosed: 0,
+      archivedRejected: 0,
+      notPublished: [],
+    });
+    const rows = async () =>
+      (
+        await sql(
+          `SELECT p.google_place_id AS id, p.status, c.code AS category, l.code AS locality, l.kind,
+                  p.import_category_id IS NULL AS pinned
+           FROM places p JOIN categories c ON c.id = p.category_id LEFT JOIN localities l ON l.id = p.locality_id
+           WHERE p.google_place_id IN ('gT1', 'gT2', 'gT3') ORDER BY 1`,
+        )
+      ).rows;
+    expect(await rows()).toEqual([
+      { id: "gT1", status: "published", category: "nature", locality: null, kind: null, pinned: true },
+      {
+        id: "gT2",
+        status: "published",
+        category: "museums",
+        locality: "kosiv",
+        kind: "settlement",
+        pinned: true,
+      },
+      {
+        id: "gT3",
+        status: "published",
+        category: "nature",
+        locality: "yaremche",
+        kind: "settlement",
+        pinned: true,
+      },
+    ]);
+
+    // Широкий прогон: другая категория по типам, «не наше» по правилам — закреплённые не трогает.
+    const broad = await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gT1", { categoryCode: "hotels", extraCategoryCodes: ["active"] }),
+        place("gT3", { categoryCode: "hotels" }),
+      ],
+      t,
+      { rejectedIds: ["gT2"] },
+    );
+    expect(broad).toMatchObject({ recategorized: 0, archivedRejected: 0, extraCategoriesWritten: 0 });
+    expect((await rows()).map((x) => [x.id, x.status, x.category, x.pinned])).toEqual([
+      ["gT1", "published", "nature", true],
+      ["gT2", "published", "museums", true],
+      ["gT3", "published", "nature", true],
+    ]);
+
+    // Скрытое админкой место — в отчёте точечного прогона реальный статус, а не просто «обновлено».
+    await sql("UPDATE places SET status = 'suspended' WHERE google_place_id = 'gT2'");
+    const again = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gT2", { categoryCode: "museums", localityCode: "kosiv" })],
+      t,
+      { localities: ALL_LOCALITIES, pinCategory: true },
+    );
+    expect(again.notPublished).toEqual([{ googlePlaceId: "gT2", name: "Ресторан gT2", status: "suspended" }]);
   });
 });

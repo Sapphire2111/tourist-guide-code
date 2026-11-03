@@ -5,7 +5,7 @@ import { point, regionContext, withTenant, type Db, type LocalizedText } from ".
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
-import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES } from "./config.js";
+import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES, type ImportLocality } from "./config.js";
 import type { MappedPlace } from "./mapping.js";
 
 export class ImportWriteError extends Error {
@@ -44,6 +44,8 @@ export type WriteStats = {
   /** Места импорта в БД, которых не было в этой выгрузке (только отчёт; null — выгрузка неполная, не считалось). */
   missingFromGoogle: number | null;
   missingExamples: string[];
+  /** Места этого прогона, которые после записи не опубликованы (архив, скрыто, черновик) — реальный статус. */
+  notPublished: { googlePlaceId: string; name: string; status: string }[];
 };
 
 export type WriteOptions = {
@@ -55,6 +57,15 @@ export type WriteOptions = {
   seenIds?: readonly string[];
   /** Выгрузка полная (без лимита запросов). */
   complete?: boolean;
+  /** Населённые пункты, которые завести (по умолчанию IMPORT_LOCALITIES; точечный импорт — и TARGETED_LOCALITIES). */
+  localities?: readonly ImportLocality[];
+  /**
+   * Точечный импорт (targeted.ts): категория закреплена запросом — import_category_id = NULL у места source = google.
+   * Широкий прогон такие места не переразмечает, не пересобирает им доп. категории и не архивирует (все три правила
+   * требуют import_category_id = category_id). Существующее место закрепляется, только если категорию ставил импорт
+   * (админка не меняла); уже закреплённое или правленное админкой — категория не меняется.
+   */
+  pinCategory?: boolean;
 };
 
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -106,12 +117,13 @@ export async function writePlaces(
       extraCategoriesWritten: 0,
       missingFromGoogle: null,
       missingExamples: [],
+      notPublished: [],
     };
 
     const newLocalities = await trx
       .insertInto("localities")
       .values(
-        IMPORT_LOCALITIES.map((l, i) => ({
+        (options.localities ?? IMPORT_LOCALITIES).map((l, i) => ({
           region_id: regionId,
           code: l.code,
           kind: "settlement" as const,
@@ -218,8 +230,8 @@ export async function writePlaces(
           batch.map((p) => ({
             region_id: regionId,
             category_id: categoryId.get(p.categoryCode)!,
-            import_category_id: categoryId.get(p.categoryCode)!,
-            locality_id: localityId.get(p.localityCode) ?? null,
+            import_category_id: options.pinCategory ? null : categoryId.get(p.categoryCode)!,
+            locality_id: (p.localityCode && localityId.get(p.localityCode)) || null,
             name_i18n: { uk: p.name },
             description_i18n: { uk: p.description },
             address_i18n: { uk: p.address },
@@ -250,6 +262,7 @@ export async function writePlaces(
               import_category_id: eb
                 .case()
                 .when(untouched)
+                // Точечный: excluded.import_category_id = NULL — место закрепляется.
                 .then(eb.ref("excluded.import_category_id"))
                 .else(eb.ref("places.import_category_id"))
                 .end(),
@@ -267,9 +280,16 @@ export async function writePlaces(
             };
           }),
         )
-        .returning(["id", "google_place_id"])
+        .returning(["id", "google_place_id", "status"])
         .execute();
       const placeId = new Map(rows.map((r) => [r.google_place_id!, r.id]));
+      for (const r of rows)
+        if (r.status !== "published")
+          stats.notPublished.push({
+            googlePlaceId: r.google_place_id!,
+            name: batch.find((p) => p.googlePlaceId === r.google_place_id)?.name ?? "",
+            status: r.status,
+          });
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
       stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
 

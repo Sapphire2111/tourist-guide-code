@@ -63,6 +63,20 @@ export const IMPORT_LOCALITIES: readonly ImportLocality[] = [
 ];
 
 /**
+ * Пункты точечного импорта (--queries-file), без широкого поиска по IMPORT_QUERIES: Косів — ринок, музеї, Шешори
+ * й Пістинь поруч. Заводятся writer'ом так же, как пункты пилота (ON CONFLICT DO NOTHING по коду).
+ */
+export const TARGETED_LOCALITIES: readonly ImportLocality[] = [
+  {
+    code: "kosiv",
+    name: { uk: "Косів", en: "Kosiv" },
+    inUk: "у Косові",
+    at: { lon: 25.0952, lat: 48.3117 },
+    radiusM: 4000,
+  },
+];
+
+/**
  * Поисковые запросы Text Search по каждому пункту. Категорию места определяет не запрос, а типы Google (mapping.ts):
  * запрос лишь находит кандидатов, поэтому один и тот же объект из разных запросов — одна запись (дедуп по id).
  */
