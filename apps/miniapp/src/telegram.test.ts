@@ -51,4 +51,30 @@ describe("сканер QR Telegram", () => {
     });
     await expect(scanQr(boom.app, "x")).resolves.toBeNull();
   });
+
+  it("клиент без scanQrPopupClosed: повторный запуск завершает прежний (null) и снимает его обработчики", async () => {
+    const listeners: Array<{ e: string; cb: Handler }> = [];
+    const app: TelegramWebApp = {
+      ...fake("6.4").app,
+      onEvent: vi.fn((e: string, cb: Handler) => void listeners.push({ e, cb })),
+      offEvent: vi.fn((e: string, cb: Handler) => {
+        const i = listeners.findIndex((l) => l.e === e && l.cb === cb);
+        if (i >= 0) listeners.splice(i, 1);
+      }),
+    };
+    const first = scanQr(app, "x");
+    // Пользователь закрыл сканер, события нет — обещание ждёт.
+    const second = scanQr(app, "x");
+    await expect(first).resolves.toBeNull();
+    expect(listeners.filter((l) => l.e === "qrTextReceived")).toHaveLength(1);
+    listeners.find((l) => l.e === "qrTextReceived")!.cb({ data: "ok" });
+    await expect(second).resolves.toBe("ok");
+    expect(listeners).toHaveLength(0);
+  });
+
+  it("подсказка обрезается до 64 символов", () => {
+    const { app } = fake();
+    void scanQr(app, "я".repeat(100));
+    expect(app.showScanQrPopup).toHaveBeenCalledWith({ text: "я".repeat(64) });
+  });
 });

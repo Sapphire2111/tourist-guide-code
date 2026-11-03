@@ -5497,6 +5497,74 @@
         "tags": ["guide"]
       }
     },
+    "/localities": {
+      "get": {
+        "description": "Без аутентификации. Активные пункты (kind settlement) по sortOrder; id — для localityIds в GET /places/search. aliases — другие названия (Буковель → Поляниця) для распознавания в тексте. 404 — региона нет или он не активен.",
+        "operationId": "listGuideLocalities",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GuideLocalityListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Населённые пункты региона («Локація» главной, голосовой ассистент): названия, синонимы, число мест",
+        "tags": ["guide"]
+      }
+    },
     "/places/search": {
       "get": {
         "description": "Без аутентификации. Только опубликованные места активного региона. С lat/lng — места в радиусе (по умолчанию 500 м, максимум 20000 м), расстояние — PostGIS geography; без точки — весь регион (radius игнорируется). Порядок (BR-10, C-02): совпадение с q (начало названия → название → адрес) → расстояние → «Ми рекомендуємо» → название uk. Платное размещение помечено adLabel и порядок не меняет. available_now до блока 7 игнорируется. Страница — limit (по умолчанию 20) и offset (nextOffset). Rate limit 60/мин. 404 — региона нет или он не активен.",
@@ -5527,7 +5595,7 @@
             "name": "radius",
             "required": false,
             "in": "query",
-            "description": "Радиус, м — только с lat/lng («Що поруч»)",
+            "description": "Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния)",
             "schema": { "minimum": 10, "maximum": 20000, "default": 500, "type": "integer" }
           },
           {
@@ -5543,6 +5611,13 @@
             "in": "query",
             "description": "Текст: название (uk, en) или адрес; без координат — поиск по всему региону",
             "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
+          },
+          {
+            "name": "localityIds",
+            "required": false,
+            "in": "query",
+            "description": "Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую",
+            "schema": { "maxItems": 10, "type": "array", "items": { "type": "string", "format": "uuid" } }
           },
           {
             "name": "available_now",
@@ -6152,6 +6227,231 @@
         },
         "summary": "Экстренные контакты региона туриста («Халепа?»), только активные, по порядку",
         "tags": ["guide"]
+      }
+    },
+    "/assistant/query": {
+      "post": {
+        "description": "Текст до 300 символов. Модель (Claude, tool use) выбирает только коды категорий и фильтры; места, цены и описания — из каталога и обогащения. Контекст диалога (history, previous) присылает клиент. intent.clarify — запрос непонятен (мест нет). 503 errors.assistant.unavailable — нет ключа Claude или исчерпан суточный предел; 502/504 — сбой Claude. Rate limit 12/мин. 404 — флаг module.assistant выключен, региона нет или он не активен.",
+        "operationId": "assistantQuery",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AssistantQueryDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AssistantResultDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "502": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "503": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "504": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ассистент: реплика туриста → намерение и реальные места каталога (или маршрут экскурсии)",
+        "tags": ["assistant"]
+      }
+    },
+    "/assistant/transcribe": {
+      "post": {
+        "description": "Тело — запись MediaRecorder (Opus в audio/webm или audio/ogg), до 512 КиБ (больше — 413). Аудио не сохраняется. Пустой text — речь не распознана. 415 — другой формат (например, audio/mp4 из iOS) — ввести текстом. 503 — нет ключа Google или исчерпан суточный предел. Rate limit 6/мин.",
+        "operationId": "assistantTranscribe",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста (uuid)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "audio/webm": { "schema": { "type": "string", "format": "binary" } },
+            "audio/ogg": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AssistantTranscriptDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "502": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "503": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "504": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ассистент: голос → текст (Google Speech-to-Text, uk-UA)",
+        "tags": ["assistant"]
       }
     },
     "/host/{placeId}/module": {
@@ -12493,6 +12793,39 @@
         },
         "required": ["items"]
       },
+      "GuideLocalityDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "example": "polianytsia" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "aliases": {
+            "example": ["Буковель", "Bukovel"],
+            "description": "Другие названия (курорт, латиница, формы) — для распознавания в тексте запроса",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
+          "sortOrder": { "type": "integer" },
+          "placeCount": { "type": "integer", "description": "Опубликованных мест в пункте" }
+        },
+        "required": ["id", "code", "name", "aliases", "location", "sortOrder", "placeCount"]
+      },
+      "GuideLocalityListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Активные населённые пункты региона по sortOrder",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GuideLocalityDto" }
+          }
+        },
+        "required": ["items"]
+      },
       "AdLabel": {
         "type": "string",
         "enum": ["advertising", "partner"],
@@ -13002,6 +13335,187 @@
           "createdAt": { "type": "string", "format": "date-time" }
         },
         "required": ["placeId", "createdAt"]
+      },
+      "AssistantKind": {
+        "type": "string",
+        "enum": ["places", "tour"],
+        "description": "places — места, tour — маршрут"
+      },
+      "AssistantSuggestion": {
+        "type": "string",
+        "enum": ["cheaper", "pricier", "closer", "farther", "kids", "open_now", "tour", "places"]
+      },
+      "AssistantIntentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "places — места, tour — маршрут",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantKind" }]
+          },
+          "categories": {
+            "maxItems": 3,
+            "description": "Коды категорий каталога",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "nameQuery": { "type": "string", "nullable": true, "maxLength": 60 },
+          "locality": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64,
+            "description": "Код населённого пункта, названного туристом; null — действует выбор localityIds"
+          },
+          "radiusMeters": { "type": "integer", "nullable": true, "minimum": 300, "maximum": 20000 },
+          "priceMin": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 4,
+            "description": "Ценовой уровень Google"
+          },
+          "priceMax": { "type": "integer", "nullable": true, "minimum": 0, "maximum": 4 },
+          "withKids": { "type": "boolean" },
+          "openNow": { "type": "boolean" },
+          "clarify": { "type": "boolean", "description": "Запрос непонятен — уточнить (мест нет)" },
+          "suggestions": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantSuggestion" } }
+        },
+        "required": [
+          "kind",
+          "categories",
+          "nameQuery",
+          "radiusMeters",
+          "priceMin",
+          "priceMax",
+          "withKids",
+          "openNow",
+          "clarify",
+          "suggestions"
+        ]
+      },
+      "AssistantQueryDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)"
+          },
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "example": 48.4475,
+            "description": "Широта"
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "example": 24.5626,
+            "description": "Долгота (вместе с lat)"
+          },
+          "text": { "type": "string", "minLength": 1, "maxLength": 300, "description": "Реплика туриста" },
+          "history": {
+            "maxItems": 5,
+            "description": "Прежние реплики диалога (контекст хранит клиент)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "localityIds": {
+            "maxItems": 10,
+            "description": "Населённые пункты, выбранные туристом («Локація»); названный в реплике — главнее",
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          },
+          "previous": {
+            "description": "Намерение прошлого ответа (для уточнений)",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantIntentDto" }]
+          }
+        },
+        "required": ["regionId", "text"]
+      },
+      "AssistantDescriptionSource": { "type": "string", "enum": ["ai", "wikipedia", "google"] },
+      "AssistantPlaceDto": {
+        "type": "object",
+        "properties": {
+          "place": { "$ref": "#/components/schemas/PlaceSummaryDto" },
+          "priceLevel": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Ценовой уровень Google 0–4; null — неизвестен"
+          },
+          "kidsFriendly": {
+            "type": "boolean",
+            "description": "По данным Google: подходит для детей или есть дитяче меню"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Описание из обогащения (ИИ-текст, Вікіпедія, Google)"
+          },
+          "descriptionSource": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/AssistantDescriptionSource" }]
+          },
+          "descriptionUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Статья Вікіпедії (для wikipedia — ссылка обязательна)"
+          }
+        },
+        "required": [
+          "place",
+          "priceLevel",
+          "kidsFriendly",
+          "description",
+          "descriptionSource",
+          "descriptionUrl"
+        ]
+      },
+      "AssistantRouteDto": {
+        "type": "object",
+        "properties": {
+          "lengthMeters": {
+            "type": "integer",
+            "description": "Длина маршрута между остановками по прямой, м"
+          }
+        },
+        "required": ["lengthMeters"]
+      },
+      "AssistantNote": {
+        "type": "string",
+        "enum": ["price_unknown", "none_open", "no_origin"],
+        "description": "Пояснения выдачи"
+      },
+      "AssistantResultDto": {
+        "type": "object",
+        "properties": {
+          "intent": { "$ref": "#/components/schemas/AssistantIntentDto" },
+          "items": {
+            "description": "Только места каталога; для tour — в порядке обхода",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AssistantPlaceDto" }
+          },
+          "route": {
+            "nullable": true,
+            "description": "Маршрут — только для tour",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantRouteDto" }]
+          },
+          "notes": {
+            "type": "array",
+            "description": "Пояснения выдачи",
+            "items": { "$ref": "#/components/schemas/AssistantNote" }
+          }
+        },
+        "required": ["intent", "items", "route", "notes"]
+      },
+      "AssistantTranscriptDto": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "Распознанный текст; пусто — речь не распознана" }
+        },
+        "required": ["text"]
       },
       "HostWifiDto": {
         "type": "object",
@@ -15099,7 +15613,8 @@
           "module.bookings",
           "module.qr_transactions",
           "module.reviews",
-          "module.ambassadors"
+          "module.ambassadors",
+          "module.assistant"
         ]
       },
       "FeatureFlagValueDto": {

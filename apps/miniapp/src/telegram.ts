@@ -120,17 +120,27 @@ export function canScanQr(webApp?: TelegramWebApp): boolean {
  * Открыть сканер Telegram и дождаться первого распознанного текста (окно закрывается сразу).
  * null — пользователь закрыл сканер без результата или сканер недоступен.
  */
+/** Текущее ожидание скана: на клиентах 6.4–7.6 нет scanQrPopupClosed, и закрытый без скана сканер не сообщает о себе. */
+let pendingScan: ((value: string | null) => void) | null = null;
+
+/** Telegram ограничивает подсказку сканера 64 символами. */
+export const SCAN_PROMPT_MAX = 64;
+
 export function scanQr(webApp: TelegramWebApp | undefined, text: string): Promise<string | null> {
   if (!webApp || !canScanQr(webApp)) return Promise.resolve(null);
+  // Новый запуск завершает прежнее ожидание (null) и снимает его обработчики.
+  pendingScan?.(null);
   return new Promise((resolve) => {
     let done = false;
     const finish = (value: string | null) => {
       if (done) return;
       done = true;
+      if (pendingScan === finish) pendingScan = null;
       webApp.offEvent?.("qrTextReceived", onText);
       webApp.offEvent?.("scanQrPopupClosed", onClosed);
       resolve(value);
     };
+    pendingScan = finish;
     const onText = (payload?: { data?: string }) => {
       const data = payload?.data;
       if (typeof data !== "string" || data === "") return;
@@ -144,7 +154,7 @@ export function scanQr(webApp: TelegramWebApp | undefined, text: string): Promis
     webApp.onEvent?.("qrTextReceived", onText);
     webApp.onEvent?.("scanQrPopupClosed", onClosed);
     try {
-      webApp.showScanQrPopup?.({ text });
+      webApp.showScanQrPopup?.({ text: text.slice(0, SCAN_PROMPT_MAX) });
     } catch {
       finish(null);
     }

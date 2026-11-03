@@ -3,6 +3,7 @@ export {
   FavoritesController,
   GuideCategoriesController,
   GuideEmergencyContactsController,
+  GuideLocalitiesController,
   GuidePlacesController,
   originOf,
   SEARCH_RATE_LIMIT,
@@ -13,10 +14,14 @@ export {
   FavoriteListDto,
   GuideCategoryDto,
   GuideCategoryListDto,
+  GuideLocalityDto,
+  GuideLocalityListDto,
+  OriginQueryDto,
   PlaceCardDto,
   PlacePhotoDto,
   PlaceSearchResultDto,
   PlaceSummaryDto,
+  RegionQueryDto,
   SEARCH_LIMIT_DEFAULT,
   SEARCH_LIMIT_MAX,
   SEARCH_RADIUS_DEFAULT,
@@ -26,3 +31,4 @@ export { GuideModule } from "./guide.module.js";
 export { FAVORITES_MAX, GuideRepository, likeContains } from "./guide.repository.js";
 export { GuideService, type SearchParams } from "./guide.service.js";
 export { localMoment, openState, type LocalMoment, type OpenState, type ScheduleRows } from "./open-now.js";
+export { LOCALITY_ALIASES, localityAliases } from "./locality-aliases.js";

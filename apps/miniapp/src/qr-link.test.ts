@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseQrText } from "./qr-link.js";
 
 const INV = "B".repeat(43);
@@ -22,6 +22,8 @@ describe("parseQrText", () => {
     ["https://evil.example/tg_gid_bot?startapp=demoHotel01", { kind: "foreign" }],
     ["https://t.me.evil.example/tg_gid_bot?startapp=demoHotel01", { kind: "foreign" }],
     ["javascript:alert(1)", { kind: "foreign" }],
+    ["tg://resolve/?domain=tg_gid_bot&start=demoHotel01", { kind: "code", code: "demoHotel01" }],
+    ["tg://resolve?domain=x&startapp=demoHotel01", { kind: "foreign" }],
     ["tg://msg?text=hi&startapp=demoHotel01", { kind: "foreign" }],
     ["https://example.com", { kind: "foreign" }],
     ["demoHotel01", { kind: "foreign" }],
@@ -38,5 +40,26 @@ describe("parseQrText", () => {
       kind: "code",
       code: "demoHotel01",
     });
+  });
+
+  it("tg: в старых WebView (opaque-разбор: hostname пуст, pathname //resolve)", () => {
+    const Real = URL;
+    class OpaqueURL extends Real {
+      override get hostname() {
+        return this.protocol === "tg:" ? "" : super.hostname;
+      }
+      override get pathname() {
+        return this.protocol === "tg:" ? "//resolve" : super.pathname;
+      }
+    }
+    vi.stubGlobal("URL", OpaqueURL);
+    try {
+      expect(parseQrText("tg://resolve?domain=tg_gid_bot&startapp=demoHotel01", "tg_gid_bot")).toEqual({
+        kind: "code",
+        code: "demoHotel01",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

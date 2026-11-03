@@ -51,6 +51,9 @@ export class RateLimitModule {
     const useRedis = resolved.enabled && options.redisUrl !== undefined;
     return {
       module: RateLimitModule,
+      // Хранилище счётчиков — и для суточных пределов модулей (ассистент): Redis общий для инстансов.
+      global: true,
+      exports: [RATE_LIMIT_STORE],
       providers: [
         { provide: RATE_LIMIT_OPTIONS, useValue: resolved },
         {

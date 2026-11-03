@@ -133,9 +133,9 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
   return (
     <div className="kosiv-top" data-testid="app-top">
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
-      {scan?.message && (
-        <p className="kosiv-top-note" role="status" data-testid="scan-message">
-          {t(scan.message)}
+      {scan && (
+        <p className="kosiv-top-note" role="status" data-testid="scan-message" hidden={!scan.message}>
+          {scan.message ? t(scan.message) : ""}
         </p>
       )}
       {scan && home && (
@@ -144,7 +144,7 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
           className="kosiv-menu-btn"
           aria-label={t("miniapp.scan.open")}
           data-testid="scan-btn"
-          disabled={scan.busy}
+          aria-busy={scan.busy}
           onClick={scan.start}
         >
           {SCAN_ICON}
@@ -196,7 +196,7 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
                 type="button"
                 className="kosiv-sheet-link"
                 data-testid="scan-menu-item"
-                disabled={scan.busy}
+                aria-busy={scan.busy}
                 onClick={() => {
                   setOpen(false);
                   scan.start();

@@ -20,6 +20,9 @@ import {
   useRoute,
   useT,
 } from "@tg/ui";
+import { Assistant } from "./assistant/Assistant.js";
+import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
+import { AssistantBox } from "./assistant/AssistantBox.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -28,12 +31,13 @@ import { fetchContext, getAnonymousId, type Me, type StartupState } from "./sess
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
 import { resolveScan, type ScanOutcome } from "./scan.js";
-import { ResortPlaces, SeasonTags } from "./design/HomeParts.js";
-import { ResortProvider } from "./design/ResortProvider.js";
+import { LocationChip } from "./guide/LocationPicker.js";
+import { LocationProvider } from "./guide/LocationProvider.js";
+import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
-import { GuideProvider, RequireRegion, type GuideEnv } from "./guide/context.js";
+import { GuideProvider, RequireRegion, useGuide, type GuideEnv } from "./guide/context.js";
 import { Favorites } from "./guide/Favorites.js";
 import { createGuideApi } from "./guide/guide-api.js";
 import { Help } from "./guide/Help.js";
@@ -80,6 +84,8 @@ export type AppProps = {
   hostApi?: HostApi;
   /** API кабинета партнёра (блок 6; тесты подменяют); по умолчанию — поверх api. */
   partnerApi?: PartnerApi;
+  /** API ассистента (тесты подменяют); по умолчанию — поверх api. */
+  assistantApi?: AssistantApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
@@ -198,13 +204,40 @@ function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "se
   );
 }
 
-function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
+/** API ассистента: из пропсов (тесты) или поверх api с регионом гида. */
+function useAssistantApi(props: RoutesProps): AssistantApi {
+  const { regionId } = useGuide();
+  const { api, assistantApi } = props;
+  return useMemo(() => assistantApi ?? createAssistantApi(api, regionId), [assistantApi, api, regionId]);
+}
+
+/**
+ * «Що шукаєте?» на главной (флаг module.assistant): только с регионом и сессией (каждый запрос стоит денег, api —
+ * только с входом через Telegram). Реплика ведёт на экран ассистента.
+ */
+function HomeAssistant(props: RoutesProps) {
+  const [, navigate] = useRoute();
+  const { regionId } = useGuide();
+  const api = useAssistantApi(props);
+  if (!regionId || !props.session) return null;
+  return (
+    <Feature flag="module.assistant">
+      <div className="kosiv-card kosiv-panel">
+        <AssistantBox api={api} onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
+      </div>
+    </Feature>
+  );
+}
+
+function Home(props: RoutesProps) {
+  const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
   const partnerOrgs = usePartnerOrgs();
   return (
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
+      <LocationChip />
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
           <Onboarding api={api} webApp={webApp} onDone={onMe} />
@@ -215,9 +248,10 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {t("miniapp.staff.open")}
         </Link>
       )}
+      <HomeAssistant {...props} />
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      <ResortPlaces />
+      <HomePlaces />
       <SeasonTags />
       <div className="kosiv-meta-block">
         <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
@@ -358,6 +392,8 @@ function Routes(props: RoutesProps) {
   useInviteRedirect(session?.invite, partnerCabinet);
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
+  const assistantOn = useFeatureFlag("module.assistant");
+  const assistantApi = useAssistantApi(props);
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
   // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
   const refreshMe = Boolean(session) && hostRequests && (path === "/" || path === "/staff");
@@ -391,6 +427,16 @@ function Routes(props: RoutesProps) {
       <Screen webApp={webApp}>
         <RequireRegion>
           <PlaceSearch key={q} initialQuery={q.slice(0, 100)} />
+        </RequireRegion>
+      </Screen>
+    );
+  }
+  if (path === "/assistant" && assistantOn && session) {
+    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q") ?? "";
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Assistant api={assistantApi} initialQuery={q.slice(0, 300)} />
         </RequireRegion>
       </Screen>
     );
@@ -550,29 +596,44 @@ function Shell({
   scan?: (prompt: string) => Promise<ScanOutcome | null>;
 }) {
   const [path, navigate] = useRoute();
-  const partnerCabinet = useFeatureFlag("module.partner_cabinet");
   const [scanBusy, setScanBusy] = useState(false);
+  // Защита от двойного нажатия (синхронно, до перерисовки). Повторный запуск позже — разрешён:
+  // на старых клиентах закрытие сканера не сообщается, и новый запуск завершает прежний.
+  const lastScanAt = useRef(0);
+  const scanRun = useRef(0);
   const [scanMessage, setScanMessage] = useState<MessageKey | null>(null);
   const { t } = useT();
+  // Сообщение о скане: скрыть через ~6 с и при смене маршрута.
+  useEffect(() => {
+    if (!scanMessage) return;
+    const id = setTimeout(() => setScanMessage(null), 6000);
+    return () => clearTimeout(id);
+  }, [scanMessage]);
+  useEffect(() => setScanMessage(null), [path]);
   const scanControl: ScanControl | undefined = scan
     ? {
         busy: scanBusy,
         message: scanMessage,
         start: () => {
+          const now = Date.now();
+          if (now - lastScanAt.current < 1000) return;
+          lastScanAt.current = now;
+          const run = ++scanRun.current;
           setScanMessage(null);
           setScanBusy(true);
           void scan(t("miniapp.scan.prompt"))
             .then((o) => {
-              if (!o) return;
+              if (!o || run !== scanRun.current) return;
               if (o.kind === "message") setScanMessage(o.messageKey);
-              else if (o.kind === "invite" && !partnerCabinet) setScanMessage("miniapp.scan.foreign");
               else if (o.kind === "invite") navigate("/partner/invite", { replace: true });
               else
                 navigate(o.context.entryType === "hotel" && o.context.venue ? "/about" : "/", {
                   replace: true,
                 });
             })
-            .finally(() => setScanBusy(false));
+            .finally(() => {
+              if (run === scanRun.current) setScanBusy(false);
+            });
         },
       }
     : undefined;
@@ -632,24 +693,6 @@ export function App({
     setState((s) => (s.status === "ready" ? { ...s, context, contextFailed: undefined } : s));
     return true;
   };
-  // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
-  const scanHandler =
-    session && canScanQr(webApp)
-      ? async (prompt: string): Promise<ScanOutcome | null> => {
-          const text = await scanQr(webApp, prompt);
-          if (text === null) return null;
-          const outcome = await resolveScan(props.api, text);
-          if (outcome.kind === "context")
-            setState((s) =>
-              s.status === "ready"
-                ? { ...s, context: outcome.context, contextFailed: undefined, invite: undefined }
-                : s,
-            );
-          else if (outcome.kind === "invite")
-            setState((s) => (s.status === "ready" ? { ...s, invite: outcome.token } : s));
-          return outcome;
-        }
-      : undefined;
   const effectiveLocale = session ? resolveLocale(session.me.language, SUPPORTED_LOCALES) : locale;
   const flags = useFeatureFlags(props.api, session?.context?.region?.id);
   const context = session?.context ?? null;
@@ -704,18 +747,36 @@ export function App({
   );
   const pApi = useMemo(() => partnerApi ?? createPartnerApi(props.api), [partnerApi, props.api]);
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
+  // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
+  const scanHandler =
+    session && canScanQr(webApp)
+      ? async (prompt: string): Promise<ScanOutcome | null> => {
+          const text = await scanQr(webApp, prompt);
+          if (text === null) return null;
+          const outcome = await resolveScan(props.api, text);
+          if (outcome.kind === "context")
+            setState((s) =>
+              s.status === "ready" ? { ...s, context: outcome.context, contextFailed: undefined } : s,
+            );
+          else if (outcome.kind === "invite") {
+            // Кабинет партнёра выключен — токен не сохраняем, только сообщение.
+            if (!partnerEnabled) return { kind: "message", messageKey: "miniapp.scan.foreign" };
+            setState((s) => (s.status === "ready" ? { ...s, invite: outcome.token } : s));
+          }
+          return outcome;
+        }
+      : undefined;
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
         <SeasonProvider webApp={webApp}>
-          {/* Свайпера курортов нет — выдача от QR-контекста / всего региона (сохранённый курорт не фильтрует незаметно). */}
-          <ResortProvider enabled={false} venueEntry={venue !== null}>
-            <main className="kosiv-shell" lang={effectiveLocale}>
-              {state.status === "loading" || state.status === "error" ? (
-                <StartupStatus state={state} />
-              ) : (
-                <GuideProvider value={guide}>
+          <main className="kosiv-shell" lang={effectiveLocale}>
+            {state.status === "loading" || state.status === "error" ? (
+              <StartupStatus state={state} />
+            ) : (
+              <GuideProvider value={guide}>
+                <LocationProvider venueEntry={venue !== null}>
                   <HostProvider value={host}>
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
@@ -727,10 +788,10 @@ export function App({
                       />
                     </PartnerProvider>
                   </HostProvider>
-                </GuideProvider>
-              )}
-            </main>
-          </ResortProvider>
+                </LocationProvider>
+              </GuideProvider>
+            )}
+          </main>
         </SeasonProvider>
       </FeatureFlagsProvider>
     </I18nProvider>

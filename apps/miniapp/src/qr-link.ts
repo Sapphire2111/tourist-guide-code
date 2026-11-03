@@ -34,9 +34,15 @@ export function parseQrText(raw: string, botUsername: string = BOT): QrScan {
     return FOREIGN;
   }
   let bot: string | undefined;
-  if (url.protocol === "tg:" || url.protocol === "tg://") {
-    if (url.hostname !== "resolve") return FOREIGN;
-    bot = url.searchParams.get("domain") ?? undefined;
+  if (url.protocol === "tg:") {
+    // Разбираем вручную: старые WebView считают tg: opaque-схемой (hostname пуст, pathname "//resolve").
+    const m = /^tg:\/\/resolve\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(text);
+    if (!m) return FOREIGN;
+    const params = new URLSearchParams(m[1] ?? "");
+    bot = params.get("domain") ?? undefined;
+    if (!bot || !/^[A-Za-z0-9_]{3,32}$/.test(bot)) return FOREIGN;
+    if (botUsername && bot.toLowerCase() !== botUsername.toLowerCase()) return FOREIGN;
+    return classify(params.get("startapp") ?? params.get("start"));
   } else if (url.protocol === "https:" || url.protocol === "http:") {
     if (!HOSTS.has(url.hostname.toLowerCase())) return FOREIGN;
     bot = url.pathname.split("/").filter(Boolean)[0];
