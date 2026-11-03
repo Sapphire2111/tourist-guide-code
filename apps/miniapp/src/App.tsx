@@ -593,10 +593,9 @@ function Shell({
   routes: ReactNode;
   profile: boolean;
   /** Сканер QR (нет — кнопки не показываются). */
-  scan?: (prompt: string) => Promise<ScanOutcome | null>;
+  scan?: (prompt: string, isCurrent: () => boolean) => Promise<ScanOutcome | null>;
 }) {
   const [path, navigate] = useRoute();
-  const [scanBusy, setScanBusy] = useState(false);
   // Защита от двойного нажатия (синхронно, до перерисовки). Повторный запуск позже — разрешён:
   // на старых клиентах закрытие сканера не сообщается, и новый запуск завершает прежний.
   const lastScanAt = useRef(0);
@@ -612,7 +611,6 @@ function Shell({
   useEffect(() => setScanMessage(null), [path]);
   const scanControl: ScanControl | undefined = scan
     ? {
-        busy: scanBusy,
         message: scanMessage,
         start: () => {
           const now = Date.now();
@@ -620,8 +618,7 @@ function Shell({
           lastScanAt.current = now;
           const run = ++scanRun.current;
           setScanMessage(null);
-          setScanBusy(true);
-          void scan(t("miniapp.scan.prompt"))
+          void scan(t("miniapp.scan.prompt"), () => run === scanRun.current)
             .then((o) => {
               if (!o || run !== scanRun.current) return;
               if (o.kind === "message") setScanMessage(o.messageKey);
@@ -631,9 +628,7 @@ function Shell({
                   replace: true,
                 });
             })
-            .finally(() => {
-              if (run === scanRun.current) setScanBusy(false);
-            });
+            .catch(() => undefined);
         },
       }
     : undefined;
@@ -750,10 +745,12 @@ export function App({
   // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
   const scanHandler =
     session && canScanQr(webApp)
-      ? async (prompt: string): Promise<ScanOutcome | null> => {
+      ? async (prompt: string, isCurrent: () => boolean): Promise<ScanOutcome | null> => {
           const text = await scanQr(webApp, prompt);
           if (text === null) return null;
           const outcome = await resolveScan(props.api, text);
+          // Поздний ответ прежнего скана не перетирает результат нового.
+          if (!isCurrent()) return null;
           if (outcome.kind === "context")
             setState((s) =>
               s.status === "ready" ? { ...s, context: outcome.context, contextFailed: undefined } : s,

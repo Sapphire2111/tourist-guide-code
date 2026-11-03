@@ -76,7 +76,7 @@ const SCAN_ICON = (
 );
 
 /** Сканер QR: запуск, занятость (сканер открыт) и сообщение о результате («Це не QR-код…»). */
-export type ScanControl = { start: () => void; busy: boolean; message: MessageKey | null };
+export type ScanControl = { start: () => void; message: MessageKey | null };
 
 const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
@@ -134,7 +134,11 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
     <div className="kosiv-top" data-testid="app-top">
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
       {scan && (
-        <p className="kosiv-top-note" role="status" data-testid="scan-message" hidden={!scan.message}>
+        <p
+          className={scan.message ? "kosiv-top-note" : "kosiv-sr-only"}
+          role="status"
+          data-testid="scan-message"
+        >
           {scan.message ? t(scan.message) : ""}
         </p>
       )}
@@ -144,7 +148,6 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
           className="kosiv-menu-btn"
           aria-label={t("miniapp.scan.open")}
           data-testid="scan-btn"
-          aria-busy={scan.busy}
           onClick={scan.start}
         >
           {SCAN_ICON}
@@ -196,9 +199,8 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
                 type="button"
                 className="kosiv-sheet-link"
                 data-testid="scan-menu-item"
-                aria-busy={scan.busy}
                 onClick={() => {
-                  setOpen(false);
+                  close();
                   scan.start();
                 }}
               >

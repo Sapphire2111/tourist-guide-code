@@ -77,4 +77,36 @@ describe("сканер QR Telegram", () => {
     void scanQr(app, "я".repeat(100));
     expect(app.showScanQrPopup).toHaveBeenCalledWith({ text: "я".repeat(64) });
   });
+
+  it("6.4–7.6: закрытие без скана не сбрасывает флаг SDK — повторный запуск закрывает и открывает сканер", async () => {
+    let opened = false;
+    const listeners: Array<{ e: string; cb: Handler }> = [];
+    const show = vi.fn(() => {
+      if (opened) throw new Error("WebAppScanQrPopupOpened");
+      opened = true;
+    });
+    const app: TelegramWebApp = {
+      ...fake("6.4").app,
+      onEvent: (e: string, cb: Handler) => void listeners.push({ e, cb }),
+      offEvent: (e: string, cb: Handler) => {
+        const i = listeners.findIndex((l) => l.e === e && l.cb === cb);
+        if (i >= 0) listeners.splice(i, 1);
+      },
+      showScanQrPopup: show,
+      closeScanQrPopup: vi.fn(() => void (opened = false)),
+    };
+    const first = scanQr(app, "x");
+    // Пользователь закрыл сканер крестиком: события нет, флаг SDK остался.
+    const second = scanQr(app, "x");
+    await expect(first).resolves.toBeNull();
+    expect(show).toHaveBeenCalledTimes(2);
+    listeners.find((l) => l.e === "qrTextReceived")!.cb({ data: "ok" });
+    await expect(second).resolves.toBe("ok");
+  });
+
+  it("обрезка подсказки не рвёт суррогатные пары", () => {
+    const { app } = fake();
+    void scanQr(app, "😀".repeat(70));
+    expect(app.showScanQrPopup).toHaveBeenCalledWith({ text: "😀".repeat(64) });
+  });
 });

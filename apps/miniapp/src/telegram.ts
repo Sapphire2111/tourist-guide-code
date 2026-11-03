@@ -129,6 +129,7 @@ export const SCAN_PROMPT_MAX = 64;
 export function scanQr(webApp: TelegramWebApp | undefined, text: string): Promise<string | null> {
   if (!webApp || !canScanQr(webApp)) return Promise.resolve(null);
   // Новый запуск завершает прежнее ожидание (null) и снимает его обработчики.
+  const reopen = pendingScan !== null;
   pendingScan?.(null);
   return new Promise((resolve) => {
     let done = false;
@@ -153,8 +154,17 @@ export function scanQr(webApp: TelegramWebApp | undefined, text: string): Promis
     const onClosed = () => finish(null);
     webApp.onEvent?.("qrTextReceived", onText);
     webApp.onEvent?.("scanQrPopupClosed", onClosed);
+    if (reopen) {
+      // SDK 6.4–7.6 считает прежний сканер открытым (закрытие без скана не сбрасывает флаг) —
+      // иначе showScanQrPopup бросит WebAppScanQrPopupOpened.
+      try {
+        webApp.closeScanQrPopup?.();
+      } catch {
+        // сканер уже закрыт
+      }
+    }
     try {
-      webApp.showScanQrPopup?.({ text: text.slice(0, SCAN_PROMPT_MAX) });
+      webApp.showScanQrPopup?.({ text: Array.from(text).slice(0, SCAN_PROMPT_MAX).join("") });
     } catch {
       finish(null);
     }
