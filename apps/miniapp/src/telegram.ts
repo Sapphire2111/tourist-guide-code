@@ -30,7 +30,11 @@ export type TelegramWebApp = {
   themeParams?: Record<string, string | undefined>;
   ready(): void;
   expand(): void;
-  onEvent?(event: string, cb: () => void): void;
+  onEvent?(event: string, cb: (payload?: { data?: string }) => void): void;
+  offEvent?(event: string, cb: (payload?: { data?: string }) => void): void;
+  /** Bot API 6.4+: системный сканер QR внутри Telegram; текст приходит событием qrTextReceived. */
+  showScanQrPopup?(params: { text?: string }, cb?: (data: string) => boolean | void): void;
+  closeScanQrPopup?(): void;
   BackButton?: TelegramBackButton;
   /** Bot API 6.9+: разрешение боту писать пользователю (сервисные сообщения). */
   requestWriteAccess?(cb?: (granted: boolean) => void): void;
@@ -99,4 +103,70 @@ export function consumeBack(): boolean {
   if (!fn) return false;
   fn();
   return true;
+}
+
+/** Сканер QR доступен: Bot API 6.4+ и методы есть (в браузере и старых клиентах кнопку не показываем). */
+export function canScanQr(webApp?: TelegramWebApp): boolean {
+  return (
+    !!webApp &&
+    typeof webApp.showScanQrPopup === "function" &&
+    typeof webApp.closeScanQrPopup === "function" &&
+    typeof webApp.onEvent === "function" &&
+    webApp.isVersionAtLeast?.("6.4") === true
+  );
+}
+
+/**
+ * Открыть сканер Telegram и дождаться первого распознанного текста (окно закрывается сразу).
+ * null — пользователь закрыл сканер без результата или сканер недоступен.
+ */
+/** Текущее ожидание скана: на клиентах 6.4–7.6 нет scanQrPopupClosed, и закрытый без скана сканер не сообщает о себе. */
+let pendingScan: ((value: string | null) => void) | null = null;
+
+/** Telegram ограничивает подсказку сканера 64 символами. */
+export const SCAN_PROMPT_MAX = 64;
+
+export function scanQr(webApp: TelegramWebApp | undefined, text: string): Promise<string | null> {
+  if (!webApp || !canScanQr(webApp)) return Promise.resolve(null);
+  // Новый запуск завершает прежнее ожидание (null) и снимает его обработчики.
+  const reopen = pendingScan !== null;
+  pendingScan?.(null);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value: string | null) => {
+      if (done) return;
+      done = true;
+      if (pendingScan === finish) pendingScan = null;
+      webApp.offEvent?.("qrTextReceived", onText);
+      webApp.offEvent?.("scanQrPopupClosed", onClosed);
+      resolve(value);
+    };
+    pendingScan = finish;
+    const onText = (payload?: { data?: string }) => {
+      const data = payload?.data;
+      if (typeof data !== "string" || data === "") return;
+      try {
+        webApp.closeScanQrPopup?.();
+      } finally {
+        finish(data);
+      }
+    };
+    const onClosed = () => finish(null);
+    webApp.onEvent?.("qrTextReceived", onText);
+    webApp.onEvent?.("scanQrPopupClosed", onClosed);
+    if (reopen) {
+      // SDK 6.4–7.6 считает прежний сканер открытым (закрытие без скана не сбрасывает флаг) —
+      // иначе showScanQrPopup бросит WebAppScanQrPopupOpened.
+      try {
+        webApp.closeScanQrPopup?.();
+      } catch {
+        // сканер уже закрыт
+      }
+    }
+    try {
+      webApp.showScanQrPopup?.({ text: Array.from(text).slice(0, SCAN_PROMPT_MAX).join("") });
+    } catch {
+      finish(null);
+    }
+  });
 }

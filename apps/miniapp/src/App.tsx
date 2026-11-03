@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
-import { DEFAULT_LOCALE, pickLocalized, resolveLocale, SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
+import {
+  DEFAULT_LOCALE,
+  pickLocalized,
+  resolveLocale,
+  SUPPORTED_LOCALES,
+  type Locale,
+  type MessageKey,
+} from "@tg/i18n";
 import {
   Button,
   Feature,
@@ -22,7 +29,8 @@ import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
-import { AppTop, Splash } from "./design/Chrome.js";
+import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
+import { resolveScan, type ScanOutcome } from "./scan.js";
 import { LocationChip } from "./guide/LocationPicker.js";
 import { LocationProvider } from "./guide/LocationProvider.js";
 import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
@@ -55,7 +63,7 @@ import { ModeSwitch } from "./partner/parts.js";
 import { PlaceEditor } from "./partner/PlaceEditor.js";
 import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
-import { consumeBack, type TelegramUser, type TelegramWebApp } from "./telegram.js";
+import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
@@ -577,8 +585,53 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
  * Шапка, содержимое экрана и нижняя навигация. Появление экрана — анимацией того же узла (Web Animations), без
  * пересоздания дерева: фокус на h1, BackButton и состояние экранов при смене пути сохраняются.
  */
-function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
-  const [path] = useRoute();
+function Shell({
+  routes,
+  profile,
+  scan,
+}: {
+  routes: ReactNode;
+  profile: boolean;
+  /** Сканер QR (нет — кнопки не показываются). */
+  scan?: (prompt: string, isCurrent: () => boolean) => Promise<ScanOutcome | null>;
+}) {
+  const [path, navigate] = useRoute();
+  // Защита от двойного нажатия (синхронно, до перерисовки). Повторный запуск позже — разрешён:
+  // на старых клиентах закрытие сканера не сообщается, и новый запуск завершает прежний.
+  const lastScanAt = useRef(0);
+  const scanRun = useRef(0);
+  const [scanMessage, setScanMessage] = useState<MessageKey | null>(null);
+  const { t } = useT();
+  // Сообщение о скане: скрыть через ~6 с и при смене маршрута.
+  useEffect(() => {
+    if (!scanMessage) return;
+    const id = setTimeout(() => setScanMessage(null), 6000);
+    return () => clearTimeout(id);
+  }, [scanMessage]);
+  useEffect(() => setScanMessage(null), [path]);
+  const scanControl: ScanControl | undefined = scan
+    ? {
+        message: scanMessage,
+        start: () => {
+          const now = Date.now();
+          if (now - lastScanAt.current < 1000) return;
+          lastScanAt.current = now;
+          const run = ++scanRun.current;
+          setScanMessage(null);
+          void scan(t("miniapp.scan.prompt"), () => run === scanRun.current)
+            .then((o) => {
+              if (!o || run !== scanRun.current) return;
+              if (o.kind === "message") setScanMessage(o.messageKey);
+              else if (o.kind === "invite") navigate("/partner/invite", { replace: true });
+              else
+                navigate(o.context.entryType === "hotel" && o.context.venue ? "/about" : "/", {
+                  replace: true,
+                });
+            })
+            .catch(() => undefined);
+        },
+      }
+    : undefined;
   const content = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   useEffect(() => {
@@ -594,7 +647,7 @@ function Shell({ routes, profile }: { routes: ReactNode; profile: boolean }) {
   }, [path]);
   return (
     <>
-      <AppTop path={path} profile={profile} />
+      <AppTop path={path} profile={profile} scan={scanControl} />
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>
@@ -689,6 +742,27 @@ export function App({
   );
   const pApi = useMemo(() => partnerApi ?? createPartnerApi(props.api), [partnerApi, props.api]);
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
+  // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
+  const scanHandler =
+    session && canScanQr(webApp)
+      ? async (prompt: string, isCurrent: () => boolean): Promise<ScanOutcome | null> => {
+          const text = await scanQr(webApp, prompt);
+          if (text === null) return null;
+          const outcome = await resolveScan(props.api, text);
+          // Поздний ответ прежнего скана не перетирает результат нового.
+          if (!isCurrent()) return null;
+          if (outcome.kind === "context")
+            setState((s) =>
+              s.status === "ready" ? { ...s, context: outcome.context, contextFailed: undefined } : s,
+            );
+          else if (outcome.kind === "invite") {
+            // Кабинет партнёра выключен — токен не сохраняем, только сообщение.
+            if (!partnerEnabled) return { kind: "message", messageKey: "miniapp.scan.foreign" };
+            setState((s) => (s.status === "ready" ? { ...s, invite: outcome.token } : s));
+          }
+          return outcome;
+        }
+      : undefined;
   return (
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
@@ -704,6 +778,7 @@ export function App({
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <Shell
                         profile={Boolean(session && hasRequiredConsents(session.me))}
+                        scan={scanHandler}
                         routes={
                           <Routes {...props} session={session} onMe={onMe} retryContext={retryContext} />
                         }

@@ -122,6 +122,9 @@ services:
       # Смена адреса требует пересборки сайта. Origin miniapp должен быть в CORS_ORIGINS api.
       - key: VITE_API_URL
         value: https://tg-api-staging.onrender.com
+      # Имя бота (без @) — сканер QR принимает ссылки t.me/<бот> только этого бота; вшивается в бандл (не секрет).
+      - key: VITE_BOT_USERNAME
+        value: tourist_guide_test_bot
       - key: NODE_VERSION
         value: 22.17.0
       - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS

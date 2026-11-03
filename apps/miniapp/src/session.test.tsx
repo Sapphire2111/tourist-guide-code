@@ -616,3 +616,117 @@ describe("профиль: повторные нажатия", () => {
     expect(calls.some((r) => r.url.endsWith("/me/privacy-requests"))).toBe(false);
   });
 });
+
+describe("скан QR из приложения", () => {
+  const defaultContext: QrContext = {
+    ...hotelContext,
+    status: "default",
+    entryType: "default",
+    qrPoint: null,
+    venue: null,
+  };
+  function scanApp(version = true) {
+    const handlers = new Map<string, (p?: { data?: string }) => void>();
+    const app = webApp({
+      initData: "query_id=x&hash=y",
+      initDataUnsafe: {},
+      isVersionAtLeast: () => version,
+      onEvent: (e, cb) => void handlers.set(e, cb),
+      offEvent: (e) => void handlers.delete(e),
+      showScanQrPopup: vi.fn(),
+      closeScanQrPopup: vi.fn(),
+    });
+    return { app, handlers };
+  }
+  async function setup(version = true, partnerCabinet = false) {
+    const token = "D".repeat(43);
+    const { api, calls } = fakeApi({
+      ...(partnerCabinet
+        ? {
+            "GET /feature-flags": () =>
+              Response.json({ regionId: null, items: [{ key: "module.partner_cabinet", enabled: true }] }),
+            "GET /partner/me": () => Response.json({ organizations: [] }),
+            [`GET /partner/invites/${token}`]: () =>
+              Response.json({
+                organizationName: "ТОВ Смерека",
+                placeNames: [],
+                role: "ORG_STAFF",
+                state: "active",
+                expiresAt: "2026-11-05T00:00:00Z",
+                alreadyMember: false,
+              }),
+          }
+        : {}),
+      "POST /auth/telegram": login(null),
+      "GET /context/*": () => Response.json(hotelContext),
+      "GET /context": () => Response.json(defaultContext),
+      "GET /me": () => Response.json(meWith(true)),
+    });
+    const { app, handlers } = scanApp(version);
+    const startup = createStartup(api, app);
+    render(<App api={api} role="guest" webApp={app} startup={startup} />);
+    await startup();
+    await flush();
+    return { app, handlers, calls };
+  }
+  const contextPaths = (calls: Request[]) =>
+    calls.map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/context"));
+
+  it("наша ссылка: GET /context/{код}, заведение применено без перезапуска, переход на «Про заклад»", async () => {
+    const { app, handlers, calls } = await setup();
+    fireEvent.click(screen.getByTestId("scan-btn"));
+    expect(app.showScanQrPopup).toHaveBeenCalledOnce();
+    await act(async () =>
+      handlers.get("qrTextReceived")!({ data: "https://t.me/tg_gid_bot?startapp=demoHotel01" }),
+    );
+    await flush();
+    expect(contextPaths(calls)).toEqual(["/context", "/context/demoHotel01"]);
+    expect(app.closeScanQrPopup).toHaveBeenCalled();
+    expect(screen.getByTestId("venue-name").textContent).toBe("Тестовий готель");
+  });
+
+  it("чужая ссылка: сообщение, запроса контекста нет", async () => {
+    const { handlers, calls } = await setup();
+    fireEvent.click(screen.getByTestId("scan-btn"));
+    await act(async () =>
+      handlers.get("qrTextReceived")!({ data: "https://evil.example/?startapp=demoHotel01" }),
+    );
+    await flush();
+    expect(screen.getByTestId("scan-message").textContent).toBe("Це не QR-код Гіда туриста");
+    expect(contextPaths(calls)).toEqual(["/context"]);
+  });
+
+  it("приглашение при включённом кабинете партнёра: переход на P14", async () => {
+    const { handlers } = await setup(true, true);
+    await flush();
+    fireEvent.click(screen.getByTestId("scan-btn"));
+    await act(async () =>
+      handlers.get("qrTextReceived")!({ data: `https://t.me/tg_gid_bot?startapp=inv_${"D".repeat(43)}` }),
+    );
+    await flush();
+    await flush();
+    expect(window.location.hash).toBe("#/partner/invite");
+  });
+
+  it("приглашение при выключенном кабинете: сообщение, токен не сохранён, перехода нет", async () => {
+    const { handlers, calls } = await setup();
+    fireEvent.click(screen.getByTestId("scan-btn"));
+    await act(async () =>
+      handlers.get("qrTextReceived")!({ data: `https://t.me/tg_gid_bot?startapp=inv_${"D".repeat(43)}` }),
+    );
+    await flush();
+    expect(screen.getByTestId("scan-message").textContent).toBe("Це не QR-код Гіда туриста");
+    expect(window.location.hash).not.toBe("#/partner/invite");
+    expect(calls.some((r) => new URL(r.url).pathname.startsWith("/partner/invites/"))).toBe(false);
+  });
+
+  it("пункт в меню запускает сканер; на старом Telegram кнопок нет", async () => {
+    const { app } = await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    fireEvent.click(screen.getByTestId("scan-menu-item"));
+    expect(app.showScanQrPopup).toHaveBeenCalledOnce();
+    cleanup();
+    await setup(false);
+    expect(screen.queryByTestId("scan-btn")).toBeNull();
+  });
+});

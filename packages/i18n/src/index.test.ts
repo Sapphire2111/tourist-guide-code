@@ -92,4 +92,11 @@ describe("en для Mini App", () => {
     const missing = Object.keys(uk).filter((k) => k.startsWith("miniapp.") && !Object.hasOwn(en, k));
     expect(missing).toEqual([]);
   });
+
+  it("подсказка сканера QR — не длиннее 64 символов (лимит Telegram) во всех языках", () => {
+    for (const messages of [uk, en]) {
+      const text = messages["miniapp.scan.prompt"];
+      if (text !== undefined) expect(text.length).toBeLessThanOrEqual(64);
+    }
+  });
 });

@@ -1,5 +1,6 @@
 // Оболочка «Сучасна Косівщина»: заставка старта, кнопка меню (настройки и профиль) и переключатель сезона.
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MessageKey } from "@tg/i18n";
 import { Link, useT } from "@tg/ui";
 import { interceptBack } from "../telegram.js";
 import { ICONS, VaseIcon } from "./Ornament.js";
@@ -57,6 +58,26 @@ const MENU_ICON = (
   </svg>
 );
 
+const SCAN_ICON = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16" />
+  </svg>
+);
+
+/** Сканер QR: запуск, занятость (сканер открыт) и сообщение о результате («Це не QR-код…»). */
+export type ScanControl = { start: () => void; message: MessageKey | null };
+
 const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 /**
@@ -65,7 +86,7 @@ const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [ta
  * Tab не выходит за лист, закрытие по Escape, тапу вне листа, кнопке «Закрити» и при смене экрана.
  * На главной — скрытый для глаз h1 с названием приложения (заголовок экрана для скринридеров).
  */
-export function AppTop({ path, profile }: { path: string; profile: boolean }) {
+export function AppTop({ path, profile, scan }: { path: string; profile: boolean; scan?: ScanControl }) {
   const { t } = useT();
   const home = path === "/";
   const [open, setOpen] = useState(false);
@@ -112,6 +133,26 @@ export function AppTop({ path, profile }: { path: string; profile: boolean }) {
   return (
     <div className="kosiv-top" data-testid="app-top">
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
+      {scan && (
+        <p
+          className={scan.message ? "kosiv-top-note" : "kosiv-sr-only"}
+          role="status"
+          data-testid="scan-message"
+        >
+          {scan.message ? t(scan.message) : ""}
+        </p>
+      )}
+      {scan && home && (
+        <button
+          type="button"
+          className="kosiv-menu-btn"
+          aria-label={t("miniapp.scan.open")}
+          data-testid="scan-btn"
+          onClick={scan.start}
+        >
+          {SCAN_ICON}
+        </button>
+      )}
       <button
         ref={button}
         type="button"
@@ -153,6 +194,20 @@ export function AppTop({ path, profile }: { path: string; profile: boolean }) {
               </button>
             </div>
             <SeasonSwitcher onPicked={close} />
+            {scan && (
+              <button
+                type="button"
+                className="kosiv-sheet-link"
+                data-testid="scan-menu-item"
+                onClick={() => {
+                  close();
+                  scan.start();
+                }}
+              >
+                <span aria-hidden="true">{SCAN_ICON}</span>
+                {t("miniapp.scan.open")}
+              </button>
+            )}
             {profile && (
               <Link
                 to="/profile"
