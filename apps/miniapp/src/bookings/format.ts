@@ -115,18 +115,15 @@ const REASON_CODES: Record<string, MessageKey> = {
   auto_completed: "miniapp.booking.reason.auto_completed",
 };
 
-const CODE_RE = /^[a-z][a-z0-9_]*$/;
-
 /**
- * Причина статуса для показа: известный код — ключ перевода; неизвестный служебный код — null (не показываем);
- * текст партнёра (причина отказа) — как есть.
+ * Причина статуса для показа: известный код — ключ перевода; остальное (текст партнёра, новый код сервера) — как
+ * есть, чтобы причина не пропадала.
  */
 export function reasonText(reason: string | null | undefined, t: (key: MessageKey) => string): string | null {
   const r = reason?.trim();
   if (!r) return null;
   const key = REASON_CODES[r];
-  if (key) return t(key);
-  return CODE_RE.test(r) ? null : r;
+  return key ? t(key) : r;
 }
 
 // --- телефон ---
@@ -134,14 +131,22 @@ export function reasonText(reason: string | null | undefined, t: (key: MessageKe
 export const PHONE_E164_RE = /^\+[1-9][0-9]{7,14}$/;
 
 /**
- * Номер, введённый вручную или из Telegram (без «+»), → E.164; украинские «0XXXXXXXXX» и «380…» дополняются.
- * null — не похоже на номер.
+ * Номер → E.164. С «+» — международный как есть (украинский +380 — ровно 12 цифр). Без «+» — только украинский:
+ * «50 123 45 67» (9 цифр), «050…», «8 050…», «380…» → +380XXXXXXXXX; прочее без «+» — null (не угадываем страну).
  */
 export function normalizePhone(raw: string): string | null {
   const plus = raw.trim().startsWith("+");
-  let digits = raw.replace(/\D/g, "");
+  const digits = raw.replace(/\D/g, "");
   if (!digits) return null;
-  if (!plus && digits.length === 10 && digits.startsWith("0")) digits = `38${digits}`;
-  const e164 = `+${digits}`;
-  return PHONE_E164_RE.test(e164) ? e164 : null;
+  let national: string | null = null;
+  if (plus) {
+    if (digits.startsWith("380") && digits.length !== 12) return null;
+    const e164 = `+${digits}`;
+    return PHONE_E164_RE.test(e164) ? e164 : null;
+  }
+  if (digits.length === 9 && !digits.startsWith("0")) national = digits;
+  else if (digits.length === 10 && digits.startsWith("0")) national = digits.slice(1);
+  else if (digits.length === 11 && digits.startsWith("80")) national = digits.slice(2);
+  else if (digits.length === 12 && digits.startsWith("380")) national = digits.slice(3);
+  return national && /^[1-9]\d{8}$/.test(national) ? `+380${national}` : null;
 }

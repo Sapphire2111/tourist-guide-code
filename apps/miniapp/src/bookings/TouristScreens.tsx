@@ -2,13 +2,14 @@
 // — кількість осіб, телефон (Telegram requestContact или вручную, D-42), коментар и обязательная галочка согласия на
 // передачу телефона этому заведению (ТЗ §14.1) до отправки; C21 «Мої бронювання» — статусы, отмена, ответ на
 // альтернативу. Экран грузится лениво (не входит в первый экран).
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError, type PlaceDetail } from "../guide/types.js";
 import { ApiCallError } from "../host/types.js";
+import { keepsIdempotencyKey } from "../partner/partner-api.js";
 import { Live, type Message } from "../partner/parts.js";
 import type { TelegramWebApp } from "../telegram.js";
 import type { Booking, Resource, Slot, StatusChange } from "./bookings-api.js";
@@ -70,6 +71,8 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const [slot, setSlot] = useState<Slot | null>(null);
   const [done, setDone] = useState<Booking | null>(null);
   const [notice, setNotice] = useState<Message>(null);
+  // Слот «заняли» после неясного исхода прежней попытки — возможно, это наша же бронь.
+  const [checkMine, setCheckMine] = useState(false);
   const [reload, setReload] = useState(0);
   const resource = resources.find((r) => r.id === resourceId);
   const resourceLabel = useId();
@@ -100,6 +103,7 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             onChange={(e) => {
               setResourceId(e.target.value);
               setNotice(null);
+              setCheckMine(false);
             }}
           >
             {resources.map((r) => (
@@ -116,24 +120,33 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
           resource={resource}
           slot={slot}
           canSubmit={signedIn}
-          onBack={(message) => {
+          onBack={(message, maybeOurs) => {
             setSlot(null);
             setNotice(message ?? null);
+            setCheckMine(Boolean(maybeOurs));
             if (message) setReload((n) => n + 1);
           }}
           onDone={setDone}
         />
       ) : (
-        <SlotPicker
-          key={`${resource.id}:${reload}`}
-          place={place}
-          resource={resource}
-          notice={notice}
-          onPick={(s) => {
-            setNotice(null);
-            setSlot(s);
-          }}
-        />
+        <>
+          {checkMine && (
+            <p data-testid="check-mine">
+              {t("miniapp.booking.checkMine")} <Link to="/bookings">{t("miniapp.booking.mine")}</Link>
+            </p>
+          )}
+          <SlotPicker
+            key={`${resource.id}:${reload}`}
+            place={place}
+            resource={resource}
+            notice={notice}
+            onPick={(s) => {
+              setNotice(null);
+              setCheckMine(false);
+              setSlot(s);
+            }}
+          />
+        </>
       )}
     </Stack>
   );
@@ -259,8 +272,8 @@ function BookingForm({
   resource: Resource;
   slot: Slot;
   canSubmit: boolean;
-  /** Назад к слотам; message — почему (слот заняли), слоты перечитываются. */
-  onBack: (message?: Message) => void;
+  /** Назад к слотам; message — почему (слот заняли), слоты перечитываются; maybeOurs — прежняя попытка с неясным исходом. */
+  onBack: (message?: Message, maybeOurs?: boolean) => void;
   onDone: (b: Booking) => void;
 }) {
   const { t, locale } = useT();
@@ -289,6 +302,7 @@ function BookingForm({
   }, []);
   const ids = { people: useId(), phone: useId(), comment: useId(), consent: useId() };
   const phone = normalizePhone(phoneRaw);
+  const uncertain = useRef(false);
   const tg = webApp as ContactWebApp | undefined;
   const user = tg?.initDataUnsafe?.user;
   const contactName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : null;
@@ -338,9 +352,11 @@ function BookingForm({
     } catch (e) {
       idem.settle(e);
       setBusy(false);
+      const wasUncertain = uncertain.current;
+      if (keepsIdempotencyKey(e)) uncertain.current = true;
       const key = e instanceof ApiCallError ? e.messageKey : null;
       if (key === "errors.booking.slotTaken" || key === "errors.booking.slotUnavailable") {
-        onBack({ text: errorText(e, "miniapp.booking.sendError"), alert: true });
+        onBack({ text: errorText(e, "miniapp.booking.sendError"), alert: true }, wasUncertain);
         return;
       }
       setMessage({
@@ -378,6 +394,12 @@ function BookingForm({
             <>
               <dt>{t("miniapp.booking.contact")}</dt>
               <dd>{contactName}</dd>
+            </>
+          )}
+          {phone && (
+            <>
+              <dt>{t("miniapp.booking.phoneShort")}</dt>
+              <dd data-testid="summary-phone">{phone}</dd>
             </>
           )}
         </dl>
@@ -431,6 +453,11 @@ function BookingForm({
             }}
           />
         </label>
+        {phone && phone !== phoneRaw && (
+          <p className="kosiv-muted" data-testid="phone-normalized">
+            {t("miniapp.booking.phoneWillBe", { phone })}
+          </p>
+        )}
         {typeof tg?.requestContact === "function" && (
           <Button type="button" onClick={shareContact} data-testid="share-contact">
             {t("miniapp.booking.shareContact")}

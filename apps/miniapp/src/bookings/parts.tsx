@@ -30,7 +30,7 @@ export function Reason({ reason }: { reason: string | null }) {
   );
 }
 
-/** Текст ошибки брони: «не пізніше ніж за N год», сеть, известный messageKey сервера, иначе запасной. */
+/** Текст ошибки брони: «не пізніше ніж за N год», сеть, 403 «немає прав», известный messageKey сервера, иначе запасной. */
 export function useBookingErrorText(): (err: unknown, fallback: MessageKey) => string {
   const { t } = useT();
   const base = useErrorText();
@@ -42,6 +42,7 @@ export function useBookingErrorText(): (err: unknown, fallback: MessageKey) => s
         : t("miniapp.booking.cancelTooLateStarted");
     }
     if (err instanceof NetworkError) return t("miniapp.booking.network");
+    if (err instanceof ApiCallError && err.status === 403) return t("miniapp.booking.forbidden");
     return base(err, fallback);
   };
 }

@@ -17,6 +17,7 @@ import type { BookingsApi, PartnerBooking, PartnerResource, Resource, SlotList }
 import { BookingsProvider } from "./context.js";
 import { addDays, localTime, normalizePhone, reasonText, today, zonedIso } from "./format.js";
 import { PartnerBookings, PartnerResources, rulesBody, weeklyOf } from "./PartnerScreens.js";
+import { lazyScreen } from "./lazy.js";
 import { BookingFlow, MyBookings, sortBookings } from "./TouristScreens.js";
 
 afterEach(() => {
@@ -215,12 +216,19 @@ describe("format", () => {
     expect(normalizePhone("380501234567")).toBe("+380501234567");
     expect(normalizePhone("+48 601 234 567")).toBe("+48601234567");
     expect(normalizePhone("12")).toBeNull();
+    // Без «+» — только украинские варианты, страна не угадывается.
+    expect(normalizePhone("50 123 45 67")).toBe("+380501234567");
+    expect(normalizePhone("8 050 123 45 67")).toBe("+380501234567");
+    expect(normalizePhone("(067) 111-22-33")).toBe("+380671112233");
+    expect(normalizePhone("48601234567")).toBeNull();
+    expect(normalizePhone("00501234567")).toBeNull();
+    expect(normalizePhone("+38050123456")).toBeNull();
   });
 
-  it("служебные коды причин — человеческим текстом, неизвестные коды скрыты, текст партнёра — как есть", () => {
+  it("служебные коды причин — человеческим текстом; неизвестная причина и текст партнёра — как есть", () => {
     expect(reasonText("alternative_declined", t)).toBe("відмова від запропонованого часу");
     expect(reasonText("customer_timeout", t)).toBe("не було відповіді на запропонований час");
-    expect(reasonText("some_internal_code", t)).toBeNull();
+    expect(reasonText("closed", t)).toBe("closed");
     expect(reasonText("Немає вільних столів", t)).toBe("Немає вільних столів");
   });
 });
@@ -287,6 +295,8 @@ describe("C07/C08: бронирование", () => {
     fireEvent.change(screen.getByLabelText("Телефон для підтвердження"), {
       target: { value: "050 123 45 67" },
     });
+    expect(screen.getByTestId("phone-normalized").textContent).toBe("Номер: +380501234567");
+    expect(screen.getByTestId("summary-phone").textContent).toBe("+380501234567");
     expect(submit.disabled).toBe(true);
     expect(screen.getByText("Без згоди на передачу номера заявку не надіслати.")).toBeTruthy();
     fireEvent.submit(submit.closest("form")!);
@@ -332,6 +342,8 @@ describe("C07/C08: бронирование", () => {
     expect(await screen.findByText("Цей час щойно зайняли — оберіть інший.")).toBeTruthy();
     expect(screen.queryByTestId("booking-summary")).toBeNull();
     expect(api.slots).toHaveBeenCalledTimes(2);
+    // Прежняя попытка с неясным исходом — подсказка проверить «Мої бронювання».
+    expect(screen.getByTestId("check-mine").textContent).toContain("Мої бронювання");
   });
 
   it("телефон из Telegram (requestContact) — источник telegram_contact", async () => {
@@ -383,7 +395,7 @@ describe("C21: Мої бронювання", () => {
             statusReason: "alternative_declined",
             allowedTransitions: [],
           }),
-          booking({ id: "b-exp", status: "expired", statusReason: "weird_internal", allowedTransitions: [] }),
+          booking({ id: "b-exp", status: "expired", statusReason: null, allowedTransitions: [] }),
           booking({ id: "b-new", status: "pending_partner" }),
         ]),
       }),
@@ -626,5 +638,96 @@ describe("Ресурсы партнёра", () => {
     fireEvent.change(screen.getByLabelText("Діє"), { target: { value: "30" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Є вільні місця" })));
     expect(putManual).toHaveBeenCalledWith(RES, "available_now", 30);
+  });
+});
+
+describe("доработки после проверки", () => {
+  it("403 — «Немає прав для цієї дії»; responseOverdue — «Оновити дані»", async () => {
+    const setStatus = vi
+      .fn<BookingsApi["setStatus"]>()
+      .mockRejectedValueOnce(new ApiCallError(403, "errors.forbidden", "FORBIDDEN"))
+      .mockRejectedValueOnce(new ConflictError("errors.booking.responseOverdue"));
+    renderWith(<PartnerBookings placeId={PLACE} />, {
+      partner: { role: "ORG_STAFF" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [partnerResource()]),
+        partnerBookings: vi.fn(async () => [
+          booking({ startsAt: at("10:00", today(TZ)), allowedTransitions: ["confirmed"] }),
+        ]),
+        setStatus,
+      }),
+    });
+    fireEvent.click(await screen.findByTestId("pbooking-row"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Підтвердити" })));
+    expect(screen.getByTestId("pbooking-message").textContent).toContain("Немає прав для цієї дії.");
+    expect(screen.queryByRole("button", { name: "Оновити дані" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Підтвердити" })));
+    expect(screen.getByRole("button", { name: "Оновити дані" })).toBeTruthy();
+  });
+
+  it("правка ресурса не затирает en в названии и описании", async () => {
+    const updateResource = vi.fn(async () => partnerResource());
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_OWNER" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [
+          partnerResource({
+            name: { uk: "Чан №1", en: "Hot tub 1" },
+            description: { uk: "Біля річки", en: "By the river" },
+          }),
+        ]),
+        updateResource,
+      }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Налаштування" }));
+    fireEvent.change(screen.getByLabelText("Назва (наприклад, «Чан №1»)"), { target: { value: "Чан №2" } });
+    await act(async () => fireEvent.submit(screen.getByTestId("resource-form")));
+    expect(updateResource).toHaveBeenCalledWith(
+      RES,
+      expect.objectContaining({
+        name: { uk: "Чан №2", en: "Hot tub 1" },
+        description: { uk: "Біля річки", en: "By the river" },
+      }),
+    );
+  });
+
+  it("окно до 24:00 остаётся 24:00 (не 23:59)", async () => {
+    const putAvailability = vi.fn(async () => partnerResource());
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [
+          partnerResource({
+            rules: [{ dayOfWeek: 5, date: null, closed: false, opensAt: "18:00", closesAt: "24:00" }],
+          }),
+        ]),
+        putAvailability,
+      }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Доступність по днях" }));
+    const friday = screen.getAllByTestId("rules-day")[4]!;
+    expect((within(friday).getByLabelText("до 24:00") as HTMLInputElement).checked).toBe(true);
+    await act(async () => fireEvent.submit(screen.getByTestId("rules-form")));
+    expect(putAvailability).toHaveBeenCalledWith(RES, [
+      { dayOfWeek: 5, opensAt: "18:00", closesAt: "24:00" },
+    ]);
+  });
+
+  it("ленивый экран: сбой загрузки чанка — сообщение и повтор", async () => {
+    let fail = true;
+    const Screen = lazyScreen(async () => {
+      if (fail) throw new Error("chunk");
+      return () => <p>Екран</p>;
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(
+      <I18nProvider locale="uk">
+        <Screen />
+      </I18nProvider>,
+    );
+    expect(await screen.findByTestId("screen-load-error")).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Спробувати ще раз" }));
+    expect(await screen.findByText("Екран")).toBeTruthy();
   });
 });

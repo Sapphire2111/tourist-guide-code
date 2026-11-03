@@ -341,6 +341,11 @@ function ManualBookingForm({
           {t("miniapp.pbooking.customerPhone")}
           <input id={ids.phone} type="tel" value={d.phone} onChange={set("phone")} placeholder="+380…" />
         </label>
+        {d.phone.trim() && normalizePhone(d.phone) && normalizePhone(d.phone) !== d.phone.trim() && (
+          <p className="kosiv-muted" data-testid="manual-phone-normalized">
+            {t("miniapp.booking.phoneWillBe", { phone: normalizePhone(d.phone)! })}
+          </p>
+        )}
         <label htmlFor={ids.source}>
           {t("miniapp.pbooking.source")}
           <select id={ids.source} value={d.source} onChange={set("source")}>
@@ -410,7 +415,12 @@ function BookingCard({
     } catch (e) {
       setMessage({ text: errorText(e, "miniapp.booking.actionError"), alert: true });
       // Статус уже сменился (другой сотрудник, воркер по SLA) — предложить обновить.
-      if (e instanceof ConflictError && e.messageKey === "errors.booking.invalidTransition") setStale(true);
+      if (
+        e instanceof ConflictError &&
+        (e.messageKey === "errors.booking.invalidTransition" ||
+          e.messageKey === "errors.booking.responseOverdue")
+      )
+        setStale(true);
     }
     setBusy(false);
   };
@@ -821,7 +831,8 @@ function ResourceForm({
       return setMessage({ text: t("miniapp.pres.priceInvalid"), alert: true });
     const settings = {
       ...values,
-      description: description.trim() ? { uk: description.trim() } : null,
+      // Правка только uk: остальные языки (en) не затираются.
+      description: description.trim() ? { ...resource?.description, uk: description.trim() } : null,
       bookingMode: mode,
       priceMinor: priceNum === null ? null : Math.round(priceNum * 100),
       currency: priceNum === null ? null : (resource?.currency ?? "UAH"),
@@ -833,7 +844,7 @@ function ResourceForm({
       if (resource) {
         const patch: ResourcePatch = {
           ...settings,
-          name: { uk: name.trim() },
+          name: { ...resource.name, uk: name.trim() },
           status,
           version: resource.version,
         };
@@ -1032,14 +1043,31 @@ function RulesEditor({
                     <input
                       id={`${formId}-${day}-${i}-c`}
                       type="time"
-                      value={w.closesAt === "24:00" ? "23:59" : w.closesAt}
-                      required
+                      value={w.closesAt === "24:00" ? "" : w.closesAt}
+                      disabled={w.closesAt === "24:00"}
+                      required={w.closesAt !== "24:00"}
                       onChange={(e) =>
                         update(day, (ws) =>
                           ws.map((x, j) => (j === i ? { ...x, closesAt: e.target.value } : x)),
                         )
                       }
                     />
+                  </label>
+                  {/* «24:00» (до конца суток) <input type="time"> показать не может — отдельной галочкой. */}
+                  <label htmlFor={`${formId}-${day}-${i}-m`}>
+                    <input
+                      id={`${formId}-${day}-${i}-m`}
+                      type="checkbox"
+                      checked={w.closesAt === "24:00"}
+                      onChange={(e) =>
+                        update(day, (ws) =>
+                          ws.map((x, j) =>
+                            j === i ? { ...x, closesAt: e.target.checked ? "24:00" : "23:00" } : x,
+                          ),
+                        )
+                      }
+                    />
+                    {t("miniapp.pres.untilMidnight")}
                   </label>
                   <Button
                     type="button"

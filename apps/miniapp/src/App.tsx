@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import {
   DEFAULT_LOCALE,
@@ -25,6 +25,7 @@ import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
+import { lazyScreen } from "./bookings/lazy.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -67,18 +68,14 @@ import { PartnerStaff } from "./partner/Staff.js";
 import type { Role } from "./role.js";
 import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
 
-// Бронирования (блок 7, флаг module.bookings) — ленивые чанки: в первый экран не входят.
-const BookingFlow = lazy(() =>
-  import("./bookings/TouristScreens.js").then((m) => ({ default: m.BookingFlow })),
+// Бронирования (блок 7, флаг module.bookings) — ленивые чанки (в первый экран не входят) с повтором при сбое загрузки.
+const BookingFlow = lazyScreen(() => import("./bookings/TouristScreens.js").then((m) => m.BookingFlow));
+const MyBookings = lazyScreen(() => import("./bookings/TouristScreens.js").then((m) => m.MyBookings));
+const PartnerBookings = lazyScreen(() =>
+  import("./bookings/PartnerScreens.js").then((m) => m.PartnerBookings),
 );
-const MyBookings = lazy(() =>
-  import("./bookings/TouristScreens.js").then((m) => ({ default: m.MyBookings })),
-);
-const PartnerBookings = lazy(() =>
-  import("./bookings/PartnerScreens.js").then((m) => ({ default: m.PartnerBookings })),
-);
-const PartnerResources = lazy(() =>
-  import("./bookings/PartnerScreens.js").then((m) => ({ default: m.PartnerResources })),
+const PartnerResources = lazyScreen(() =>
+  import("./bookings/PartnerScreens.js").then((m) => m.PartnerResources),
 );
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
@@ -369,18 +366,8 @@ function partnerScreen(path: string, invite: string | undefined, bookings: boole
   if (kind === "place" && !sub) return <PlaceEditor key={id} id={id} />;
   if (kind === "place" && sub === "/offers") return <PartnerOffers key={id} placeId={id} />;
   if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
-  if (bookings && kind === "place" && sub === "/bookings")
-    return (
-      <Suspense fallback={null}>
-        <PartnerBookings key={id} placeId={id} />
-      </Suspense>
-    );
-  if (bookings && kind === "place" && sub === "/resources")
-    return (
-      <Suspense fallback={null}>
-        <PartnerResources key={id} placeId={id} />
-      </Suspense>
-    );
+  if (bookings && kind === "place" && sub === "/bookings") return <PartnerBookings key={id} placeId={id} />;
+  if (bookings && kind === "place" && sub === "/resources") return <PartnerResources key={id} placeId={id} />;
   return null;
 }
 
@@ -478,13 +465,7 @@ function Routes(props: RoutesProps) {
     return (
       <Screen webApp={webApp}>
         <RequireRegion>
-          {id ? (
-            <Suspense fallback={null}>
-              <BookingFlow key={id} placeId={id} />
-            </Suspense>
-          ) : (
-            <p role="alert">{t("common.notFound")}</p>
-          )}
+          {id ? <BookingFlow key={id} placeId={id} /> : <p role="alert">{t("common.notFound")}</p>}
         </RequireRegion>
       </Screen>
     );
@@ -493,9 +474,7 @@ function Routes(props: RoutesProps) {
     return (
       <Screen webApp={webApp}>
         <RequireRegion>
-          <Suspense fallback={null}>
-            <MyBookings />
-          </Suspense>
+          <MyBookings />
         </RequireRegion>
       </Screen>
     );
