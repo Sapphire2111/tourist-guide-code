@@ -153,14 +153,83 @@ export const MODEL_TAGS = SCENARIO_TAGS.filter(
  * Приписка программы «Графік: …» в примечании (снимается перед повторной проверкой): только дни и часы в формате
  * weeklyShort, в любом месте примечания — совет до и после неё сохраняется, а программа не задвоит график.
  */
-const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд|вихідний)(?!\p{L})|\d[\d:]*|[\s,;–-])+\.?/gu;
+const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд|вихідний)(?!\p{L})|\d[\d:]*|[\s,;–-])+\.?\s*/gu;
 export const stripSchedule = (note: string) =>
-  note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? "" : m)).trim();
+  note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? " " : m)).trim();
 
-/** Длина примечания к пункту (символов): практичные советы гида, без обрыва. */
-export const NOTE_MAX = 320;
+/**
+ * Длина примечания к пункту (символов, без приписки «Графік: …»). Модели и критику называем NOTE_ASK_MAX; NOTE_MAX —
+ * предел программы с запасом: модель считает символы приблизительно, а вторая платная попытка (весь сценарий) ради
+ * лишней фразы не окупается. БД (jsonb) и экран «Мій план» длину не ограничивают, DTO админки — 2000.
+ */
+export const NOTE_ASK_MAX = 400;
+export const NOTE_MAX = 480;
 
-const clean = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(0, max).trim();
+/** Точка после сокращения — не конец предложения («у м. Яремче», «макс. 20 км»). Единицы («40 хв.») — конец: их середину закрывает проверка строчной буквы. */
+const ABBREVIATION_END =
+  /(?:^|[^\p{L}\d])(?:\p{L}|вул|пл|просп|пров|буд|обл|смт|ім|оз|св|ст|напр|див|бл|прибл|макс|тел|ін)$/iu;
+/** Номер пункта в начале предложения («1. Йти»), а не число в конце («до 18:00.»). */
+const NUMBERING_END = /(?:^|[.!?…]["»”“')]*\s)\d+$/u;
+const SENTENCE_END = /[.!?…]+["»”“')]*(?=\s|$)/gu;
+const ENDS_SENTENCE = /[.!?…]["»”“')]*$/u;
+/** Хвост-заготовка: за ним должно было идти продолжение («Правило розвороту:»). */
+const DANGLING = /[:;,–—-]$/u;
+
+/**
+ * Примечание без обрыва: длинное — до последнего законченного предложения в пределах max; хвост без конца предложения
+ * («… тихо. Вра», «… Правило розвороту:») снимается и при допустимой длине. Если законченного предложения нет, а текст
+ * длинный или висит на двоеточии — пустая строка (лучше без совета, чем оборванный). Готовый результат не меняется
+ * при повторном вызове. Короткий фрагмент без точки («Прогулянка») остаётся как есть.
+ */
+export function trimNote(raw: string, max: number = NOTE_MAX): string {
+  const s = raw.replace(/\s+/g, " ").trim();
+  if (s.length <= max && (s === "" || ENDS_SENTENCE.test(s))) return s;
+  let end = 0;
+  for (const m of s.matchAll(SENTENCE_END)) {
+    const stop = m.index + m[0].length;
+    if (stop > max) break;
+    const next = s[stop + 1];
+    if (next && /\p{Ll}/u.test(next)) continue;
+    const before = s.slice(0, m.index);
+    if (m[0].startsWith(".") && (ABBREVIATION_END.test(before) || NUMBERING_END.test(before))) continue;
+    end = stop;
+  }
+  if (end) return s.slice(0, end);
+  return s.length <= max && !DANGLING.test(s) ? s : "";
+}
+
+/**
+ * Назва: модели называем TITLE_ASK_MAX. Предел программы 79, а не 80: прежняя проверка резала ровно на 80, и такая длина
+ * в старом журнале означает обрезанную назву. Не режем: назва видна туристу первой, длиннее — ошибка и повторная попытка.
+ * DTO допускает 200, БД длину не ограничивает.
+ */
+export const TITLE_ASK_MAX = 60;
+export const TITLE_MAX = 79;
+/** Описание: модели — DESCRIPTION_ASK_MAX, программа режет по предложению на DESCRIPTION_MAX (DTO — 2000). */
+export const DESCRIPTION_ASK_MAX = 250;
+export const DESCRIPTION_MAX = 400;
+
+const squeeze = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** Что не так с названием; null — можно показывать. */
+function titleProblem(raw: string, label: string): string | null {
+  const t = squeeze(raw);
+  if (t.length > TITLE_MAX)
+    return `${label} довша за ${TITLE_MAX} символів (${t.length}) — скороти до ${TITLE_ASK_MAX}`;
+  if (DANGLING.test(t)) return `${label} обірвана: «${t}»`;
+  return null;
+}
+
+/** Текст с оборванным концом или длиннее предела (то, что trimNote изменил бы). */
+const isTorn = (raw: string, max: number) => trimNote(raw, max) !== squeeze(raw);
+
+/** Примечание из готового черновика: совет целый, приписка «Графік: …» дописана до конца. */
+function noteTorn(raw: string): boolean {
+  const all = squeeze(raw);
+  const advice = squeeze(stripSchedule(all));
+  return isTorn(advice, NOTE_MAX) || (advice !== all && !ENDS_SENTENCE.test(all));
+}
+
 const BAD_TEXT = /https?:|www\.|[<>`*#]|\+?\d[\d\s-]{8,}/i;
 
 export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario): ValidationResult {
@@ -282,11 +351,18 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
         }
       }
       // Графік дописує программа — прежний (из раунда критика) снимаем и пишем заново один раз.
-      let note = clean(stripSchedule(it.note_uk ?? ""), NOTE_MAX);
-      // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день.
+      const askedNote = stripSchedule(it.note_uk ?? "").replace(/\s+/g, " ");
+      let note = trimNote(askedNote);
+      if (note !== askedNote)
+        fixes.push(
+          note
+            ? `${it.ref} ${place.name}: примітку скорочено до закінченого речення (${askedNote.length} → ${note.length} символів)`
+            : `${it.ref} ${place.name}: примітку прибрано — немає закінченого речення (${askedNote.length} символів)`,
+        );
+      // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день. Лимит — только на
+      // совет выше: приписка не режется и не вытесняет его предложения.
       const openDays = new Set(place.weekly.map((w) => w.dayOfWeek)).size;
-      if (openDays > 0 && openDays < 7)
-        note = clean(`${note} Графік: ${weeklyShort(place.weekly)}.`, NOTE_MAX + 80);
+      if (openDays > 0 && openDays < 7) note = `${note} Графік: ${weeklyShort(place.weekly)}.`.trim();
       if (note && BAD_TEXT.test(note)) errors.push(`${it.ref}: у примітці посилання, телефон або розмітка`);
       items.push({
         dayNo: d.day,
@@ -334,9 +410,23 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
 
   if (b.target && !used.has(b.target.placeId)) errors.push(`немає обовʼязкового пункту «${b.target.name}»`);
 
-  const title = clean(gen.title_uk, 80);
-  const description = clean(gen.description_uk, 400);
+  const title = squeeze(gen.title_uk);
+  const askedTitleEn = squeeze(gen.title_en);
+  // Английская назва необязательна: плохая не стоит платной повторной попытки или потери правки критика.
+  const titleEnProblem = titleProblem(askedTitleEn, "англійська назва");
+  const titleEn = titleEnProblem ? "" : askedTitleEn;
+  if (titleEnProblem) fixes.push(`${titleEnProblem}; прибрано`);
+  const askedDescription = squeeze(gen.description_uk);
+  const description = trimNote(askedDescription, DESCRIPTION_MAX);
+  if (description !== askedDescription)
+    fixes.push(
+      description
+        ? `опис скорочено до закінченого речення (${askedDescription.length} → ${description.length} символів)`
+        : `опис прибрано — немає закінченого речення (${askedDescription.length} символів)`,
+    );
   if (title.length < 3) errors.push("назва порожня");
+  const titleUkProblem = titleProblem(title, "назва");
+  if (titleUkProblem) errors.push(titleUkProblem);
   if (BAD_TEXT.test(title) || BAD_TEXT.test(description))
     errors.push("у назві чи описі посилання або розмітка");
   // Аудитория и формат (діти, без авто, дощ, лижі, дні) — только из заказа; модель добавляет лишь описательные теги.
@@ -383,7 +473,7 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
   return {
     draft: {
       code: b.code,
-      title: { uk: title, ...(gen.title_en.trim() ? { en: clean(gen.title_en, 80) } : {}) },
+      title: { uk: title, ...(titleEn ? { en: titleEn } : {}) },
       description: description ? { uk: description } : null,
       days: b.days,
       tags: SCENARIO_TAGS.filter((t) => tags.has(t)),
@@ -421,10 +511,18 @@ export function checkDraft(raw: unknown, places: ReadonlyMap<string, GenPlace>):
   const d = raw as Partial<Record<keyof ScenarioDraft, unknown>>;
   const e: string[] = [];
   if (typeof d.code !== "string" || !CODE_RE.test(d.code)) e.push(`код «${String(d.code)}» не латиницею`);
-  if (!isLocalizedText(d.title) || clean(d.title.uk, 80).length < 3) e.push("назва — не localized з uk");
-  else if (d.title.uk.length > 200) e.push("назва довша за 200 символів");
-  if (d.description !== null && d.description !== undefined && !isLocalizedText(d.description))
-    e.push("опис — не localized з uk");
+  if (!isLocalizedText(d.title) || squeeze(d.title.uk).length < 3) e.push("назва — не localized з uk");
+  else
+    for (const [lang, t] of Object.entries(d.title)) {
+      const problem = titleProblem(t ?? "", `назва (${lang})`);
+      if (problem) e.push(problem);
+    }
+  if (d.description !== null && d.description !== undefined) {
+    if (!isLocalizedText(d.description)) e.push("опис — не localized з uk");
+    else
+      for (const [lang, t] of Object.entries(d.description))
+        if (isTorn(t ?? "", DESCRIPTION_MAX)) e.push(`опис (${lang}) обірваний або задовгий: «${t}»`);
+  }
   const days =
     Number.isInteger(d.days) && (d.days as number) >= 1 && (d.days as number) <= 5 ? (d.days as number) : 0;
   if (!days) e.push(`днів ${String(d.days)} — має бути 1…5`);
@@ -457,6 +555,9 @@ export function checkDraft(raw: unknown, places: ReadonlyMap<string, GenPlace>):
     if (!minutesOk) e.push(`${at}: тривалість ${String(minutes)} поза 5…1440`);
     if (it.note !== null && it.note !== undefined && !isLocalizedText(it.note))
       e.push(`${at}: примітка — не localized`);
+    else if (isLocalizedText(it.note))
+      for (const [lang, t] of Object.entries(it.note))
+        if (noteTorn(t ?? "")) e.push(`${at}: примітка (${lang}) обірвана або задовга: «${t}»`);
     const alts = it.alternatives;
     if (
       !Array.isArray(alts) ||

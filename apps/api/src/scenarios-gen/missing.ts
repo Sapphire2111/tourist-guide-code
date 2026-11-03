@@ -15,10 +15,12 @@ export const WANTED: readonly Wanted[] = [
     match: byLandmark(l.code),
   })),
   { name: "Скелі Довбуша", match: inCats(["nature", "sights"], /скел\p{L}*\s+довбуш|dovbush\s+rocks/iu) },
-  { name: "Водоспад Женецький (Женецький Гук)", match: byLandmark("zhenets") },
+  // Решение владельца: Гук в Яремче и есть Женецький Гук — один пункт задания, под любым из двух названий.
   {
-    name: "Водоспад Гук",
-    match: inCats(["nature", "sights"], /водоспад\s+гук|гук\s+водоспад|huk\s+waterfall/iu),
+    name: "Водоспад Женецький Гук (Гук)",
+    match: (p) =>
+      byLandmark("zhenets")(p) ||
+      inCats(["nature", "sights"], /водоспад\s+гук|гук\s+водоспад|huk\s+waterfall/iu)(p),
   },
   { name: "Гірськолижний курорт Буковель", match: inCats(["ski-resorts"], /буковел|bukovel/iu) },
   {
