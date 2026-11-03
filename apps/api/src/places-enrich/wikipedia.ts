@@ -1,7 +1,7 @@
 // Вікіпедія / Wikimedia Commons для пам'яток (places:enrich): статья ищется рядом с точкой места (geosearch) и
-// принимается только при уверенном совпадении названия; опис — uk, иначе en; фото — только P18 объекта Wikidata
-// статьи: файл Commons со
+// принимается только при уверенном совпадении названия; опис — uk, иначе en; фото — только файл Commons со
 // свободной лицензией, с автором и ссылкой на страницу файла. Ответы кэшируются в файлы каталога кэша, ключей нет.
+// Режим --covers-source wikimedia сопоставляет строже — см. wiki-match.ts (клиент общий).
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,15 +11,10 @@ import { haversineMeters } from "../places-import/mapping.js";
 import { httpsUrl } from "./details.js";
 
 /** Категории, для которых ищется Вікіпедія: пам'ятки, природа, музеи. */
-export const WIKI_CATEGORIES: ReadonlySet<string> = new Set(["sights", "nature", "museums", "markets"]);
+export const WIKI_CATEGORIES: ReadonlySet<string> = new Set(["sights", "nature", "museums"]);
 
 /** Радиус поиска статьи от точки места, м: дальше — другое место. */
 export const WIKI_RADIUS_M = 1500;
-/** Природа (вершины, хребты, водопады): точка Google и координаты статьи расходятся сильнее — до 3 км. */
-export const WIKI_RADIUS_NATURE_M = 3000;
-/** Радиус по категории места. */
-export const wikiRadius = (categoryCode: string) =>
-  categoryCode === "nature" ? WIKI_RADIUS_NATURE_M : WIKI_RADIUS_M;
 const EXTRACT_MAX = 700;
 /** User-Agent обязателен по правилам Wikimedia API. */
 const USER_AGENT =
@@ -30,7 +25,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Общие слова названий: по ним одним совпадение не считается («Водоспад» ≠ любой водоспад). */
-const GENERIC = new Set(
+export const GENERIC: ReadonlySet<string> = new Set(
   [
     "водоспад",
     "водоспади",
@@ -45,9 +40,6 @@ const GENERIC = new Set(
     "каплиця",
     "озеро",
     "гора",
-    "вершина",
-    "хребет",
-    "масив",
     "скеля",
     "скелі",
     "міст",
@@ -107,78 +99,13 @@ const GENERIC = new Set(
   ].map((w) => w.replace(/[’']/g, "")),
 );
 
-/** Слова типа объекта (без апострофов) → тип; вершина и хребет совместимы (relief). */
-const TYPE_WORDS: Readonly<Record<string, string>> = {
-  гора: "relief",
-  вершина: "relief",
-  хребет: "relief",
-  масив: "relief",
-  mount: "relief",
-  mountain: "relief",
-  hora: "relief",
-  скеля: "rock",
-  скелі: "rock",
-  rock: "rock",
-  rocks: "rock",
-  skelia: "rock",
-  skeli: "rock",
-  водоспад: "waterfall",
-  водоспади: "waterfall",
-  waterfall: "waterfall",
-  vodospad: "waterfall",
-  музей: "museum",
-  музею: "museum",
-  museum: "museum",
-  muzei: "museum",
-  церква: "church",
-  храм: "church",
-  собор: "church",
-  каплиця: "church",
-  church: "church",
-  tserkva: "church",
-  khram: "church",
-  озеро: "lake",
-  lake: "lake",
-  ozero: "lake",
-  ринок: "market",
-  market: "market",
-  печера: "cave",
-  cave: "cave",
-  село: "settlement",
-  селище: "settlement",
-  місто: "settlement",
-  village: "settlement",
-  річка: "river",
-  ріка: "river",
-  river: "river",
-  скит: "monastery",
-  монастир: "monastery",
-  monastery: "monastery",
-};
-
-export function objectTypes(name: string): Set<string> {
-  const out = new Set<string>();
-  for (const w of name
-    .toLowerCase()
-    .replace(/[’'ʼ`]/g, "")
-    .split(/[^\p{L}\p{N}]+/u)) {
-    const t = TYPE_WORDS[w];
-    if (t) out.add(t);
-  }
-  return out;
-}
-
-/** Типы названы с обеих сторон и не пересекаются — разные объекты. */
-const typesConflict = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
-  a.size > 0 && b.size > 0 && ![...a].some((t) => b.has(t));
-
 /** Слова названия: нижний регистр, без апострофов и знаков, без общих слов; короче 3 букв — не в счёт. */
-export function distinctiveTokens(name: string): string[] {
+export function distinctiveTokens(name: string, generic: ReadonlySet<string> = GENERIC): string[] {
   return name
     .toLowerCase()
     .replace(/[’'ʼ`]/g, "")
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length >= 3 && !GENERIC.has(t));
+    .filter((t) => t.length >= 3 && !generic.has(t));
 }
 
 /** Слова совпадают с учётом падежных окончаний: общий префикс ≥ 5 букв (или слово целиком, если короче). */
@@ -195,11 +122,8 @@ function sameWord(a: string, b: string): boolean {
  * (только «Водоспад»): такое место не сопоставляется вовсе.
  */
 export function nameScore(placeName: string, title: string): number {
-  // Тип объекта названия и статьи не должен противоречить: «Гора Близниця» ≠ «Скелі Близниці».
-  if (typesConflict(objectTypes(placeName), objectTypes(title))) return 0;
   const p = distinctiveTokens(placeName);
-  // Уточнение в скобках («Петрос (Чорногора)») — не часть названия.
-  const t = distinctiveTokens(title.replace(/\s*\([^)]*\)\s*/g, " "));
+  const t = distinctiveTokens(title);
   if (!p.length || !t.length) return 0;
   const hit = p.filter((w) => t.some((x) => sameWord(w, x))).length;
   // Заголовок с лишними отличительными словами («Музей Івана Франка» vs «Франко») — штраф по доле заголовка.
@@ -250,9 +174,9 @@ export function transliterate(s: string): string {
   return [...s.toLowerCase()].map((c) => TRANSLIT[c] ?? c).join("");
 }
 
-type GeoHit = { title: string; lat: number; lon: number; dist: number };
+export type GeoHit = { title: string; lat: number; lon: number; dist: number };
 
-export type WikiPlace = { name: string; location: LonLat; radiusM?: number };
+export type WikiPlace = { name: string; location: LonLat };
 
 export type WikiClientOptions = {
   cacheDir: string;
@@ -267,6 +191,11 @@ export type WikiClientOptions = {
   /** Не чаще одного запроса за столько мс (вежливый темп к API Wikimedia). */
   minIntervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Сбой, не снятый повторами (429/5xx/сеть), останавливает сеть до конца прогона: дальше — только кэш. Иначе каждое
+   * следующее место снова прождало бы все паузы (10 мест при устойчивом 429 — 40 запросов и 850 с).
+   */
+  stopOnUnavailable?: boolean;
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -288,6 +217,8 @@ export class WikiUnavailableError extends Error {
 
 /** Свободные лицензии Commons (короткие имена). Иное (Fair use, «non-free») — без фото. */
 const FREE_LICENSE = /^(cc[ -]?by|cc[ -]?by[ -]?sa|cc0|public domain|pd\b|attribution|gfdl|fal\b)/i;
+/** «Автор неизвестен» в Commons — подписи всё равно нет. */
+const UNKNOWN_AUTHOR = /^(unknown|anonym|невідом|неизвест|анонім|аноним)/i;
 
 function stripHtml(s: unknown, max = 200): string | null {
   if (typeof s !== "string") return null;
@@ -315,11 +246,16 @@ export function shortExtract(text: string, max = EXTRACT_MAX): string {
 }
 
 export class WikipediaClient {
+  /** Реальных запросов HTTP, включая повторы (--max-wiki-requests считает их же). */
   requests = 0;
   cacheHits = 0;
   planned = 0;
   /** Повторов после 429/5xx/сети. */
   retries = 0;
+  /** Причина остановки сети (stopOnUnavailable); null — сеть не останавливалась. */
+  stopped: string | null = null;
+  /** Статьи, отклонённые строгим сопоставлением по типу Wikidata (для отчёта: таблица типов в wiki-match.ts). */
+  readonly typeRejects: { place: string; title: string; classes: string[] }[] = [];
   private readonly fetch: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private lastAt = 0;
@@ -333,6 +269,9 @@ export class WikipediaClient {
   private async request(url: string): Promise<Response> {
     const delays = this.options.retryDelaysMs ?? [];
     for (let attempt = 0; ; attempt++) {
+      if (this.requests >= this.options.maxRequests)
+        throw new WikiLimitError(`Достигнут лимит запросов к Вікіпедії: ${this.options.maxRequests}`);
+      this.requests++;
       const gap = (this.options.minIntervalMs ?? 0) - (Date.now() - this.lastAt);
       if (gap > 0) await this.sleep(gap);
       this.lastAt = Date.now();
@@ -371,23 +310,43 @@ export class WikipediaClient {
       this.planned++;
       return null;
     }
-    if (this.requests >= this.options.maxRequests)
-      throw new WikiLimitError(`Достигнут лимит запросов к Вікіпедії: ${this.options.maxRequests}`);
-    this.requests++;
-    const res = await this.request(url);
-    // 404 (нет статьи) — тоже ответ: кэшируется как null.
-    const data: unknown = res.ok ? await res.json() : res.status === 404 ? null : undefined;
+    if (this.stopped) throw new WikiUnavailableError(this.stopped);
+    let res: Response;
+    try {
+      res = await this.request(url);
+    } catch (err) {
+      if (err instanceof WikiUnavailableError) this.stopIfAsked(err.message);
+      throw err;
+    }
     // 429/5xx и прочее — временный сбой: не кэшируется, место считается «не искали» (повтор следующим прогоном).
-    if (data === undefined) throw new WikiUnavailableError(`Вікіпедія: HTTP ${res.status}`);
+    if (!res.ok && res.status !== 404) {
+      const message = `Вікіпедія: HTTP ${res.status}`;
+      this.stopIfAsked(message);
+      throw new WikiUnavailableError(message);
+    }
+    // 404 (нет статьи) — тоже ответ: кэшируется как null.
+    let data: unknown = null;
+    if (res.ok) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        // Не JSON (страница ошибки прокси) или обрыв тела: то же, что временный сбой, прогон идёт дальше к записи.
+        throw new WikiUnavailableError(`Вікіпедія: не JSON (${err instanceof Error ? err.name : "ошибка"})`);
+      }
+    }
     await mkdir(this.options.cacheDir, { recursive: true });
     await writeFile(file, JSON.stringify(data));
     return data;
   }
 
-  async geosearch(lang: string, at: LonLat, radiusM = WIKI_RADIUS_M): Promise<GeoHit[]> {
+  private stopIfAsked(reason: string): void {
+    if (this.options.stopOnUnavailable) this.stopped = reason;
+  }
+
+  async geosearch(lang: string, at: LonLat, radiusM = WIKI_RADIUS_M, limit = 30): Promise<GeoHit[]> {
     const url =
       `https://${lang}.wikipedia.org/w/api.php?action=query&list=geosearch&format=json&formatversion=2` +
-      `&gscoord=${at.lat.toFixed(5)}%7C${at.lon.toFixed(5)}&gsradius=${radiusM}&gslimit=100`;
+      `&gscoord=${at.lat.toFixed(5)}%7C${at.lon.toFixed(5)}&gsradius=${radiusM}&gslimit=${limit}`;
     const data = await this.getJson(url);
     const list = isObject(data) && isObject(data.query) ? data.query.geosearch : undefined;
     if (!Array.isArray(list)) return [];
@@ -422,7 +381,13 @@ export class WikipediaClient {
   async summary(
     lang: string,
     title: string,
-  ): Promise<{ title: string; extract: string; url: string; wikidataId: string | null } | null> {
+  ): Promise<{
+    title: string;
+    extract: string;
+    url: string;
+    fileTitle: string | null;
+    wikidataId: string | null;
+  } | null> {
     const data = await this.getJson(
       `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`,
     );
@@ -433,29 +398,62 @@ export class WikipediaClient {
     const url =
       httpsUrl(urls?.page) ?? httpsUrl(`https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`);
     if (!extract || !url) return null;
-    // Объект Wikidata статьи: фото — только его P18 (картинка статьи может изображать другое).
+    // Имя файла картинки статьи — из адреса оригинала (…/commons/…/Имя.jpg); не Commons — без фото.
+    let fileTitle: string | null = null;
+    const orig = isObject(data.originalimage) ? data.originalimage.source : undefined;
+    if (typeof orig === "string" && /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\//.test(orig)) {
+      const last = new URL(orig).pathname.split("/").pop();
+      if (last) fileTitle = decodeURIComponent(last);
+    }
+    // Объект Wikidata статьи (строгий режим: тип P31 и фото P18 — только его).
     const wikidataId =
       typeof data.wikibase_item === "string" && /^Q\d+$/.test(data.wikibase_item) ? data.wikibase_item : null;
-    return { title: typeof data.title === "string" ? data.title : title, extract, url, wikidataId };
+    return {
+      title: typeof data.title === "string" ? data.title : title,
+      extract,
+      url,
+      fileTitle,
+      wikidataId,
+    };
   }
 
-  /** Файл P18 («зображення») объекта Wikidata или null. */
-  async wikidataImage(qid: string): Promise<string | null> {
+  /** Значения свойства объекта Wikidata; устаревшие (rank deprecated) — нет. */
+  private async wikidataClaims(qid: string, property: string): Promise<Record<string, unknown>[]> {
     const data = await this.getJson(
-      `https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=${qid}&property=P18`,
+      `https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=${qid}&property=${property}`,
     );
-    const claims = isObject(data) && isObject(data.claims) ? data.claims.P18 : undefined;
-    if (!Array.isArray(claims)) return null;
-    // Предпочтительное значение (rank preferred), иначе первое обычное; устаревшие (deprecated) — нет.
-    const ranked = claims.filter((c): c is Record<string, unknown> => isObject(c) && c.rank !== "deprecated");
+    const claims = isObject(data) && isObject(data.claims) ? data.claims[property] : undefined;
+    if (!Array.isArray(claims)) return [];
+    return claims.filter((c): c is Record<string, unknown> => isObject(c) && c.rank !== "deprecated");
+  }
+
+  /** Файл P18 («зображення») объекта Wikidata или null: rank preferred, иначе первое обычное значение. */
+  async wikidataImage(qid: string): Promise<string | null> {
+    const ranked = await this.wikidataClaims(qid, "P18");
     const pick = ranked.find((c) => c.rank === "preferred") ?? ranked[0];
     const snak = pick && isObject(pick.mainsnak) ? pick.mainsnak : undefined;
     const value = snak && isObject(snak.datavalue) ? snak.datavalue.value : undefined;
     return typeof value === "string" && value.trim() ? value.trim() : null;
   }
 
-  /** Фото Commons: адрес превью до 1200 px, автор, лицензия; несвободная лицензия или нет данных — null. */
-  async commonsImage(fileTitle: string): Promise<PlaceEnrichmentWiki["image"]> {
+  /** Классы P31 («є одним із») объекта Wikidata: Q-идентификаторы. */
+  async wikidataClasses(qid: string): Promise<string[]> {
+    return (await this.wikidataClaims(qid, "P31")).flatMap((c) => {
+      const snak = isObject(c.mainsnak) ? c.mainsnak : undefined;
+      const value = snak && isObject(snak.datavalue) ? snak.datavalue.value : undefined;
+      const id = isObject(value) ? value.id : undefined;
+      return typeof id === "string" ? [id] : [];
+    });
+  }
+
+  /**
+   * Фото Commons: адрес превью до 1200 px, автор, лицензия; несвободная лицензия или нет данных — null.
+   * requireAuthor (строгий режим) — файл без указанного автора тоже null: подпись обязательна.
+   */
+  async commonsImage(
+    fileTitle: string,
+    opts: { requireAuthor?: boolean } = {},
+  ): Promise<PlaceEnrichmentWiki["image"]> {
     const url =
       "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo" +
       `&iiprop=url%7Cextmetadata&iiurlwidth=1200&titles=${encodeURIComponent(`File:${fileTitle}`)}`;
@@ -476,11 +474,13 @@ export class WikipediaClient {
     const src = clean(info.thumburl) ?? clean(info.url);
     const sourceUrl = httpsUrl(info.descriptionurl);
     if (!src || !sourceUrl || !/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(src)) return null;
+    const author = stripHtml(val("Artist"), 120);
+    if (opts.requireAuthor && (!author || UNKNOWN_AUTHOR.test(author))) return null;
     return {
       url: src,
       width: typeof info.thumbwidth === "number" ? info.thumbwidth : null,
       height: typeof info.thumbheight === "number" ? info.thumbheight : null,
-      author: stripHtml(val("Artist"), 120),
+      author,
       license,
       licenseUrl: httpsUrl(val("LicenseUrl")),
       sourceUrl,
@@ -489,18 +489,13 @@ export class WikipediaClient {
 }
 
 /** Лучшая статья рядом: уверенное совпадение названия, при равенстве — ближе. */
-export function bestHit(
-  placeName: string,
-  at: LonLat,
-  hits: readonly GeoHit[],
-  radiusM = WIKI_RADIUS_M,
-): GeoHit | null {
+export function bestHit(placeName: string, at: LonLat, hits: readonly GeoHit[]): GeoHit | null {
   let best: { hit: GeoHit; score: number; dist: number } | null = null;
   for (const hit of hits) {
     const score = nameScore(placeName, hit.title);
     if (score < MATCH_MIN_SCORE) continue;
     const dist = haversineMeters(at, { lon: hit.lon, lat: hit.lat });
-    if (dist > radiusM) continue;
+    if (dist > WIKI_RADIUS_M) continue;
     if (!best || score > best.score || (score === best.score && dist < best.dist))
       best = { hit, score, dist };
   }
@@ -520,17 +515,11 @@ export async function findWikipedia(
     { lang: "en", name: transliterate(place.name) },
   ];
   for (const { lang, name } of attempts) {
-    const radius = place.radiusM ?? WIKI_RADIUS_M;
-    // Рядом по координатам; не нашлось — поиск по названию, но координаты статьи всё равно ≤ радиуса.
-    const hit =
-      bestHit(name, place.location, await client.geosearch(lang, place.location, radius), radius) ??
-      bestHit(name, place.location, await client.searchHits(lang, name), radius);
+    const hit = bestHit(name, place.location, await client.geosearch(lang, place.location));
     if (!hit) continue;
     const s = await client.summary(lang, hit.title);
     if (!s) continue;
-    // Фото — только P18 объекта статьи; нет P18 — без фото (не подбираем по совпадению слов).
-    const file = s.wikidataId ? await client.wikidataImage(s.wikidataId) : null;
-    const image = file ? await client.commonsImage(file) : null;
+    const image = s.fileTitle ? await client.commonsImage(s.fileTitle) : null;
     const extract = shortExtract(s.extract);
     const truncated = extract !== s.extract.replace(/\s+/g, " ").trim();
     return { lang, title: s.title, url: s.url, extract, truncated, image };

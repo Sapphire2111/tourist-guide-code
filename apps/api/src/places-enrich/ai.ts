@@ -105,39 +105,81 @@ export const SYSTEM_PROMPT = `Ти пишеш короткий текст для
 - Якщо фактів замало для змістовного тексту, відповідай рівно: ${AI_NO_DATA}`;
 
 /**
- * Текст Вікіпедії (CC BY-SA) — только источник фактов: пересказ своими словами, без дословных фраз. Правило
- * добавляется лишь при фактах из Вікіпедії (тексты мест без неё не перегенерируются).
+ * Режим --covers-source wikimedia: текст Вікіпедії (CC BY-SA) — только источник фактов, пересказ своими словами. В
+ * обычном режиме правила нет: промпт входит в хэш, и его смена сняла бы готовые тексты при прогоне без --ai.
  */
 export const WIKI_RULE = `
 - Факт «Вікіпедія» — лише джерело фактів (висота, розташування, історія тощо): перекажи їх своїми словами, не копіюй речень і зворотів зі статті дослівно.`;
 
-export const systemPrompt = (facts: AiFacts) =>
-  facts["Вікіпедія"] ? `${SYSTEM_PROMPT}${WIKI_RULE}` : SYSTEM_PROMPT;
+export const systemPrompt = (facts: AiFacts, paraphrase = false) =>
+  paraphrase && facts["Вікіпедія"] ? `${SYSTEM_PROMPT}${WIKI_RULE}` : SYSTEM_PROMPT;
 
-export function factsHash(facts: AiFacts): string {
+export function factsHash(facts: AiFacts, paraphrase = false): string {
   return createHash("sha256")
-    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${systemPrompt(facts)}|${JSON.stringify(facts)}`)
+    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${systemPrompt(facts, paraphrase)}|${JSON.stringify(facts)}`)
     .digest("hex")
     .slice(0, 32);
 }
 
 /** Параметры одного запроса (и для Batches, и для теста). */
-export function requestParams(facts: AiFacts): Anthropic.MessageCreateParamsNonStreaming {
+export function requestParams(facts: AiFacts, paraphrase = false): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: AI_MODEL,
     max_tokens: AI_MAX_TOKENS,
     // Короткий текст по фактам: низкое усилие — дешевле, качество достаточное.
     output_config: { effort: "low" },
-    system: systemPrompt(facts),
+    system: systemPrompt(facts, paraphrase),
     messages: [{ role: "user", content: `Факти про місце (JSON):\n${JSON.stringify(facts, null, 1)}` }],
   };
 }
 
+/** Цепочка из стольких слов подряд — уже оборот, а не название или факт («водоспад на річці Прут» — 4 слова). */
+const COPY_NGRAM = 5;
 /**
- * Проверка ответа модели: только текст, 1–4 предложения, 30–500 символов, без ссылок/разметки/телефонов. Иное
- * (в т. ч. «НЕМАЄ ДАНИХ») — null: текст в карточку не попадёт.
+ * Копией считается: ≥ 20 % пятисловий текста есть в статье или ≥ 8 совпавших слов подряд. В тексте 2–3 предложения,
+ * ≈ 40 слов и ≈ 36 пятисловий: одна общая фактическая фраза — 3 %, две-три — до 15 %, это нормальный пересказ; 20 % —
+ * уже несколько переписанных оборотов; 8 слов подряд — целая часть предложения (CC BY-SA, дословно не копировать).
  */
-export function acceptText(raw: string): string | null {
+const COPY_MAX_SHARE = 0.2;
+const COPY_MAX_RUN_WORDS = 8;
+
+const copyWords = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[’'ʼ`]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+/** Текст переписывает статью дословно (без учёта регистра, знаков и порядка предложений). */
+export function copiesSource(text: string, source: string | null | undefined): boolean {
+  if (!source) return false;
+  const t = copyWords(text);
+  const s = copyWords(source);
+  if (t.length < COPY_NGRAM || s.length < COPY_NGRAM) return false;
+  const grams = new Set<string>();
+  for (let i = 0; i + COPY_NGRAM <= s.length; i++) grams.add(s.slice(i, i + COPY_NGRAM).join(" "));
+  const total = t.length - COPY_NGRAM + 1;
+  let hits = 0;
+  let run = 0;
+  let longest = 0;
+  for (let i = 0; i < total; i++) {
+    run = grams.has(t.slice(i, i + COPY_NGRAM).join(" ")) ? run + 1 : 0;
+    if (run) hits++;
+    longest = Math.max(longest, run);
+  }
+  return hits / total >= COPY_MAX_SHARE || (longest > 0 && longest + COPY_NGRAM - 1 >= COPY_MAX_RUN_WORDS);
+}
+
+const wikiSource = (facts: AiFacts) => {
+  const v = facts["Вікіпедія"];
+  return typeof v === "string" ? v : null;
+};
+
+/**
+ * Проверка ответа модели: только текст, 1–4 предложения, 30–500 символов, без ссылок/разметки/телефонов, не копия
+ * статьи source. Иное (в т. ч. «НЕМАЄ ДАНИХ») — null: текст в карточку не попадёт.
+ */
+export function acceptText(raw: string, source?: string | null): string | null {
   const t = raw
     .replace(/\s+/g, " ")
     .trim()
@@ -148,12 +190,32 @@ export function acceptText(raw: string): string | null {
   if (/https?:|www\.|[*#_`[\]<>]|\+?\d[\d\s-]{8,}/i.test(t)) return null;
   const sentences = t.split(/[.!?…]+(?:\s|$)/).filter((s) => s.trim().length > 0);
   if (sentences.length > 4) return null;
+  if (copiesSource(t, source)) return null;
   return t;
 }
 
 export type AiResult = { text: string | null; model: string; generatedAt: string };
 
-export type AiItem = { hash: string; facts: AiFacts };
+/** paraphrase — режим Wikimedia: в промпте правило пересказа (WIKI_RULE), хэш считан с ним же. */
+export type AiItem = { hash: string; facts: AiFacts; paraphrase?: boolean };
+
+/**
+ * Нужен ли месту текст ИИ. Режим Wikimedia: только туда, где текста нет (по всем местам, не только с сохранённым
+ * Google), и только при найденной статье. Из кэша импорта: только где текста нет.
+ */
+export function aiEligible(
+  p: { googlePlaceId: string; googleFromImport?: boolean; wiki?: unknown },
+  withAi: ReadonlySet<string>,
+  wikimediaOnly: boolean,
+): boolean {
+  if ((wikimediaOnly || p.googleFromImport) && withAi.has(p.googlePlaceId)) return false;
+  return !wikimediaOnly || Boolean(p.wiki);
+}
+
+/** Текст из кэша, который можно записать: пакет прошлых прогонов мог быть принят без статьи под рукой. */
+export function cachedTextAllowed(result: AiResult | null, source: string | null | undefined) {
+  return result?.text && copiesSource(result.text, source) ? { ...result, text: null } : result;
+}
 
 /** Кэш результатов и состояние отправленного пакета — файлы в каталоге кэша. */
 export class AiStore {
@@ -247,6 +309,8 @@ export async function runAi(
     usage: { inputTokens: 0, outputTokens: 0 },
   };
 
+  const sourceOf = new Map(items.map((it) => [it.hash, wikiSource(it.facts)]));
+
   const collect = async (batchId: string): Promise<boolean> => {
     const started = Date.now();
     for (;;) {
@@ -274,7 +338,7 @@ export async function runAi(
         stats.errored++;
         continue;
       }
-      const text = acceptText(raw);
+      const text = acceptText(raw, sourceOf.get(r.custom_id));
       if (text) stats.accepted++;
       else stats.rejected++;
       await store.put(r.custom_id, { text, model: msg.model || AI_MODEL, generatedAt });
@@ -301,7 +365,7 @@ export async function runAi(
   const batch = missing.slice(0, opts.maxNew);
   if (!batch.length) return stats;
   const created = await batches.create({
-    requests: batch.map((it) => ({ custom_id: it.hash, params: requestParams(it.facts) })),
+    requests: batch.map((it) => ({ custom_id: it.hash, params: requestParams(it.facts, it.paraphrase) })),
   });
   stats.batchId = created.id;
   stats.submitted = batch.length;

@@ -22,15 +22,7 @@ import { parseEnrichArgs } from "./args.js";
 import { writeEnrichment } from "./writer.js";
 import { amenitiesOf, normalizeDetails } from "./details.js";
 import { enrich } from "./enrich.js";
-import {
-  bestHit,
-  findWikipedia,
-  nameScore,
-  transliterate,
-  wikiRadius,
-  WikipediaClient,
-  WikiUnavailableError,
-} from "./wikipedia.js";
+import { bestHit, findWikipedia, nameScore, transliterate, WikipediaClient } from "./wikipedia.js";
 
 const tmp = () => mkdtemp(path.join(tmpdir(), "tg-enrich-"));
 
@@ -235,13 +227,6 @@ describe("Вікіпедія — только уверенное совпаде�
     expect(nameScore("Водоспад", "Водоспад Женецький Гук")).toBe(0);
     expect(nameScore("Скелі Довбуша", "Церква Різдва Пресвятої Богородиці")).toBe(0);
     expect(nameScore(transliterate("Водоспад Пробій"), "Probiy Waterfall")).toBe(1);
-    // Уточнение в скобках не штрафует; противоречащий тип объекта — не совпадение.
-    expect(nameScore("гора Петрос", "Петрос (Чорногора)")).toBe(1);
-    expect(nameScore("Хом'як", "Хом'як (гора)")).toBe(1);
-    expect(nameScore("Сокільський", "Сокільський хребет")).toBe(1);
-    expect(nameScore("Гора Близниця", "Скелі Близниці")).toBe(0);
-    expect(nameScore("Водоспад Пробій", "Пробій (гора)")).toBe(0);
-    expect(nameScore("гора Петрос", "Петрос (печера)")).toBe(0);
   });
 
   it("bestHit: дальше радиуса — нет", () => {
@@ -254,21 +239,8 @@ describe("Вікіпедія — только уверенное совпаде�
     ).not.toBeNull();
   });
 
-  const wikiFetch = (license: string, p18: string | null = "Probiy.jpg") =>
+  const wikiFetch = (license: string) =>
     vi.fn((url: string) => {
-      if (url.startsWith("https://www.wikidata.org/"))
-        return Promise.resolve(
-          jsonRes({
-            claims: p18
-              ? {
-                  P18: [
-                    { rank: "deprecated", mainsnak: { datavalue: { value: "Old.jpg" } } },
-                    { rank: "normal", mainsnak: { datavalue: { value: p18 } } },
-                  ],
-                }
-              : {},
-          }),
-        );
       if (url.includes("list=geosearch") && url.startsWith("https://uk."))
         return Promise.resolve(
           jsonRes({
@@ -287,9 +259,7 @@ describe("Вікіпедія — только уверенное совпаде�
             title: "Пробій (водоспад)",
             extract: "Пробій — водоспад в Українських Карпатах, на річці Прут. Розташований у місті Яремче.",
             content_urls: { mobile: { page: "https://uk.m.wikipedia.org/wiki/Пробій" } },
-            wikibase_item: "Q123",
-            // Картинка статьи не берётся: фото — только P18 объекта Wikidata.
-            originalimage: { source: "https://upload.wikimedia.org/wikipedia/commons/a/ab/Other.jpg" },
+            originalimage: { source: "https://upload.wikimedia.org/wikipedia/commons/a/ab/Probiy.jpg" },
           }),
         );
       if (url.startsWith("https://commons.wikimedia.org/"))
@@ -340,63 +310,13 @@ describe("Вікіпедія — только уверенное совпаде�
     expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toMatchObject({
       "User-Agent": expect.stringContaining("TouristGuide"),
     });
-    // Файл Commons — из P18 (не устаревшего и не картинки статьи).
-    const commons = f.mock.calls.map((c) => c[0]).find((u) => u.startsWith("https://commons."));
-    expect(commons).toContain(encodeURIComponent("File:Probiy.jpg"));
-  });
-
-  it("нет P18 у объекта статьи — статья есть, фото нет (картинку статьи не подставляем)", async () => {
-    const f = wikiFetch("CC BY-SA 4.0", null);
-    const client = new WikipediaClient({ cacheDir: await tmp(), maxRequests: 10, fetch: f as typeof fetch });
-    const w = await findWikipedia(client, {
-      name: "Водоспад Пробій",
-      location: { lon: 24.553, lat: 48.446 },
-    });
-    expect(w?.title).toBe("Пробій (водоспад)");
-    expect(w?.image).toBeNull();
-    expect(f.mock.calls.some((c) => c[0].startsWith("https://commons."))).toBe(false);
-  });
-
-  it("радиус природы — 3 км: статья в 2,5 км находится только с radiusM", () => {
-    const at = { lon: 24.55, lat: 48.45 };
-    const hits = [{ title: "Пробій (водоспад)", lat: 48.4725, lon: 24.55, dist: 0 }];
-    expect(bestHit("Водоспад Пробій", at, hits)).toBeNull();
-    expect(bestHit("Водоспад Пробій", at, hits, wikiRadius("nature"))).not.toBeNull();
-    expect(wikiRadius("museums")).toBe(1500);
-  });
-
-  it("429 Wikimedia — пауза (Retry-After) и повтор; после всех повторов — «недоступна»", async () => {
-    const sleeps: number[] = [];
-    const f = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("busy", { status: 429, headers: { "retry-after": "7" } }))
-      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
-      .mockResolvedValue(jsonRes({ query: { geosearch: [] } }));
-    const client = new WikipediaClient({
-      cacheDir: await tmp(),
-      maxRequests: 10,
-      fetch: f as typeof fetch,
-      retryDelaysMs: [1000, 2000],
-      sleep: (ms) => {
-        sleeps.push(ms);
-        return Promise.resolve();
-      },
-    });
-    expect(await client.geosearch("uk", { lon: 24.5, lat: 48.4 })).toEqual([]);
-    expect(sleeps).toEqual([7000, 2000]);
-    expect(client.retries).toBe(2);
-    expect(client.requests).toBe(1);
-
-    const busy = vi.fn(() => Promise.resolve(new Response("busy", { status: 429 })));
-    const c2 = new WikipediaClient({
-      cacheDir: await tmp(),
-      maxRequests: 10,
-      fetch: busy as typeof fetch,
-      retryDelaysMs: [1],
-      sleep: () => Promise.resolve(),
-    });
-    await expect(c2.geosearch("uk", { lon: 24.5, lat: 48.4 })).rejects.toBeInstanceOf(WikiUnavailableError);
-    expect(busy).toHaveBeenCalledTimes(2);
+    // Обычный режим как раньше: файл — картинка статьи, без Wikidata; статьи рядом — только geosearch.
+    const urls = f.mock.calls.map((c) => c[0]);
+    expect(urls.find((u) => u.startsWith("https://commons."))).toContain(
+      encodeURIComponent("File:Probiy.jpg"),
+    );
+    expect(urls.some((u) => u.includes("wikidata.org") || u.includes("generator=search"))).toBe(false);
+    expect(urls[0]).toContain("gsradius=1500&gslimit=30");
   });
 
   it("несвободная лицензия — без фото; нет совпадения — null", async () => {

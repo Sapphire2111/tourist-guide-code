@@ -264,8 +264,10 @@ export async function runCovers(
   // После 429 от Wikimedia — к ней больше не обращаться до конца прогона.
   let wikiStopped = false;
   for (const p of places) {
-    if (deps.wikimediaOnly && !p.wiki?.image) {
-      if (!deps.existing.has(p.googlePlaceId)) stats.noWikiImage++;
+    // Режим Wikimedia: подпись автора обязательна, файл без неё — как нет файла. wiki undefined — место не искали
+    // (сбой или лимит Вікіпедії): это не «нет фото».
+    if (deps.wikimediaOnly && !p.wiki?.image?.author) {
+      if (p.wiki !== undefined && !deps.existing.has(p.googlePlaceId)) stats.noWikiImage++;
       continue;
     }
     if (!hasCoverSource(p)) continue;
@@ -297,7 +299,8 @@ export async function runCovers(
     } catch (err) {
       if (err instanceof WikimediaUnavailableError) {
         deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message} — отложена до следующего прогона`);
-        if (err.rateLimited) wikiStopped = true;
+        // Режим Wikimedia ждёт паузы повторов: и после 5xx/сети следующие обложки ждали бы их снова.
+        if (err.rateLimited || deps.wikimediaOnly) wikiStopped = true;
         stats.wikiUnavailable++;
         continue;
       }

@@ -16,8 +16,8 @@ import {
   WikiLimitError,
   WikiUnavailableError,
   type WikipediaClient,
-  wikiRadius,
 } from "./wikipedia.js";
+import { findWikipediaStrict, WIKIMEDIA_CATEGORIES } from "./wiki-match.js";
 
 export type EnrichedPlace = {
   googlePlaceId: string;
@@ -87,6 +87,11 @@ export type EnrichOptions = {
   freePhotos?: boolean;
   /** Порядок по приоритету: важные категории, затем по числу оценок Google. */
   prioritize?: boolean;
+  /**
+   * --covers-source wikimedia: строгое сопоставление (wiki-match.ts), только подходящие категории (--limit считает
+   * только их), запросы Google запрещает вызывающий.
+   */
+  wikimediaOnly?: boolean;
   log?: (line: string) => void;
 };
 
@@ -146,7 +151,12 @@ export async function enrich(
     skippedByCategory: 0,
   };
   const out: EnrichedPlace[] = [];
-  for (const p of opts.prioritize ? prioritized(places) : places) {
+  const wikiCategories = opts.wikimediaOnly ? WIKIMEDIA_CATEGORIES : WIKI_CATEGORIES;
+  // Режим Wikimedia: прочие категории не занимают --limit и не попадают в запись.
+  const suitable = opts.wikimediaOnly ? places.filter((p) => wikiCategories.has(p.categoryCode)) : places;
+  stats.skippedByCategory += places.length - suitable.length;
+  let warnedWikiStop = false;
+  for (const p of opts.prioritize ? prioritized(suitable) : suitable) {
     if (opts.limit !== undefined && out.length >= opts.limit) break;
     if (opts.only && !opts.only.has(p.googlePlaceId)) continue;
     if (
@@ -232,14 +242,16 @@ export async function enrich(
       if (g.summary) stats.withSummary++;
       if (g.rating !== null) stats.withRating++;
     }
-    if (wikipedia && opts.wiki !== false && WIKI_CATEGORIES.has(p.categoryCode) && !stats.wikiLimitReached) {
+    if (wikipedia && opts.wiki !== false && wikiCategories.has(p.categoryCode) && !stats.wikiLimitReached) {
       try {
         stats.wikiSearched++;
-        item.wiki = await findWikipedia(wikipedia, {
-          name: p.name,
-          location: p.at,
-          radiusM: wikiRadius(p.categoryCode),
-        });
+        item.wiki = opts.wikimediaOnly
+          ? await findWikipediaStrict(wikipedia, {
+              name: p.name,
+              location: p.at,
+              categoryCode: p.categoryCode,
+            })
+          : await findWikipedia(wikipedia, { name: p.name, location: p.at });
         if (item.wiki) {
           stats.wikiFound++;
           if (item.wiki.image) stats.wikiWithImage++;
@@ -249,6 +261,10 @@ export async function enrich(
           stats.wikiSearched--;
           stats.wikiUnavailable++;
           item.wiki = undefined;
+          if (wikipedia.stopped && !warnedWikiStop) {
+            log(`${wikipedia.stopped} — запросы к Вікіпедії остановлены до конца прогона, дальше только кэш`);
+            warnedWikiStop = true;
+          }
         } else {
           if (!(err instanceof WikiLimitError)) throw err;
           log(err.message);

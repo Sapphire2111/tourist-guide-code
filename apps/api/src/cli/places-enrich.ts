@@ -19,7 +19,9 @@ import {
   AI_BATCH_USD_PER_MTOK,
   AI_MODEL,
   AiStore,
+  aiEligible,
   buildFacts,
+  cachedTextAllowed,
   estimateTokens,
   factsHash,
   runAi,
@@ -35,7 +37,7 @@ import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import { CATEGORY_NAMES, findRegionId, ImportWriteError } from "../places-import/writer.js";
 
-/** Паузы перед повторами запросов к Wikimedia при 429/5xx (Retry-After — если дольше). */
+/** Режим Wikimedia: паузы перед повторами запросов при 429/5xx (Retry-After — если дольше); не снято — стоп. */
 const WIKI_RETRY_DELAYS_MS = [5_000, 20_000, 60_000];
 
 const LOCALITY_UK = new Map(IMPORT_LOCALITIES.map((l) => [l.code, l.name.uk]));
@@ -98,8 +100,9 @@ try {
         cacheDir: args.cacheDir,
         maxRequests: args.maxWikiRequests,
         planOnly: args.plan,
-        retryDelaysMs: WIKI_RETRY_DELAYS_MS,
-        minIntervalMs: 250,
+        ...(noGoogle
+          ? { retryDelaysMs: WIKI_RETRY_DELAYS_MS, minIntervalMs: 250, stopOnUnavailable: true }
+          : {}),
       })
     : undefined;
   const enriched = await enrich(noGoogle ? dbPlaces : found.places, google, wikipedia, {
@@ -112,23 +115,23 @@ try {
     freePhotos: !noGoogle,
     skipDetails: DEFAULT_SKIP_DETAILS,
     prioritize: true,
+    wikimediaOnly: noGoogle,
     log: console.log,
   });
   const stats = enriched.stats;
   if (noGoogle) {
-    // Сохранённые данные Google — к фактам ИИ (как из кэша импорта: запись их не затирает, текст ИИ — только где нет).
+    // Сохранённые данные Google — только к фактам ИИ; запись режима колонки Google не трогает.
     const saved = new Map(dbPlaces.map((p) => [p.googlePlaceId, p.savedGoogle]));
-    for (const p of enriched.places) {
-      const g = saved.get(p.googlePlaceId);
-      if (g) {
-        p.google = g;
-        p.googleFromImport = true;
-      }
-    }
+    for (const p of enriched.places) p.google = saved.get(p.googlePlaceId) ?? null;
   }
   // Из кэша импорта (беднее Details): слить с сохранённым до фактов ИИ; места с готовым текстом ИИ — без пакета.
-  const { places, withAi } =
-    db && regionId
+  // Режим Wikimedia: готовый текст учитывается у всех мест, не только с сохранённым Google.
+  const { places, withAi } = noGoogle
+    ? {
+        places: enriched.places,
+        withAi: new Set(dbPlaces.filter((p) => p.hasAi).map((p) => p.googlePlaceId)),
+      }
+    : db && regionId
       ? await withSavedGoogle(db, regionId, enriched.places)
       : { places: enriched.places, withAi: new Set<string>() };
   const report: Record<string, unknown> = { enrich: stats };
@@ -171,8 +174,7 @@ try {
       existing,
       write,
       log: console.log,
-      wikimediaOnly: noGoogle,
-      retryDelaysMs: WIKI_RETRY_DELAYS_MS,
+      ...(noGoogle ? { wikimediaOnly: true, retryDelaysMs: WIKI_RETRY_DELAYS_MS } : {}),
     });
     // В --plan Details/фото ещё нет: источник обложки — фото в кэше поиска импорта.
     const planCovers = args.plan
@@ -207,9 +209,7 @@ try {
   const store = new AiStore(args.cacheDir);
   const aiItems = new Map<string, AiItem>();
   for (const p of places) {
-    if (p.googleFromImport && withAi.has(p.googlePlaceId)) continue;
-    // Только Wikimedia: тексты ИИ — лишь для мест с найденной статьёй (источник фактов — Вікіпедія).
-    if (noGoogle && !p.wiki) continue;
+    if (!aiEligible(p, withAi, noGoogle)) continue;
     const facts = buildFacts({
       name: p.name,
       category: CATEGORY_NAMES[p.categoryCode] ?? p.categoryCode,
@@ -218,7 +218,8 @@ try {
       google: p.google,
       wiki: p.wiki ?? null,
     });
-    if (facts) aiItems.set(p.googlePlaceId, { hash: factsHash(facts), facts });
+    if (facts)
+      aiItems.set(p.googlePlaceId, { hash: factsHash(facts, noGoogle), facts, paraphrase: noGoogle });
   }
   const aiMissing: AiItem[] = [];
   for (const it of aiItems.values()) if (!(await store.get(it.hash))) aiMissing.push(it);
@@ -306,18 +307,21 @@ try {
   const items: EnrichWriteItem[] = [];
   for (const p of places) {
     const it = aiItems.get(p.googlePlaceId);
-    const result: AiResult | null = it ? await store.get(it.hash) : null;
+    const cached: AiResult | null = it ? await store.get(it.hash) : null;
+    // Режим Wikimedia: копия статьи не пишется, даже если попала в кэш результатов.
+    const result = noGoogle ? cachedTextAllowed(cached, p.wiki?.extract) : cached;
     // Хэш фактов передаётся всегда: устаревший текст (другие факты, нового ещё нет) запись снимает. Фактов нет при
-    // свежих данных Google — текст тоже снимается (hash null).
+    // свежих данных Google — текст тоже снимается (hash null). Режим Wikimedia ничего не снимает: данные Google в нём
+    // не свежие, а ранее сохранённые.
     items.push({
       ...p,
-      ai: it ? { hash: it.hash, result } : p.google ? { hash: null, result: null } : undefined,
+      ai: it ? { hash: it.hash, result } : p.google && !noGoogle ? { hash: null, result: null } : undefined,
     });
   }
 
   if (!args.plan && !args.dryRun) {
     if (!db || !regionId) throw new ImportWriteError("Не задан DATABASE_URL (или DATABASE_MIGRATION_URL)");
-    const written = await writeEnrichment(db, regionId, items, new Date());
+    const written = await writeEnrichment(db, regionId, items, new Date(), { wikimediaOnly: noGoogle });
     report.write = written;
     console.log(
       `\nЗапись в ${args.region}: обогащено мест ${written.written}, ИИ-текстов ${written.aiWritten}, ` +
@@ -337,6 +341,8 @@ try {
       JSON.stringify(
         {
           ...report,
+          // Режим Wikimedia: статьи, отклонённые по типу P31 (проверка таблицы типов).
+          wikiTypeRejects: wikipedia?.typeRejects ?? [],
           places: items.map((p) => ({
             googlePlaceId: p.googlePlaceId,
             name: p.name,

@@ -190,5 +190,9 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
     throw new EnrichArgsError(
       "places:enrich: --covers-source wikimedia берёт места из БД — без --plan и --from-import-cache",
     );
+  if (args.coversSource === "wikimedia" && !args.covers)
+    throw new EnrichArgsError("places:enrich: --covers-source wikimedia — только вместе с --covers");
+  if (args.coversSource === "wikimedia" && !args.wiki)
+    throw new EnrichArgsError("places:enrich: --covers-source wikimedia нельзя с --no-wiki");
   return args;
 }
