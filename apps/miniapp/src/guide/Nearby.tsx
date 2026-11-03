@@ -5,12 +5,12 @@ import { pickLocalized } from "@tg/i18n";
 import { useDesign } from "../design/DesignProvider.js";
 import { useCategoryIndex } from "./categories.js";
 import { ICONS } from "../design/Ornament.js";
-import { Button, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
-import { AsyncView, PlaceList } from "./parts.js";
+import { AsyncView, PlaceList, useDistance } from "./parts.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
 
 /** Ползунок радиуса, м: от 500 м до 10 км шагом 500 м. */
@@ -82,9 +82,29 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
     <div className={design === "modern" ? "modern-nearby" : undefined}>
       <Stack>
         <div className={design === "modern" ? "modern-nearby-head" : undefined}>
+          {design === "modern" && (
+            <svg
+              className="modern-nearby-art"
+              viewBox="0 0 400 90"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M0 90 L0 38 L70 14 L155 44 L235 12 L320 40 L400 18 L400 90 Z"
+                fill="rgba(255,255,255,0.06)"
+              />
+              <path d="M0 90 L0 58 L95 36 L195 62 L290 32 L400 54 L400 90 Z" fill="rgba(255,255,255,0.08)" />
+              <ellipse cx="200" cy="70" rx="220" ry="18" fill="rgba(255,255,255,0.12)" />
+            </svg>
+          )}
           <div className={design === "modern" ? "modern-nearby-titles" : undefined}>
             <h1>{t("miniapp.nearby.title")}</h1>
             {caption && <p data-testid="nearby-caption">{caption}</p>}
+            {design === "modern" && (
+              <span className="modern-nearby-badge" aria-hidden="true">
+                {ICONS.nearby}
+              </span>
+            )}
           </div>
           {geo.status === "denied" && (
             <p role="alert" data-testid="geo-off">
@@ -245,6 +265,7 @@ export function ModernNearbyResults({
   const { api } = useGuide();
   const categories = useCategoryIndex(api);
   const radiusText = useRadiusLabel()(radius);
+  const distanceLabel = useDistance();
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<HomeSection | "all">("all");
@@ -272,39 +293,44 @@ export function ModernNearbyResults({
         ),
     [list, section, query, categories, locale],
   );
+  const closest = visible[0];
+  const closestSection = closest ? categories.sectionOf(closest.categoryId) : null;
+  const closestDist = closest ? distanceLabel(closest.distanceMeters) : null;
   return (
     <div className="modern-nearby-results">
       <div className="modern-map-stage">
-        <div className="modern-toolbar">
-          <label className="modern-search">
-            {ICONS.search}
-            <input
-              type="search"
-              value={query}
-              aria-label={t("miniapp.modern.search")}
-              placeholder={t("miniapp.modern.search")}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
-            {(["map", "list"] as const).map((v) => (
-              <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
-                {v === "map" ? ICONS.plan : ICONS.nearby}
-                {t(`miniapp.modern.${v}`)}
+        <div className="modern-map-overlay">
+          <div className="modern-toolbar">
+            <label className="modern-search">
+              {ICONS.search}
+              <input
+                type="search"
+                value={query}
+                aria-label={t("miniapp.modern.search")}
+                placeholder={t("miniapp.modern.search")}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
+              {(["map", "list"] as const).map((v) => (
+                <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
+                  {v === "map" ? ICONS.plan : ICONS.nearby}
+                  {t(`miniapp.modern.${v}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
+            <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
+              {t("miniapp.modern.all")}
+            </button>
+            {sections.map((s) => (
+              <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
+                {ICONS[s]}
+                {t(`miniapp.section.${s}`)}
               </button>
             ))}
           </div>
-        </div>
-        <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
-          <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
-            {t("miniapp.modern.all")}
-          </button>
-          {sections.map((s) => (
-            <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
-              {ICONS[s]}
-              {t(`miniapp.section.${s}`)}
-            </button>
-          ))}
         </div>
         {view === "map" && (
           <div className="modern-map-panel">
@@ -316,6 +342,19 @@ export function ModernNearbyResults({
               maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
               me={me}
             />
+            {closest && (
+              <div className="modern-map-spot">
+                <span className="modern-map-spot-icon" aria-hidden="true">
+                  {ICONS[closestSection ?? "nearby"]}
+                </span>
+                <div className="modern-map-spot-body">
+                  {closestDist && <span className="modern-map-spot-dist">{closestDist}</span>}
+                  <Link to={`/place/${closest.id}`} className="modern-map-spot-title">
+                    {pickLocalized(closest.name, locale)}
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

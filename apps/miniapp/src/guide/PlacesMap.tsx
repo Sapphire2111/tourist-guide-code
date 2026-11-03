@@ -80,7 +80,12 @@ function groupLabel(g: MarkerGroup): MessageKey {
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** Значок маркера места: круг цвета группы, внутри значок раздела или номер остановки маршрута. */
-export function pinNode(group: MarkerGroup, stop: number | null): HTMLElement {
+export function pinNode(
+  group: MarkerGroup,
+  stop: number | null,
+  distance?: string,
+  closest?: boolean,
+): HTMLElement {
   const pin = document.createElement("div");
   pin.className = "kosiv-pin";
   pin.dataset.group = group;
@@ -89,6 +94,8 @@ export function pinNode(group: MarkerGroup, stop: number | null): HTMLElement {
     pin.textContent = String(stop);
     return pin;
   }
+  if (distance) pin.dataset.distance = distance;
+  if (closest) pin.dataset.closest = "true";
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
@@ -275,13 +282,19 @@ export default function PlacesMap({
         ),
       );
     }
+    const fmtDist = (m?: number | null) =>
+      m == null
+        ? undefined
+        : m < 1000
+          ? tRef.current("miniapp.place.distance", { n: Math.round(m) })
+          : tRef.current("miniapp.place.distanceKm", { n: (m / 1000).toFixed(1).replace(".", ",") });
     located.forEach((p, i) => {
       const group = markerGroup(indexRef.current.sectionOf(p.categoryId));
       const stop = route ? i + 1 : null;
       const marker = new libs.marker.AdvancedMarkerElement({
         position: { lat: p.location!.lat, lng: p.location!.lng },
         title: pickLocalized(p.name, localeRef.current),
-        content: pinNode(group, stop),
+        content: pinNode(group, stop, fmtDist(p.distanceMeters), i === 0 && p.distanceMeters != null),
         gmpClickable: true,
       });
       marker.addEventListener("gmp-click", () => {
@@ -387,8 +400,9 @@ export default function PlacesMap({
   useEffect(() => {
     for (const { marker, place, stop } of overlays.current.markers) {
       const group = markerGroup(index.sectionOf(place.categoryId));
-      if ((marker.content as HTMLElement | null)?.dataset?.group !== group)
-        marker.content = pinNode(group, stop);
+      const prev = marker.content as HTMLElement | null;
+      if (prev?.dataset?.group !== group)
+        marker.content = pinNode(group, stop, prev?.dataset?.distance, prev?.dataset?.closest === "true");
     }
   }, [index]);
 
