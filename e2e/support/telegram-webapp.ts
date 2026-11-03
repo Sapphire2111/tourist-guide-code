@@ -90,6 +90,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
       calls.push(name);
       effect();
     };
+  const pressHandlers: Record<string, (() => void)[]> = {};
   const button = (prefix: string) => {
     const state: Record<string, unknown> = {
       text: "",
@@ -114,8 +115,15 @@ function telegramInitScript(cfg: InitScriptConfig): void {
       disable: stub(`${prefix}.disable`, () => (state.isActive = false)),
       showProgress: stub(`${prefix}.showProgress`, () => (state.isProgressVisible = true)),
       hideProgress: stub(`${prefix}.hideProgress`, () => (state.isProgressVisible = false)),
-      onClick: stub(`${prefix}.onClick`),
-      offClick: stub(`${prefix}.offClick`),
+      // Обработчики хранятся: тест нажимает кнопку через __telegramPress("BackButton").
+      onClick(cb: () => void) {
+        calls.push(`${prefix}.onClick`);
+        (pressHandlers[prefix] ??= []).push(cb);
+      },
+      offClick(cb: () => void) {
+        calls.push(`${prefix}.offClick`);
+        pressHandlers[prefix] = (pressHandlers[prefix] ?? []).filter((h) => h !== cb);
+      },
     });
   };
   const handlers: Record<string, ((payload?: unknown) => void)[]> = {};
@@ -158,6 +166,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
     __telegramCalls: calls,
     __telegramEmit: (event: string, payload?: unknown) =>
       (handlers[event] ?? []).slice().forEach((h) => h(payload)),
+    __telegramPress: (button: string) => (pressHandlers[button] ?? []).slice().forEach((h) => h()),
   });
 }
 

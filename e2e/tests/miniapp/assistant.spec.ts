@@ -22,7 +22,7 @@ test("текст: «Що шукаєте?» → места каталога и к
   const box = page.getByTestId("assistant-box");
   await expect(box).toBeVisible();
   await box.getByLabel("Що шукаєте?").fill("Недорога кав'ярня");
-  await box.getByRole("button", { name: "Знайти" }).click();
+  await box.getByRole("button", { name: "Надіслати" }).click();
 
   await expect(page).toHaveURL(/#\/assistant$/);
   await expect(page.getByTestId("assistant-status")).toHaveText("Знайдено в каталозі: 2");
@@ -71,7 +71,7 @@ test("«готель поруч» — места проживания из ка�
   await installAssistantMock(page);
   await page.goto("/");
   await page.getByLabel("Що шукаєте?").fill("Готель поруч");
-  await page.getByRole("button", { name: "Знайти" }).click();
+  await page.getByRole("button", { name: "Надіслати" }).click();
   await expect(page.getByTestId("assistant-place")).toHaveCount(1);
   await expect(page.getByTestId("assistant-place")).toContainText("Готель «Карпати»");
 });
@@ -88,7 +88,7 @@ test("экскурсия: остановки по порядку, маршрут
   await expect(page.getByTestId("places-map").locator('[data-fake="polyline"]')).toBeAttached();
 
   await page.locator("#assistant-next").fill("Як справи?");
-  await page.getByRole("button", { name: "Знайти" }).click();
+  await page.getByRole("button", { name: "Надіслати" }).click();
   await expect(page.getByTestId("assistant-reply").last()).toContainText("Уточніть, будь ласка");
 });
 
@@ -101,6 +101,63 @@ test("«суші»: блюдо в сводке, по 10 мест — «Пока�
   await page.getByTestId("assistant-more").click();
   await expect(page.getByTestId("assistant-place")).toHaveCount(12);
   await expect(page.getByTestId("assistant-more")).toHaveCount(0);
+});
+
+test("«Назад» Telegram из карточки места: тот же список, «Показати ще» и прокрутка; одна строка ввода", async ({
+  page,
+}) => {
+  const mock = await installAssistantMock(page);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/#/assistant?q=" + encodeURIComponent("Де поїсти суші"));
+  await expect(page.getByTestId("assistant-place")).toHaveCount(10);
+  await page.getByTestId("assistant-more").click();
+  await expect(page.getByTestId("assistant-place")).toHaveCount(12);
+  // Строка ввода одна — уточнения («Скажіть, що додати або змінити»).
+  await expect(page.getByTestId("assistant-box")).toHaveCount(1);
+  await expect(page.getByLabel("Що додати або змінити?")).toHaveAttribute(
+    "placeholder",
+    "Скажіть, що додати або змінити",
+  );
+  const card = page.getByTestId("assistant-place").nth(10);
+  await card.scrollIntoViewIfNeeded();
+  const scrolled = await page.evaluate(() => window.scrollY);
+  expect(scrolled).toBeGreaterThan(200);
+  await card.getByRole("link", { name: "Суші-бар 11" }).click();
+  await expect(page).toHaveURL(/#\/place\//);
+  // Нативная BackButton Telegram — обратно в ассистент (не на главную).
+  await page.evaluate(() =>
+    (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
+  );
+  await expect(page).toHaveURL(/#\/assistant$/);
+  await expect(page.getByTestId("assistant-place")).toHaveCount(12);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolled - 80);
+  expect(mock.queries).toHaveLength(1);
+});
+
+test("«5 днів з дітьми»: уточнение области и передвижения чипами; без авто — переезд с такси и подсказкой", async ({
+  page,
+}) => {
+  const mock = await installAssistantMock(page);
+  await page.goto("/#/assistant?q=" + encodeURIComponent("Я приїхав на 5 днів з дітьми, склади план"));
+  const q = page.getByTestId("assistant-questions");
+  await expect(q).toContainText("Де плануєте відпочивати?");
+  await expect(q).toContainText("Як пересуваєтесь?");
+  await expectNoSeriousA11yViolations(page);
+  await q.getByRole("button", { name: "По всьому Прикарпаттю" }).click();
+  await q.getByRole("button", { name: /Пішки/ }).click();
+  await expect(page.getByRole("heading", { name: "План відпочинку" })).toBeVisible();
+  expect(mock.queries[1]).toMatchObject({
+    text: "По всьому Прикарпаттю, Пішки (без авто)",
+    previous: { kind: "plan", days: 5, scope: "region", transport: "foot", scopeLocalityIds: [] },
+  });
+  await expect(page.getByTestId("assistant-plan-travel").first()).toContainText("🚶");
+  await page.getByTestId("assistant-plan-day").nth(1).click();
+  const transfer = page.getByTestId("assistant-plan-transfer");
+  await expect(transfer).toContainText("24 км");
+  await expect(transfer).toContainText("Таксі «Говерла»");
+  await expect(page.getByTestId("assistant-bus-hint")).toHaveText(
+    "Розклад автобусів уточнюйте на автостанції / у перевізника.",
+  );
 });
 
 test("план відпочинку: частини дня, час, пояснення, маршрут на карті; a11y", async ({ page }) => {
@@ -126,8 +183,11 @@ test.describe("голос", () => {
     const mock = await installAssistantMock(page);
     await page.goto("/");
     const mic = page.getByTestId("assistant-mic");
-    await expect(mic).toHaveAccessibleName("Скажи, чого душа бажає");
-    await expect(mic).toHaveText("Скажи, чого душа бажає");
+    await expect(mic).toHaveAccessibleName("Сказати голосом");
+    // Круглая кнопка — цель касания не меньше 44 px.
+    const size = await mic.boundingBox();
+    expect(size!.width).toBeGreaterThanOrEqual(44);
+    expect(size!.height).toBeGreaterThanOrEqual(44);
     await mic.click();
     await expect(page.getByTestId("assistant-voice-status")).toHaveText(
       "Слухаю… Натисніть ще раз, щоб завершити.",

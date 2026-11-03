@@ -4,51 +4,156 @@
 .assistant {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
-.assistant-label {
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-.assistant-row {
+/* Строка-«пилюля» ~56px: значок, поле, круглая кнопка (микрофон / надіслати) акцентного цвета. */
+.assistant-pill {
   display: flex;
-  gap: 8px;
-  align-items: stretch;
+  align-items: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 4px 5px 4px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--app-border, #d6d3d1);
+  background: var(--app-surface, #fff);
+  box-shadow: 0 6px 18px -8px rgba(60, 42, 20, 0.25);
 }
-.assistant-row input {
+.assistant-pill:focus-within {
+  border-color: var(--app-accent-ink, #8a3b1f);
+}
+.assistant-pill-icon {
+  flex: none;
+  color: var(--app-accent, #b4532a);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+/* Поле без своей рамки — рамка у пилюли (фокус виден по рамке пилюли). */
+.assistant-pill input {
   flex: 1;
   min-width: 0;
   min-height: 44px;
-  border-radius: 9999px;
-  padding-left: 18px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--app-text, #1c1917);
+  font-size: 1rem;
+  padding: 0 4px;
+  -webkit-appearance: none;
+  appearance: none;
 }
-.assistant-mic {
-  align-self: flex-start;
+.assistant-pill input::placeholder {
+  color: var(--app-muted, #78716c);
+  opacity: 1;
+}
+.assistant-pill input::-webkit-search-cancel-button {
+  display: none;
+}
+.assistant-action {
+  position: relative;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 6px 16px 6px 12px;
+  width: 46px;
+  height: 46px;
+  border: 0;
   border-radius: 9999px;
-  font-weight: 600;
-  border: 1.5px solid var(--app-border, #d6d3d1);
-  background: var(--app-surface, #fff);
-  color: var(--app-text, #1c1917);
+  background: var(--app-accent, #b4532a);
+  color: #ffffff;
   cursor: pointer;
 }
-.assistant-mic[aria-pressed="true"] {
-  background: #b91c1c;
-  border-color: #b91c1c;
-  color: #fff;
+.assistant-action:disabled,
+.assistant-action[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
 }
-.assistant-mic[aria-disabled="true"] {
-  opacity: 0.5;
+/* Запись: пульсирующее кольцо вокруг кнопки. */
+.assistant-pill[data-recording] .assistant-action::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  border: 3px solid var(--app-accent, #b4532a);
+  animation: assistant-pulse 1.2s ease-out infinite;
+}
+@keyframes assistant-pulse {
+  from {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-pill[data-recording] .assistant-action::after {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 .assistant-status {
-  min-height: 1.4em;
   margin: 0;
+  padding: 0 16px;
   font-size: 0.875rem;
+}
+.assistant-status:empty {
+  display: none;
+}
+/* Примеры запросов — одна прокручиваемая строка. */
+.assistant-examples {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  margin: 0 calc(var(--gutter, 16px) * -1);
+  padding: 2px var(--gutter, 16px);
+  scrollbar-width: none;
+}
+.assistant-examples::-webkit-scrollbar {
+  display: none;
+}
+.assistant-examples .kosiv-tag {
+  flex: none;
+  min-height: 36px;
+  white-space: nowrap;
+}
+/* Строка уточнений на экране ответа — закреплена внизу над нижней навигацией (safe area учтена). */
+.assistant-dock {
+  position: sticky;
+  bottom: calc(
+    var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--nav-height, 44px) + 8px
+  );
+  z-index: 5;
+  padding-top: 8px;
+}
+.assistant-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--app-surface-2, #f5f5f4);
+}
+.assistant-questions h2,
+.assistant-questions p {
+  margin: 0;
+}
+.assistant-questions .kosiv-tag[aria-pressed="true"] {
+  background: var(--app-accent, #b4532a);
+  border-color: var(--app-accent, #b4532a);
+  color: #ffffff;
+}
+.assistant-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--app-border, #d6d3d1);
+}
+.assistant-transfer p {
+  margin: 0;
 }
 .assistant-dialog,
 .assistant-list {

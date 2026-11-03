@@ -23,6 +23,9 @@ export type AssistantItem = {
 export type AssistantPlan = ApiSchemas["AssistantPlanDto"];
 export type AssistantPlanStop = ApiSchemas["AssistantPlanStopDto"];
 export type AssistantDayPart = ApiSchemas["AssistantDayPart"];
+export type AssistantQuestion = ApiSchemas["AssistantQuestion"];
+export type AssistantPlanScope = ApiSchemas["AssistantPlanScope"];
+export type AssistantPlanTransport = ApiSchemas["AssistantPlanTransport"];
 
 export type AssistantResult = {
   intent: AssistantIntent;
@@ -31,6 +34,8 @@ export type AssistantResult = {
   /** План отдыха по дням (kind = plan); пункты ссылаются на items по индексу. */
   plan: AssistantPlan | null;
   notes: AssistantNote[];
+  /** Уточняющие вопросы перед планом (область, передвижение); старый ответ без поля — нет. */
+  questions?: AssistantQuestion[];
 };
 
 export type AssistantAsk = {
@@ -53,6 +58,7 @@ export const HISTORY_MAX = 5;
 export const TEXT_MAX = 300;
 
 export function resultOf(dto: ApiSchemas["AssistantResultDto"]): AssistantResult {
+  const inItems = (i: number) => i >= 0 && i < dto.items.length;
   return {
     intent: dto.intent,
     items: dto.items.map((i) => ({
@@ -75,10 +81,19 @@ export function resultOf(dto: ApiSchemas["AssistantResultDto"]): AssistantResult
               ...p,
               stops: p.stops.filter((s) => s.item >= 0 && s.item < dto.items.length),
             })),
+            transfer: d.transfer
+              ? {
+                  meters: d.transfer.meters,
+                  taxi: d.transfer.taxi.filter(inItems),
+                  excursions: d.transfer.excursions.filter(inItems),
+                  busStations: d.transfer.busStations.filter(inItems),
+                }
+              : null,
           })),
         }
       : null,
     notes: dto.notes,
+    questions: dto.questions ?? [],
   };
 }
 

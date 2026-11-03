@@ -83,8 +83,56 @@ export type AssistantMockState = {
   transcribes: { contentType: string; bytes: number; regionId: string | null }[];
 };
 
-function answer(text: string) {
+const TAXI = summary("00000000-0000-4000-8000-000000000215", "Таксі «Говерла»", HOTELS, 48.36, 24.41);
+
+function answer(text: string, previous: Record<string, unknown> | undefined) {
   const t = text.toLowerCase();
+  // Многодневный план без области и передвижения — сначала уточнить.
+  if (t.includes("5 днів"))
+    return {
+      intent: intent({ kind: "plan", categories: [], days: 5, withKids: true, suggestions: [] }),
+      items: [],
+      route: null,
+      plan: null,
+      notes: [],
+      questions: ["scope", "transport"],
+    };
+  // Ответ на уточнение (previous.scope/transport): план по районам, без авто — переезд с такси каталога.
+  if (previous?.scope)
+    return {
+      intent: intent({
+        kind: "plan",
+        categories: [],
+        days: 2,
+        withKids: true,
+        suggestions: [],
+        scope: previous.scope,
+        transport: previous.transport,
+      }),
+      items: [item(MUSEUM_B), item(CAFE_A), item(MUSEUM_A), item(TAXI)],
+      route: null,
+      plan: {
+        lengthMeters: 300,
+        days: [
+          {
+            dayNo: 1,
+            date: "2026-11-07",
+            parts: [{ part: "morning", stops: [stop(0, "see", "09:30", 90), stop(1, "eat", "11:05", 45)] }],
+            transfer: null,
+          },
+          {
+            dayNo: 2,
+            date: "2026-11-08",
+            parts: [
+              { part: "morning", stops: [stop(0, "see", "09:30", 60)].map((s) => ({ ...s, item: 2 })) },
+            ],
+            transfer: { meters: 24_000, taxi: [3], excursions: [], busStations: [] },
+          },
+        ],
+      },
+      notes: [],
+      questions: [],
+    };
   if (t.includes("план"))
     return {
       intent: intent({ kind: "plan", categories: [], days: 1, suggestions: ["kids"] }),
@@ -201,10 +249,14 @@ export async function installAssistantMock(
         });
         return json(route, { text: "кав'ярня поруч" });
       }
-      const body = req.postDataJSON() as { regionId: string; text: string };
+      const body = req.postDataJSON() as {
+        regionId: string;
+        text: string;
+        previous?: Record<string, unknown>;
+      };
       state.queries.push(body);
       if (body.regionId !== REGION_ID) return json(route, { error: { code: "NOT_FOUND" } }, 404);
-      return json(route, answer(body.text));
+      return json(route, { questions: [], ...answer(body.text, body.previous) });
     },
   );
   return state;
