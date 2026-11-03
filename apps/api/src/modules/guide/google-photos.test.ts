@@ -89,7 +89,9 @@ describe("GooglePhotosService", () => {
     // Сутки квоты — по America/Los_Angeles (quota.ts): 06:30 UTC 3-го — ещё 2-е; не зависит от времени запуска.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-03T06:30:00Z"));
-    onTestFinished(() => vi.useRealTimers());
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const usage = new Map<string, number>();
     const first = photos({ dailyLimit: 1, usage });
     expect(await first.svc.uri(NAME, 400)).toBe(URI);
