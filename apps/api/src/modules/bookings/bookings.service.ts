@@ -47,6 +47,7 @@ import {
   partnerTransitions,
   rulesProblems,
   transitionActor,
+  userCancelAllowed,
   userTransitions,
   type AvailabilityNow,
   type RuleInput,
@@ -329,7 +330,9 @@ export class BookingsService {
       }
       const resource = await this.repo.findResource(row.resource_id);
       if (!resource) throw notFound();
-      const reason = input.reason?.trim() || null;
+      const reason =
+        input.reason?.trim() ||
+        (row.status === "alternative_proposed" && to === "cancelled_by_user" ? "alternative_declined" : null);
       const patch = this.transitionPatch(
         row,
         to,
@@ -441,6 +444,12 @@ export class BookingsService {
       throw unprocessable("errors.booking.capacityExceeded", "capacity_exceeded", {
         capacity: resource.capacity_people,
       });
+    if (resource.status !== "active")
+      throw unprocessable("errors.booking.resourceInactive", "resource_inactive", {
+        status: resource.status,
+      });
+    const customerName = input.customerName.trim();
+    if (!customerName) throw unprocessable("errors.booking.customerNameRequired", "customer_name_blank");
     const source = input.source ?? "manual";
     const { dto, booking } = await withTenant(this.db, regionContext(resource.region_id), async () => {
       const now = this.now();
@@ -459,7 +468,7 @@ export class BookingsService {
           occupied_until: occ.until,
           people_count: input.peopleCount,
           comment: input.comment?.trim() || null,
-          customer_name: input.customerName.trim(),
+          customer_name: customerName,
           contact_phone: input.customerPhone ?? null,
           contact_phone_source: input.customerPhone ? "partner" : null,
           phone_consent_id: null,
@@ -564,8 +573,10 @@ export class BookingsService {
       const patch: ResourceWrite = { ...resourceWrite(input) };
       if (input.name) patch.name_i18n = toLocalized(input.name);
       if (input.status) patch.status = input.status;
-      const updated = await this.repo.updateResource(resource.id, patch).catch(rethrowResourceCheck);
-      if (!updated) throw notFound();
+      const updated = await this.repo
+        .updateResource(resource.id, patch, input.version)
+        .catch(rethrowResourceCheck);
+      if (!updated) throw versionConflict((await this.repo.findResource(resource.id))?.version ?? null);
       await this.audit.record(currentDb(this.db), {
         ...meta,
         roleAssignmentId: grant.id,
@@ -687,6 +698,7 @@ export class BookingsService {
             confirmed_at: now,
           };
         }
+        assertPartnerResponseOpen(row, now);
         return { status: "confirmed", confirmed_by: ctx.userId, confirmed_at: now };
       }
       case "alternative_proposed": {
@@ -702,6 +714,7 @@ export class BookingsService {
               ],
             },
           });
+        assertPartnerResponseOpen(row, now);
         const startsAt = new Date(input.alternativeStartsAt);
         const endsAt = new Date(startsAt.getTime() + (row.ends_at.getTime() - row.starts_at.getTime()));
         const respondBy = startsAt > now ? customerResponseDue(now, startsAt) : null;
@@ -730,8 +743,16 @@ export class BookingsService {
             },
           });
         return { status: to, ...closed, ...clearAlternative(row) };
-      case "cancelled_by_user":
+      case "cancelled_by_user": {
+        // При отказе от альтернативы бронь занимает предложенный интервал — срок считается от него.
+        const startsAt = row.status === "alternative_proposed" ? row.alternative_starts_at! : row.starts_at;
+        if (!userCancelAllowed(row.status, startsAt, now))
+          throw unprocessable("errors.booking.cancelTooLate", "cancel_too_late", {
+            beforeStartHours: row.status === "confirmed" ? BOOKING_PARAMS.userCancelBeforeStartHours : 0,
+          });
+        // states-and-rules §3.4: отказ от альтернативы — причина alternative_declined (reason выше).
         return { status: to, ...closed, ...clearAlternative(row) };
+      }
       case "completed": {
         if (now < row.starts_at) throw unprocessable("errors.booking.notStarted", "not_started");
         if (
@@ -1232,6 +1253,23 @@ function groupBy<T>(items: readonly T[], key: (t: T) => string): Map<string, T[]
 
 function unprocessable(messageKey: string, reason: string, extra: JsonObject = {}): ApiError {
   return new ApiError("UNPROCESSABLE", { messageKey, details: { reason, ...extra } });
+}
+
+/** Срок ответа партнёра (D-43) прошёл: подтвердить или предложить альтернативу уже нельзя — бронь истекает. */
+function assertPartnerResponseOpen(row: Booking, now: Date): void {
+  if (row.status === "pending_partner" && row.partner_response_due_at && row.partner_response_due_at <= now)
+    throw new ApiError("CONFLICT", {
+      messageKey: "errors.booking.responseOverdue",
+      details: { reason: "partner_response_overdue", currentStatus: row.status },
+    });
+}
+
+/** Оптимистичная блокировка ресурса: версия изменилась (или ресурса уже нет) — 409 с текущей версией. */
+function versionConflict(currentVersion: number | null): ApiError {
+  return new ApiError("CONFLICT", {
+    messageKey: "errors.resource.versionConflict",
+    details: { reason: "version_conflict", currentVersion },
+  });
 }
 
 function transitionError(from: BookingStatus, to: BookingStatus): ApiError {

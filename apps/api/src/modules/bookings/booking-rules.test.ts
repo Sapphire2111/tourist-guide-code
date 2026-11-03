@@ -11,6 +11,7 @@ import {
   partnerTransitions,
   rulesProblems,
   transitionActor,
+  userCancelAllowed,
   userTransitions,
   windowsOn,
   type RuleInput,
@@ -61,6 +62,19 @@ describe("переходы статусов брони (states-and-rules §3.4)"
     expect(partnerPermission("confirmed", "completed")).toBe("booking.complete");
     expect(partnerPermission("confirmed", "no_show")).toBe("booking.no_show");
     expect(partnerPermission("no_show", "completed")).toBe("booking.reject");
+  });
+});
+
+describe("отмена туристом (states-and-rules §3.4)", () => {
+  const now = new Date("2026-11-09T08:00:00Z");
+  const inMin = (m: number) => new Date(now.getTime() + m * MIN);
+
+  it("confirmed — не позже чем за 2 ч до начала; неподтверждённая — до начала", () => {
+    expect(userCancelAllowed("confirmed", inMin(121), now)).toBe(true);
+    expect(userCancelAllowed("confirmed", inMin(120), now)).toBe(false);
+    expect(userCancelAllowed("pending_partner", inMin(1), now)).toBe(true);
+    expect(userCancelAllowed("pending_partner", now, now)).toBe(false);
+    expect(userCancelAllowed("alternative_proposed", inMin(-5), now)).toBe(false);
   });
 });
 

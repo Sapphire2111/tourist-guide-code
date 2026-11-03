@@ -36,7 +36,7 @@ const APP_PASSWORD = "tg_api_bookings_test";
 const OWNER = seedUuid("bookings-test:user:owner");
 const STAFF = seedUuid("bookings-test:user:staff");
 const STRANGER = seedUuid("bookings-test:user:stranger");
-const TOURISTS = Array.from({ length: 12 }, (_, i) => seedUuid(`bookings-test:user:tourist-${i}`));
+const TOURISTS = Array.from({ length: 24 }, (_, i) => seedUuid(`bookings-test:user:tourist-${i}`));
 const ORG = seedUuid("bookings-test:org");
 
 const meta = (userId: string): BookingAuditMeta => ({
@@ -455,5 +455,128 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     const n = await appClient.query(`SELECT bookings_auto_complete(24, 100) AS n`);
     expect(n.rows[0].n).toBe(1);
     expect((await sql(`SELECT status FROM bookings WHERE id = $1`, [b.id])).rows[0].status).toBe("completed");
+  });
+
+  /** Сдвиг интервала брони так, чтобы она начиналась через `minutes` (владельцем БД). */
+  const shiftTo = (id: string, minutes: number) =>
+    sql(
+      `UPDATE bookings SET starts_at = now() + make_interval(mins => $2), ends_at = now() + make_interval(mins => $2 + 60),
+         occupied_from = now() + make_interval(mins => $2), occupied_until = now() + make_interval(mins => $2 + 60)
+       WHERE id = $1`,
+      [id, minutes],
+    );
+
+  it("отмена туристом: confirmed — не позже чем за 2 ч до начала (422), раньше — можно", async () => {
+    const [a, b] = await freeSlots();
+    const user = nextTourist();
+    const late = await bookings.create(user, bookingInput(a!));
+    await bookings.updateStatus(OWNER, late.id, { regionId, status: "confirmed" }, meta(OWNER));
+    await shiftTo(late.id, 60);
+    expect(
+      await failure(
+        bookings.updateStatus(user, late.id, { regionId, status: "cancelled_by_user" }, meta(user)),
+      ),
+    ).toMatchObject({ status: 422, reason: "cancel_too_late" });
+    const early = await bookings.create(user, bookingInput(b!));
+    await bookings.updateStatus(OWNER, early.id, { regionId, status: "confirmed" }, meta(OWNER));
+    const cancelled = await bookings.updateStatus(
+      user,
+      early.id,
+      { regionId, status: "cancelled_by_user" },
+      meta(user),
+    );
+    expect(cancelled.status).toBe("cancelled_by_user");
+    expect(await freeSlots()).toContain(b);
+  });
+
+  it("подтверждение после срока ответа партнёра — 409, не дожидаясь воркера", async () => {
+    const [slot] = await freeSlots();
+    const b = await bookings.create(nextTourist(), bookingInput(slot!));
+    await sql(`UPDATE bookings SET partner_response_due_at = now() - interval '1 minute' WHERE id = $1`, [
+      b.id,
+    ]);
+    expect(
+      await failure(bookings.updateStatus(OWNER, b.id, { regionId, status: "confirmed" }, meta(OWNER))),
+    ).toMatchObject({ status: 409, reason: "partner_response_overdue" });
+    await appClient.query(`SELECT bookings_expire_due(100)`);
+  });
+
+  it("альтернатива: отказ туриста — причина alternative_declined; без ответа — expired customer_timeout", async () => {
+    const slots = await freeSlots();
+    const [o1, a1, o2, a2] = slots.slice(-4);
+    const user = nextTourist();
+    const declined = await bookings.create(user, bookingInput(o1!));
+    await bookings.updateStatus(
+      OWNER,
+      declined.id,
+      { regionId, status: "alternative_proposed", alternativeStartsAt: a1! },
+      meta(OWNER),
+    );
+    const out = await bookings.updateStatus(
+      user,
+      declined.id,
+      { regionId, status: "cancelled_by_user" },
+      meta(user),
+    );
+    expect(out).toMatchObject({ status: "cancelled_by_user", statusReason: "alternative_declined" });
+    expect(await freeSlots()).toEqual(expect.arrayContaining([o1, a1]));
+
+    const silent = await bookings.create(nextTourist(), bookingInput(o2!));
+    await bookings.updateStatus(
+      OWNER,
+      silent.id,
+      { regionId, status: "alternative_proposed", alternativeStartsAt: a2! },
+      meta(OWNER),
+    );
+    await sql(`UPDATE bookings SET customer_response_due_at = now() - interval '1 minute' WHERE id = $1`, [
+      silent.id,
+    ]);
+    expect((await appClient.query(`SELECT bookings_expire_due(100) AS n`)).rows[0].n).toBe(1);
+    const row = await sql(
+      `SELECT status, status_reason, alternative_starts_at, customer_response_due_at FROM bookings WHERE id = $1`,
+      [silent.id],
+    );
+    expect(row.rows[0]).toEqual({
+      status: "expired",
+      status_reason: "customer_timeout",
+      alternative_starts_at: null,
+      customer_response_due_at: null,
+    });
+    expect(await freeSlots()).toEqual(expect.arrayContaining([o2, a2]));
+  });
+
+  it("ручная запись: пустое имя и неактивный ресурс — 422; правка ресурса со старой версией — 409", async () => {
+    const [slot] = await freeSlots();
+    expect(
+      await failure(
+        bookings.createManual(
+          OWNER,
+          { resourceId, startsAt: slot!, peopleCount: 1, customerName: "   " },
+          meta(OWNER),
+        ),
+      ),
+    ).toMatchObject({ status: 422, reason: "customer_name_blank" });
+    const spare = await bookings.createResource(OWNER, { placeId, name: { uk: "Купіль" } }, meta(OWNER));
+    const off = await bookings.updateResource(
+      OWNER,
+      spare.id,
+      { status: "inactive", version: spare.version },
+      meta(OWNER),
+    );
+    expect(off).toMatchObject({ status: "inactive", version: spare.version + 1 });
+    expect(
+      await failure(
+        bookings.updateResource(OWNER, spare.id, { capacityPeople: 4, version: spare.version }, meta(OWNER)),
+      ),
+    ).toMatchObject({ status: 409, reason: "version_conflict" });
+    expect(
+      await failure(
+        bookings.createManual(
+          OWNER,
+          { resourceId: spare.id, startsAt: slot!, peopleCount: 1, customerName: "Олена" },
+          meta(OWNER),
+        ),
+      ),
+    ).toMatchObject({ status: 422, reason: "resource_inactive" });
   });
 });

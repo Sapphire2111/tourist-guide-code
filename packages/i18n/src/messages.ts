@@ -1070,6 +1070,11 @@ export const uk = {
   "errors.booking.correctionWindow": "Час на виправлення позначки минув.",
   "errors.booking.reasonRequired": "Вкажіть причину.",
   "errors.resource.rulesInvalid": "Розклад ресурсу має помилки: перевірте дні та інтервали.",
+  "errors.resource.versionConflict": "Ресурс щойно змінили — оновіть сторінку.",
+  "errors.booking.cancelTooLate": "Скасувати онлайн уже не можна — зателефонуйте закладу.",
+  "errors.booking.resourceInactive": "Ресурс неактивний — увімкніть його, щоб додати запис.",
+  "errors.booking.customerNameRequired": "Вкажіть імʼя клієнта.",
+  "errors.booking.responseOverdue": "Час на відповідь минув — бронювання вже не можна підтвердити.",
 
   "admin.scenarios": "Сценарії «Мій план»",
   "admin.host": "Модуль готелю",

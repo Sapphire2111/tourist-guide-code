@@ -1838,7 +1838,7 @@ export interface paths {
     head?: never;
     /**
      * Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05
-     * @description Турист-владелец: cancelled_by_user; confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).
+     * @description Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).
      */
     patch: operations["updateBookingStatus"];
     trace?: never;
@@ -1858,7 +1858,7 @@ export interface paths {
     put?: never;
     /**
      * Ручная запись партнёра (P04): сразу confirmed, блокирует интервал для онлайн-брони
-     * @description Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.
+     * @description Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.
      */
     post: operations["createManualBooking"];
     delete?: never;
@@ -1901,7 +1901,10 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** Правка ресурса (и статус active/inactive/archived) */
+    /**
+     * Правка ресурса (и статус active/inactive/archived)
+     * @description version — оптимистичная блокировка: ресурс изменили после чтения — 409 errors.resource.versionConflict (details.currentVersion).
+     */
     patch: operations["updatePartnerResource"];
     trace?: never;
   };
@@ -5002,6 +5005,8 @@ export interface components {
       currency?: string | null;
       name?: components["schemas"]["LocalizedNameDto"];
       status?: components["schemas"]["ResourceStatus"];
+      /** @description Версия из PartnerResourceDto: изменилась — 409 errors.resource.versionConflict */
+      version?: number;
     };
     AvailabilityRuleDto: {
       /** @description ISO: 1 — пн */
@@ -17275,6 +17280,17 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

@@ -67,6 +67,32 @@ describe("бизнес-роли админки", () => {
       expect(roleHasPermission(r, "catalog.read.admin"), r).toBe(true);
   });
 
+  it("брони (блок 7): кассир — урезанные P04/P05, менеджер — ещё ресурсы, отказ, альтернатива, телефон", () => {
+    for (const p of [
+      "booking.read",
+      "booking.confirm",
+      "booking.manual.create",
+      "booking.complete",
+      "booking.no_show",
+      "availability.status.manual",
+    ] as const) {
+      expect(roleHasPermission("ORG_STAFF", p), p).toBe(true);
+      expect(roleHasPermission("ORG_MANAGER", p), p).toBe(true);
+    }
+    for (const p of [
+      "resource.manage",
+      "availability.edit",
+      "booking.reject",
+      "booking.propose_alternative",
+      "booking.admin.read",
+    ] as const) {
+      expect(roleHasPermission("ORG_STAFF", p), p).toBe(false);
+      expect(roleHasPermission("ORG_MANAGER", p), p).toBe(true);
+      expect(roleHasPermission("ORG_OWNER", p), p).toBe(true);
+    }
+    expect(roleHasPermission("ORG_MANAGER", "booking.expire")).toBe(false);
+  });
+
   it("каждое право бизнес-роли — из каталога", () => {
     for (const r of ["SUPERADMIN", "REGION_ADMIN", "MODERATOR"] as const)
       for (const p of ROLES[r].permissions) expect(PERMISSIONS, `${r}: ${p}`).toContain(p);

@@ -205,13 +205,14 @@ export class BookingsRepository {
       .executeTakeFirstOrThrow();
   }
 
-  updateResource(id: string, patch: ResourceWrite): Promise<Resource | undefined> {
-    return this.q
+  /** Правка ресурса; expectedVersion — оптимистичная блокировка (undefined — версия другая или ресурса нет). */
+  updateResource(id: string, patch: ResourceWrite, expectedVersion?: number): Promise<Resource | undefined> {
+    let query = this.q
       .updateTable("resources")
       .set({ ...patch, version: sql<number>`version + 1` })
-      .where("id", "=", id)
-      .returningAll()
-      .executeTakeFirst();
+      .where("id", "=", id);
+    if (expectedVersion !== undefined) query = query.where("version", "=", expectedVersion);
+    return query.returningAll().executeTakeFirst();
   }
 
   setManualAvailability(

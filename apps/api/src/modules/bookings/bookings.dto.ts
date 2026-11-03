@@ -388,6 +388,16 @@ export class UpdateResourceDto extends ResourceSettingsDto {
   @IsOptional()
   @IsIn(RESOURCE_STATUSES)
   status?: ResourceStatus;
+
+  @ApiPropertyOptional({
+    type: "integer",
+    minimum: 1,
+    description: "Версия из PartnerResourceDto: изменилась — 409 errors.resource.versionConflict",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  version?: number;
 }
 
 export class AvailabilityRuleDto {

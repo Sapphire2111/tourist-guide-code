@@ -172,7 +172,7 @@ export class BookingsController {
     operationId: "updateBookingStatus",
     summary: "Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05",
     description:
-      "Турист-владелец: cancelled_by_user; confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право " +
+      "Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право " +
       "на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), " +
       "cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show " +
       "(после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне " +
@@ -230,7 +230,8 @@ export class PartnerBookingsController {
     operationId: "createManualBooking",
     summary: "Ручная запись партнёра (P04): сразу confirmed, блокирует интервал для онлайн-брони",
     description:
-      "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken. 404 — ресурса " +
+      "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — " +
+      "422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса " +
       "нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
   })
   @ApiCreatedResponse({ type: PartnerBookingDto })
@@ -275,6 +276,9 @@ export class PartnerBookingsController {
   @ApiOperation({
     operationId: "updatePartnerResource",
     summary: "Правка ресурса (и статус active/inactive/archived)",
+    description:
+      "version — оптимистичная блокировка: ресурс изменили после чтения — 409 errors.resource.versionConflict " +
+      "(details.currentVersion).",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiOkResponse({ type: PartnerResourceDto })
@@ -283,6 +287,7 @@ export class PartnerBookingsController {
     "UNAUTHENTICATED",
     "FORBIDDEN",
     "NOT_FOUND",
+    "CONFLICT",
     "UNPROCESSABLE",
     "RATE_LIMITED",
   )

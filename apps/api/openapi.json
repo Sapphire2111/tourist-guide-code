@@ -11047,7 +11047,7 @@
     },
     "/bookings/{id}/status": {
       "patch": {
-        "description": "Турист-владелец: cancelled_by_user; confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).",
+        "description": "Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).",
         "operationId": "updateBookingStatus",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -11248,7 +11248,7 @@
         "tags": ["partner-bookings"]
       },
       "post": {
-        "description": "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
+        "description": "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
         "operationId": "createManualBooking",
         "parameters": [
           {
@@ -11519,6 +11519,7 @@
     },
     "/partner/resources/{id}": {
       "patch": {
+        "description": "version — оптимистичная блокировка: ресурс изменили после чтения — 409 errors.resource.versionConflict (details.currentVersion).",
         "operationId": "updatePartnerResource",
         "parameters": [
           { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
@@ -11571,6 +11572,15 @@
             }
           },
           "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
             "description": "Ошибка",
             "headers": {
               "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
@@ -17254,7 +17264,12 @@
           },
           "currency": { "type": "string", "example": "UAH", "nullable": true },
           "name": { "$ref": "#/components/schemas/LocalizedNameDto" },
-          "status": { "allOf": [{ "$ref": "#/components/schemas/ResourceStatus" }] }
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ResourceStatus" }] },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Версия из PartnerResourceDto: изменилась — 409 errors.resource.versionConflict"
+          }
         }
       },
       "AvailabilityRuleDto": {

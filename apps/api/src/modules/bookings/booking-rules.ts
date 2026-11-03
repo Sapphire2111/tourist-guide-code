@@ -58,6 +58,11 @@ export const BOOKING_PARAMS = {
   manualTtlMaxMin: 240,
   /** Окно запроса слотов, дней. */
   slotsMaxDays: 14,
+  /**
+   * states-and-rules §3.4: турист отменяет confirmed не позже чем за столько часов до начала (параметр, значение не
+   * задано в decisions — тестовый режим); неподтверждённую — до начала.
+   */
+  userCancelBeforeStartHours: 2,
   /** Ручная запись: длительность не больше, мин. */
   manualMaxDurationMin: 24 * 60,
 } as const;
@@ -82,6 +87,15 @@ const PARTNER_TRANSITIONS: Partial<Record<BookingStatus, readonly BookingStatus[
 };
 
 export type BookingActorKind = "user" | "partner";
+
+/**
+ * Может ли турист отменить бронь сейчас (states-and-rules §3.4): confirmed — не позже чем за userCancelBeforeStartHours
+ * до начала; new, pending_partner, alternative_proposed — до начала.
+ */
+export function userCancelAllowed(status: BookingStatus, startsAt: Date, now: Date): boolean {
+  const before = status === "confirmed" ? BOOKING_PARAMS.userCancelBeforeStartHours * 3_600_000 : 0;
+  return now.getTime() < startsAt.getTime() - before;
+}
 
 export function userTransitions(from: BookingStatus): readonly BookingStatus[] {
   return USER_TRANSITIONS[from] ?? [];
