@@ -231,7 +231,7 @@ describe("локації", () => {
     expect(search).toHaveBeenLastCalledWith({
       categoryId: "eat",
       q: undefined,
-      point: null,
+      point: { lat: 48.4, lng: 24.5 },
       localityIds: [YAREMCHE],
     });
     expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Яремче");
@@ -253,6 +253,60 @@ describe("локації", () => {
       point: { lat: 48.4, lng: 24.5 },
     });
     expect(screen.queryByTestId("location-caption")).toBeNull();
+  });
+
+  it("лист: фокус остаётся на отмеченном пункте, по закрытию — на кнопке; «Назад» Telegram закрывает", async () => {
+    render(
+      <GuideProvider value={env(vi.fn(async () => [place]))}>
+        <LocationProvider>
+          <LocationChip />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    const chip = screen.getByTestId("location-chip");
+    chip.focus();
+    fireEvent.click(chip);
+    const dialog = screen.getByRole("dialog", { name: "Локація" });
+    expect(dialog.getAttribute("aria-describedby")).toBe("loc-sheet-hint");
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Усі локації" }));
+    const yaremche = screen.getByRole("checkbox", { name: "Яремче" });
+    yaremche.focus();
+    fireEvent.click(yaremche);
+    await flush();
+    expect(document.activeElement).toBe(yaremche);
+    fireEvent.click(screen.getByRole("button", { name: "Готово" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(chip);
+    fireEvent.click(chip);
+    expect(screen.getByRole("dialog")).toBeDefined();
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(consumeBack()).toBe(false);
+  });
+
+  it("пунктов меньше двух — сохранённый выбор не применяется; старый ключ курортов убран", async () => {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "region", ids: [YAREMCHE] }));
+    localStorage.setItem("tg.resort", "tatariv");
+    const search = vi.fn(async () => [place]);
+    render(
+      <GuideProvider
+        value={env(
+          search,
+          vi.fn(async () => LOCALITIES.slice(0, 1)),
+        )}
+      >
+        <LocationProvider>
+          <HomePlaces />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(localStorage.getItem("tg.resort")).toBeNull();
   });
 
   it("список пунктов недоступен или пунктов меньше двух — кнопки нет, выдача без фильтра", async () => {

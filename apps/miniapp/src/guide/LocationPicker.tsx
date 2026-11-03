@@ -2,7 +2,7 @@
 // Выбор применяется сразу; лист закрывают «Готово», Escape, тап по фону и «Назад» Telegram.
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { interceptBack } from "../telegram.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
@@ -13,6 +13,8 @@ export function LocationChip() {
   const { options } = useLocations();
   const names = useLocationNames();
   const [open, setOpen] = useState(false);
+  // Стабильная ссылка: иначе эффект листа перезапускался бы на каждый рендер и уводил фокус.
+  const close = useCallback(() => setOpen(false), []);
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
@@ -36,7 +38,7 @@ export function LocationChip() {
         <span className="loc-chip-text">{label}</span>
         <span aria-hidden="true">▾</span>
       </button>
-      {open && <LocationSheet onClose={() => setOpen(false)} />}
+      {open && <LocationSheet onClose={close} />}
     </>
   );
 }
@@ -86,10 +88,13 @@ function LocationSheet({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="loc-sheet-title"
+        aria-describedby="loc-sheet-hint"
         data-testid="location-sheet"
       >
         <h2 id="loc-sheet-title">{t("miniapp.location.title")}</h2>
-        <p className="loc-hint">{t("miniapp.location.hint")}</p>
+        <p id="loc-sheet-hint" className="loc-hint">
+          {t("miniapp.location.hint")}
+        </p>
         <ul className="loc-list">
           <li>
             <label className="loc-option">

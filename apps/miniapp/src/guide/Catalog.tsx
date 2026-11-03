@@ -62,10 +62,9 @@ function CategoryPlaces({
   const [draft, setDraft] = useState(initialQuery);
   const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
   const [view, setView] = useState<"list" | "map">("list");
-  // Выбраны локации — места этих пунктов по всему их числу (без радиуса от точки QR); иначе — как раньше (от базовой
-  // точки QR).
+  // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
-  const point = byLocation ? null : (base?.point ?? null);
+  const point = base?.point ?? null;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -74,12 +73,12 @@ function CategoryPlaces({
     () =>
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
-      (!byLocation && base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
+      (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
         .then(() =>
           api.search({ categoryId, q: q || undefined, point, ...(byLocation ? { localityIds } : {}) }),
         )
         .then((list) => ({ list, submitId })),
-    [api, categoryId, q, submitId, byLocation ? false : base?.pending, point?.lat, point?.lng, localityIds],
+    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds],
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -177,9 +176,7 @@ function CategoryPlaces({
             </div>
           ) : (
             <Stack>
-              {view === "map" && (
-                <MapSlot places={list} center={point} centerLabel={byLocation ? undefined : base?.name} />
-              )}
+              {view === "map" && <MapSlot places={list} center={point} centerLabel={base?.name} />}
               <PlaceList places={list} />
             </Stack>
           )

@@ -72,6 +72,15 @@ export function LocationProvider({
     status: "loading",
   });
 
+  // Хранилище бывших «курортов» (заменены локациями) — убрать один раз.
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem("tg.resort");
+    } catch {
+      // Недоступно — нечего убирать.
+    }
+  }, []);
+
   useEffect(() => {
     setIds(readStored(regionId));
     if (!api || !regionId) {
@@ -107,7 +116,8 @@ export function LocationProvider({
   const options = list.status === "ready" ? list.data : null;
   // Пока список грузится — сохранённый выбор (первый запрос сразу с фильтром); список недоступен — без фильтра
   // (турист не увидел бы, что выдача ограничена); пункты, которых больше нет, отбрасываются.
-  const raw = venueEntry && !picked ? EMPTY : ids;
+  // Выбирать не из чего (меньше двух пунктов, кнопки нет) — сохранённый выбор не применяется.
+  const raw = (venueEntry && !picked) || (options && options.length < 2) ? EMPTY : ids;
   const key =
     list.status === "error" ? "" : raw.filter((id) => !options || options.some((o) => o.id === id)).join(",");
   const selected = useMemo(() => (key ? key.split(",") : EMPTY), [key]);
