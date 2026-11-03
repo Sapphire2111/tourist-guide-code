@@ -766,6 +766,63 @@ describe("примечание без обрыва", () => {
   });
 });
 
+describe("конец предложения: числа, единицы, сокращения, кавычки", () => {
+  it.each([
+    ["Обід о 14:00. Правило:", "Обід о 14:00."],
+    [
+      "Парковка поруч. Вхід 100 грн. Каса працює до 18:00. Далі обір",
+      "Парковка поруч. Вхід 100 грн. Каса працює до 18:00.",
+    ],
+    ["Каса до 18:00. Вра", "Каса до 18:00."],
+    ["Закладіть 40 хв. Вра", "Закладіть 40 хв."],
+    ["Маршрут макс. 20 км. Далі обір", "Маршрут макс. 20 км."],
+    ["1. Йти прямо", "1. Йти прямо"],
+    ["Беріть воду. 2. Йдіть далі", "Беріть воду."],
+    ["Йдіть 5 км. на схід", "Йдіть 5 км. на схід"],
+    [
+      "Йдіть на пров. Шкільний, далі на буд. 5 і ще трохи без кінця",
+      "Йдіть на пров. Шкільний, далі на буд. 5 і ще трохи без кінця",
+    ],
+    ["Їдьте до обл. Центру без кінця", "Їдьте до обл. Центру без кінця"],
+    ["Беріть воду. Скажіть „Добрий день!“", "Беріть воду. Скажіть „Добрий день!“"],
+  ])("%s", (raw, want) => {
+    expect(trimNote(raw)).toBe(want);
+    expect(trimNote(want)).toBe(want);
+  });
+
+  it("склейка после снятия графика: пробел сохраняется", () => {
+    expect(stripSchedule("Зранку. Графік: сб 06:00-13:00, тому не запізнюйтесь.")).toBe(
+      "Зранку. тому не запізнюйтесь.",
+    );
+  });
+
+  it("правка критика с длинной английской назвой не теряется", async () => {
+    const set = setOf([probii, lunch, chan]);
+    const items = (time: string) => [
+      item("p1", time, 45, ["p3"]),
+      item("p2", "12:00", 75),
+      item("p3", "15:00", 120),
+    ];
+    const res = (o: unknown) => ({
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+      content: [{ type: "text", text: JSON.stringify(o) }],
+    });
+    const revised = scenario(items("09:30"), { title_en: "Long title ".repeat(10) });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(res(scenario(items("10:00"))))
+      .mockResolvedValueOnce(res({ verdict: "fix", issues: ["x"], revised }));
+    const out = await generateOne(api(create), brief("waterfalls"), set, emptyUsage(), {
+      retries: 0,
+      criticRounds: 1,
+    });
+    expect(out.critic[0]!.accepted).toBe(true);
+    expect(out.draft!.items[0]!.timeHint).toBe("09:30");
+    expect(out.draft!.title.en).toBeUndefined();
+  });
+});
+
 describe("назва и опис без обрыва", () => {
   const set = setOf([probii, lunch, chan]);
   const items = [item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)];
@@ -778,7 +835,10 @@ describe("назва и опис без обрыва", () => {
   it("длинная назва (uk и en) — ошибка, а не обрезка", () => {
     expect(check({ title_uk: long }).draft).toBeNull();
     expect(check({ title_uk: long }).errors.join()).toMatch(/назва довша/);
-    expect(check({ title_en: long }).errors.join()).toMatch(/англійська назва довша/);
+    const en = check({ title_en: long });
+    expect(en.errors).toEqual([]);
+    expect(en.draft!.title).toEqual({ uk: "День у Яремчі" });
+    expect(en.fixes.join()).toMatch(/англійська назва довша.*прибрано/);
     expect(check({ title_uk: "Яремче: маршрут:" }).errors.join()).toMatch(/обірвана/);
     expect(check({ title_uk: "а".repeat(TITLE_MAX) }).errors).toEqual([]);
   });

@@ -153,9 +153,9 @@ export const MODEL_TAGS = SCENARIO_TAGS.filter(
  * Приписка программы «Графік: …» в примечании (снимается перед повторной проверкой): только дни и часы в формате
  * weeklyShort, в любом месте примечания — совет до и после неё сохраняется, а программа не задвоит график.
  */
-const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд|вихідний)(?!\p{L})|\d[\d:]*|[\s,;–-])+\.?/gu;
+const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд|вихідний)(?!\p{L})|\d[\d:]*|[\s,;–-])+\.?\s*/gu;
 export const stripSchedule = (note: string) =>
-  note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? "" : m)).trim();
+  note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? " " : m)).trim();
 
 /**
  * Длина примечания к пункту (символов, без приписки «Графік: …»). Модели и критику называем NOTE_ASK_MAX; NOTE_MAX —
@@ -165,11 +165,13 @@ export const stripSchedule = (note: string) =>
 export const NOTE_ASK_MAX = 400;
 export const NOTE_MAX = 480;
 
-/** Точка после сокращения или числа — не конец предложения («у м. Яремче», «5 км. на схід», «1. Йти»). */
-const NOT_SENTENCE_END =
-  /(?:^|[^\p{L}\d])(?:\p{L}|\d+|вул|пл|просп|смт|ім|оз|св|ст|напр|див|бл|прибл|тел|хв|год|грн|км|ін|тис)$/iu;
-const SENTENCE_END = /[.!?…]+["»”')]*(?=\s|$)/gu;
-const ENDS_SENTENCE = /[.!?…]["»”')]*$/u;
+/** Точка после сокращения — не конец предложения («у м. Яремче», «макс. 20 км»). Единицы («40 хв.») — конец: их середину закрывает проверка строчной буквы. */
+const ABBREVIATION_END =
+  /(?:^|[^\p{L}\d])(?:\p{L}|вул|пл|просп|пров|буд|обл|смт|ім|оз|св|ст|напр|див|бл|прибл|макс|тел|ін)$/iu;
+/** Номер пункта в начале предложения («1. Йти»), а не число в конце («до 18:00.»). */
+const NUMBERING_END = /(?:^|[.!?…]["»”“')]*\s)\d+$/u;
+const SENTENCE_END = /[.!?…]+["»”“')]*(?=\s|$)/gu;
+const ENDS_SENTENCE = /[.!?…]["»”“')]*$/u;
 /** Хвост-заготовка: за ним должно было идти продолжение («Правило розвороту:»). */
 const DANGLING = /[:;,–—-]$/u;
 
@@ -188,7 +190,8 @@ export function trimNote(raw: string, max: number = NOTE_MAX): string {
     if (stop > max) break;
     const next = s[stop + 1];
     if (next && /\p{Ll}/u.test(next)) continue;
-    if (m[0].startsWith(".") && NOT_SENTENCE_END.test(s.slice(0, m.index))) continue;
+    const before = s.slice(0, m.index);
+    if (m[0].startsWith(".") && (ABBREVIATION_END.test(before) || NUMBERING_END.test(before))) continue;
     end = stop;
   }
   if (end) return s.slice(0, end);
@@ -408,7 +411,11 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
   if (b.target && !used.has(b.target.placeId)) errors.push(`немає обовʼязкового пункту «${b.target.name}»`);
 
   const title = squeeze(gen.title_uk);
-  const titleEn = squeeze(gen.title_en);
+  const askedTitleEn = squeeze(gen.title_en);
+  // Английская назва необязательна: плохая не стоит платной повторной попытки или потери правки критика.
+  const titleEnProblem = titleProblem(askedTitleEn, "англійська назва");
+  const titleEn = titleEnProblem ? "" : askedTitleEn;
+  if (titleEnProblem) fixes.push(`${titleEnProblem}; прибрано`);
   const askedDescription = squeeze(gen.description_uk);
   const description = trimNote(askedDescription, DESCRIPTION_MAX);
   if (description !== askedDescription)
@@ -418,8 +425,8 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
         : `опис прибрано — немає закінченого речення (${askedDescription.length} символів)`,
     );
   if (title.length < 3) errors.push("назва порожня");
-  for (const problem of [titleProblem(title, "назва"), titleProblem(titleEn, "англійська назва")])
-    if (problem) errors.push(problem);
+  const titleUkProblem = titleProblem(title, "назва");
+  if (titleUkProblem) errors.push(titleUkProblem);
   if (BAD_TEXT.test(title) || BAD_TEXT.test(description))
     errors.push("у назві чи описі посилання або розмітка");
   // Аудитория и формат (діти, без авто, дощ, лижі, дні) — только из заказа; модель добавляет лишь описательные теги.
