@@ -39,6 +39,7 @@ import {
   CreateResourceDto,
   PartnerBookingsQueryDto,
   PartnerResourcesQueryDto,
+  PartnerSlotsQueryDto,
   PutAvailabilityDto,
   PutManualAvailabilityDto,
   ResourcesQueryDto,
@@ -174,7 +175,9 @@ export class BookingsController {
     operationId: "updateBookingStatus",
     summary: "Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05",
     description:
-      "Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право " +
+      "Турист-владелец: cancelled_by_user (до BookingDto.cancelDeadline: confirmed — не позже чем за " +
+      "cancelBeforeStartHours ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока " +
+      "ответа (D-66). Партнёр (право " +
       "на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), " +
       "cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show " +
       "(после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне " +
@@ -206,7 +209,8 @@ export class BookingsController {
 @Controller("partner")
 @RequireAuth()
 @WithoutTenantContext()
-// Флаг module.bookings — в сервисе по регионам назначений партнёра (не guard: regionId в запросах нет).
+// Флаг module.bookings — в сервисе по регионам назначений партнёра (не guard: regionId в запросах нет): выключен во
+// всех регионах назначений — 404 на любом эндпоинте /partner/bookings и /partner/resources.
 export class PartnerBookingsController {
   constructor(@Inject(BookingsService) private readonly bookings: BookingsService) {}
 
@@ -217,10 +221,10 @@ export class PartnerBookingsController {
     description:
       "Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента " +
       "— только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест " +
-      "с правом (или placeId не своё).",
+      "с правом (или placeId не своё). 404 — модуль бронирований выключен во всех регионах назначений.",
   })
   @ApiOkResponse({ type: PartnerBookingListDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "RATE_LIMITED")
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RATE_LIMITED")
   list(@Query() q: PartnerBookingsQueryDto, @Req() req: RbacRequest): Promise<PartnerBookingListDto> {
     return this.bookings.partnerList(userOf(req), q);
   }
@@ -234,7 +238,7 @@ export class PartnerBookingsController {
     description:
       "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — " +
       "422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса " +
-      "нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
+      "нет или модуль выключен; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
   })
   @ApiCreatedResponse({ type: PartnerBookingDto })
   @ApiErrors(
@@ -255,21 +259,52 @@ export class PartnerBookingsController {
   @ApiOperation({
     operationId: "listPartnerResources",
     summary: "Ресурсы заведения партнёра с правилами доступности и ручным статусом",
+    description:
+      "403 not_partner — нет права booking.read на место. 404 — модуль бронирований выключен во всех регионах " +
+      "назначений.",
   })
   @ApiOkResponse({ type: PartnerResourceListDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "RATE_LIMITED")
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RATE_LIMITED")
   resources(@Query() q: PartnerResourcesQueryDto, @Req() req: RbacRequest): Promise<PartnerResourceListDto> {
     return this.bookings.partnerResources(userOf(req), q.placeId);
+  }
+
+  @Get("resources/:id/slots")
+  @ApiOperation({
+    operationId: "listPartnerResourceSlots",
+    summary: "Слоты ресурса для партнёра: альтернатива, ручная запись, предпросмотр до публикации места",
+    description:
+      "Как GET /resources/{id}/slots, но место может быть не опубликовано, а ресурс — неактивен; регион — из " +
+      "ресурса. Право booking.read на место ресурса. 404 — ресурса нет среди мест партнёра или модуль выключен.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiOkResponse({ type: SlotListDto })
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RATE_LIMITED")
+  resourceSlots(
+    @Param("id", uuid) id: string,
+    @Query() q: PartnerSlotsQueryDto,
+    @Req() req: RbacRequest,
+  ): Promise<SlotListDto> {
+    return this.bookings.partnerSlots(userOf(req), id, q);
   }
 
   @Post("resources")
   @ApiOperation({
     operationId: "createPartnerResource",
     summary: "Новый ресурс заведения (D-04 А: почасовые слоты): длительность, buffer, вместимость, SLA",
-    description: "Право resource.manage (владелец, менеджер). 403 — нет права на место. AuditLog.",
+    description:
+      "Право resource.manage (владелец, менеджер). 403 — нет права на место. 404 — модуль бронирований выключен " +
+      "во всех регионах назначений. AuditLog.",
   })
   @ApiCreatedResponse({ type: PartnerResourceDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "UNPROCESSABLE", "RATE_LIMITED")
+  @ApiErrors(
+    "VALIDATION_FAILED",
+    "UNAUTHENTICATED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "UNPROCESSABLE",
+    "RATE_LIMITED",
+  )
   createResource(@Body() body: CreateResourceDto, @Req() req: AuthedRequest): Promise<PartnerResourceDto> {
     return this.bookings.createResource(userOf(req), body, auditFromRequest(req));
   }
@@ -333,8 +368,8 @@ export class PartnerBookingsController {
     operationId: "putResourceManualAvailability",
     summary: "Ручной статус «Доступно зараз» с TTL (D-78: короткий, по умолчанию 60 мин)",
     description:
-      "available_now / busy — до now + ttlMinutes; unknown — снять. Ставят ORG_MANAGER и ORG_STAFF " +
-      "(availability.status.manual), запись в AuditLog.",
+      "available_now / busy — до now + ttlMinutes (по умолчанию 60); unknown — снять, ttlMinutes не нужен. " +
+      "Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiOkResponse({ type: PartnerResourceDto })

@@ -182,6 +182,28 @@ export class PartnerAbilitiesDto {
   @ApiProperty({ type: Boolean, description: "Акции P07 (ORG_OWNER, ORG_MANAGER)" }) manageOffers!: boolean;
   @ApiProperty({ type: Boolean, description: "Заявки гостей P10 (все роли партнёра)" })
   serviceRequests!: boolean;
+  @ApiProperty({ type: Boolean, description: "Брони заведения P04/P05 — список и ответ (booking.read)" })
+  bookings!: boolean;
+  @ApiProperty({ type: Boolean, description: "Ручная запись клиента (booking.manual.create)" })
+  manualBooking!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Ресурсы бронирования: создать, править, архивировать (resource.manage; ORG_OWNER, ORG_MANAGER)",
+  })
+  manageResources!: boolean;
+  @ApiProperty({ type: Boolean, description: "Правила доступности ресурса (availability.edit)" })
+  editAvailability!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description: "Ручной статус «Доступно зараз» (availability.status.manual)",
+  })
+  manualAvailability!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description: "Видит телефон клиента брони при его согласии (booking.admin.read; кассиру — нет, C-20)",
+  })
+  customerPhone!: boolean;
 }
 
 export class PartnerPlaceSummaryDto {

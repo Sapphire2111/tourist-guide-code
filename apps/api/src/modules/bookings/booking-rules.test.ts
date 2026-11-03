@@ -5,6 +5,7 @@ import {
   findSlot,
   generateSlots,
   isFree,
+  normalizeCustomerName,
   occupiedRange,
   partnerPermission,
   partnerResponseDue,
@@ -12,6 +13,7 @@ import {
   rulesProblems,
   transitionActor,
   userCancelAllowed,
+  userCancelDeadline,
   userTransitions,
   windowsOn,
   type RuleInput,
@@ -237,5 +239,40 @@ describe("«Доступно зараз» (BR-04, D-78)", () => {
     expect(availabilityNow(expired, [], now).availableNow).toBe(false);
     const busy = { status: "busy" as const, expiresAt: new Date(now.getTime() + 30 * MIN) };
     expect(availabilityNow(busy, [slot(90)], now).availableNow).toBe(false);
+  });
+});
+
+describe("отмена туристом и имя клиента (0024)", () => {
+  const start = new Date("2026-11-10T10:00:00Z");
+  const alt = new Date("2026-11-10T14:00:00Z");
+
+  it("срок отмены: confirmed — за 2 ч до начала; неподтверждённая — начало; альтернатива — её начало", () => {
+    expect(userCancelDeadline("confirmed", start, null)).toEqual(new Date("2026-11-10T08:00:00Z"));
+    expect(userCancelDeadline("pending_partner", start, null)).toEqual(start);
+    expect(userCancelDeadline("new", start, null)).toEqual(start);
+    expect(userCancelDeadline("alternative_proposed", start, alt)).toEqual(alt);
+    for (const s of ["cancelled_by_user", "expired", "completed", "no_show", "cancelled_by_partner"] as const)
+      expect(userCancelDeadline(s, start, null)).toBeNull();
+  });
+
+  it("срок отмены совпадает с проверкой сервера (userCancelAllowed)", () => {
+    for (const status of ["confirmed", "pending_partner", "new"] as const) {
+      const deadline = userCancelDeadline(status, start, null)!;
+      expect(userCancelAllowed(status, start, new Date(deadline.getTime() - 1))).toBe(true);
+      expect(userCancelAllowed(status, start, deadline)).toBe(false);
+    }
+  });
+
+  it("имя клиента: пробелы схлопываются, пустое — null, длинное — обрезается до 200 символов Unicode", () => {
+    expect(normalizeCustomerName(undefined)).toBeNull();
+    expect(normalizeCustomerName("   \n ")).toBeNull();
+    expect(normalizeCustomerName("  Олена \t Коваль ")).toBe("Олена Коваль");
+    expect(Array.from(normalizeCustomerName("Ї".repeat(250))!)).toHaveLength(200);
+    // Эмодзи (суррогатная пара) не разрезается пополам.
+    const emoji = normalizeCustomerName("😀".repeat(201))!;
+    expect(Array.from(emoji)).toHaveLength(200);
+    expect(emoji.endsWith("😀")).toBe(true);
+    // Обрезка не оставляет пробел в конце.
+    expect(normalizeCustomerName(`${"а".repeat(199)} б`)).toBe("а".repeat(199));
   });
 });

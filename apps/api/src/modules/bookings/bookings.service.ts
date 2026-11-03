@@ -6,10 +6,12 @@ import {
   currentDb,
   currentTenant,
   InjectDb,
+  BOOKING_REASON_CODE_VALUES,
   regionContext,
   withTenant,
   type Booking,
   type BookingEvent,
+  type BookingReasonCode,
   type BookingStatus,
   type Db,
   type JsonObject,
@@ -42,6 +44,7 @@ import {
   generateSlots,
   isFree,
   localDate,
+  normalizeCustomerName,
   occupiedRange,
   partnerPermission,
   partnerResponseDue,
@@ -49,6 +52,7 @@ import {
   rulesProblems,
   transitionActor,
   userCancelAllowed,
+  userCancelDeadline,
   userTransitions,
   type AvailabilityNow,
   type RuleInput,
@@ -66,6 +70,7 @@ import type {
   PartnerBookingsQueryDto,
   PartnerResourceDto,
   PartnerResourceListDto,
+  PartnerSlotsQueryDto,
   PutAvailabilityDto,
   PutManualAvailabilityDto,
   ResourceDto,
@@ -98,8 +103,9 @@ export const BOOKING_NOTIFICATIONS = {
   partnerReminder: "booking.partner_reminder",
 } as const;
 /**
- * Служебные метки причины перехода — всегда в booking_events.payload.code. status_reason брони (и reason события) —
- * текст пользователя/партнёра, если он есть, иначе та же метка.
+ * Служебные метки причины перехода (0024): в bookings.status_reason_code (статус, который выставила система или
+ * который она пометила, — отказ от альтернативы) и всегда в booking_events.payload.code. status_reason брони и reason
+ * события — только свободный текст туриста/партнёра (метка туда не пишется).
  */
 export const BOOKING_REASON_CODES = {
   deliveredToPartner: "delivered_to_partner",
@@ -108,7 +114,7 @@ export const BOOKING_REASON_CODES = {
   partnerSla: "partner_sla",
   customerTimeout: "customer_timeout",
   autoComplete: "auto_complete",
-} as const;
+} as const satisfies Record<string, BookingReasonCode>;
 /** Флаг модуля: партнёрские эндпоинты без regionId проверяют его по регионам своих назначений. */
 const BOOKINGS_FLAG = "module.bookings";
 /** Версия текста согласия на передачу телефона партнёру (D-42; формулировка — LEG, на staging заглушка). */
@@ -176,33 +182,9 @@ export class BookingsService {
     resourceId: string,
     q: { from?: string; days?: number },
   ): Promise<SlotListDto> {
-    return this.inRegion(regionId, async (region) => {
-      const resource = await this.bookableResource(resourceId);
-      const now = this.now();
-      const from = q.from ?? localDate(now, region.timezone);
-      const days = q.days ?? 7;
-      const rules = (await this.repo.rulesOf([resource.id])).get(resource.id) ?? [];
-      const slots = generateSlots(resource, rules, from, days, region.timezone, now);
-      const busy =
-        slots.length === 0
-          ? []
-          : ((
-              await this.repo.busyRanges([resource.id], slots[0]!.occupiedFrom, slots.at(-1)!.occupiedUntil)
-            ).get(resource.id) ?? []);
-      const availability = (await this.availabilityOf([resource], region.timezone)).get(resource.id)!;
-      return {
-        resourceId: resource.id,
-        timezone: region.timezone,
-        from,
-        days,
-        items: slots.map((s) => ({
-          startsAt: s.startsAt.toISOString(),
-          endsAt: s.endsAt.toISOString(),
-          free: isFree(s, busy),
-        })),
-        availability: toAvailabilityDto(availability),
-      };
-    });
+    return this.inRegion(regionId, async (region) =>
+      this.slotList(await this.bookableResource(resourceId), region, q),
+    );
   }
 
   // --- турист: брони (C08) ---
@@ -226,6 +208,9 @@ export class BookingsService {
         throw unprocessable("errors.booking.capacityExceeded", "capacity_exceeded", {
           capacity: resource.capacity_people,
         });
+      // Лимит неподтверждённых (BR-14) — под блокировкой броней пользователя до конца транзакции: параллельные
+      // запросы считают по очереди, и вторая бронь видит первую.
+      await this.repo.lockUserBookings(userId);
       if ((await this.repo.countUnconfirmed(userId)) >= BOOKING_PARAMS.maxUnconfirmedPerUser)
         throw unprocessable("errors.booking.tooManyPending", "too_many_pending");
       const now = this.now();
@@ -256,7 +241,7 @@ export class BookingsService {
           occupied_until: slot.occupiedUntil,
           people_count: input.peopleCount,
           comment: input.comment?.trim() || null,
-          customer_name: null,
+          customer_name: normalizeCustomerName(input.customerName),
           contact_phone: input.phone,
           contact_phone_source: input.phoneSource,
           phone_consent_id: consentId,
@@ -292,7 +277,7 @@ export class BookingsService {
         to_status: next,
         actor_type: "system",
         actor_user_id: null,
-        reason: auto ? BOOKING_REASON_CODES.autoConfirm : BOOKING_REASON_CODES.deliveredToPartner,
+        reason: null,
         payload: { code: auto ? BOOKING_REASON_CODES.autoConfirm : BOOKING_REASON_CODES.deliveredToPartner },
       });
       const partnerUsers = await this.repo.partnerUsers(resource.organization_id, resource.place_id);
@@ -352,13 +337,13 @@ export class BookingsService {
       }
       const resource = await this.repo.findResource(row.resource_id);
       if (!resource) throw notFound();
-      // Служебная метка — всегда в payload события; status_reason — текст туриста, если он есть, иначе метка.
-      const code =
+      // Служебная метка — в status_reason_code и payload события; status_reason — только текст туриста/партнёра.
+      const code: BookingReasonCode | null =
         row.status === "alternative_proposed" && to === "cancelled_by_user"
           ? BOOKING_REASON_CODES.alternativeDeclined
           : null;
-      const reason = input.reason?.trim() || code;
-      const patch = this.transitionPatch(
+      const reason = input.reason?.trim() || null;
+      const transition = this.transitionPatch(
         row,
         to,
         { reason, alternativeStartsAt: input.alternativeStartsAt },
@@ -368,6 +353,7 @@ export class BookingsService {
           userId,
         },
       );
+      const patch: BookingPatch = { ...transition, status_reason_code: code };
       const updated = await this.repo.updateStatus(row.id, row.status, patch).catch(rethrowSlotTaken);
       if (!updated) throw transitionError((await this.repo.findBooking(row.id))?.status ?? row.status, to);
       await this.repo.insertEvent({
@@ -550,6 +536,18 @@ export class BookingsService {
       const resources = await this.repo.resourcesOfPlaces([place.placeId]);
       return { items: await this.toPartnerResources(resources, region.timezone) };
     });
+  }
+
+  /**
+   * Слоты ресурса для партнёра (предложить альтернативу, ручная запись, предпросмотр до публикации): место может быть
+   * не опубликовано, ресурс — не активен. Право booking.read на место ресурса; регион — из ресурса.
+   */
+  async partnerSlots(userId: string, resourceId: string, q: PartnerSlotsQueryDto): Promise<SlotListDto> {
+    const grants = await this.partnerGrants(userId);
+    const { resource } = await this.locateResource(grants, resourceId, "booking.read");
+    return withTenant(this.db, regionContext(resource.region_id), async () =>
+      this.slotList(resource, await this.regionOf(resource.region_id), q),
+    );
   }
 
   async createResource(
@@ -827,6 +825,38 @@ export class BookingsService {
     );
   }
 
+  /** Сетка слотов ресурса в таймзоне региона со свободен/занят (в withTenant региона ресурса). */
+  private async slotList(
+    resource: Resource,
+    region: Region,
+    q: { from?: string; days?: number },
+  ): Promise<SlotListDto> {
+    const now = this.now();
+    const from = q.from ?? localDate(now, region.timezone);
+    const days = q.days ?? 7;
+    const rules = (await this.repo.rulesOf([resource.id])).get(resource.id) ?? [];
+    const slots = generateSlots(resource, rules, from, days, region.timezone, now);
+    const busy =
+      slots.length === 0
+        ? []
+        : ((
+            await this.repo.busyRanges([resource.id], slots[0]!.occupiedFrom, slots.at(-1)!.occupiedUntil)
+          ).get(resource.id) ?? []);
+    const availability = (await this.availabilityOf([resource], region.timezone)).get(resource.id)!;
+    return {
+      resourceId: resource.id,
+      timezone: region.timezone,
+      from,
+      days,
+      items: slots.map((s) => ({
+        startsAt: s.startsAt.toISOString(),
+        endsAt: s.endsAt.toISOString(),
+        free: isFree(s, busy),
+      })),
+      availability: toAvailabilityDto(availability),
+    };
+  }
+
   /** Активный ресурс опубликованного места; иначе 404. */
   private async bookableResource(resourceId: string): Promise<Resource> {
     const resource = await this.repo.findResource(resourceId);
@@ -944,12 +974,15 @@ export class BookingsService {
   }
 
   private async dtoContext(rows: readonly Booking[]): Promise<DtoContext> {
-    const [places, resources, events] = await Promise.all([
+    const regionIds = [...new Set(rows.map((r) => r.region_id))];
+    const [places, resources, events, regions] = await Promise.all([
       this.repo.placeNames(rows.map((r) => r.place_id)),
       this.repo.resourceNames(rows.map((r) => r.resource_id)),
       this.repo.events(rows.map((r) => r.id)),
+      Promise.all(regionIds.map((id) => this.regions.findById(id))),
     ]);
-    return { places, resources, events };
+    const timezones = new Map(regions.flatMap((r) => (r ? [[r.id, r.timezone] as const] : [])));
+    return { places, resources, events, timezones, now: this.now() };
   }
 
   private async activeGrants(userId: string): Promise<Grant[]> {
@@ -1125,7 +1158,21 @@ type DtoContext = {
   places: Map<string, LocalizedText>;
   resources: Map<string, LocalizedText>;
   events: Map<string, BookingEvent[]>;
+  /** Часовой пояс региона брони (своего пояса у места нет — пояс региона). */
+  timezones: Map<string, string>;
+  now: Date;
 };
+
+/** Пояс, если регион брони не найден (не бывает: FK) — пояс региона по умолчанию. */
+const FALLBACK_TIMEZONE = "Europe/Kyiv";
+
+const REASON_CODE_SET: ReadonlySet<string> = new Set(BOOKING_REASON_CODE_VALUES);
+
+/** Код причины из payload события (метка системы), если он известен. */
+function eventCode(e: BookingEvent): BookingReasonCode | null {
+  const code = e.payload.code;
+  return typeof code === "string" && REASON_CODE_SET.has(code) ? (code as BookingReasonCode) : null;
+}
 
 const TARGETS: ReadonlySet<string> = new Set([
   "confirmed",
@@ -1138,6 +1185,7 @@ const TARGETS: ReadonlySet<string> = new Set([
 const isTarget = (s: BookingStatus) => TARGETS.has(s);
 
 function toBookingDto(b: Booking, ctx: DtoContext, transitions: BookingTargetStatus[]): BookingDto {
+  const cancelDeadline = userCancelDeadline(b.status, b.starts_at, b.alternative_starts_at);
   return {
     id: b.id,
     regionId: b.region_id,
@@ -1147,6 +1195,8 @@ function toBookingDto(b: Booking, ctx: DtoContext, transitions: BookingTargetSta
     resourceName: ctx.resources.get(b.resource_id) ?? { uk: "" },
     status: b.status,
     statusReason: b.status_reason,
+    statusReasonCode: b.status_reason_code,
+    timezone: ctx.timezones.get(b.region_id) ?? FALLBACK_TIMEZONE,
     startsAt: b.starts_at.toISOString(),
     endsAt: b.ends_at.toISOString(),
     peopleCount: b.people_count,
@@ -1160,14 +1210,22 @@ function toBookingDto(b: Booking, ctx: DtoContext, transitions: BookingTargetSta
           }
         : null,
     partnerResponseDueAt: b.partner_response_due_at?.toISOString() ?? null,
+    cancelDeadline: cancelDeadline?.toISOString() ?? null,
+    cancelTooLate: cancelDeadline !== null && ctx.now >= cancelDeadline,
+    cancelBeforeStartHours: BOOKING_PARAMS.userCancelBeforeStartHours,
     allowedTransitions: transitions,
-    history: (ctx.events.get(b.id) ?? []).map((e) => ({
-      fromStatus: e.from_status,
-      toStatus: e.to_status,
-      actor: e.actor_type,
-      reason: e.reason,
-      at: e.created_at.toISOString(),
-    })),
+    history: (ctx.events.get(b.id) ?? []).map((e) => {
+      const code = eventCode(e);
+      return {
+        fromStatus: e.from_status,
+        toStatus: e.to_status,
+        actor: e.actor_type,
+        // До 0024 системные события писали метку и в reason — текстом её не показываем.
+        reason: e.reason !== null && e.reason === code ? null : e.reason,
+        reasonCode: code,
+        at: e.created_at.toISOString(),
+      };
+    }),
     createdAt: b.created_at.toISOString(),
     updatedAt: b.updated_at.toISOString(),
   };

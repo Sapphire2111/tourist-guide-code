@@ -9,6 +9,7 @@ export type Slot = ApiSchemas["SlotDto"];
 export type Booking = ApiSchemas["BookingDto"];
 export type PartnerBooking = ApiSchemas["PartnerBookingDto"];
 export type BookingStatus = ApiSchemas["BookingStatus"];
+export type BookingReasonCode = ApiSchemas["BookingReasonCode"];
 export type BookingTarget = ApiSchemas["BookingTargetStatus"];
 export type PartnerResource = ApiSchemas["PartnerResourceDto"];
 export type ResourceInput = ApiSchemas["CreateResourceDto"];
@@ -30,11 +31,13 @@ export type BookingsApi = {
   partnerBookings(placeId: string, from: string, to: string): Promise<PartnerBooking[]>;
   createManual(input: ManualBooking, idempotencyKey: string): Promise<PartnerBooking>;
   partnerResources(placeId: string): Promise<PartnerResource[]>;
+  /** Слоты ресурса партнёру (место может быть не опубликовано; регион — из ресурса). */
+  partnerSlots(resourceId: string, from?: string, days?: number): Promise<SlotList>;
   createResource(input: ResourceInput): Promise<PartnerResource>;
   updateResource(id: string, patch: ResourcePatch): Promise<PartnerResource>;
   putAvailability(id: string, rules: AvailabilityRule[]): Promise<PartnerResource>;
-  /** ttlMinutes обязателен в схеме и для unknown (сервер его игнорирует). */
-  putManual(id: string, status: ManualAvailability, ttlMinutes: number): Promise<PartnerResource>;
+  /** ttlMinutes — для available_now/busy (по умолчанию на сервере 60); для unknown не передаётся. */
+  putManual(id: string, status: ManualAvailability, ttlMinutes?: number): Promise<PartnerResource>;
 };
 
 export function createBookingsApi(api: ApiClient): BookingsApi {
@@ -59,6 +62,12 @@ export function createBookingsApi(api: ApiClient): BookingsApi {
       ok(api.POST("/partner/bookings", { params: { header: { "Idempotency-Key": key } }, body })),
     partnerResources: async (placeId) =>
       (await ok(api.GET("/partner/resources", { params: { query: { placeId } } }))).items,
+    partnerSlots: (id, from, days) =>
+      ok(
+        api.GET("/partner/resources/{id}/slots", {
+          params: { ...path(id), query: { ...(from ? { from } : {}), ...(days ? { days } : {}) } },
+        }),
+      ),
     createResource: (body) => ok(api.POST("/partner/resources", { body })),
     updateResource: (id, body) => ok(api.PATCH("/partner/resources/{id}", { params: path(id), body })),
     putAvailability: (id, rules) =>
@@ -67,7 +76,7 @@ export function createBookingsApi(api: ApiClient): BookingsApi {
       ok(
         api.PUT("/partner/resources/{id}/manual-availability", {
           params: path(id),
-          body: { status, ttlMinutes },
+          body: status === "unknown" || ttlMinutes === undefined ? { status } : { status, ttlMinutes },
         }),
       ),
   };

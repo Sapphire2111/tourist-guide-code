@@ -395,8 +395,15 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     ]);
     const n = await appClient.query(`SELECT bookings_expire_due(100) AS n`);
     expect(n.rows[0].n).toBeGreaterThanOrEqual(1);
-    const row = await sql(`SELECT status, status_reason FROM bookings WHERE id = $1`, [b.id]);
-    expect(row.rows[0]).toEqual({ status: "expired", status_reason: "partner_sla" });
+    const row = await sql(`SELECT status, status_reason, status_reason_code FROM bookings WHERE id = $1`, [
+      b.id,
+    ]);
+    // 0024: служебный код — отдельно от свободного текста.
+    expect(row.rows[0]).toEqual({
+      status: "expired",
+      status_reason: null,
+      status_reason_code: "partner_sla",
+    });
     const ev = await sql(
       `SELECT actor_type FROM booking_events WHERE booking_id = $1 AND to_status = 'expired'`,
       [b.id],
@@ -559,7 +566,11 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       { regionId, status: "cancelled_by_user" },
       meta(user),
     );
-    expect(out).toMatchObject({ status: "cancelled_by_user", statusReason: "alternative_declined" });
+    expect(out).toMatchObject({
+      status: "cancelled_by_user",
+      statusReason: null,
+      statusReasonCode: "alternative_declined",
+    });
     expect(await freeSlots()).toEqual(expect.arrayContaining([o1, a1]));
 
     const silent = await bookings.create(nextTourist(), bookingInput(o2!));
@@ -574,12 +585,14 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     ]);
     expect((await appClient.query(`SELECT bookings_expire_due(100) AS n`)).rows[0].n).toBe(1);
     const row = await sql(
-      `SELECT status, status_reason, alternative_starts_at, customer_response_due_at FROM bookings WHERE id = $1`,
+      `SELECT status, status_reason, status_reason_code, alternative_starts_at, customer_response_due_at
+       FROM bookings WHERE id = $1`,
       [silent.id],
     );
     expect(row.rows[0]).toEqual({
       status: "expired",
-      status_reason: "customer_timeout",
+      status_reason: null,
+      status_reason_code: "customer_timeout",
       alternative_starts_at: null,
       customer_response_due_at: null,
     });
@@ -653,7 +666,15 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'expired'`,
       [b.id],
     );
-    expect(ev.rows).toEqual([{ reason: "partner_sla", payload: { code: "partner_sla" } }]);
+    expect(ev.rows).toEqual([{ reason: null, payload: { code: "partner_sla" } }]);
+    // История для туриста: код отдельно, текста нет.
+    const mine = (await bookings.myBookings(regionId, user)).items.find((x) => x.id === b.id)!;
+    expect(mine).toMatchObject({ status: "expired", statusReason: null, statusReasonCode: "partner_sla" });
+    expect(mine.history.at(-1)).toMatchObject({
+      toStatus: "expired",
+      reason: null,
+      reasonCode: "partner_sla",
+    });
   });
 
   it("0023: customer_timeout — уведомления и метка; отказ от альтернативы с текстом — метка всё равно в payload", async () => {
@@ -695,17 +716,17 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       { regionId, status: "cancelled_by_user", reason: "Не підходить час" },
       meta(user),
     );
-    expect(out.statusReason).toBe("Не підходить час");
+    expect(out).toMatchObject({ statusReason: "Не підходить час", statusReasonCode: "alternative_declined" });
     const dec = await sql(
       `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'cancelled_by_user'`,
       [declined.id],
     );
     expect(dec.rows).toEqual([{ reason: "Не підходить час", payload: { code: "alternative_declined" } }]);
     const created = await sql(
-      `SELECT payload FROM booking_events WHERE booking_id = $1 AND to_status = 'pending_partner'`,
+      `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'pending_partner'`,
       [declined.id],
     );
-    expect(created.rows[0].payload).toEqual({ code: "delivered_to_partner" });
+    expect(created.rows[0]).toEqual({ reason: null, payload: { code: "delivered_to_partner" } });
   });
 
   it("0023: автозавершение — уведомление туристу один раз, метка auto_complete", async () => {
@@ -724,10 +745,12 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     expect(notes.map((n) => n.recipient_user_id)).toEqual([user]);
     expect(notes[0]!.body).toMatch(HEAD);
     const ev = await sql(
-      `SELECT payload FROM booking_events WHERE booking_id = $1 AND to_status = 'completed'`,
+      `SELECT reason, payload FROM booking_events WHERE booking_id = $1 AND to_status = 'completed'`,
       [b.id],
     );
-    expect(ev.rows[0].payload).toEqual({ code: "auto_complete" });
+    expect(ev.rows[0]).toEqual({ reason: null, payload: { code: "auto_complete" } });
+    const row = await sql(`SELECT status_reason, status_reason_code FROM bookings WHERE id = $1`, [b.id]);
+    expect(row.rows[0]).toEqual({ status_reason: null, status_reason_code: "auto_complete" });
   });
 
   it("0023: напоминания — туристу за 24 ч и 2 ч, партнёру перед SLA; один раз; отменённым — нет", async () => {
@@ -835,6 +858,190 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       [claimed.map((c) => c.id), WORKER_TEMPLATES],
     );
     expect(foreign.rows[0].n).toBe(0);
+  });
+
+  // --- миграция 0024: пробелы перед включением флага ---
+
+  it("0024: имя клиента (обрезка), пояс и срок отмены в BookingDto, контекст входа (QR) в брони", async () => {
+    const [slot] = await freeSlots();
+    const user = nextTourist();
+    const ctx = await sql(
+      `INSERT INTO entry_contexts (region_id, entry_type, source, user_id) VALUES ($1, 'region', 'qr', $2)
+       RETURNING id`,
+      [regionId, user],
+    );
+    const entryContextId = ctx.rows[0].id as string;
+    const b = await bookings.create(
+      user,
+      bookingInput(slot!, { customerName: `  Олена   ${"К".repeat(300)}`, entryContextId }),
+    );
+    expect(b).toMatchObject({
+      timezone: "Europe/Kyiv",
+      cancelDeadline: slot,
+      cancelTooLate: false,
+      cancelBeforeStartHours: 2,
+      statusReason: null,
+      // Обычный путь (передано закладу) — не причина статуса: код только в истории.
+      statusReasonCode: null,
+    });
+    expect(b.history.at(-1)).toMatchObject({ reason: null, reasonCode: "delivered_to_partner" });
+    const row = await sql(`SELECT customer_name, entry_context_id FROM bookings WHERE id = $1`, [b.id]);
+    expect(Array.from(row.rows[0].customer_name as string)).toHaveLength(200);
+    expect(row.rows[0].customer_name).toMatch(/^Олена К+$/);
+    expect(row.rows[0].entry_context_id).toBe(entryContextId);
+    const ofOwner = (await bookings.partnerList(OWNER, {})).items.find((x) => x.id === b.id)!;
+    expect(ofOwner.customerName).toBe(row.rows[0].customer_name);
+    // Подтверждённая: отмена — не позже чем за 2 ч; бронь «через час» — уже поздно.
+    const confirmed = await bookings.updateStatus(
+      OWNER,
+      b.id,
+      { regionId, status: "confirmed" },
+      meta(OWNER),
+    );
+    expect(confirmed.cancelDeadline).toBe(new Date(Date.parse(slot!) - 2 * 3600_000).toISOString());
+    expect(confirmed.statusReasonCode).toBeNull();
+    // Сдвигается только время брони (не занятость): интервал «через час» уже занят бронью другого теста.
+    await sql(
+      `UPDATE bookings SET starts_at = now() + interval '60 minutes', ends_at = now() + interval '120 minutes'
+       WHERE id = $1`,
+      [b.id],
+    );
+    const late = (await bookings.myBookings(regionId, user)).items.find((x) => x.id === b.id)!;
+    expect(late).toMatchObject({ cancelTooLate: true, allowedTransitions: ["cancelled_by_user"] });
+    // Чужой контекст входа не сохраняется; пустое имя — имя профиля.
+    const [other] = await freeSlots();
+    const stranger = nextTourist();
+    const foreign = await bookings.create(
+      stranger,
+      bookingInput(other!, { customerName: "   ", entryContextId }),
+    );
+    const foreignRow = await sql(`SELECT customer_name, entry_context_id FROM bookings WHERE id = $1`, [
+      foreign.id,
+    ]);
+    expect(foreignRow.rows[0]).toEqual({ customer_name: null, entry_context_id: null });
+  });
+
+  it("0024: лимит неподтверждённых — параллельные брони одного пользователя не обходят его", async () => {
+    const slots = (await freeSlots()).slice(0, 6);
+    expect(slots).toHaveLength(6);
+    const user = nextTourist();
+    const results = await Promise.allSettled(slots.map((s) => bookings.create(user, bookingInput(s))));
+    const ok = results.filter((r) => r.status === "fulfilled");
+    expect(ok).toHaveLength(3);
+    for (const r of results.filter((x) => x.status === "rejected"))
+      expect((r as PromiseRejectedResult).reason).toMatchObject({ details: { reason: "too_many_pending" } });
+    const n = await sql(
+      `SELECT count(*)::int AS n FROM bookings WHERE user_id = $1 AND status IN ('new', 'pending_partner')`,
+      [user],
+    );
+    expect(n.rows[0].n).toBe(3);
+  });
+
+  it("0024: слоты неопубликованного места — партнёру можно, туристу 404", async () => {
+    const draft = await sql(
+      `UPDATE places SET organization_id = $1, status = 'draft'
+       WHERE id = (SELECT id FROM places WHERE region_id = $2 AND status = 'published' AND id <> $3
+                   ORDER BY id LIMIT 1)
+       RETURNING id`,
+      [ORG, regionId, placeId],
+    );
+    const draftPlaceId = draft.rows[0].id as string;
+    const r = await bookings.createResource(
+      OWNER,
+      { placeId: draftPlaceId, name: { uk: "Чан у чернетці" }, leadTimeMin: 0 },
+      meta(OWNER),
+    );
+    await bookings.putAvailability(
+      OWNER,
+      r.id,
+      { rules: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "09:00", closesAt: "18:00" })) },
+      meta(OWNER),
+    );
+    expect(await failure(bookings.slots(regionId, r.id, {}))).toMatchObject({ status: 404 });
+    const list = await bookings.partnerSlots(STAFF, r.id, { days: 3 });
+    expect(list).toMatchObject({ resourceId: r.id, timezone: "Europe/Kyiv", days: 3 });
+    expect(list.items.length).toBeGreaterThan(0);
+    expect(await failure(bookings.partnerSlots(STRANGER, r.id, {}))).toMatchObject({ status: 404 });
+  });
+
+  it("0024: неизвестный PostgreSQL-пояс региона не роняет истечения — уведомление со временем в UTC", async () => {
+    const [slot] = await freeSlots();
+    const user = nextTourist();
+    const b = await bookings.create(user, bookingInput(slot!));
+    await sql(`UPDATE bookings SET partner_response_due_at = now() - interval '1 minute' WHERE id = $1`, [
+      b.id,
+    ]);
+    const tz = (await sql(`SELECT timezone FROM regions WHERE id = $1`, [regionId])).rows[0]
+      .timezone as string;
+    try {
+      await sql(`UPDATE regions SET timezone = 'Mars/Olympus_Mons' WHERE id = $1`, [regionId]);
+      expect(
+        (await appClient.query(`SELECT bookings_expire_due(100) AS n`)).rows[0].n,
+      ).toBeGreaterThanOrEqual(1);
+    } finally {
+      await sql(`UPDATE regions SET timezone = $2 WHERE id = $1`, [regionId, tz]);
+    }
+    expect((await sql(`SELECT status FROM bookings WHERE id = $1`, [b.id])).rows[0].status).toBe("expired");
+    const toUser = (await notesOf(b.id, "booking.expired")).find((n) => n.recipient_user_id === user)!;
+    const utc = new Date(slot!).toISOString();
+    expect(toUser.body).toContain(`${utc.slice(8, 10)}.${utc.slice(5, 7)}, ${utc.slice(11, 16)})`);
+    const safe = await sql(
+      `SELECT booking_safe_timezone('Europe/Kyiv') AS kyiv, booking_safe_timezone('Mars/Olympus_Mons') AS bad,
+         booking_safe_timezone(NULL) AS none`,
+    );
+    expect(safe.rows[0]).toEqual({ kyiv: "Europe/Kyiv", bad: "UTC", none: "UTC" });
+  });
+
+  it("0024: outbox воркера — взятая и не отмеченная строка повторяется после аренды, затем failed", async () => {
+    const [slot] = await freeSlots();
+    const user = nextTourist();
+    const b = await bookings.create(user, bookingInput(slot!));
+    const ins = await sql(
+      `INSERT INTO notifications (region_id, recipient_user_id, template, entity_type, entity_id, body)
+       VALUES ($1, $2, 'booking.reminder', 'booking', $3, 'Нагадування 0024') RETURNING id`,
+      [regionId, user, b.id],
+    );
+    const id = ins.rows[0].id as string;
+    const claim = async () =>
+      (
+        await appClient.query(`SELECT id, attempts FROM notifications_claim_pending($1, 1000, 3, 600)`, [
+          WORKER_TEMPLATES,
+        ])
+      ).rows.filter((r) => r.id === id) as { id: string; attempts: number }[];
+    expect(await claim()).toEqual([{ id, attempts: 1 }]);
+    // Воркер упал: строка взята (attempts = 1) — до конца аренды её никто не берёт, после — повтор.
+    expect(await claim()).toEqual([]);
+    await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);
+    expect(await claim()).toEqual([{ id, attempts: 2 }]);
+    // Просроченное взятие №1 не отмечает и не возвращает строку, которую уже держит взятие №2.
+    const stale = await appClient.query(`SELECT notifications_mark_dispatched($1, 'sent', NULL, 1) AS ok`, [
+      id,
+    ]);
+    expect(stale.rows[0].ok).toBe(false);
+    const staleRelease = await appClient.query(`SELECT notifications_release($1, 0, 'x', 1, true) AS ok`, [
+      id,
+    ]);
+    expect(staleRelease.rows[0].ok).toBe(false);
+    // 429: отсрочка по retry_after без траты попытки — до срока не берётся, затем то же взятие №2.
+    const rel = await appClient.query(
+      `SELECT notifications_release($1, 30, 'Bot API sendMessage: 429', 2, true) AS ok`,
+      [id],
+    );
+    expect(rel.rows[0].ok).toBe(true);
+    expect(await claim()).toEqual([]);
+    await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);
+    expect(await claim()).toEqual([{ id, attempts: 2 }]);
+    // 5xx: попытка посчитана.
+    await appClient.query(`SELECT notifications_release($1, 0, 'Bot API sendMessage: 502', 2, false)`, [id]);
+    expect(await claim()).toEqual([{ id, attempts: 3 }]);
+    // Последняя попытка тоже не отмечена — после аренды строка failed (max_attempts), не висит pending.
+    await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);
+    expect(await claim()).toEqual([]);
+    const final = await sql(`SELECT status, last_error, next_attempt_at FROM notifications WHERE id = $1`, [
+      id,
+    ]);
+    expect(final.rows[0]).toMatchObject({ status: "failed", next_attempt_at: null });
+    expect(final.rows[0].last_error).toContain("max_attempts");
   });
 
   it("флаг module.bookings у партнёра — по регионам назначений: включён хоть в одном — только его места", async () => {

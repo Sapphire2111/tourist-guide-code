@@ -61,6 +61,12 @@ const abilities = (role: string) => ({
   manageStaff: role === "ORG_OWNER",
   manageOffers: role !== "ORG_STAFF",
   serviceRequests: true,
+  bookings: true,
+  manualBooking: true,
+  manageResources: role !== "ORG_STAFF",
+  editAvailability: role !== "ORG_STAFF",
+  manualAvailability: true,
+  customerPhone: role !== "ORG_STAFF",
 });
 
 function missing(p: PlaceState): string[] {

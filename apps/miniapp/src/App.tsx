@@ -821,8 +821,9 @@ export function App({
     () => ({
       api: bookingsApi ?? createBookingsApi(props.api),
       timeZone: context?.region?.timezone ?? "Europe/Kyiv",
+      entryContextId: context?.entryContextId ?? null,
     }),
-    [bookingsApi, props.api, context?.region?.timezone],
+    [bookingsApi, props.api, context?.region?.timezone, context?.entryContextId],
   );
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
   // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).

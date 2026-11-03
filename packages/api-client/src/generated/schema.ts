@@ -1838,7 +1838,7 @@ export interface paths {
     head?: never;
     /**
      * Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05
-     * @description Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).
+     * @description Турист-владелец: cancelled_by_user (до BookingDto.cancelDeadline: confirmed — не позже чем за cancelBeforeStartHours ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).
      */
     patch: operations["updateBookingStatus"];
     trace?: never;
@@ -1852,13 +1852,13 @@ export interface paths {
     };
     /**
      * Брони заведений партнёра (P04, P05): только места своих организаций
-     * @description Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё).
+     * @description Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё). 404 — модуль бронирований выключен во всех регионах назначений.
      */
     get: operations["listPartnerBookings"];
     put?: never;
     /**
      * Ручная запись партнёра (P04): сразу confirmed, блокирует интервал для онлайн-брони
-     * @description Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.
+     * @description Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет или модуль выключен; 403 — нет права booking.manual.create на место ресурса. AuditLog.
      */
     post: operations["createManualBooking"];
     delete?: never;
@@ -1874,14 +1874,37 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Ресурсы заведения партнёра с правилами доступности и ручным статусом */
+    /**
+     * Ресурсы заведения партнёра с правилами доступности и ручным статусом
+     * @description 403 not_partner — нет права booking.read на место. 404 — модуль бронирований выключен во всех регионах назначений.
+     */
     get: operations["listPartnerResources"];
     put?: never;
     /**
      * Новый ресурс заведения (D-04 А: почасовые слоты): длительность, buffer, вместимость, SLA
-     * @description Право resource.manage (владелец, менеджер). 403 — нет права на место. AuditLog.
+     * @description Право resource.manage (владелец, менеджер). 403 — нет права на место. 404 — модуль бронирований выключен во всех регионах назначений. AuditLog.
      */
     post: operations["createPartnerResource"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/resources/{id}/slots": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Слоты ресурса для партнёра: альтернатива, ручная запись, предпросмотр до публикации места
+     * @description Как GET /resources/{id}/slots, но место может быть не опубликовано, а ресурс — неактивен; регион — из ресурса. Право booking.read на место ресурса. 404 — ресурса нет среди мест партнёра или модуль выключен.
+     */
+    get: operations["listPartnerResourceSlots"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1938,7 +1961,7 @@ export interface paths {
     get?: never;
     /**
      * Ручной статус «Доступно зараз» с TTL (D-78: короткий, по умолчанию 60 мин)
-     * @description available_now / busy — до now + ttlMinutes; unknown — снять. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.
+     * @description available_now / busy — до now + ttlMinutes (по умолчанию 60); unknown — снять, ttlMinutes не нужен. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.
      */
     put: operations["putResourceManualAvailability"];
     post?: never;
@@ -4323,6 +4346,18 @@ export interface components {
       manageOffers: boolean;
       /** @description Заявки гостей P10 (все роли партнёра) */
       serviceRequests: boolean;
+      /** @description Брони заведения P04/P05 — список и ответ (booking.read) */
+      bookings: boolean;
+      /** @description Ручная запись клиента (booking.manual.create) */
+      manualBooking: boolean;
+      /** @description Ресурсы бронирования: создать, править, архивировать (resource.manage; ORG_OWNER, ORG_MANAGER) */
+      manageResources: boolean;
+      /** @description Правила доступности ресурса (availability.edit) */
+      editAvailability: boolean;
+      /** @description Ручной статус «Доступно зараз» (availability.status.manual) */
+      manualAvailability: boolean;
+      /** @description Видит телефон клиента брони при его согласии (booking.admin.read; кассиру — нет, C-20) */
+      customerPhone: boolean;
     };
     /** @enum {string} */
     ModerationCaseStatus: "open" | "decided";
@@ -4855,9 +4890,11 @@ export interface components {
       phoneShareConsent: boolean;
       /**
        * Format: uuid
-       * @description EntryContext входа (атрибуция)
+       * @description EntryContext входа (QR) — атрибуция брони; чужой или несуществующий контекст молча не сохраняется
        */
       entryContextId?: string;
+      /** @description Имя клиента для заведения (необязательно; по умолчанию — имя профиля). Пробелы схлопываются, длиннее 200 символов — обрезается */
+      customerName?: string;
     };
     /** @enum {string} */
     BookingStatus:
@@ -4870,6 +4907,17 @@ export interface components {
       | "expired"
       | "completed"
       | "no_show";
+    /**
+     * @description Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…)
+     * @enum {string}
+     */
+    BookingReasonCode:
+      | "delivered_to_partner"
+      | "auto_confirm"
+      | "alternative_declined"
+      | "partner_sla"
+      | "customer_timeout"
+      | "auto_complete";
     BookingAlternativeDto: {
       /** Format: date-time */
       startsAt: string;
@@ -4898,7 +4946,10 @@ export interface components {
       fromStatus: components["schemas"]["BookingStatus"] | null;
       toStatus: components["schemas"]["BookingStatus"];
       actor: components["schemas"]["BookingActor"];
+      /** @description Свободный текст туриста/партнёра */
       reason: string | null;
+      /** @description Служебный код причины (система, воркер); показывать переводом, не как текст */
+      reasonCode: components["schemas"]["BookingReasonCode"] | null;
       /** Format: date-time */
       at: string;
     };
@@ -4914,7 +4965,15 @@ export interface components {
       resourceId: string;
       resourceName: components["schemas"]["LocalizedTextDto"];
       status: components["schemas"]["BookingStatus"];
+      /** @description Причина статуса — только свободный текст туриста/партнёра (служебная метка — statusReasonCode) */
       statusReason: string | null;
+      /** @description Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…) */
+      statusReasonCode: components["schemas"]["BookingReasonCode"] | null;
+      /**
+       * @description Часовой пояс места (региона) — показывать время брони в нём
+       * @example Europe/Kyiv
+       */
+      timezone: string;
       /** Format: date-time */
       startsAt: string;
       /** Format: date-time */
@@ -4927,6 +4986,15 @@ export interface components {
        * @description Срок ответа партнёра (D-43)
        */
       partnerResponseDueAt: string | null;
+      /**
+       * Format: date-time
+       * @description До какого момента турист может отменить бронь (confirmed — за cancelBeforeStartHours до начала, неподтверждённую — до начала); null — турист эту бронь не отменяет
+       */
+      cancelDeadline: string | null;
+      /** @description Отменить туристу уже поздно (cancelDeadline прошёл): PATCH cancelled_by_user — 422 cancelTooLate */
+      cancelTooLate: boolean;
+      /** @description Правило отмены подтверждённой брони: не позже чем за столько часов до начала */
+      cancelBeforeStartHours: number;
       /** @description Переходы, доступные текущему пользователю */
       allowedTransitions: components["schemas"]["BookingTargetStatus"][];
       history: components["schemas"]["BookingEventDto"][];
@@ -4967,7 +5035,15 @@ export interface components {
       resourceId: string;
       resourceName: components["schemas"]["LocalizedTextDto"];
       status: components["schemas"]["BookingStatus"];
+      /** @description Причина статуса — только свободный текст туриста/партнёра (служебная метка — statusReasonCode) */
       statusReason: string | null;
+      /** @description Служебный код причины статуса (alternative_declined, partner_sla, customer_timeout, auto_complete…) */
+      statusReasonCode: components["schemas"]["BookingReasonCode"] | null;
+      /**
+       * @description Часовой пояс места (региона) — показывать время брони в нём
+       * @example Europe/Kyiv
+       */
+      timezone: string;
       /** Format: date-time */
       startsAt: string;
       /** Format: date-time */
@@ -4980,6 +5056,15 @@ export interface components {
        * @description Срок ответа партнёра (D-43)
        */
       partnerResponseDueAt: string | null;
+      /**
+       * Format: date-time
+       * @description До какого момента турист может отменить бронь (confirmed — за cancelBeforeStartHours до начала, неподтверждённую — до начала); null — турист эту бронь не отменяет
+       */
+      cancelDeadline: string | null;
+      /** @description Отменить туристу уже поздно (cancelDeadline прошёл): PATCH cancelled_by_user — 422 cancelTooLate */
+      cancelTooLate: boolean;
+      /** @description Правило отмены подтверждённой брони: не позже чем за столько часов до начала */
+      cancelBeforeStartHours: number;
       /** @description Переходы, доступные текущему пользователю */
       allowedTransitions: components["schemas"]["BookingTargetStatus"][];
       history: components["schemas"]["BookingEventDto"][];
@@ -5143,11 +5228,8 @@ export interface components {
     PutManualAvailabilityDto: {
       /** @description available_now — «є вільні місця», busy — «немає місць», unknown — снять ручной статус */
       status: components["schemas"]["ManualAvailability"];
-      /**
-       * @description TTL ручного статуса, мин (D-78 А: короткий)
-       * @default 60
-       */
-      ttlMinutes: number;
+      /** @description TTL ручного статуса, мин (D-78 А: короткий); по умолчанию 60. Для unknown не нужен (игнорируется) */
+      ttlMinutes?: number;
     };
     /** @enum {string} */
     FeatureFlagKey:
@@ -17020,6 +17102,17 @@ export interface operations {
         };
       };
       /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
       429: {
         headers: {
           /** @description Correlation id запроса */
@@ -17215,6 +17308,17 @@ export interface operations {
         };
       };
       /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
       429: {
         headers: {
           /** @description Correlation id запроса */
@@ -17296,7 +17400,113 @@ export interface operations {
         };
       };
       /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
       422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPartnerResourceSlots: {
+    parameters: {
+      query?: {
+        /** @description Первая местная дата (по умолчанию — сегодня в таймзоне региона) */
+        from?: string;
+        /** @description Дней (по умолчанию 7) */
+        days?: number;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SlotListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

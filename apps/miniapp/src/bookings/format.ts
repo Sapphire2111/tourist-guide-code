@@ -1,7 +1,7 @@
 // Время в поясе региона, тексты статусов и причин брони, телефон E.164. Время API — UTC (RFC 3339), правила
 // доступности и экраны — местное время региона.
 import type { MessageKey } from "@tg/i18n";
-import type { BookingStatus } from "./bookings-api.js";
+import type { BookingReasonCode, BookingStatus } from "./bookings-api.js";
 
 /** Пояс, который понимает движок: tz → Europe/Kiev (старые ICU не знают Europe/Kyiv) → пояс устройства. */
 export function zoneOf(tz: string): string | undefined {
@@ -14,6 +14,14 @@ export function zoneOf(tz: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Пояс брони: с сервера (BookingDto.timezone — пояс места); нет его (старый ответ) — пояс окружения (регион входа).
+ * Незнакомый движку пояс дальше подменяет zoneOf.
+ */
+export function bookingZone(tz: string | null | undefined, fallback: string): string {
+  return tz?.trim() ? tz : fallback;
 }
 
 function parts(instant: number, tz: string): Record<string, string> {
@@ -100,30 +108,38 @@ export const STATUS_TONE: Partial<Record<BookingStatus, "accent" | "accent2" | "
 export const statusKey = (s: BookingStatus, who: "user" | "partner") =>
   `miniapp.booking.${who === "user" ? "status" : "pstatus"}.${s}` as MessageKey;
 
-/** Служебные коды причин (сервер, воркер) — человеческим текстом; не показываем сырые коды. */
-const REASON_CODES: Record<string, MessageKey> = {
-  alternative_declined: "miniapp.booking.reason.alternative_declined",
-  customer_timeout: "miniapp.booking.reason.customer_timeout",
-  customer_response_timeout: "miniapp.booking.reason.customer_timeout",
-  alternative_expired: "miniapp.booking.reason.customer_timeout",
-  partner_timeout: "miniapp.booking.reason.partner_timeout",
-  partner_response_timeout: "miniapp.booking.reason.partner_timeout",
-  partner_response_overdue: "miniapp.booking.reason.partner_timeout",
-  sla_expired: "miniapp.booking.reason.partner_timeout",
+/**
+ * Служебные коды причин сервера и воркера (BookingReasonCode: statusReasonCode брони, reasonCode истории) —
+ * человеческим текстом. Перечень — ровно enum сервера (BOOKING_REASON_CODES api, миграция 0024): новый код без
+ * перевода не соберётся.
+ */
+export const REASON_CODES: Readonly<Record<BookingReasonCode, MessageKey>> = {
   delivered_to_partner: "miniapp.booking.reason.delivered_to_partner",
   auto_confirm: "miniapp.booking.reason.auto_confirm",
-  auto_completed: "miniapp.booking.reason.auto_completed",
+  alternative_declined: "miniapp.booking.reason.alternative_declined",
+  partner_sla: "miniapp.booking.reason.partner_timeout",
+  customer_timeout: "miniapp.booking.reason.customer_timeout",
+  auto_complete: "miniapp.booking.reason.auto_completed",
 };
 
+const isReasonCode = (v: string): v is BookingReasonCode => Object.hasOwn(REASON_CODES, v);
+
 /**
- * Причина статуса для показа: известный код — ключ перевода; остальное (текст партнёра, новый код сервера) — как
- * есть, чтобы причина не пропадала.
+ * Причина статуса для показа: код — переводом, свободный текст туриста/партнёра — как есть; оба — «код — текст».
+ * Текст, совпадающий с кодом (записи до разделения полей), показывается переводом, а не сырым кодом.
  */
-export function reasonText(reason: string | null | undefined, t: (key: MessageKey) => string): string | null {
-  const r = reason?.trim();
-  if (!r) return null;
-  const key = REASON_CODES[r];
-  return key ? t(key) : r;
+export function reasonText(
+  reason: string | null | undefined,
+  code: BookingReasonCode | null | undefined,
+  t: (key: MessageKey) => string,
+): string | null {
+  let text = reason?.trim() || null;
+  let key = code ? REASON_CODES[code] : undefined;
+  if (text && isReasonCode(text)) {
+    key ??= REASON_CODES[text];
+    text = null;
+  }
+  return [key ? t(key) : null, text].filter(Boolean).join(" — ") || null;
 }
 
 // --- телефон ---

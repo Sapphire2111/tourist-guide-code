@@ -65,6 +65,8 @@ export const BOOKING_PARAMS = {
   userCancelBeforeStartHours: 2,
   /** Ручная запись: длительность не больше, мин. */
   manualMaxDurationMin: 24 * 60,
+  /** Имя клиента в онлайн-брони (необязательное): длиннее — обрезается до стольких символов (CHECK БД — 200). */
+  customerNameMax: 200,
 } as const;
 
 /** Действия туриста-владельца брони. */
@@ -95,6 +97,32 @@ export type BookingActorKind = "user" | "partner";
 export function userCancelAllowed(status: BookingStatus, startsAt: Date, now: Date): boolean {
   const before = status === "confirmed" ? BOOKING_PARAMS.userCancelBeforeStartHours * 3_600_000 : 0;
   return now.getTime() < startsAt.getTime() - before;
+}
+
+/**
+ * Срок, до которого турист может отменить бронь (тот же расчёт, что userCancelAllowed): confirmed — за
+ * userCancelBeforeStartHours до начала; new, pending_partner — начало; alternative_proposed — начало предложенного
+ * слота. null — турист бронь не отменяет (закрыта или ещё не его ход).
+ */
+export function userCancelDeadline(
+  status: BookingStatus,
+  startsAt: Date,
+  alternativeStartsAt: Date | null,
+): Date | null {
+  if (!userTransitions(status).includes("cancelled_by_user")) return null;
+  const start = status === "alternative_proposed" && alternativeStartsAt ? alternativeStartsAt : startsAt;
+  const before = status === "confirmed" ? BOOKING_PARAMS.userCancelBeforeStartHours * 3_600_000 : 0;
+  return new Date(start.getTime() - before);
+}
+
+/**
+ * Имя клиента онлайн-брони: пробелы схлопываются, длиннее customerNameMax — обрезается (по символам Unicode, как
+ * char_length в БД); пустое — null (партнёр увидит имя из профиля).
+ */
+export function normalizeCustomerName(raw: string | null | undefined): string | null {
+  const name = (raw ?? "").replace(/\s+/g, " ").trim();
+  if (!name) return null;
+  return Array.from(name).slice(0, BOOKING_PARAMS.customerNameMax).join("").trim() || null;
 }
 
 export function userTransitions(from: BookingStatus): readonly BookingStatus[] {

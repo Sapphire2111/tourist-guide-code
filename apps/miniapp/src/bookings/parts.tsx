@@ -7,7 +7,7 @@ import { useErrorText } from "../host/errors.js";
 import { ApiCallError, NetworkError } from "../host/types.js";
 import { keepsIdempotencyKey } from "../partner/partner-api.js";
 import { newKey } from "../partner/parts.js";
-import type { BookingStatus } from "./bookings-api.js";
+import type { BookingReasonCode, BookingStatus } from "./bookings-api.js";
 import { reasonText, STATUS_TONE, statusKey } from "./format.js";
 
 export function StatusBadge({ status, who }: { status: BookingStatus; who: "user" | "partner" }) {
@@ -19,9 +19,9 @@ export function StatusBadge({ status, who }: { status: BookingStatus; who: "user
   );
 }
 
-export function Reason({ reason }: { reason: string | null }) {
+export function Reason({ reason, code }: { reason: string | null; code?: BookingReasonCode | null }) {
   const { t } = useT();
-  const text = reasonText(reason, t);
+  const text = reasonText(reason, code, t);
   if (!text) return null;
   return (
     <p className="kosiv-muted" data-testid="booking-reason">
