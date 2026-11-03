@@ -7,7 +7,7 @@ const ZERO: BookingsDueResult = {
   expired: 0,
   completed: 0,
   reminded: 0,
-  notifications: { sent: 0, failed: 0, skipped: 0 },
+  notifications: { sent: 0, failed: 0, skipped: 0, retried: 0 },
 };
 
 function setup(lockOk = true, processDue = vi.fn(async () => ZERO)) {

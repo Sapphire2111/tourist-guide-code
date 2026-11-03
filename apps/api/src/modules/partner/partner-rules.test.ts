@@ -86,6 +86,12 @@ describe("правила кабинета партнёра (блок 6)", () => 
       manageStaff: false,
       manageOffers: false,
       serviceRequests: true,
+      bookings: true,
+      manualBooking: true,
+      manageResources: false,
+      editAvailability: false,
+      manualAvailability: true,
+      customerPhone: false,
     });
     expect(abilitiesOf("ORG_MANAGER")).toMatchObject({
       editPlace: true,
@@ -93,6 +99,12 @@ describe("правила кабинета партнёра (блок 6)", () => 
       submit: false,
       manageStaff: false,
       manageOffers: true,
+      bookings: true,
+      manualBooking: true,
+      manageResources: true,
+      editAvailability: true,
+      manualAvailability: true,
+      customerPhone: true,
     });
     expect(Object.values(abilitiesOf("ORG_OWNER")).every(Boolean)).toBe(true);
     expect(higherRole("ORG_STAFF", "ORG_OWNER")).toBe("ORG_OWNER");

@@ -886,6 +886,8 @@ export interface NotificationsTable {
   attempts: ColumnType<number, number | undefined, number>;
   last_error: Nullable<string>;
   sent_at: Nullable<Date>;
+  /** 0024: аренда взятой воркером строки / срок повтора; NULL — строку никто не держит. */
+  next_attempt_at: Nullable<Date>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -1177,6 +1179,19 @@ export const PHONE_SOURCES = ["telegram_contact", "manual", "partner"] as const;
 export type PhoneSource = (typeof PHONE_SOURCES)[number];
 export const BOOKING_ACTORS = ["user", "staff", "system"] as const;
 export type BookingActor = (typeof BOOKING_ACTORS)[number];
+/**
+ * Служебные коды причины перехода брони (0024: bookings.status_reason_code и booking_events.payload.code) — отдельно
+ * от свободного текста туриста/партнёра (status_reason, reason события).
+ */
+export const BOOKING_REASON_CODE_VALUES = [
+  "delivered_to_partner",
+  "auto_confirm",
+  "alternative_declined",
+  "partner_sla",
+  "customer_timeout",
+  "auto_complete",
+] as const;
+export type BookingReasonCode = (typeof BOOKING_REASON_CODE_VALUES)[number];
 
 export interface BookingsTable {
   id: UuidPk;
@@ -1202,6 +1217,7 @@ export interface BookingsTable {
   currency: ColumnType<string | null, string | null | undefined, never>;
   status: ColumnType<BookingStatus, BookingStatus, BookingStatus>;
   status_reason: Nullable<string>;
+  status_reason_code: Nullable<BookingReasonCode>;
   partner_response_due_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
   alternative_starts_at: ColumnType<Date | null, never, Date | null>;
   alternative_ends_at: ColumnType<Date | null, never, Date | null>;

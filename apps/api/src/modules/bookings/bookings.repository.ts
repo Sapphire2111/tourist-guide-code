@@ -7,6 +7,7 @@ import {
   type BookingActor,
   type BookingEvent,
   type BookingMode,
+  type BookingReasonCode,
   type BookingSource,
   type BookingStatus,
   type Db,
@@ -80,6 +81,7 @@ export type NewBookingRow = {
 export type BookingPatch = {
   status: BookingStatus;
   status_reason?: string | null;
+  status_reason_code?: BookingReasonCode | null;
   starts_at?: Date;
   ends_at?: Date;
   occupied_from?: Date;
@@ -403,6 +405,18 @@ export class BookingsRepository {
     if (f.from) query = query.where("starts_at", ">=", f.from);
     if (f.to) query = query.where("starts_at", "<", f.to);
     return query.orderBy("starts_at").orderBy("id").limit(PARTNER_BOOKINGS_MAX).execute();
+  }
+
+  /**
+   * Транзакционная блокировка броней пользователя (до коммита): параллельные онлайн-брони одного пользователя
+   * проверяют лимит неподтверждённых по очереди — вторая видит уже вставленную первую (READ COMMITTED), гонки
+   * «обе насчитали 2 и обе вставили» нет. Ключ — пространство booking-unconfirmed и id пользователя.
+   */
+  async lockUserBookings(userId: string): Promise<void> {
+    const key = `booking-unconfirmed:${userId}`;
+    await this.q
+      .selectNoFrom(sql<string>`pg_advisory_xact_lock(hashtextextended(${key}, 0))::text`.as("locked"))
+      .execute();
   }
 
   async countUnconfirmed(userId: string): Promise<number> {

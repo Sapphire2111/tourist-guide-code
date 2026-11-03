@@ -101,10 +101,10 @@ export class InProcessJobsRunner {
       try {
         const r = await this.deps.bookings.processDue();
         const n = r.notifications;
-        if (r.expired + r.completed + r.reminded + n.sent + n.failed + n.skipped > 0)
+        if (r.expired + r.completed + r.reminded + n.sent + n.failed + n.skipped + n.retried > 0)
           this.deps.logger.log(
             `bookings.process-due: expired=${r.expired} completed=${r.completed} reminded=${r.reminded} ` +
-              `sent=${n.sent} failed=${n.failed} skipped=${n.skipped}`,
+              `sent=${n.sent} failed=${n.failed} skipped=${n.skipped} retried=${n.retried}`,
           );
         return "done";
       } catch (err) {

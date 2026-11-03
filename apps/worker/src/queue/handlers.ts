@@ -169,11 +169,12 @@ export function createHandlers(deps: HandlerDeps = {}): JobHandlers {
         result.expired > 0 ||
         result.completed > 0 ||
         result.reminded > 0 ||
-        n.sent + n.failed + n.skipped > 0
+        n.sent + n.failed + n.skipped + n.retried > 0
       )
         logger.log(
           `Брони: истекло по сроку — ${result.expired}, автозавершено — ${result.completed}, напоминаний — ` +
-            `${result.reminded}; уведомления: отправлено ${n.sent}, ошибок ${n.failed}, пропущено ${n.skipped}`,
+            `${result.reminded}; уведомления: отправлено ${n.sent}, ошибок ${n.failed}, пропущено ${n.skipped}, ` +
+            `отложено до повтора ${n.retried}`,
         );
       if (n.failed > 0)
         logger.warn(`Брони: не отправлено уведомлений — ${n.failed} (строки notifications failed)`);
