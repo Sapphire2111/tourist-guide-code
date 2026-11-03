@@ -128,6 +128,9 @@ export type PlaceInput = {
 
 export const MAX_EXTRA_CATEGORIES = 5;
 
+/** Действие аудита «админка правила доп. категории места» (читает импорт Google, places-import/writer.ts). */
+export const EXTRA_CATEGORIES_EDIT_ACTION = "place.extra_categories.edit";
+
 export type PlaceDetails = PlaceRecord & { tagIds: string[]; extraCategoryIds?: string[] };
 
 export type PlaceSchedule = {
@@ -226,6 +229,26 @@ export class CatalogService {
     @Inject(CatalogRepository) private readonly repo: CatalogRepository,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Отдельная запись об изменении доп. категорий: по ней (action = EXTRA_CATEGORIES_EDIT_ACTION, актор-пользователь)
+   * импорт Google узнаёт, что набор места правила админка, и больше его не пересобирает — в том числе когда админ
+   * очистил список (строк нет, а след остался).
+   */
+  private async recordExtraEdit(
+    meta: AuditMeta,
+    placeId: string,
+    before: readonly string[],
+    after: readonly string[],
+  ): Promise<void> {
+    await this.record(meta, {
+      action: EXTRA_CATEGORIES_EDIT_ACTION,
+      entityType: "place",
+      entityId: placeId,
+      oldValues: { extraCategoryIds: [...before] },
+      newValues: { extraCategoryIds: [...after] },
+    });
+  }
 
   private async record(meta: AuditMeta, entry: Omit<AuditEntry, keyof AuditMeta>): Promise<void> {
     await this.audit.record(currentDb(this.db), { ...meta, ...entry });
@@ -555,6 +578,7 @@ export class CatalogService {
       entityId: created.id,
       newValues: placeSnapshot(created, tagIds, extraCategoryIds),
     });
+    if (extraCategoryIds.length) await this.recordExtraEdit(meta, created.id, [], extraCategoryIds);
     return { ...created, tagIds, extraCategoryIds };
   }
 
@@ -599,6 +623,8 @@ export class CatalogService {
       oldValues: placeSnapshot(before, tagsBefore, extrasBefore),
       newValues: placeSnapshot(after, tagIds, extraCategoryIds),
     });
+    if (extraWanted && extraCategoryIds.join() !== extrasBefore.join())
+      await this.recordExtraEdit(meta, id, extrasBefore, extraCategoryIds);
     return { ...after, tagIds, extraCategoryIds };
   }
 

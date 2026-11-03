@@ -444,6 +444,8 @@ describe("места: валидация, публикация, бейдж, ау
     expect(data.place_extra_categories).toHaveLength(1);
     expect((await patch({ extraCategoryIds: [] })).status).toBe(200);
     expect(data.place_extra_categories).toHaveLength(0);
+    // Каждое изменение набора оставляет отдельную запись аудита (по ней импорт не трогает набор); без изменений — нет.
+    expect(data.audit_logs!.filter((l) => l.action === "place.extra_categories.edit")).toHaveLength(2);
   });
 
   it("доп. категории: модератор без place.edit — 403", async () => {
