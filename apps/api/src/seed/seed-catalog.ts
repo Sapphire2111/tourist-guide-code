@@ -1,5 +1,5 @@
 // Демо-каталог (блок 3, D-53: демо-контент готовит агент — вымышленные заведения, без реальных ПДн; D-01 — пилот
-// от Яремче до Яблуниці). Категории — 8 разделов главной C02 (ТЗ §4.2) с подкатегориями, теги, населённые пункты,
+// от Яремче до Яблуниці). Категории — разделы главной C02 (ТЗ §4.2) с подкатегориями, теги, населённые пункты,
 // 14 мест тестового региона с графиком и одно место региона Б (для проверок изоляции). Идемпотентно: детерминированные
 // id (seedUuid) и ON CONFLICT DO NOTHING — повторный запуск ничего не меняет и не перезаписывает правки админки.
 // Контакты — тестовые: телефоны из зарезервированного диапазона +380000000…, сайты в домене example.
@@ -24,13 +24,15 @@ export const SEED_CATEGORIES: readonly {
   name: Text;
   icon: string;
   home: HomeSection;
+  /** Порядок корня; без него — по позиции (i × 10). Разделы после 0020 — между старыми (импорт заводит их в БД). */
+  sortOrder?: number;
   children: readonly { code: string; name: Text; icon: string }[];
 }[] = [
   {
     code: "stay",
-    name: { uk: "Де зупинитися", en: "Where to stay" },
+    name: { uk: "Де жити", en: "Where to stay" },
     icon: "bed",
-    home: "about",
+    home: "stay",
     children: [
       { code: "hotels", name: { uk: "Готелі", en: "Hotels" }, icon: "hotel" },
       { code: "sadyby", name: { uk: "Садиби", en: "Guest houses" }, icon: "house" },
@@ -79,6 +81,15 @@ export const SEED_CATEGORIES: readonly {
     ],
   },
   {
+    // Подкатегории (курорти, підйомники, прокат, сервіс, школи, магазини) заводит импорт мест.
+    code: "ski",
+    name: { uk: "Гірські лижі", en: "Skiing" },
+    icon: "mountain-snow",
+    home: "ski",
+    sortOrder: 45,
+    children: [],
+  },
+  {
     code: "nearby",
     name: { uk: "Що поруч", en: "Nearby" },
     icon: "map-pin",
@@ -86,14 +97,25 @@ export const SEED_CATEGORIES: readonly {
     children: [{ code: "nature", name: { uk: "Пам'ятки природи", en: "Nature sights" }, icon: "trees" }],
   },
   {
+    // «Авто» (до 03.11.2026 — «Трансфер»; код прежний — ссылки и home_section не ломаются).
     code: "transfer",
-    name: { uk: "Трансфер", en: "Transfer" },
+    name: { uk: "Авто", en: "Car" },
     icon: "car",
     home: "transfer",
     children: [
       { code: "taxi", name: { uk: "Таксі", en: "Taxi" }, icon: "taxi" },
       { code: "rental", name: { uk: "Прокат авто", en: "Car rental" }, icon: "car" },
+      { code: "car-service", name: { uk: "СТО й шиномонтаж", en: "Car service and tyres" }, icon: "wrench" },
     ],
+  },
+  {
+    // Подкатегории (ремонт техніки, зв'язок, автомийки…) заводит импорт мест из Google (IMPORT_EXTRA_CATEGORIES).
+    code: "services",
+    name: { uk: "Сервіси", en: "Services" },
+    icon: "wrench",
+    home: "services",
+    sortOrder: 65,
+    children: [],
   },
   {
     code: "help",
@@ -103,7 +125,6 @@ export const SEED_CATEGORIES: readonly {
     children: [
       { code: "pharmacies", name: { uk: "Аптеки", en: "Pharmacies" }, icon: "pill" },
       { code: "hospitals", name: { uk: "Лікарні", en: "Hospitals" }, icon: "hospital" },
-      { code: "car-service", name: { uk: "СТО", en: "Car service" }, icon: "wrench" },
     ],
   },
 ];
@@ -389,7 +410,7 @@ export async function seedCatalog(
           name_i18n: c.name,
           icon: c.icon,
           home_section: c.home,
-          sort_order: i * 10,
+          sort_order: c.sortOrder ?? i * 10,
         })
         .onConflict((oc) => oc.doNothing())
         .execute();

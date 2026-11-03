@@ -24,12 +24,15 @@ test.describe("QR отеля demoHotel01", () => {
     const sections = page.getByTestId("home-sections").getByRole("link");
     await expect(sections).toHaveText([
       "Про заклад",
+      "Де житиГотелі, садиби",
       "Де поїсти",
       "Де купити",
       "Де відпочити",
       "Розваги",
+      "Гірські лижі",
       "Що поруч",
-      "Трансфер",
+      "Авто",
+      "Сервіси",
       "Халепа?",
     ]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });

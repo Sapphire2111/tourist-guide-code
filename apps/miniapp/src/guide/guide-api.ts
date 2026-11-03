@@ -181,18 +181,37 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       const data = await ok(api.GET("/localities", { params: { query: { regionId: region() } } }));
       return data.items.map((l) => ({ id: l.id, name: l.name, placeCount: l.placeCount }));
     },
-    search: async ({ point, radius, categoryId, q, localityIds, limit }) => {
+    search: async ({ point, radius, categoryId, q, excludeSections, localityIds, limit, max, signal }) => {
       const query = {
         regionId: region(),
         ...(point ? { lat: point.lat, lng: point.lng } : {}),
         ...(point && radius ? { radius } : {}),
         ...(categoryId ? { category: categoryId } : {}),
         ...(q ? { q } : {}),
+        ...(excludeSections?.length ? { exclude_section: [...excludeSections] } : {}),
         ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
         limit: limit ?? 50,
       };
-      const data = await ok(api.GET("/places/search", { params: { query } }));
-      return data.items.map(summaryOf);
+      // max — догрузка страниц (api отдаёт не больше 50 за раз) до max мест: карта «Де жити» со всеми местами.
+      const items: PlaceSummary[] = [];
+      let offset: number | null = 0;
+      while (offset !== null) {
+        // Не throwIfAborted: его нет в Safari iOS < 15.4.
+        if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+        let data: { items: SummaryDto[]; nextOffset: number | null };
+        try {
+          data = await ok(
+            api.GET("/places/search", { params: { query: offset ? { ...query, offset } : query }, signal }),
+          );
+        } catch (error) {
+          // Сбой догрузки (не первой страницы и не отмена) — показываем уже загруженное.
+          if (items.length === 0 || signal?.aborted) throw error;
+          break;
+        }
+        items.push(...data.items.map(summaryOf));
+        offset = max && items.length < max ? data.nextOffset : null;
+      }
+      return max ? items.slice(0, max) : items;
     },
     place: async (id) =>
       cardOf(await ok(api.GET("/places/{id}", { params: { path: { id }, query: { regionId: region() } } }))),

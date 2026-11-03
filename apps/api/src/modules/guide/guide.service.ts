@@ -11,6 +11,7 @@ import {
   type PlaceEnrichment,
   type PromotionAdLabel,
   type Region,
+  type HomeSection,
 } from "../../db/index.js";
 import { toScheduleDto } from "../catalog/index.js";
 import { EmergencyContactsRepository } from "../emergency-contacts/index.js";
@@ -54,6 +55,8 @@ export type SearchParams = {
   /** Населённые пункты; пусто или нет — весь регион. */
   localityIds?: string[];
   text?: string;
+  /** Разделы главной, места которых не нужны (по умолчанию — никакие). */
+  excludeSections?: readonly HomeSection[];
   limit: number;
   offset: number;
 };
@@ -90,13 +93,8 @@ export class GuideService {
   async categories(regionId: string): Promise<GuideCategoryListDto> {
     return this.inRegion(regionId, async () => {
       const rows = await this.repo.activeCategories();
-      const own = await this.repo.publishedCountByCategory();
-      const total = new Map<string, number>();
-      for (const c of rows) {
-        const n = own.get(c.id) ?? 0;
-        total.set(c.id, (total.get(c.id) ?? 0) + n);
-        if (c.parent_id) total.set(c.parent_id, (total.get(c.parent_id) ?? 0) + n);
-      }
+      // Основная и дополнительные категории мест, без дублей; раздел — вместе с подкатегориями.
+      const { own, tree } = await this.repo.publishedCountByCategory();
       return {
         items: rows.map((c) => ({
           id: c.id,
@@ -106,7 +104,7 @@ export class GuideService {
           icon: c.icon,
           homeSection: c.home_section,
           sortOrder: c.sort_order,
-          placeCount: total.get(c.id) ?? 0,
+          placeCount: (c.parent_id ? own.get(c.id) : tree.get(c.id)) ?? 0,
         })),
       };
     });

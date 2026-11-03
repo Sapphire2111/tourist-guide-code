@@ -123,7 +123,7 @@ export type PlaceInput = {
   tagIds?: string[];
 };
 
-export type PlaceDetails = PlaceRecord & { tagIds: string[] };
+export type PlaceDetails = PlaceRecord & { tagIds: string[]; extraCategoryIds?: string[] };
 
 export type PlaceSchedule = {
   timezone: string;
@@ -487,7 +487,11 @@ export class CatalogService {
   async getPlace(id: string): Promise<PlaceDetails> {
     requireRegionContext();
     const place = (await this.repo.findPlace(id)) ?? notFound();
-    return { ...place, tagIds: await this.repo.placeTagIds(id) };
+    const [tagIds, extraCategoryIds] = await Promise.all([
+      this.repo.placeTagIds(id),
+      this.repo.placeExtraCategoryIds(id),
+    ]);
+    return { ...place, tagIds, extraCategoryIds };
   }
 
   private async checkRefs(input: Partial<PlaceInput>): Promise<void> {

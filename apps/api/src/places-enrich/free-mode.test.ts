@@ -22,6 +22,7 @@ const at = (iso: string) => () => new Date(iso);
 const place = (id: string, over: Partial<MappedPlace> = {}): MappedPlace => ({
   googlePlaceId: id,
   categoryCode: "restaurants",
+  extraCategoryCodes: [],
   localityCode: "yaremche",
   name: `Місце ${id}`,
   description: "",

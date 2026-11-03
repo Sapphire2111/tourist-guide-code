@@ -1,4 +1,4 @@
-// C02: 8 кнопок разделов главной + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
+// C02: кнопки разделов главной (HOME_SECTIONS) + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
 import { Link, useT } from "@tg/ui";
 import type { MessageKey } from "@tg/i18n";
 import { ICONS } from "../design/Ornament.js";
@@ -33,6 +33,11 @@ export function HomeSections({ hasVenue }: { hasVenue: boolean }) {
             >
               <span className="kosiv-tile-icon">{ICONS[s]}</span>
               <span>{t(`miniapp.section.${s}` as MessageKey)}</span>
+              {s === "stay" && (
+                <small className="kosiv-tile-hint" data-testid="tile-hint-stay">
+                  {t("miniapp.section.stayHint")}
+                </small>
+              )}
             </Link>
           </li>
         ))}

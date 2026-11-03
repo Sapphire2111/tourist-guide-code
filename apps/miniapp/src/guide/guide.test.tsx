@@ -6,12 +6,18 @@ import { createAnalytics, uuidv7, type Analytics } from "./analytics.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import { routeUrl } from "./geo.js";
 import { createGuideApi } from "./guide-api.js";
-import { Catalog } from "./Catalog.js";
+import { Catalog, STAY_MAP_MAX } from "./Catalog.js";
 import { Help } from "./Help.js";
 import { HomeSections } from "./HomeSections.js";
 import { Nearby } from "./Nearby.js";
 import { PlaceCard } from "./PlaceCard.js";
-import { NotFoundError, type GuideApi, type PlaceDetail, type PlaceSummary } from "./types.js";
+import {
+  NotFoundError,
+  type GuideApi,
+  type PlaceDetail,
+  type PlaceSummary,
+  type SearchParams,
+} from "./types.js";
 
 afterEach(() => {
   cleanup();
@@ -91,18 +97,57 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("8 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
+  it("11 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
     const { rerender } = render(<HomeSections hasVenue />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.getAllByRole("listitem")).toHaveLength(11);
+    // «Де жити» — отдельная плитка с подписью (раньше раздел stay висел на «Про заклад» и плитки не было).
+    expect(screen.getByRole("link", { name: /Де жити/ }).getAttribute("href")).toBe("#/section/stay");
+    expect(screen.getByTestId("tile-hint-stay").textContent).toBe("Готелі, садиби");
     expect(screen.getByRole("link", { name: "Де поїсти" }).getAttribute("href")).toBe("#/section/eat");
     expect(screen.getByRole("link", { name: "Халепа?" }).getAttribute("href")).toBe("#/help");
     rerender(<HomeSections hasVenue={false} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(7);
+    expect(screen.getAllByRole("listitem")).toHaveLength(10);
     expect(screen.queryByRole("link", { name: "Про заклад" })).toBeNull();
   });
 });
 
 describe("каталог C04", () => {
+  it("«Де жити»: карта с догрузкой до STAY_MAP_MAX; смена подкатегории отменяет прежнюю догрузку", async () => {
+    const STAY = "00000000-0000-4000-8000-000000000301";
+    const HOTELS = "00000000-0000-4000-8000-000000000302";
+    const signals: AbortSignal[] = [];
+    const search = vi.fn(async (p: SearchParams) => {
+      signals.push(p.signal!);
+      return [];
+    });
+    const { env } = setup({
+      api: fakeApi({
+        categories: vi.fn(async () => [
+          { id: STAY, parentId: null, name: { uk: "Де жити" }, homeSection: "stay" as const },
+          { id: HOTELS, parentId: STAY, name: { uk: "Готелі" }, homeSection: null },
+        ]),
+        search,
+      }),
+    });
+    render(
+      <GuideProvider value={env}>
+        <Catalog section="stay" />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ categoryId: STAY, max: STAY_MAP_MAX, signal: expect.any(AbortSignal) }),
+    );
+    expect(signals[0]!.aborted).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Готелі" }));
+    await flush();
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ categoryId: HOTELS, max: STAY_MAP_MAX }),
+    );
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals.at(-1)!.aborted).toBe(false);
+  });
+
   it("раздел → корневая категория, category_opened; подкатегория; поиск → search_used без текста", async () => {
     const { env, analytics } = setup();
     render(
@@ -237,7 +282,12 @@ describe("«Що поруч» C05", () => {
       "Геолокацію вимкнено. Показуємо місця поруч: Тестовий готель.",
     );
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч: Тестовий готель");
-    expect(env.api.search).toHaveBeenCalledWith({ point: env.base!.point, radius: 500, limit: 50 });
+    expect(env.api.search).toHaveBeenCalledWith({
+      point: env.base!.point,
+      radius: 500,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 
   it("геолокация получена — «Поруч із вами», поиск от устройства", async () => {
@@ -254,7 +304,12 @@ describe("«Що поруч» C05", () => {
     );
     await flush();
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із вами");
-    expect(env.api.search).toHaveBeenCalledWith({ point: { lat: 48.1, lng: 24.1 }, radius: 500, limit: 50 });
+    expect(env.api.search).toHaveBeenCalledWith({
+      point: { lat: 48.1, lng: 24.1 },
+      radius: 500,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 });
 
@@ -281,7 +336,12 @@ describe("«Що поруч»: ползунок радиуса и категор
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
     await act(async () => new Promise((r) => setTimeout(r, 400)));
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
-    expect(env.api.search).toHaveBeenLastCalledWith({ point: env.base!.point, radius: 10000, limit: 50 });
+    expect(env.api.search).toHaveBeenLastCalledWith({
+      point: env.base!.point,
+      radius: 10000,
+      excludeSections: ["stay"],
+      limit: 50,
+    });
   });
 });
 
@@ -347,6 +407,44 @@ describe("адаптер api и аналитика", () => {
     expect(url.searchParams.get("regionId")).toBe(REGION);
     expect(url.searchParams.get("lat")).toBe("48.45");
     expect(url.searchParams.get("radius")).toBe("500");
+    // По умолчанию ничего не исключается (поиск по названию находит и отели).
+    expect(url.searchParams.getAll("exclude_section")).toEqual([]);
+    await api.search({ point: { lat: 48.45, lng: 24.56 }, radius: 500, excludeSections: ["stay"] });
+    expect(new URL(urls[1]!).searchParams.getAll("exclude_section")).toEqual(["stay"]);
+    // max — догрузка страниц по nextOffset до max мест.
+    const paged = vi.fn(async (req: Request) => {
+      const offset = Number(new URL(req.url).searchParams.get("offset") ?? 0);
+      return Response.json({
+        items: [dto, dto],
+        nextOffset: offset < 4 ? offset + 2 : null,
+        radiusMeters: null,
+      });
+    });
+    const pagedApi = createGuideApi(createApiClient({ baseUrl: "http://api.test", fetch: paged }), REGION);
+    expect(await pagedApi.search({ limit: 2, max: 5 })).toHaveLength(5);
+    expect(paged).toHaveBeenCalledTimes(3);
+    expect(await pagedApi.search({ limit: 2 })).toHaveLength(2);
+    // Сбой не первой страницы — уже загруженное; сбой первой — ошибка.
+    let calls = 0;
+    const flaky = vi.fn(async () =>
+      ++calls === 2
+        ? Response.json({ code: "INTERNAL" }, { status: 500 })
+        : Response.json({ items: [dto, dto], nextOffset: 2, radiusMeters: null }),
+    );
+    const flakyApi = createGuideApi(createApiClient({ baseUrl: "http://api.test", fetch: flaky }), REGION);
+    expect(await flakyApi.search({ limit: 2, max: 6 })).toHaveLength(2);
+    // Отмена — догрузка прекращается, результат — ошибка.
+    const abort = new AbortController();
+    const stopping = vi.fn(async () => {
+      abort.abort();
+      return Response.json({ items: [dto, dto], nextOffset: 2, radiusMeters: null });
+    });
+    const stoppingApi = createGuideApi(
+      createApiClient({ baseUrl: "http://api.test", fetch: stopping }),
+      REGION,
+    );
+    await expect(stoppingApi.search({ limit: 2, max: 6, signal: abort.signal })).rejects.toThrow();
+    expect(stopping).toHaveBeenCalledTimes(1);
     expect(p).toMatchObject({
       location: { lat: 48.45, lng: 24.56 },
       cover: { url: "https://cdn/800", alt: { uk: "Фасад" } },

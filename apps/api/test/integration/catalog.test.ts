@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../../src/modules/audit/index.js";
 import { CatalogError, CatalogRepository, CatalogService } from "../../src/modules/catalog/index.js";
-import { seedCatalog, SEED_PLACES } from "../../src/seed/seed-catalog.js";
+import { seedCatalog, SEED_CATEGORIES, SEED_PLACES } from "../../src/seed/seed-catalog.js";
 import { seedBase, seedUserId, type SeedBaseResult } from "../../src/seed/seed.js";
 import { seedUuid } from "../../src/seed/ids.js";
 import { startDatabase, stopDatabase, type TestDatabase } from "./support/containers.js";
@@ -24,6 +24,7 @@ const TABLES = [
   "categories",
   "localities",
   "place_badge_events",
+  "place_extra_categories",
   "place_media",
   "place_schedule_exceptions",
   "place_schedules",
@@ -93,7 +94,7 @@ describe.skipIf(!dockerAvailable)(`Каталог (блок 3, миграция 
     expect(defs.places_region_status_category_idx).toMatch(/\(region_id, status, category_id\)/);
   });
 
-  it("seed: 8 разделов, места с графиком; повторный запуск ничего не дублирует", async () => {
+  it("seed: корни — разделы SEED_CATEGORIES (все разделы главной, с «Де жити», «Сервіси», «Гірські лижі»), места с графиком; повторный запуск ничего не дублирует", async () => {
     const count = async () =>
       Object.fromEntries(
         await Promise.all(
@@ -110,7 +111,7 @@ describe.skipIf(!dockerAvailable)(`Каталог (блок 3, миграция 
       `SELECT count(*)::int AS n FROM categories WHERE region_id = $1 AND parent_id IS NULL AND home_section IS NOT NULL`,
       [base.regions.a],
     );
-    expect(rows[0].n).toBe(8);
+    expect(rows[0].n).toBe(SEED_CATEGORIES.length);
     expect(before.places).toBe(SEED_PLACES.length + 1);
     expect(before.place_schedules).toBeGreaterThan(0);
   });

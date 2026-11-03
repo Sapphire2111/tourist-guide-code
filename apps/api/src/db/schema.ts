@@ -586,7 +586,19 @@ export type NewLocality = Insertable<LocalitiesTable>;
 export type LocalityUpdate = Updateable<LocalitiesTable>;
 
 /** Кнопки главной C02 (ТЗ §4.2), CHECK categories_home_section_check. */
-export const HOME_SECTIONS = ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"] as const;
+export const HOME_SECTIONS = [
+  "about",
+  "stay",
+  "eat",
+  "shop",
+  "relax",
+  "fun",
+  "ski",
+  "nearby",
+  "transfer",
+  "services",
+  "help",
+] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 
 export interface CategoriesTable {
@@ -660,6 +672,8 @@ export interface PlacesTable {
   source: ColumnType<PlaceSource, PlaceSource | undefined, PlaceSource>;
   /** id места Google (0016); UNIQUE в регионе, только у source = google. */
   google_place_id: Nullable<string>;
+  /** Категория, поставленная импортом Google (0020); = category_id — админка категорию не меняла. */
+  import_category_id: ColumnType<string | null, string | null | undefined, string | null>;
   /** Последняя сверка с Google (0016). */
   last_synced_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   /** Организация партнёра (0017); NULL — место админки/импорта. */
@@ -677,6 +691,17 @@ export interface PlaceTagsTable {
   region_id: RegionId;
   place_id: ColumnType<string, string, never>;
   tag_id: ColumnType<string, string, never>;
+  created_at: CreatedAt;
+}
+
+/** Дополнительная категория места (0020): кто поставил — импорт Google или админка. */
+export type PlaceExtraCategorySource = "manual" | "import";
+
+export interface PlaceExtraCategoriesTable {
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  category_id: ColumnType<string, string, never>;
+  source: ColumnType<PlaceExtraCategorySource, PlaceExtraCategorySource | undefined, never>;
   created_at: CreatedAt;
 }
 
@@ -1251,6 +1276,7 @@ export interface Database {
   tags: TagsTable;
   places: PlacesTable;
   place_tags: PlaceTagsTable;
+  place_extra_categories: PlaceExtraCategoriesTable;
   place_schedules: PlaceSchedulesTable;
   place_schedule_exceptions: PlaceScheduleExceptionsTable;
   place_media: PlaceMediaTable;

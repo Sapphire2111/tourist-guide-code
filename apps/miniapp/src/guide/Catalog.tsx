@@ -40,6 +40,12 @@ export function Catalog({ section }: { section: CatalogSection }) {
   );
 }
 
+/**
+ * Сколько мест «Де жити» показывать на карте: страницы по 50 (6 запросов). Кластеризации нет — 300 маркеров
+ * Leaflet держит без заметных тормозов; на курорте мест проживания меньше (Буковель ~180 по выгрузке Google).
+ */
+export const STAY_MAP_MAX = 300;
+
 /** Сколько ждать базовую точку перед поиском без неё, мс. */
 export const BASE_WAIT_MS = 4_000;
 
@@ -61,7 +67,9 @@ function CategoryPlaces({
   const [categoryId, setCategoryId] = useState(rootId);
   const [draft, setDraft] = useState(initialQuery);
   const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
-  const [view, setView] = useState<"list" | "map">("list");
+  // «Де жити» — карта главная (все места ночёвки сразу на карте, до STAY_MAP_MAX), список вторичен.
+  const mapFirst = root?.homeSection === "stay";
+  const [view, setView] = useState<"list" | "map">(mapFirst ? "map" : "list");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
   const point = base?.point ?? null;
@@ -70,12 +78,18 @@ function CategoryPlaces({
   const [submitId, setSubmitId] = useState(0);
   const pendingSubmit = useRef<number | null>(null);
   const [places, retry] = useAsync(
-    () =>
+    (signal) =>
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
         .then(() =>
-          api.search({ categoryId, q: q || undefined, point, ...(byLocation ? { localityIds } : {}) }),
+          api.search({
+            categoryId,
+            q: q || undefined,
+            point,
+            ...(byLocation ? { localityIds } : {}),
+            ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
+          }),
         )
         .then((list) => ({ list, submitId })),
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds],

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createDatabase, regionContext, withTenant, type Db } from "../../src/db/index.js";
 import { EmergencyContactsRepository } from "../../src/modules/emergency-contacts/index.js";
 import { GuideRepository, GuideService } from "../../src/modules/guide/index.js";
-import { coverEtag } from "../../src/modules/guide/guide.service.js";
+import { coverEtag, type SearchParams } from "../../src/modules/guide/guide.service.js";
 import { GoogleQuota } from "../../src/places-enrich/quota.js";
 import type { MediaService } from "../../src/modules/media/index.js";
 import { RegionsRepository } from "../../src/modules/regions/index.js";
@@ -284,6 +284,91 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
       offset: 0,
     });
     expect(keysOf(restaurants.items)).toEqual(["east"]);
+  });
+
+  it("excludeSections: места раздела (и его подкатегорий) не попадают, остальные — да; по умолчанию — все", async () => {
+    const all = await service.search(base.regions.a, { origin: ORIGIN, radius: 5000, limit: 50, offset: 0 });
+    expect(keysOf(all.items)).toContain("east");
+    const noEat = await service.search(base.regions.a, {
+      origin: ORIGIN,
+      radius: 5000,
+      excludeSections: ["eat"],
+      limit: 50,
+      offset: 0,
+    });
+    for (const k of ["north", "west-rec", "west-ad", "east", "far"])
+      expect(keysOf(noEat.items)).not.toContain(k);
+    // Место подкатегории stay («Готелі») исключается, остальные остаются; без параметра — находится.
+    await sql(`UPDATE places SET category_id = $1 WHERE id = $2`, [categoryId("hotels"), placeId("east")]);
+    try {
+      const noStay = await service.search(base.regions.a, {
+        origin: ORIGIN,
+        radius: 5000,
+        excludeSections: ["stay"],
+        limit: 50,
+        offset: 0,
+      });
+      expect(keysOf(noStay.items)).not.toContain("east");
+      expect(keysOf(noStay.items)).toContain("north");
+      const withStay = await service.search(base.regions.a, {
+        origin: ORIGIN,
+        radius: 5000,
+        limit: 50,
+        offset: 0,
+      });
+      expect(keysOf(withStay.items)).toContain("east");
+    } finally {
+      await sql(`UPDATE places SET category_id = $1 WHERE id = $2`, [
+        categoryId("restaurants"),
+        placeId("east"),
+      ]);
+    }
+  });
+
+  it("дополнительная категория (0020): место — и в разделе доп. категории, и в своём; исключение раздела — по обеим", async () => {
+    await sql(`INSERT INTO place_extra_categories (region_id, place_id, category_id) VALUES ($1, $2, $3)`, [
+      base.regions.a,
+      placeId("east"),
+      categoryId("museums"),
+    ]);
+    try {
+      // Число мест: доп. категория учитывается (ассистент не отбросит подкатегорию), «east» вдобавок
+      // в «Кафе» — раздел «Де поїсти» считает его один раз.
+      const before = (await service.categories(base.regions.a)).items;
+      await sql(`INSERT INTO place_extra_categories (region_id, place_id, category_id) VALUES ($1, $2, $3)`, [
+        base.regions.a,
+        placeId("east"),
+        categoryId("cafes"),
+      ]);
+      const count = (items: { id: string; placeCount: number }[], code: string) =>
+        items.find((c) => c.id === categoryId(code))!.placeCount;
+      const after = (await service.categories(base.regions.a)).items;
+      expect(count(after, "museums")).toBeGreaterThanOrEqual(1);
+      expect(count(after, "cafes")).toBe(count(before, "cafes") + 1);
+      expect(count(after, "eat")).toBe(count(before, "eat"));
+      await sql(`DELETE FROM place_extra_categories WHERE place_id = $1 AND category_id = $2`, [
+        placeId("east"),
+        categoryId("cafes"),
+      ]);
+      const search = (params: Partial<SearchParams>) =>
+        service.search(base.regions.a, { origin: ORIGIN, radius: 5000, limit: 50, offset: 0, ...params });
+      expect(keysOf((await search({ categoryId: categoryId("museums") })).items)).toEqual(["east"]);
+      expect(keysOf((await search({ categoryId: categoryId("fun") })).items)).toContain("east");
+      expect(keysOf((await search({ categoryId: categoryId("restaurants") })).items)).toEqual(["east"]);
+      // Исключение раздела «Розваги» — и по дополнительной категории.
+      expect(keysOf((await search({ excludeSections: ["fun"] })).items)).not.toContain("east");
+      // Карточка — основная категория.
+      expect((await service.place(base.regions.a, placeId("east"), {}))!.category.id).toBe(
+        categoryId("restaurants"),
+      );
+      // RLS: регион Б доп. категорий региона А не видит.
+      const seen = await withTenant(appDb, regionContext(base.regions.b), (trx) =>
+        trx.selectFrom("place_extra_categories").selectAll().execute(),
+      );
+      expect(seen).toEqual([]);
+    } finally {
+      await sql(`DELETE FROM place_extra_categories WHERE place_id = $1`, [placeId("east")]);
+    }
   });
 
   it("текст без координат: весь регион, без неопубликованных и чужого региона; рекомендованные выше", async () => {

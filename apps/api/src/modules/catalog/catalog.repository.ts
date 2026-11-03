@@ -41,7 +41,9 @@ export type LocalityRecord = WithLocation<Locality>;
 export const STAY_CATEGORY_CODES = ["stay", "hotels", "sadyby"] as const;
 
 /** Без полей импорта Google (0016: source, google_place_id, last_synced_at) — админке и API они пока не нужны. */
-export type PlaceRecord = WithLocation<Omit<Place, "source" | "google_place_id" | "last_synced_at">>;
+export type PlaceRecord = WithLocation<
+  Omit<Place, "source" | "google_place_id" | "last_synced_at" | "import_category_id">
+>;
 
 /** Запись места: точка — долгота/широта (null — убрать), остальное — как в таблице. */
 export type PlaceWrite = Omit<NewPlace, "location" | "region_id"> & { location?: LonLat | null };
@@ -416,6 +418,17 @@ export class CatalogRepository {
   async deletePlace(id: string): Promise<boolean> {
     const r = await this.q.deleteFrom("places").where("id", "=", id).executeTakeFirst();
     return r.numDeletedRows > 0n;
+  }
+
+  /** Дополнительные категории места (0020): место видно и в этих разделах. */
+  async placeExtraCategoryIds(placeId: string): Promise<string[]> {
+    const rows = await this.q
+      .selectFrom("place_extra_categories")
+      .select("category_id")
+      .where("place_id", "=", placeId)
+      .orderBy("category_id")
+      .execute();
+    return rows.map((r) => r.category_id);
   }
 
   async placeTagIds(placeId: string): Promise<string[]> {

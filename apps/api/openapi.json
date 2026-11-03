@@ -5613,6 +5613,13 @@
             "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
           },
           {
+            "name": "exclude_section",
+            "required": false,
+            "in": "query",
+            "description": "Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели).",
+            "schema": { "type": "array", "items": { "$ref": "#/components/schemas/HomeSection" } }
+          },
+          {
             "name": "localityIds",
             "required": false,
             "in": "query",
@@ -12217,7 +12224,19 @@
       },
       "HomeSection": {
         "type": "string",
-        "enum": ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"]
+        "enum": [
+          "about",
+          "stay",
+          "eat",
+          "shop",
+          "relax",
+          "fun",
+          "ski",
+          "nearby",
+          "transfer",
+          "services",
+          "help"
+        ]
       },
       "CategoryDto": {
         "type": "object",
@@ -12407,6 +12426,11 @@
             "description": "Дата перевірки інформації"
           },
           "tagIds": { "description": "id тегов", "type": "array", "items": { "type": "string" } },
+          "extraCategoryIds": {
+            "description": "id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "hostCapable": {
             "type": "boolean",
             "description": "Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5)"
@@ -12435,6 +12459,7 @@
           "recommended",
           "verifiedAt",
           "tagIds",
+          "extraCategoryIds",
           "hostCapable",
           "organizationId",
           "createdAt",

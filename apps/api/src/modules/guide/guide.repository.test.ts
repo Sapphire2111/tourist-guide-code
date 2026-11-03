@@ -44,6 +44,25 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.params).toContain(A);
   });
 
+  it("исключение разделов («Що поруч» без «Де жити»): только по запросу, корень — по parent_id или сама категория", async () => {
+    const [q] = await capture((r) => r.search({ excludeSections: ["stay"], limit: 10, offset: 0 }));
+    expect(q!.sql).toMatch(/not exists \(select "root"\."id" from "categories" as "root"/);
+    expect(q!.sql).toMatch(/coalesce\("categories"\."parent_id", "categories"\."id"\)/);
+    expect(q!.sql).toMatch(/"root"\."region_id" = \$/);
+    expect(q!.params).toContain("stay");
+    expect(q!.sql).toMatch(/"place_extra_categories" as "x"/);
+    expect(q!.sql).toMatch(/"xr"\."region_id" = \$/);
+    const [plain] = await capture((r) => r.search({ text: "готель", limit: 10, offset: 0 }));
+    expect(plain!.sql).not.toMatch(/not exists/);
+  });
+
+  it("категория — основная или дополнительная (place_extra_categories), регион на псевдонимах x и xc", async () => {
+    const [q] = await capture((r) => r.search({ categoryId: PLACE, limit: 10, offset: 0 }));
+    expect(q!.sql).toMatch(/exists \(select "x"\."place_id" from "place_extra_categories" as "x"/);
+    expect(q!.sql).toMatch(/"x"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/"xc"\."region_id" = \$/);
+  });
+
   it("без точки: нет гео-фильтра, distance — NULL", async () => {
     const [q] = await capture((r) => r.search({ limit: 10, offset: 0 }));
     expect(q!.sql).not.toMatch(/ST_DWithin/);

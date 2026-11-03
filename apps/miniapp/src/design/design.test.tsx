@@ -176,7 +176,7 @@ describe("локації", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     const chip = screen.getByTestId("location-chip");
     expect(chip.textContent).toContain("Усі локації");
@@ -189,10 +189,18 @@ describe("локації", () => {
     // Пока идёт запрос, прежняя лента на месте.
     expect(screen.getByTestId("home-places")).toBe(shown);
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ localityIds: [TATARIV], limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({
+      localityIds: [TATARIV],
+      excludeSections: ["stay"],
+      limit: HOME_PLACES,
+    });
     fireEvent.click(screen.getByRole("checkbox", { name: "Яремче" }));
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ localityIds: [TATARIV, YAREMCHE], limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({
+      localityIds: [TATARIV, YAREMCHE],
+      excludeSections: ["stay"],
+      limit: HOME_PLACES,
+    });
     expect((screen.getByRole("checkbox", { name: "Усі локації" }) as HTMLInputElement).checked).toBe(false);
     expect(JSON.parse(localStorage.getItem(LOCATION_STORAGE_KEY)!)).toEqual({
       regionId: "region",
@@ -206,7 +214,7 @@ describe("локації", () => {
     fireEvent.click(chip);
     fireEvent.click(screen.getByRole("checkbox", { name: "Усі локації" }));
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Готово" }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -305,7 +313,7 @@ describe("локації", () => {
     );
     await flush();
     await flush();
-    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(localStorage.getItem("tg.resort")).toBeNull();
   });
 
@@ -328,7 +336,7 @@ describe("локації", () => {
     await flush();
     await flush();
     expect(screen.queryByTestId("location-chip")).toBeNull();
-    expect(search).toHaveBeenLastCalledWith({ limit: HOME_PLACES });
+    expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     cleanup();
     render(
       <GuideProvider

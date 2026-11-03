@@ -667,6 +667,13 @@ html[data-season] :focus-visible {
   background: var(--app-pill-bg);
   color: var(--app-accent-ink);
 }
+/* Мелкая подпись под названием плитки («Де жити» — «Готелі, садиби»). */
+.kosiv-tile-hint {
+  margin-top: -6px;
+  color: var(--app-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
 .kosiv-tile[data-tone="alert"] .kosiv-tile-icon {
   background: var(--app-accent);
   color: #ffffff;

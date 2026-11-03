@@ -194,6 +194,7 @@ export class GuidePlacesController {
       categoryId: q.category,
       localityIds,
       text: q.q?.trim() || undefined,
+      excludeSections: q.exclude_section,
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,
     });

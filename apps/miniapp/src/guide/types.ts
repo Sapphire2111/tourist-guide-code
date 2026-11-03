@@ -2,10 +2,33 @@
 import type { LocalizedText } from "@tg/i18n";
 import type { LatLng } from "./geo.js";
 
-export const HOME_SECTIONS = ["about", "eat", "shop", "relax", "fun", "nearby", "transfer", "help"] as const;
+export const HOME_SECTIONS = [
+  "about",
+  "stay",
+  "eat",
+  "shop",
+  "relax",
+  "fun",
+  "ski",
+  "nearby",
+  "transfer",
+  "services",
+  "help",
+] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 /** Разделы главной, открывающие каталог C04 по корневой категории. */
-export const CATALOG_SECTIONS = ["eat", "shop", "relax", "fun", "transfer"] as const;
+/** Разделы, места которых не показываются в «Що поруч» и на общей карте главной (свой экран с картой). */
+export const OWN_MAP_SECTIONS: readonly HomeSection[] = ["stay"];
+export const CATALOG_SECTIONS = [
+  "stay",
+  "eat",
+  "shop",
+  "relax",
+  "fun",
+  "ski",
+  "transfer",
+  "services",
+] as const;
 export type CatalogSection = (typeof CATALOG_SECTIONS)[number];
 
 export type Category = {
@@ -122,10 +145,19 @@ export type SearchParams = {
   radius?: number;
   categoryId?: string;
   q?: string;
+  /** Без мест этих разделов главной («Що поруч» и общие карты — без «Де жити», чтобы маркеры не накладывались). */
+  excludeSections?: readonly HomeSection[];
   /** Населённые пункты «Локація» (id из localities); пусто — весь регион. */
   localityIds?: readonly string[];
   /** Размер страницы (по умолчанию 50). */
   limit?: number;
+  /**
+   * Догрузить страницы до стольких мест (карта раздела «Де жити»); без него — одна страница. Сбой не первой
+   * страницы — отдаётся уже загруженное.
+   */
+  max?: number;
+  /** Отмена (смена подкатегории/текста): догрузка страниц прекращается, результат — ошибка AbortError. */
+  signal?: AbortSignal;
 };
 
 /** Населённый пункт региона для «Локація» (GET /localities). */

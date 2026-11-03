@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -135,6 +136,27 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   @MinLength(2)
   @MaxLength(SEARCH_QUERY_MAX)
   q?: string;
+
+  @ApiPropertyOptional({
+    enum: HOME_SECTIONS,
+    enumName: "HomeSection",
+    isArray: true,
+    description:
+      "Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты " +
+      "без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели).",
+  })
+  @IsOptional()
+  // «a,b» и повтор параметра; пустое значение (exclude_section=) — как отсутствие, не 400.
+  @Transform(({ value }: { value: unknown }) => {
+    const list = (Array.isArray(value) ? value : [value])
+      .flatMap((v) => (typeof v === "string" ? v.split(",") : [v]))
+      .filter((v) => v !== "");
+    return list.length ? list : undefined;
+  })
+  @IsArray()
+  @ArrayMaxSize(HOME_SECTIONS.length)
+  @IsIn(HOME_SECTIONS, { each: true })
+  exclude_section?: HomeSection[];
 
   @ApiPropertyOptional({
     type: [String],

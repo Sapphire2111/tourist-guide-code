@@ -26,6 +26,7 @@ const APP_PASSWORD = "tg_api_places_import_test";
 const place = (id: string, over: Partial<MappedPlace> = {}): MappedPlace => ({
   googlePlaceId: id,
   categoryCode: "restaurants",
+  extraCategoryCodes: [],
   localityCode: "yaremche",
   name: `Ресторан ${id}`,
   description: "Ресторан у Яремчі. Джерело: Google Maps.",
@@ -325,5 +326,153 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     // Неполная выгрузка — пропавшие не считаются.
     const partial = await writePlaces(appDb, "test-region", [], new Date(), { seenIds: [], complete: false });
     expect(partial.missingFromGoogle).toBeNull();
+  });
+
+  it("переразметка (0020): категорию импорта меняют новые правила, правку админки — нет; «не наши» — в архив", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gR1", { categoryCode: "entertainment" }),
+        place("gR2", { categoryCode: "entertainment" }),
+        place("gR3", { categoryCode: "post" }),
+        place("gR4", { categoryCode: "post" }),
+      ],
+      t,
+    );
+    const cat = async (id: string) =>
+      (
+        await sql(
+          `SELECT c.code, p.status, p.import_category_id = p.category_id AS untouched
+           FROM places p JOIN categories c ON c.id = p.category_id WHERE p.google_place_id = $1`,
+          [id],
+        )
+      ).rows[0];
+    expect(await cat("gR1")).toEqual({ code: "entertainment", status: "published", untouched: true });
+    // Админка перенесла gR2 в «Музеї» и gR4 в «Сувеніри».
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'museums' AND region_id = places.region_id)
+       WHERE google_place_id = 'gR2'`,
+    );
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'souvenirs' AND region_id = places.region_id)
+       WHERE google_place_id = 'gR4'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gR1", { categoryCode: "kids" }), place("gR2", { categoryCode: "kids" })],
+      t,
+      { rejectedIds: ["gR3", "gR4"] },
+    );
+    expect(r.recategorized).toBe(1);
+    expect(r.archivedRejected).toBe(1);
+    expect(await cat("gR1")).toEqual({ code: "kids", status: "published", untouched: true });
+    expect(await cat("gR2")).toEqual({ code: "museums", status: "published", untouched: false });
+    expect(await cat("gR3")).toMatchObject({ code: "post", status: "archived" });
+    expect(await cat("gR4")).toMatchObject({ code: "souvenirs", status: "published" });
+  });
+
+  it("«не наши» не архивируются у мест партнёра и мест с действиями пользователя; id — в аудите прогона", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      ["gA1", "gA2", "gA3"].map((id) => place(id, { categoryCode: "post" })),
+      t,
+    );
+    const org = String(
+      (
+        await sql(
+          `INSERT INTO organizations (region_id, name) SELECT region_id, 'Партнер' FROM places
+           WHERE google_place_id = 'gA2' RETURNING id`,
+        )
+      ).rows[0].id,
+    );
+    await sql(`UPDATE places SET organization_id = $1 WHERE google_place_id = 'gA2'`, [org]);
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO audit_logs (actor_type, actor_user_id, region_id, action, entity_type, entity_id)
+       SELECT 'user', $1, region_id, 'place.update', 'place', id::text FROM places WHERE google_place_id = 'gA3'`,
+      [user],
+    );
+    const r = await writePlaces(appDb, "test-region", [], t, { rejectedIds: ["gA1", "gA2", "gA3"] });
+    expect(r.archivedRejected).toBe(1);
+    expect(r.archivedIds).toEqual(["gA1"]);
+    const status = async (id: string) =>
+      (await sql("SELECT status FROM places WHERE google_place_id = $1", [id])).rows[0].status;
+    expect(await status("gA1")).toBe("archived");
+    expect(await status("gA2")).toBe("published");
+    expect(await status("gA3")).toBe("published");
+    const audit = (
+      await sql(
+        "SELECT new_values FROM audit_logs WHERE action = 'place.import' ORDER BY created_at DESC, id DESC LIMIT 1",
+      )
+    ).rows[0].new_values;
+    expect(audit).toMatchObject({ archivedRejected: 1, archivedIds: ["gA1"] });
+  });
+
+  it("доп. категории импорта не пересобираются у мест, где админка сменила основную категорию", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [place("gY1", { categoryCode: "car-service", extraCategoryCodes: ["help"] })],
+      t,
+    );
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'museums' AND region_id = places.region_id)
+       WHERE google_place_id = 'gY1'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gY1", { categoryCode: "car-service", extraCategoryCodes: ["active"] })],
+      t,
+    );
+    expect(r.extraCategoriesWritten).toBe(0);
+    const extras = (
+      await sql(
+        `SELECT c.code, x.source FROM place_extra_categories x JOIN places p ON p.id = x.place_id
+         JOIN categories c ON c.id = x.category_id WHERE p.google_place_id = 'gY1' ORDER BY c.code`,
+      )
+    ).rows;
+    expect(extras).toEqual([{ code: "help", source: "import" }]);
+  });
+
+  it("дополнительные категории (0020): импорт пересобирает свои, ручные (manual) не трогает", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX1", { categoryCode: "car-service", extraCategoryCodes: ["help"] })],
+      t,
+    );
+    const extras = async () =>
+      (
+        await sql(
+          `SELECT c.code, x.source FROM place_extra_categories x JOIN places p ON p.id = x.place_id
+           JOIN categories c ON c.id = x.category_id WHERE p.google_place_id = 'gX1' ORDER BY c.code`,
+        )
+      ).rows;
+    expect(await extras()).toEqual([{ code: "help", source: "import" }]);
+    // Админка добавила «Сувеніри» вручную.
+    await sql(
+      `INSERT INTO place_extra_categories (region_id, place_id, category_id, source)
+       SELECT p.region_id, p.id, c.id, 'manual' FROM places p JOIN categories c ON c.region_id = p.region_id
+       WHERE p.google_place_id = 'gX1' AND c.code = 'souvenirs'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gX1", { categoryCode: "car-service", extraCategoryCodes: ["active"] })],
+      t,
+    );
+    expect(r.extraCategoriesWritten).toBe(1);
+    expect(await extras()).toEqual([
+      { code: "active", source: "import" },
+      { code: "souvenirs", source: "manual" },
+    ]);
   });
 });

@@ -2484,7 +2484,18 @@ export interface components {
       active?: boolean;
     };
     /** @enum {string} */
-    HomeSection: "about" | "eat" | "shop" | "relax" | "fun" | "nearby" | "transfer" | "help";
+    HomeSection:
+      | "about"
+      | "stay"
+      | "eat"
+      | "shop"
+      | "relax"
+      | "fun"
+      | "ski"
+      | "nearby"
+      | "transfer"
+      | "services"
+      | "help";
     CategoryDto: {
       /** Format: uuid */
       id: string;
@@ -2604,6 +2615,8 @@ export interface components {
       verifiedAt: string | null;
       /** @description id тегов */
       tagIds: string[];
+      /** @description id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже */
+      extraCategoryIds: string[];
       /** @description Отель/садиба: категория проживания или привязан QR отеля — в админке показывать «Модуль готелю» (блок 5) */
       hostCapable: boolean;
       /**
@@ -10372,6 +10385,8 @@ export interface operations {
         category?: string;
         /** @description Текст: название (uk, en) или адрес; без координат — поиск по всему региону */
         q?: string;
+        /** @description Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели). */
+        exclude_section?: components["schemas"]["HomeSection"][];
         /** @description Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую */
         localityIds?: string[];
         /** @description «Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений) */

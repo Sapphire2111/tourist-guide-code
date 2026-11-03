@@ -8,6 +8,7 @@ import {
   categoryOfType,
   GOOGLE_TYPE_TO_CATEGORY,
   haversineMeters,
+  extraCategories,
   mapCategory,
   mapOpeningHours,
   mapPlace,
@@ -52,9 +53,174 @@ describe("таблица типов → категорий", () => {
     ["car_rental", "rental"],
     ["museum", "museums"],
     ["tourist_attraction", "sights"],
-    ["ski_resort", "active"],
+    ["ski_resort", "ski-resorts"],
     ["sauna", "chany"],
   ])("%s → %s", (type, code) => expect(categoryOfType(type)).toBe(code));
+
+  it.each([
+    ["playground", "kids"],
+    ["water_park", "entertainment"],
+    ["zoo", "kids"],
+    ["bowling_alley", "adult-fun"],
+    ["karaoke", "adult-fun"],
+    ["night_club", "adult-fun"],
+    ["cell_phone_store", "mobile"],
+    ["car_wash", "car-wash"],
+    ["tire_shop", "car-service"],
+    ["post_office", "post"],
+    ["laundry", "laundry"],
+    ["hair_salon", "beauty"],
+    ["barber_shop", "beauty"],
+  ])("сервіси й розваги: %s → %s", (type, code) => expect(categoryOfType(type)).toBe(code));
+
+  it("сервіси й розваги за назвою", () => {
+    expect(mapCategory({ primaryType: "cell_phone_store" }, "Ремонт телефонів «Майстер»")).toBe(
+      "tech-repair",
+    );
+    expect(mapCategory({ primaryType: "store" }, "Сервісний центр: ремонт ноутбуків")).toBe("tech-repair");
+    expect(mapCategory({ primaryType: "store" }, "Київстар")).toBe("mobile");
+    expect(mapCategory({}, "Нова пошта №1")).toBe("post");
+    expect(mapCategory({}, "Шиномонтаж")).toBe("car-service");
+    expect(mapCategory({ primaryType: "car_wash" }, "Шиномонтаж і мийка")).toBe("car-service");
+    expect(mapCategory({ primaryType: "bar" }, "Караоке-бар «Ніч»")).toBe("adult-fun");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Квест кімната")).toBe("adult-fun");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий майданчик")).toBe("kids");
+    expect(mapCategory({ primaryType: "bar" }, "Бар «Гуцул»")).toBe("cafes");
+    expect(mapCategory({ primaryType: "hospital" }, "Дитяча лікарня")).toBe("hospitals");
+    expect(mapCategory({ primaryType: "courier_service" }, "Нова Пошта №1")).toBe("post");
+    expect(mapCategory({ primaryType: "courier_service" }, "Евакуатор Яремче")).toBe("tow-trucks");
+    expect(mapCategory({ primaryType: "laundry" }, "Ремонт пральних машин")).toBe("tech-repair");
+    expect(mapCategory({ primaryType: "amusement_park" }, "Прокат квадроциклів")).toBe("active");
+    expect(mapCategory({ primaryType: "store" }, "Дитячий магазин одягу")).toBe("stores");
+    // Метки без заведения, поштомати и табори не импортируются.
+    expect(mapCategory({ primaryType: "night_club" }, "Mastercard")).toBeUndefined();
+    expect(mapCategory({ primaryType: "paintball_center" }, "БУКОВЕЛЬ ЯРЕМЧЕ")).toBeUndefined();
+    expect(mapCategory({ primaryType: "playground" }, "Яремче")).toBeUndefined();
+    expect(mapCategory({ primaryType: "playground" }, "Дитячий табір")).toBeUndefined();
+    expect(mapCategory({ primaryType: "hotel" }, "Готель Буковель")).toBe("hotels");
+    // Сильный тип — заведение, даже если название — только курорт.
+    expect(mapCategory({ primaryType: "ski_resort" }, "Буковель")).toBe("ski-resorts");
+    expect(mapCategory({ primaryType: "hotel" }, "Карпати")).toBe("hotels");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Polianytsia")).toBeUndefined();
+    // kids по названию — только при типе Google; садочки, школи, лікарні — нет.
+    expect(mapCategory({}, "Дитячий майданчик")).toBeUndefined();
+    // …а садочки, ДЮСШ і загальноосвітні школи з tourist_attraction — не наші (no_category).
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитячий садок «Сонечко»")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "ДЮСШ дитяча")).toBeUndefined();
+    expect(
+      mapCategory({ primaryType: "tourist_attraction" }, "Яремчанська ЗОШ І-ІІІ ступенів"),
+    ).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа №2")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа І-ІІІ ступенів")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ліцей №1")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Гімназія № 3")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ворохтянський опорний ліцей")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Загальноосвітня школа")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Дитсадок «Казка»")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Ясла-садок «Берізка»")).toBeUndefined();
+    // Сади, старі гімназії, готелі «Ліцей», школи ремесел і лиж — не садочки/школи.
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Японський садок")).toBe("sights");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Вишневий садок")).toBe("sights");
+    expect(mapCategory({ primaryType: "historical_landmark" }, "Стара гімназія")).toBe("sights");
+    expect(mapCategory({ primaryType: "hotel" }, "Готель Ліцей")).toBe("hotels");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Лижна школа")).toBeDefined();
+    // Школи ремесел — для туриста.
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Школа гончарства")).toBe("sights");
+    // Мелочи: шини, мийка килимів, квест.
+    expect(mapCategory({ primaryType: "store" }, "Мийка килимів")).toBe("stores");
+    expect(mapCategory({ primaryType: "store" }, "Entire Home")).toBe("stores");
+    expect(mapCategory({ primaryType: "store" }, "Tire service")).toBe("car-service");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Квест по Яремчу")).toBe("sights");
+    expect(mapCategory({}, "Нова Пошта. Поштомат №35404")).toBeUndefined();
+    expect(mapCategory({ primaryType: "post_office" }, "Нова Пошта. Поштове відділення №2")).toBe("post");
+    expect(mapCategory({ primaryType: "childrens_camp" }, "Дитячий табір в Карпатах")).toBeUndefined();
+    expect(mapCategory({ primaryType: "amusement_park" }, "Roller Coaster Zipline")).toBe("active");
+  });
+
+  it("авто, гірські лижі, активний відпочинок — по типам и названию (данные выгрузки 03.11.2026)", () => {
+    expect(mapCategory({ primaryType: "ski_resort" }, "Буковель")).toBe("ski-resorts");
+    expect(mapCategory({ primaryType: "ski_resort" }, "14 підйомник Буковель")).toBe("ski-lifts");
+    expect(mapCategory({ primaryType: "event_venue" }, 'Гірськолижний витяг "Коза"')).toBe("ski-lifts");
+    expect(mapCategory({ primaryType: "sports_club" }, "Гірськолижний комплекс «Багрівець»")).toBe(
+      "ski-resorts",
+    );
+    expect(mapCategory({ types: ["ski_resort", "sports_club"] }, "лижна школа")).toBe("ski-schools");
+    expect(mapCategory({}, "Bukovel Ski School")).toBe("ski-schools");
+    expect(mapCategory({ primaryType: "service" }, "SeeSki Black")).toBe("ski-rental");
+    expect(mapCategory({}, "COCOS SKI-RENT прокат лиж та сноубордів")).toBe("ski-rental");
+    expect(
+      mapCategory({ primaryType: "sportswear_store", types: ["sporting_goods_store"] }, "SkiMarket"),
+    ).toBe("ski-shops");
+    expect(mapCategory({ primaryType: "clothing_store" }, "Фанатік Спорт гірськолижний магазин")).toBe(
+      "ski-shops",
+    );
+    expect(mapCategory({}, "DZVIN-SKI SERVICE")).toBe("ski-service");
+    expect(mapCategory({ primaryType: "hotel", types: ["hotel", "ski_resort"] }, "Скита")).toBe("hotels");
+    expect(mapCategory({ primaryType: "bar" }, "БАР APRES-SKI")).toBe("cafes");
+    expect(mapCategory({}, "Евакуатор цілодобово Яремче Буковель")).toBe("tow-trucks");
+    expect(mapCategory({ primaryType: "car_repair" }, "Евакуатор Яремча СТО GOLD")).toBe("tow-trucks");
+    expect(mapCategory({ primaryType: "parking_lot" }, "Паркінг 1")).toBe("parking");
+    expect(mapCategory({ primaryType: "store" }, "Ринок Яремче стоянка")).toBe("stores");
+    expect(mapCategory({ primaryType: "car_wash" }, "Автомийка")).toBe("car-wash");
+    expect(mapCategory({ primaryType: "tour_agency" }, "Джип-тури Карпатами")).toBe("active");
+    expect(mapCategory({ primaryType: "tour_agency" }, "Прогулянки на конях")).toBe("active");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Зіплайн Яремче")).toBe("active");
+    expect(mapCategory({ primaryType: "ferris_wheel" }, "Колесо огляду")).toBe("entertainment");
+    expect(mapCategory({ primaryType: "event_venue" }, "Дитячий табір Петрос")).toBeUndefined();
+  });
+
+  it("дополнительные категории: место в нескольких разделах", () => {
+    const x = (code: string, p: Parameters<typeof extraCategories>[1], name: string) =>
+      extraCategories(code, p, name).sort();
+    expect(x("entertainment", { primaryType: "water_park" }, "Аквапарк MAVKA")).toEqual(["active", "kids"]);
+    expect(x("entertainment", { primaryType: "ferris_wheel" }, "Колесо огляду")).toEqual(["active", "kids"]);
+    expect(x("entertainment", { primaryType: "movie_theater" }, "Кінотеатр")).toEqual([]);
+    expect(x("gear-rental", {}, "Прокат велосипедів")).toEqual(["active"]);
+    expect(x("ski-rental", {}, "Прокат лиж")).toEqual(["gear-rental"]);
+    expect(x("ski-resorts", {}, "Буковель")).toEqual(["active"]);
+    expect(x("ski-lifts", {}, "Підйомник")).toEqual(["active"]);
+    expect(x("active", {}, "Прокат квадроциклів")).toEqual(["adult-fun", "gear-rental"]);
+    expect(x("active", {}, "Рафтинг на Пруті")).toEqual([]);
+    expect(x("car-service", {}, "СТО")).toEqual(["help"]);
+    expect(x("tow-trucks", {}, "Евакуатор")).toEqual(["help"]);
+    expect(x("pharmacies", {}, "Аптека")).toEqual([]);
+  });
+
+  it("паркінг — только с отзывами (не каждая метка)", () => {
+    const p = (n: number): GooglePlace => ({
+      id: "ChIJparking",
+      displayName: { text: "Паркінг 1" },
+      location: { latitude: 48.4505, longitude: 24.5547 },
+      primaryType: "parking_lot",
+      userRatingCount: n,
+    });
+    expect(mapPlace(p(50), IMPORT_LOCALITIES)).toMatchObject({
+      ok: true,
+      place: { categoryCode: "parking" },
+    });
+    expect(mapPlace(p(2), IMPORT_LOCALITIES)).toEqual({ ok: false, reason: "no_category" });
+  });
+
+  it("дополнительные категории импорта — известные коды (подкатегории или корни)", () => {
+    const known = new Set([
+      ...SEED_CATEGORIES.flatMap((c) => [c.code, ...c.children.map((s) => s.code)]),
+      ...IMPORT_EXTRA_CATEGORIES.map((c) => c.code),
+    ]);
+    for (const code of ["kids", "active", "adult-fun", "gear-rental", "help"])
+      expect(known.has(code), code).toBe(true);
+  });
+
+  it("корень «Сервіси» — в seed без подкатегорий, подкатегории заводит импорт", () => {
+    const services = SEED_CATEGORIES.find((c) => c.code === "services")!;
+    expect(services.home).toBe("services");
+    expect(IMPORT_EXTRA_CATEGORIES.filter((c) => c.parent === "services").map((c) => c.code)).toEqual([
+      "tech-repair",
+      "mobile",
+      "post",
+      "laundry",
+      "beauty",
+    ]);
+  });
 
   it("служебные типы без категории", () => {
     for (const t of ["point_of_interest", "establishment", "locality", "political", "route"])
@@ -75,7 +241,7 @@ describe("таблица типов → категорий", () => {
     expect(mapCategory({ primaryType: "spa" }, "SPA Печанка")).toBe("spa");
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Водоспад Пробій")).toBe("nature");
     expect(mapCategory({ types: ["point_of_interest"] }, "Оглядовий майданчик")).toBe("nature");
-    expect(mapCategory({ primaryType: "store" }, "Прокат лиж Bukovel")).toBe("gear-rental");
+    expect(mapCategory({ primaryType: "store" }, "Прокат лиж Bukovel")).toBe("ski-rental");
     expect(mapCategory({ types: ["point_of_interest"] }, "Прокат велосипедів")).toBe("gear-rental");
     expect(mapCategory({ types: ["point_of_interest"] }, "Прокат авто Яремче")).toBe("rental");
     expect(mapCategory({ primaryType: "restaurant" }, "Прокат лиж і кафе")).toBe("restaurants");
@@ -86,8 +252,8 @@ describe("таблица типов → категорий", () => {
     expect(mapCategory({ primaryType: "hiking_area" }, "Водопад Сергій")).toBe("nature");
     expect(mapCategory({ primaryType: "sports_activity_location" }, "Чан Тепло Карпат")).toBe("chany");
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Печера Довбуша")).toBe("sights");
-    expect(mapCategory({ primaryType: "tour_agency" }, "Прокат квадроциклів")).toBe("excursions");
-    expect(mapCategory({ types: ["service"] }, "Квадроцикли KvadroBug")).toBe("gear-rental");
+    expect(mapCategory({ primaryType: "tour_agency" }, "Прокат квадроциклів")).toBe("active");
+    expect(mapCategory({ types: ["service"] }, "Квадроцикли KvadroBug")).toBe("active");
     expect(mapCategory({ types: ["service"] }, "VIP Прокат 4х4")).toBe("gear-rental");
     expect(mapCategory({ types: ["service"] }, "Прокат")).toBe("gear-rental");
     expect(mapCategory({ types: ["service"] }, "Rent The Carpathians")).toBe("gear-rental");
@@ -222,13 +388,14 @@ describe("география", () => {
     );
   });
 
-  it("пять пунктов пилота с радиусом", () => {
+  it("пункты пилота с радиусом (Ворохта — с 03.11.2026)", () => {
     expect(IMPORT_LOCALITIES.map((l) => l.code)).toEqual([
       "yaremche",
       "tatariv",
       "mykulychyn",
       "polianytsia",
       "yablunytsia",
+      "vorokhta",
     ]);
   });
 });
@@ -257,6 +424,7 @@ describe("место целиком", () => {
       place: {
         googlePlaceId: base.id,
         categoryCode: "restaurants",
+        extraCategoryCodes: [],
         localityCode: "yaremche",
         name: "Panorama Restaurant",
         description: "Ресторан у Яремчі. Джерело: Google Maps.",

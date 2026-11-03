@@ -85,7 +85,16 @@ export function placeBody(f: PlaceForm) {
   };
 }
 
-function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<PlaceForm>) => void }) {
+function PlaceFields({
+  form,
+  set,
+  extraCategoryIds = [],
+}: {
+  form: PlaceForm;
+  set: (patch: Partial<PlaceForm>) => void;
+  /** Дополнительные категории (0020) — только показ: ставит импорт Google. */
+  extraCategoryIds?: string[];
+}) {
   const { api } = useAdmin();
   const { t } = useT();
   const l = useLocalized();
@@ -120,6 +129,15 @@ function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<Plac
           options={(cats?.ok ? cats.data.items : []).map((c) => ({ value: c.id, label: l(c.name) }))}
           onChange={(categoryId) => set({ categoryId })}
         />
+        {extraCategoryIds.length > 0 && (
+          <p data-testid="extra-categories" style={{ margin: 0 }}>
+            {t("admin.field.extraCategories")}:{" "}
+            {extraCategoryIds
+              .map((id) => (cats?.ok ? cats.data.items.find((c) => c.id === id) : undefined))
+              .map((c, i) => (c ? l(c.name) : extraCategoryIds[i]))
+              .join(", ")}
+          </p>
+        )}
         <SelectField
           label={t("admin.field.locality")}
           value={form.localityId}
@@ -379,7 +397,11 @@ function Editor({ place }: { place?: Place }) {
         error={error}
         busy={busy}
       >
-        <PlaceFields form={form} set={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+        <PlaceFields
+          form={form}
+          set={(patch) => setForm((f) => ({ ...f, ...patch }))}
+          extraCategoryIds={place?.extraCategoryIds}
+        />
         <Notice text={notice} />
       </Form>
       {current && (
