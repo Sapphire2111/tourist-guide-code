@@ -285,6 +285,29 @@ describe("WeatherService", () => {
     );
     await s.forecastAt(YAREMCHE);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Иконки — через наш прокси, не maps.gstatic.com.
+    expect(f!.current!.iconUrl).toBe("/weather/icons/cloudy.svg");
+    expect(f!.days[0]!.iconUrl).toBe("/weather/icons/clear.svg");
+  });
+
+  it("прокси иконки: только SVG с maps.gstatic.com, в памяти; чужое имя и не SVG — null", async () => {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith("/cloudy.svg")
+          ? new Response("<svg/>", { headers: { "content-type": "image/svg+xml" } })
+          : new Response("<html/>", { headers: { "content-type": "text/html" } }),
+      ),
+    );
+    const { s } = service({ fetch: fetchMock as unknown as typeof fetch });
+    expect((await s.icon("cloudy"))?.toString()).toBe("<svg/>");
+    await s.icon("cloudy");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://maps.gstatic.com/weather/v1/cloudy.svg",
+      expect.anything(),
+    );
+    expect(await s.icon("other")).toBeNull();
+    expect(await s.icon("../x")).toBeNull();
   });
 
   it("Google 429 — запасной Open-Meteo; Google не спрашивается в паузе", async () => {
@@ -356,7 +379,10 @@ describe("HTTP GET /weather", () => {
   });
 
   async function start(forecast: Forecast | null) {
-    const weather = { forecastAt: vi.fn(() => Promise.resolve(forecast)) };
+    const weather = {
+      forecastAt: vi.fn(() => Promise.resolve(forecast)),
+      icon: vi.fn((name: string) => Promise.resolve(name === "cloudy" ? Buffer.from("<svg/>") : null)),
+    };
     const { db } = recordingDb({});
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -391,6 +417,11 @@ describe("HTTP GET /weather", () => {
     await ok.http().get("/weather?lng=24.55").expect(400);
     await ok.http().get("/weather?lat=91&lng=24.55").expect(400);
     await ok.http().get("/weather?lat=48&lng=24&days=8").expect(400);
+    const icon = await ok.http().get("/weather/icons/cloudy.svg").expect(200);
+    expect(icon.headers["content-type"]).toContain("image/svg+xml");
+    expect(icon.headers["content-security-policy"]).toContain("sandbox");
+    await ok.http().get("/weather/icons/rain.svg").expect(404);
+    await ok.http().get("/weather/icons/cloudy.png").expect(404);
     await app!.close();
     const none = await start(null);
     const empty = await none.http().get("/weather?lat=48.45&lng=24.55").expect(200);

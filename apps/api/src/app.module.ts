@@ -151,6 +151,7 @@ export class AppModule {
         // api (WORKER_IN_PROCESS), иначе лениво при запросе. «Мій план» берёт прогноз у WeatherService (global).
         WeatherModule.forRoot({
           googleApiKey: env.GOOGLE_MAPS_API_KEY,
+          apiBaseUrl: env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4300}`,
           googleDailyLimit: env.GOOGLE_WEATHER_DAILY_LIMIT,
           googleMonthlyLimit: env.GOOGLE_WEATHER_MONTHLY_LIMIT,
           refresh: env.WORKER_IN_PROCESS,

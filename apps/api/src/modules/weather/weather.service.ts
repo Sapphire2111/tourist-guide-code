@@ -3,8 +3,11 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { InjectDb, outsideTenant, type Db, type JsonObject } from "../../db/index.js";
 import { GoogleQuota } from "../../places-enrich/quota.js";
 import {
+  GOOGLE_ICON_BASE,
   GOOGLE_WEATHER_URL,
   googleCurrentUrl,
+  googleIconName,
+  ICON_NAME,
   googleDaysUrl,
   googleForecast,
   parseGoogleCurrent,
@@ -22,6 +25,8 @@ export type WeatherConfig = {
   /** Запросов к Google Weather в сутки / месяц (America/Los_Angeles, счётчик google_api_usage). */
   googleDailyLimit?: number | undefined;
   googleMonthlyLimit?: number | undefined;
+  /** Публичный адрес api (PUBLIC_API_URL) — для ссылок на прокси иконок. */
+  apiBaseUrl?: string | undefined;
   /** Фоновое обновление точек в процессе api (тик под advisory lock); без него — только ленивое при запросе. */
   refresh?: boolean | undefined;
   googleBaseUrl?: string;
@@ -53,6 +58,9 @@ const ROWS_TTL_MS = 5 * 60_000;
 const SYNC_TTL_MS = 3600_000;
 /** Google после 429/403/исчерпанного предела не спрашиваем столько (сразу Open-Meteo). */
 const GOOGLE_PAUSE_MS = 10 * 60_000;
+/** Иконка Google не больше (SVG ~1–5 КБ); иконок в памяти не больше (у Google их несколько десятков). */
+const ICON_MAX_BYTES = 64 * 1024;
+const ICONS_MAX = 200;
 
 export type Point = { lat: number; lng: number };
 
@@ -103,6 +111,7 @@ export class WeatherService {
   private readonly log = new Logger("WeatherService");
   private readonly cfg: {
     googleApiKey: string | undefined;
+    apiBaseUrl: string;
     googleDailyLimit: number;
     googleMonthlyLimit: number;
     googleBaseUrl: string;
@@ -117,6 +126,7 @@ export class WeatherService {
   private readonly failedUntil = new Map<string, number>();
   private googlePausedUntil = -Infinity;
   private readonly warnedAt = new Map<string, number>();
+  private readonly icons = new Map<string, Promise<Buffer | null>>();
 
   constructor(
     @Optional() @Inject(WEATHER_CONFIG) config?: WeatherConfig,
@@ -125,6 +135,7 @@ export class WeatherService {
   ) {
     this.cfg = {
       googleApiKey: config?.googleApiKey || undefined,
+      apiBaseUrl: (config?.apiBaseUrl ?? "").replace(/\/+$/, ""),
       googleDailyLimit: config?.googleDailyLimit ?? GOOGLE_WEATHER_DAILY_LIMIT_DEFAULT,
       googleMonthlyLimit: config?.googleMonthlyLimit ?? GOOGLE_WEATHER_MONTHLY_LIMIT_DEFAULT,
       googleBaseUrl: config?.googleBaseUrl ?? GOOGLE_WEATHER_URL,
@@ -239,12 +250,53 @@ export class WeatherService {
     return p;
   }
 
-  /** Дни с сегодняшнего (снимок мог быть сделан вчера). */
+  /** Дни с сегодняшнего (снимок мог быть сделан вчера); иконки Google — через наш прокси. */
   private trim(f: Forecast | null): Forecast | null {
     if (!f) return null;
     const today = todayIn(f.timezone, new Date(this.now()));
-    const days = f.days.filter((d) => d.date >= today);
-    return days.length ? { ...f, days } : null;
+    const days = f.days
+      .filter((d) => d.date >= today)
+      .map((d) => ({ ...d, iconUrl: this.proxyIcon(d.iconUrl) }));
+    if (!days.length) return null;
+    return { ...f, days, current: f.current && { ...f.current, iconUrl: this.proxyIcon(f.current.iconUrl) } };
+  }
+
+  /** Адрес иконки Google → наш прокси GET /weather/icons/{имя}.svg (иначе null — клиент рисует свою). */
+  private proxyIcon(url: string | null): string | null {
+    const name = googleIconName(url);
+    return name ? `${this.cfg.apiBaseUrl}/weather/icons/${name}.svg` : null;
+  }
+
+  /**
+   * Иконка Google по имени (прокси: Mini App к Google не ходит): SVG с maps.gstatic.com, в памяти процесса; не SVG,
+   * больше ICON_MAX_BYTES, ошибка — null (повтор при следующем запросе).
+   */
+  icon(name: string): Promise<Buffer | null> {
+    if (!ICON_NAME.test(name)) return Promise.resolve(null);
+    const hit = this.icons.get(name);
+    if (hit) return hit;
+    if (this.icons.size >= ICONS_MAX) this.icons.clear();
+    const p = (async () => {
+      try {
+        const res = await this.cfg.fetch(`${GOOGLE_ICON_BASE}${name}.svg`, {
+          signal: AbortSignal.timeout(this.cfg.timeoutMs),
+        });
+        const type = res.headers.get("content-type") ?? "";
+        if (!res.ok || !type.includes("svg")) {
+          await res.body?.cancel();
+          return null;
+        }
+        const bytes = Buffer.from(await res.arrayBuffer());
+        return bytes.length > 0 && bytes.length <= ICON_MAX_BYTES ? bytes : null;
+      } catch {
+        return null;
+      }
+    })();
+    this.icons.set(name, p);
+    void p.then((b) => {
+      if (!b) this.icons.delete(name);
+    });
+    return p;
   }
 
   /** Прогноз по координатам у источников: Google Weather, затем Open-Meteo. */

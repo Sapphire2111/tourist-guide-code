@@ -61,12 +61,25 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | undefined => (v && typeof v === "object" ? (v as Obj) : undefined);
 const path = (v: unknown, ...keys: string[]): unknown => keys.reduce<unknown>((o, k) => obj(o)?.[k], v);
 
-/** Иконка Google: только https://maps.gstatic.com/weather/… (iconBaseUri + ".svg"). */
+/** Иконки Google Weather: https://maps.gstatic.com/weather/v1/<имя> (+ ".svg"). */
+export const GOOGLE_ICON_BASE = "https://maps.gstatic.com/weather/v1/";
+export const ICON_NAME = /^[a-z0-9_]{1,60}$/;
+
+/**
+ * Иконка Google: только iconBaseUri вида GOOGLE_ICON_BASE + имя → адрес .svg. Клиенту api отдаёт её через свой прокси
+ * (GET /weather/icons/{имя}.svg): Mini App к Google напрямую не ходит.
+ */
 export function googleIcon(cond: unknown): string | null {
   const base = path(cond, "iconBaseUri");
-  if (typeof base !== "string" || !/^https:\/\/maps\.gstatic\.com\/weather\/[a-z0-9_/-]{1,100}$/i.test(base))
-    return null;
-  return `${base}.svg`;
+  if (typeof base !== "string" || !base.startsWith(GOOGLE_ICON_BASE)) return null;
+  return ICON_NAME.test(base.slice(GOOGLE_ICON_BASE.length)) ? `${base}.svg` : null;
+}
+
+/** Имя иконки Google из её адреса; не наш формат — null. */
+export function googleIconName(url: string | null): string | null {
+  if (!url?.startsWith(GOOGLE_ICON_BASE) || !url.endsWith(".svg")) return null;
+  const name = url.slice(GOOGLE_ICON_BASE.length, -4);
+  return ICON_NAME.test(name) ? name : null;
 }
 
 const text = (cond: unknown): string | null => {
