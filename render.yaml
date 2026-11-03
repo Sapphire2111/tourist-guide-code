@@ -99,11 +99,12 @@ services:
     # PUT https://api.render.com/v1/services/<id сайта>/headers  (тело — массив {path, name, value} ниже),
     # проверить: curl -sI https://<сайт>/ . Mini App открывается во фрейме web.telegram.org (Web K/A) — поэтому
     # frame-ancestors с Telegram и без X-Frame-Options; скрипт SDK — https://telegram.org. connect-src — адрес api
-    # (VITE_API_URL); фото мест (T1-20) — img-src https:. Добавятся внешние ресурсы (тайлы карты) — расширить CSP.
+    # (VITE_API_URL); фото мест (T1-20) — img-src https:. Карта — Google Maps JavaScript API (векторная): скрипт,
+    # тайлы и шрифты Google (*.googleapis.com, *.gstatic.com, *.google.com), воркеры и данные тайлов — blob:/data:.
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://tg-api-staging.onrender.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self' https://telegram.org https://*.googleapis.com https://*.gstatic.com https://*.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tg-api-staging.onrender.com https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
@@ -125,6 +126,14 @@ services:
       # Имя бота (без @) — сканер QR принимает ссылки t.me/<бот> только этого бота; вшивается в бандл (не секрет).
       - key: VITE_BOT_USERNAME
         value: tourist_guide_test_bot
+      # Google Maps JavaScript API — карта мест (Mini App). Браузерный ключ вшивается в бандл, поэтому в Google Cloud он
+      # ограничен по HTTP referrer (сайт staging и http://localhost:5173) и только Maps JavaScript API. Map ID — векторная
+      # карта (AdvancedMarker). Значения — в панели Render (из .env.staging: GOOGLE_MAPS_BROWSER_KEY / GOOGLE_MAPS_MAP_ID),
+      # не в репозитории. Не заданы — вместо карты заглушка, список мест работает. Смена — пересборка сайта.
+      - key: VITE_GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false
       - key: NODE_VERSION
         value: 22.17.0
       - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS

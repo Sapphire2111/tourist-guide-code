@@ -35,7 +35,7 @@ type NearbyResult = { list: PlaceSummary[]; radius: number };
 type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; point: LatLng };
 
 export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const { webApp, base } = useGuide();
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
   /** Радиус запроса — значение ползунка после паузы в перетаскивании. */
@@ -45,10 +45,10 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
     const timer = window.setTimeout(() => setQueryRadius(radius), RADIUS_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [radius, queryRadius]);
-  // Модуль карты и соединение с тайлами — параллельно запросу мест.
+  // Модуль карты и скрипт Google Maps — параллельно запросу мест (повторный вызов берёт тот же промис).
   useEffect(() => {
-    preloadMap().catch(() => undefined);
-  }, []);
+    preloadMap(locale).catch(() => undefined);
+  }, [locale]);
   const radiusText = useRadiusLabel()(radius);
   const [geo, setGeo] = useState<Geo>({ status: useMyLocation ? "locating" : "idle" });
 

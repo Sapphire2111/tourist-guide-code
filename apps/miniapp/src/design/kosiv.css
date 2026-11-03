@@ -824,6 +824,39 @@ html[data-season] :focus-visible {
   border: 2px solid #ffffff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+/* Маркер места (AdvancedMarker): круг цвета раздела, белый значок или номер остановки маршрута. */
+.kosiv-pin {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  /* AdvancedMarker привязывает низ значка к точке — круг центрируем на ней. */
+  transform: translateY(50%);
+}
+.kosiv-pin svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.kosiv-pin-base {
+  width: 22px;
+  height: 22px;
+  border-width: 3px;
+  cursor: default;
+}
 .kosiv-map-popup {
   display: flex;
   flex-direction: column;
@@ -869,8 +902,9 @@ html[data-season] :focus-visible {
 /* Значок «Ви тут» на карте: круг в цветах сезона с пульсирующим ореолом; погрешность: полупрозрачный круг. */
 .kosiv-me {
   position: relative;
-  background: transparent;
-  border: 0;
+  width: 28px;
+  height: 28px;
+  transform: translateY(50%);
 }
 .kosiv-me-dot {
   position: absolute;
@@ -897,12 +931,6 @@ html[data-season] :focus-visible {
     transform: scale(1.6);
     opacity: 0;
   }
-}
-path.kosiv-me-accuracy {
-  stroke: var(--app-accent);
-  stroke-width: 1px;
-  fill: var(--app-accent);
-  fill-opacity: 0.12;
 }
 @media (prefers-reduced-motion: reduce) {
   .kosiv-me-pulse {

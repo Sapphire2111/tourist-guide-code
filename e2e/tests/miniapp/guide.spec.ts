@@ -1,5 +1,5 @@
 // Блок 4: гид туриста — главная C02, каталог C04, «Що поруч» C05, картка місця C06, «Халепа?» C14, обране.
-// api не поднят — каталог отдаёт support/api-mock.ts; карта OSM и фото — заглушки без сети (fixtures.ts).
+// api не поднят — каталог отдаёт support/api-mock.ts; Google Maps — фейк API, фото — заглушки без сети (fixtures.ts).
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
 import { apiMockState, CAFE_PLACE, LOCALITY_TATARIV } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
@@ -64,7 +64,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Знайти" }).click();
     await expect(page.getByTestId("place-item")).toHaveCount(1);
     await page.getByRole("button", { name: "Карта" }).click();
-    await expect(page.getByTestId("places-map").locator(".leaflet-tile-pane")).toBeAttached();
+    await expect(page.getByTestId("places-map").locator(".gm-fake-map")).toBeAttached();
     await expectNoSeriousA11yViolations(page);
 
     await page.getByRole("searchbox").fill("немає такого");
@@ -193,8 +193,8 @@ test.describe("QR отеля demoHotel01", () => {
       }),
     );
     await page.goto("/#/nearby");
-    const marker = page.locator(".leaflet-overlay-pane path.leaflet-interactive").last();
-    await marker.click({ force: true });
+    const marker = page.getByTestId("places-map").locator(".kosiv-pin").last();
+    await marker.click();
     const popup = page.locator(".kosiv-map-popup");
     await expect(popup.locator("strong")).toHaveText(evil);
     await expect(popup.locator("img")).toHaveCount(0);
@@ -230,7 +230,7 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("places-map")).toBeVisible();
     // Маркеры по разделам, легенда, подпись по нажатию: название + категория.
     await expect(page.getByTestId("map-legend")).toContainText("Де поїсти");
-    await page.locator('.leaflet-overlay-pane path[data-group="eat"]').first().click({ force: true });
+    await page.getByTestId("places-map").locator('.kosiv-pin[data-group="eat"]').first().click();
     await expect(page.locator(".kosiv-map-popup")).toBeVisible();
     await expectNoSeriousA11yViolations(page);
   });
@@ -315,5 +315,23 @@ test.describe("вне Telegram", () => {
     await expect(page.getByTestId("call-112")).toBeVisible();
     await page.goto("/#/favorites");
     await expect(page.getByTestId("no-region")).toBeVisible();
+  });
+});
+
+test.describe("сборка без ключа Google Maps", () => {
+  test.use({ telegram: { startParam: "demoHotel01" }, googleMaps: false });
+
+  test("«Що поруч» — заглушка вместо карты, список мест на месте; a11y", async ({ page }) => {
+    const maps: string[] = [];
+    page.on("request", (r) => {
+      if (/maps\.googleapis\.com/.test(r.url())) maps.push(r.url());
+    });
+    await page.goto("/");
+    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
+    await expect(page.getByTestId("place-item")).toHaveCount(2);
+    await expect(page.getByTestId("map-unavailable")).toHaveText("Карта недоступна. Нижче — список.");
+    await expect(page.getByTestId("places-map")).toHaveCount(0);
+    expect(maps).toEqual([]);
+    await expectNoSeriousA11yViolations(page);
   });
 });

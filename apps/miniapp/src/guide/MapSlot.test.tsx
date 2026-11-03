@@ -1,4 +1,4 @@
-// Повтор загрузки карты: сбой модуля → успешная предзагрузка → следующий экран показывает карту.
+// Без ключа — заглушка. Повтор загрузки карты: сбой модуля → успешная предзагрузка → следующий экран показывает карту.
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@tg/ui";
@@ -9,6 +9,18 @@ afterEach(cleanup);
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("MapSlot", () => {
+  // Первым: setMapLoaderForTests ниже включает карту без ключа.
+  it("без ключа Google Maps — заглушка, модуль карты не грузится", async () => {
+    render(
+      <I18nProvider locale="uk">
+        <MapSlot places={[]} center={null} />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("map-unavailable").textContent).toBe("Карта недоступна. Нижче — список.");
+    await expect(preloadMap()).rejects.toThrow();
+    expect(document.querySelector("link[data-map-preconnect]")).toBeNull();
+  });
+
   it("после сбоя загрузки модуля и успешной предзагрузки карта появляется", async () => {
     let fail = true;
     setMapLoaderForTests(async () => {
