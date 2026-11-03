@@ -57,7 +57,7 @@ export type EnrichStats = {
   monthlyLimitReached: boolean;
   /** Мест, которым Details не достались из-за предела (продолжить в следующем месяце). */
   detailsDeferred: number;
-  /** Мест/запросов, отложенных из-за поминутной квоты Google (429 после всех повторов) — повторить прогоном позже. */
+  /** Мест, отложенных из-за поминутной квоты Google (429 после всех повторов) — повторить прогоном позже. */
   rateLimited: number;
   /** Мест с данными из кэша импорта (без платного Details). */
   fromImport: number;
@@ -168,6 +168,7 @@ export async function enrich(
     // Платный Place Details (Atmosphere) — кроме утилитарных категорий; предел (месячный/запросов) — данные из
     // кэша импорта, остальное — в следующем прогоне (ответы кэшируются, повтор продолжает с непройденных).
     let g: PlaceEnrichmentGoogle | null = null;
+    let rateLimited = false;
     if (opts.details !== false && !opts.skipDetails?.has(p.categoryCode)) {
       try {
         const raw = await google.placeDetails(p.googlePlaceId);
@@ -184,6 +185,7 @@ export async function enrich(
         } else if (err instanceof GoogleRateLimitedError) {
           log(`Details ${p.googlePlaceId}: ${err.message}`);
           stats.rateLimited++;
+          rateLimited = true;
           stats.detailsDeferred++;
         } else if (!(err instanceof RequestLimitError)) throw err;
         else {
@@ -198,7 +200,7 @@ export async function enrich(
     if (fromImport) {
       // Бесплатно: тип, описание, рейтинг из кэша поиска + фото с авторами запросом «id,photos» (IDs Only).
       let photos: Record<string, unknown> | null = null;
-      if (opts.freePhotos !== false) {
+      if (opts.freePhotos !== false && !rateLimited) {
         try {
           photos = await google.placePhotos(p.googlePlaceId);
         } catch (err) {

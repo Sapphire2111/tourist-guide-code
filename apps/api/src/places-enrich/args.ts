@@ -39,7 +39,7 @@ export type EnrichArgs = {
   monthlyLimit: number;
   /** Скачать обложки (одна на место) в place_cover_photos. */
   covers: boolean;
-  /** Запросов в минуту к Google (равномерный темп; 0 — без темпа). */
+  /** Запросов в минуту к Google (равномерный темп; 0 — без темпа). 1000 запросов при 30/мин ≈ 33 мин. */
   rpm: number;
 };
 
@@ -120,7 +120,7 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
       case "--covers":
         args.covers = true;
         break;
-      case "--rpm":
+      case "--rpm": // запросов/мин к Google; 1000 запросов при 30/мин ≈ 33 мин
         args.rpm = int(0);
         break;
       case "--monthly-limit":

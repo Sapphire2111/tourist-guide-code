@@ -165,10 +165,12 @@ const DEFAULT_RATE_RETRIES = 5;
 const MAX_RETRY_AFTER_MS = 5 * 60_000;
 const MINUTE_MS = 60_000;
 
-/** 429 по суточной/месячной квоте (а не поминутной): ждать бесполезно. */
+/**
+ * 429 по суточной/месячной квоте (а не поминутной): ждать бесполезно. Google ставит RATE_LIMIT_EXCEEDED и для
+ * суточных квот, поэтому решает только слово per day/month или единица 1/d/ в ПОЛНОМ теле.
+ */
 export const isLongQuota429 = (body: string): boolean =>
-  /per\s*day|per\s*month|PerDay|PerMonth|daily|monthly/i.test(body) &&
-  !/RATE_LIMIT_EXCEEDED|per\s*minute|PerMinute/i.test(body);
+  /per\s*day|PerDay|per\s*month|PerMonth|1\/d\//i.test(body);
 /** Сколько редиректов фото проходить вручную (каждый — тоже только на хост Google). */
 const MAX_PHOTO_REDIRECTS = 3;
 
@@ -240,6 +242,7 @@ export class GooglePlacesClient {
   /** Места/фото, отложенные из-за поминутной квоты после всех повторов. */
   rateLimitedGiveUps = 0;
   private nextSlot = 0;
+  private consecutiveGiveUps = 0;
   private longQuota: GoogleDailyQuotaError | undefined;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly clock: () => number;
@@ -273,9 +276,13 @@ export class GooglePlacesClient {
         await this.pause(start - now);
       }
       const res = await this.fetch(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
-      if (res.status !== 429) return res;
-      const text = (await res.text()).slice(0, 500);
-      if (isLongQuota429(text)) {
+      if (res.status !== 429) {
+        this.consecutiveGiveUps = 0;
+        return res;
+      }
+      const full = await res.text();
+      const text = full.slice(0, 500);
+      if (isLongQuota429(full)) {
         this.longQuota = new GoogleDailyQuotaError(
           `Суточная/месячная квота Google исчерпана (HTTP 429): запросы к Google остановлены. ${text.slice(0, 200)}`,
         );
@@ -284,8 +291,14 @@ export class GooglePlacesClient {
       this.rateLimitHits++;
       if (attempt >= retries) {
         this.rateLimitedGiveUps++;
+        // Предохранитель: 2 запроса подряд не пробились после всех повторов — квота не отпускает, Google до конца
+        // прогона не трогаем (как при суточной квоте).
+        if (++this.consecutiveGiveUps >= 2)
+          this.longQuota = new GoogleDailyQuotaError(
+            "Google: 2 запроса подряд отклонены 429 после всех повторов — запросы к Google остановлены до конца прогона",
+          );
         throw new GoogleRateLimitedError(
-          `Google: поминутная квота, ${retries} повторов не помогли — отложено. ${text.slice(0, 200)}`,
+          `Google: HTTP 429 (поминутная квота), ${retries} повторов не помогли — отложено. ${text.slice(0, 200)}`,
           429,
         );
       }
@@ -466,6 +479,8 @@ export class GooglePlacesClient {
       this.planned[kind]++;
       throw new PlannedRequest();
     }
+    // Квота Google уже исчерпана: ни месячный учёт (quota), ни счётчик запросов (take) не трогаем.
+    if (this.longQuota) throw this.longQuota;
     const key = this.options.apiKey;
     if (!key) throw new NoApiKeyError("Нет GOOGLE_MAPS_API_KEY, а ответа нет в кэше");
     // Бесплатные запросы (IDs Only) в --max-requests не входят — он страхует платные.
