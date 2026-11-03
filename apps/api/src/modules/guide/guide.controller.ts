@@ -186,11 +186,13 @@ export class GuidePlacesController {
   @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
   search(@Query() q: SearchPlacesQueryDto): Promise<PlaceSearchResultDto> {
     const origin = originOf(q);
+    const localityIds = q.localityIds?.length ? q.localityIds : undefined;
     return this.guide.search(q.regionId, {
       origin,
-      radius: origin ? (q.radius ?? SEARCH_RADIUS_DEFAULT) : undefined,
+      // С локациями точка — только для расстояния и порядка: радиус лишь явный.
+      radius: origin ? (q.radius ?? (localityIds ? undefined : SEARCH_RADIUS_DEFAULT)) : undefined,
       categoryId: q.category,
-      localityIds: q.localityIds?.length ? q.localityIds : undefined,
+      localityIds,
       text: q.q?.trim() || undefined,
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,

@@ -2781,7 +2781,7 @@ export interface components {
        *     ]
        */
       aliases: string[];
-      location: components["schemas"]["LonLatDto"];
+      location: components["schemas"]["LonLatDto"] | null;
       sortOrder: number;
       /** @description Опубликованных мест в пункте */
       placeCount: number;
@@ -10231,7 +10231,7 @@ export interface operations {
         lat?: number;
         /** @description Долгота (вместе с lat) */
         lng?: number;
-        /** @description Радиус, м — только с lat/lng («Що поруч») */
+        /** @description Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния) */
         radius?: number;
         /** @description Категория (из GET /categories); раздел включает свои подкатегории */
         category?: string;

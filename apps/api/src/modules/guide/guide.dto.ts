@@ -105,7 +105,8 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
     minimum: SEARCH_RADIUS_MIN,
     maximum: SEARCH_RADIUS_MAX,
     default: SEARCH_RADIUS_DEFAULT,
-    description: "Радиус, м — только с lat/lng («Що поруч»)",
+    description:
+      "Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния)",
   })
   @IsOptional()
   @Type(() => Number)
@@ -264,7 +265,7 @@ export class GuideLocalityDto {
     description: "Другие названия (курорт, латиница, формы) — для распознавания в тексте запроса",
   })
   aliases!: string[];
-  @ApiProperty({ type: LonLatDto }) location!: LonLatDto;
+  @ApiProperty({ type: LonLatDto, nullable: true }) location!: LonLatDto | null;
   @ApiProperty({ type: "integer" }) sortOrder!: number;
   @ApiProperty({ type: "integer", description: "Опубликованных мест в пункте" }) placeCount!: number;
 }

@@ -5595,7 +5595,7 @@
             "name": "radius",
             "required": false,
             "in": "query",
-            "description": "Радиус, м — только с lat/lng («Що поруч»)",
+            "description": "Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния)",
             "schema": { "minimum": 10, "maximum": 20000, "default": 500, "type": "integer" }
           },
           {
@@ -12580,7 +12580,11 @@
             "type": "array",
             "items": { "type": "string" }
           },
-          "location": { "$ref": "#/components/schemas/LonLatDto" },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LonLatDto" }]
+          },
           "sortOrder": { "type": "integer" },
           "placeCount": { "type": "integer", "description": "Опубликованных мест в пункте" }
         },

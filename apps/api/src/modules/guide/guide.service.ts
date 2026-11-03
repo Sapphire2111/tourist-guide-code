@@ -125,7 +125,7 @@ export class GuideService {
           code: l.code,
           name: l.name_i18n,
           aliases: localityAliases(l.code),
-          location: l.location!,
+          location: l.location,
           sortOrder: l.sort_order,
           placeCount: counts.get(l.id) ?? 0,
         })),

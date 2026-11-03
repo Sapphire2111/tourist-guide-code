@@ -163,6 +163,16 @@ describe("GET /places/search", () => {
     const B = "0190f5c2-7d3e-7000-8000-0000000000c2";
     await http().get(`/places/search?regionId=${REGION}&localityIds=${A}&localityIds=${B}`).expect(200);
     expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ localityIds: [A, B] }));
+    // С локациями точка — без радиуса по умолчанию; явный радиус — применяется.
+    await http().get(`/places/search?regionId=${REGION}&lat=48&lng=24&localityIds=${A}`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ origin: { lon: 24, lat: 48 }, radius: undefined, localityIds: [A] }),
+    );
+    await http()
+      .get(`/places/search?regionId=${REGION}&lat=48&lng=24&radius=900&localityIds=${A}`)
+      .expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ radius: 900 }));
     await http().get(`/places/search?regionId=${REGION}&localityIds=${A},${B}`).expect(200);
     expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ localityIds: [A, B] }));
     await http().get(`/places/search?regionId=${REGION}&localityIds=`).expect(200);
