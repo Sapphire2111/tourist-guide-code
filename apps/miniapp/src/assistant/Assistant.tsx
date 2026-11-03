@@ -6,6 +6,7 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
 import { useGuide } from "../guide/context.js";
+import { useLocations } from "../guide/LocationProvider.js";
 import { MapSlot, preloadMap } from "../guide/MapSlot.js";
 import { useRadiusLabel } from "../guide/Nearby.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
@@ -61,6 +62,7 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
   }, []);
   useEffect(() => saveDialog(dialogId.current, turns), [turns]);
   const point = guide.base?.point ?? null;
+  const { selected: localityIds } = useLocations();
 
   const ask = (text: string) => {
     const id = nextId.current++;
@@ -70,7 +72,13 @@ export function Assistant({ api, initialQuery = "" }: { api: AssistantApi; initi
     const previous = lastReady?.state.status === "ready" ? lastReady.state.data.intent : null;
     setTurns((all) => [...all, { id, text, state: { status: "loading" } }]);
     api
-      .ask({ text, point, history: turns.map((x) => x.text), previous })
+      .ask({
+        text,
+        point,
+        history: turns.map((x) => x.text),
+        previous,
+        ...(localityIds.length ? { localityIds } : {}),
+      })
       .then(
         (data) => ({ status: "ready", data }) as const,
         (error: unknown) => ({ status: "error", error }) as const,

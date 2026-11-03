@@ -49,21 +49,10 @@ export class AssistantRepository {
           .select(["id", "code", "name_i18n"])
           .select((eb) => lonLatOf(eb.ref("location")).as("location"))
           .where("active", "=", true)
+          .where("kind", "=", "settlement")
           .orderBy("sort_order")
           .orderBy("code")
           .execute()) as AssistantLocality[],
     );
-  }
-
-  /**
-   * Населённый пункт мест (places.locality_id). Временная фильтрация в ассистенте — до общего параметра
-   * localityIds в GET /places/search (ветка локаций), затем фильтр уйдёт в поиск каталога.
-   */
-  async placeLocalities(regionId: string, ids: readonly string[]): Promise<Map<string, string | null>> {
-    if (!ids.length) return new Map();
-    const rows = await withTenant(this.db, regionContext(regionId), () =>
-      currentDb(this.db).selectFrom("places").select(["id", "locality_id"]).where("id", "in", ids).execute(),
-    );
-    return new Map(rows.map((r) => [r.id, r.locality_id]));
   }
 }

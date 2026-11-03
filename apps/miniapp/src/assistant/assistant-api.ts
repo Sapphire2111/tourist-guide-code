@@ -32,6 +32,8 @@ export type AssistantAsk = {
   point?: LatLng | null;
   history: string[];
   previous: AssistantIntent | null;
+  /** Выбор «Локація»; пункт, названный в запросе, сервер ставит выше. */
+  localityIds?: readonly string[];
 };
 
 export type AssistantApi = {
@@ -67,7 +69,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
     return regionId;
   };
   return {
-    ask: async ({ text, point, history, previous }) =>
+    ask: async ({ text, point, history, previous, localityIds }) =>
       resultOf(
         await ok(
           api.POST("/assistant/query", {
@@ -77,6 +79,7 @@ export function createAssistantApi(api: ApiClient, regionId: string | null): Ass
               ...(point ? { lat: point.lat, lng: point.lng } : {}),
               history: history.slice(-HISTORY_MAX).map((h) => h.slice(0, TEXT_MAX)),
               ...(previous ? { previous } : {}),
+              ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
             },
           }),
         ),
