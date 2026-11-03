@@ -35,6 +35,9 @@ const valid = {
   days: null,
   dayParts: [],
   start: null,
+  related: [],
+  scope: null,
+  transport: null,
 };
 
 describe("intentTool", () => {
@@ -67,7 +70,7 @@ describe("intentRequest", () => {
   });
 
   it("сообщение: категории, контекст диалога с клиента и запрос в тегах", () => {
-    const previous = { ...valid, kind: "places" } as AssistantIntent;
+    const previous = { ...valid, kind: "places", scopeLocalityIds: [] } as AssistantIntent;
     const text = intentUserMessage({
       categories: CATS,
       history: ["кав'ярня поруч"],
@@ -95,7 +98,7 @@ describe("intentRequest", () => {
 
 describe("parseIntent", () => {
   it("корректный ввод — как есть", () => {
-    expect(parseIntent(valid, CODES)).toEqual(valid);
+    expect(parseIntent(valid, CODES)).toEqual({ ...valid, scopeLocalityIds: [] });
   });
 
   it("чужие коды отбрасываются, числа — в пределах, цены по порядку, подсказки — из списка", () => {
@@ -113,7 +116,7 @@ describe("parseIntent", () => {
       CODES,
     )!;
     expect(out.kind).toBe("places");
-    expect(out.categories).toEqual(["cafes", "museums", "nature"]);
+    expect(out.categories).toEqual(["cafes", "museums", "nature", "restaurants"]);
     expect(out.radiusMeters).toBe(20_000);
     expect([out.priceMin, out.priceMax]).toEqual([1, 4]);
     expect(out.suggestions).toEqual(["cheaper"]);
@@ -139,7 +142,40 @@ describe("parseIntent", () => {
       days: null,
       dayParts: [],
       start: null,
+      related: [],
+      scope: null,
+      scopeLocalityIds: [],
+      transport: null,
     });
+  });
+
+  it("связанные понятия — до 12; область и передвижение — только для плана, localities модель не ставит", () => {
+    const words = Array.from({ length: 15 }, (_, i) => `слово${i}`);
+    expect(parseIntent({ ...valid, related: [" Атракціони ", "зоопарк", ...words] }, CODES)!.related).toEqual(
+      ["атракціони", "зоопарк", ...words.slice(0, 10)],
+    );
+    const plan = parseIntent({ ...valid, kind: "plan", days: 5, scope: "region", transport: "foot" }, CODES)!;
+    expect(plan).toMatchObject({ scope: "region", transport: "foot", scopeLocalityIds: [] });
+    expect(parseIntent({ ...valid, kind: "plan", scope: "localities" }, CODES)!.scope).toBeNull();
+    expect(parseIntent({ ...valid, scope: "region", transport: "car" }, CODES)).toMatchObject({
+      scope: null,
+      transport: null,
+    });
+  });
+
+  it("сообщение модели: что в категориях (подсказки), промпт — раскрывать желание, области и передвижение", () => {
+    const text = intentUserMessage({
+      categories: [{ code: "kids", name: "Для дітей", parentName: "Розваги", hint: "зоопарки" }],
+      history: [],
+      previous: null,
+      text: "з дітьми цікаво",
+      hasOrigin: true,
+    });
+    expect(text).toContain("- kids: Для дітей (розділ «Розваги») — зоопарки");
+    expect(INTENT_SYSTEM).toContain("БАЖАННЯ");
+    expect(INTENT_SYSTEM).toContain("related");
+    const schema = intentTool(["kids"]).input_schema as unknown as { required: string[] };
+    expect(schema.required).toEqual(expect.arrayContaining(["related", "scope", "transport"]));
   });
 
   it("ключевые слова: строки, нижний регистр, без повторов и пустых, не больше 8 и не длиннее 40", () => {
@@ -154,12 +190,12 @@ describe("parseIntent", () => {
     expect(parseIntent({ ...valid, keywords: ["я".repeat(80)] }, CODES)!.keywords[0]).toHaveLength(40);
   });
 
-  it("план: дни 1–3 (по умолчанию 1), части дня из списка (все три — весь день), начало; не план — пусто", () => {
+  it("план: дни 1–7 (по умолчанию 1), части дня из списка (все три — весь день), начало; не план — пусто", () => {
     const plan = parseIntent(
-      { ...valid, kind: "plan", days: 7, dayParts: ["evening", "night"], start: "weekend" },
+      { ...valid, kind: "plan", days: 9, dayParts: ["evening", "night"], start: "weekend" },
       CODES,
     )!;
-    expect(plan).toMatchObject({ kind: "plan", days: 3, dayParts: ["evening"], start: "weekend" });
+    expect(plan).toMatchObject({ kind: "plan", days: 7, dayParts: ["evening"], start: "weekend" });
     expect(
       parseIntent(
         { ...valid, kind: "plan", days: null, dayParts: ["morning", "afternoon", "evening"] },

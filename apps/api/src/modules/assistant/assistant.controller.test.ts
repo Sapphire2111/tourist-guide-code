@@ -117,7 +117,17 @@ describe("POST /assistant/query", () => {
       origin: { lon: 24.5, lat: 48.4 },
       history: ["кав'ярня поруч"],
       // Старый клиент без новых полей намерения — значения по умолчанию.
-      previous: { ...result.intent, keywords: [], days: null, dayParts: [], start: null },
+      previous: {
+        ...result.intent,
+        keywords: [],
+        days: null,
+        dayParts: [],
+        start: null,
+        related: [],
+        scope: null,
+        scopeLocalityIds: [],
+        transport: null,
+      },
       localityIds: [LOCALITY],
     });
   });
@@ -131,13 +141,18 @@ describe("POST /assistant/query", () => {
       days: 2,
       dayParts: ["evening"],
       start: "weekend",
+      related: ["атракціони"],
+      scope: "localities",
+      scopeLocalityIds: [LOCALITY],
+      transport: "foot",
     };
     await http().post("/assistant/query").send({ regionId: REGION, text: "з дітьми", previous }).expect(200);
     expect(service.query).toHaveBeenCalledWith(REGION, USER, expect.objectContaining({ previous }));
-    await http()
-      .post("/assistant/query")
-      .send({ regionId: REGION, text: "з дітьми", previous: { ...previous, dayParts: ["night"] } })
-      .expect(400);
+    for (const bad of [{ dayParts: ["night"] }, { scope: "world" }, { transport: "bike" }, { days: 8 }])
+      await http()
+        .post("/assistant/query")
+        .send({ regionId: REGION, text: "з дітьми", previous: { ...previous, ...bad } })
+        .expect(400);
   });
 
   it("без сессии — 401; флаг выключен — 404", async () => {

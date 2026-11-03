@@ -2,7 +2,16 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { ASSISTANT_MODEL } from "./intent.js";
-import { NOTE_MAX, NOTES_TOOL, notesRequest, parseNotes, type NoteFacts } from "./plan-notes.js";
+import {
+  NOTE_COMPACT_MAX,
+  NOTE_MAX,
+  NOTES_COMPACT_STOPS_MAX,
+  NOTES_TOOL,
+  notesRequest,
+  notesSubset,
+  parseNotes,
+  type NoteFacts,
+} from "./plan-notes.js";
 
 const stop = (n: number, over: Partial<NoteFacts> = {}): NoteFacts => ({
   n,
@@ -60,5 +69,23 @@ describe("parseNotes", () => {
     expect(out.has(4)).toBe(false);
     expect(parseNotes(undefined, new Set([1])).size).toBe(0);
     expect(parseNotes({ notes: "x" }, new Set([1])).size).toBe(0);
+  });
+});
+
+describe("notesSubset (большой план)", () => {
+  it("до 18 пунктов — все; больше — только огляд и активності, до 30, коротше", () => {
+    const small = Array.from({ length: 18 }, (_, i) => stop(i + 1, { role: i % 2 ? "eat" : "see" }));
+    expect(notesSubset(small)).toEqual({ stops: small, compact: false });
+    const big = Array.from({ length: 63 }, (_, i) =>
+      stop(i + 1, { role: (["see", "fun", "eat", "relax"] as const)[i % 4] }),
+    );
+    const sub = notesSubset(big);
+    expect(sub.compact).toBe(true);
+    expect(sub.stops.length).toBe(NOTES_COMPACT_STOPS_MAX);
+    expect(sub.stops.every((s) => s.role === "see" || s.role === "fun")).toBe(true);
+    const req = notesRequest(sub.stops, { withKids: false, compact: true });
+    expect(String(req.messages[0]!.content)).toContain(`до ${NOTE_COMPACT_MAX} символів`);
+    const long = parseNotes({ notes: [{ n: 1, text: "я".repeat(150) }] }, new Set([1]), NOTE_COMPACT_MAX);
+    expect(long.get(1)).toHaveLength(NOTE_COMPACT_MAX);
   });
 });

@@ -9,6 +9,21 @@ export const NOTES_TOOL = "plan_notes";
 export const NOTE_MAX = 160;
 /** Пунктов, к которым просим пояснения, — не больше (бюджет токенов). */
 export const NOTES_STOPS_MAX = 18;
+/**
+ * Большой план (5–7 дней, пунктов больше NOTES_STOPS_MAX): пояснения короче и только к пам'яткам и активностям
+ * (еда и отдых понятны без слов), не больше NOTES_COMPACT_STOPS_MAX — тот же один вызов Claude в бюджете.
+ */
+export const NOTES_COMPACT_STOPS_MAX = 30;
+export const NOTE_COMPACT_MAX = 100;
+
+/** Пункты для пояснений: все (до NOTES_STOPS_MAX) или сжатый набор большого плана. */
+export function notesSubset(stops: readonly NoteFacts[]): { stops: NoteFacts[]; compact: boolean } {
+  if (stops.length <= NOTES_STOPS_MAX) return { stops: [...stops], compact: false };
+  return {
+    stops: stops.filter((s) => s.role === "see" || s.role === "fun").slice(0, NOTES_COMPACT_STOPS_MAX),
+    compact: true,
+  };
+}
 
 export type NoteFacts = {
   /** Номер пункта в плане (1…). */
@@ -66,9 +81,10 @@ const ROLE_UK = { see: "огляд", fun: "активність", eat: "їжа",
 
 export function notesRequest(
   stops: readonly NoteFacts[],
-  ctx: { withKids: boolean },
+  ctx: { withKids: boolean; compact?: boolean },
 ): Anthropic.MessageCreateParamsNonStreaming {
-  const lines = stops.slice(0, NOTES_STOPS_MAX).map((s) =>
+  const max = ctx.compact ? NOTES_COMPACT_STOPS_MAX : NOTES_STOPS_MAX;
+  const lines = stops.slice(0, max).map((s) =>
     asData(
       JSON.stringify({
         n: s.n,
@@ -89,8 +105,8 @@ export function notesRequest(
   );
   return {
     model: ASSISTANT_MODEL,
-    // ≈ 60 токенов на пункт; запас на короткое размышление.
-    max_tokens: 2500,
+    // ≈ 60 токенов на пункт (сжато — ≈ 40); запас на короткое размышление.
+    max_tokens: ctx.compact ? 3000 : 2500,
     output_config: { effort: "low" },
     system: NOTES_SYSTEM,
     tool_choice: { type: "auto", disable_parallel_tool_use: true },
@@ -98,14 +114,18 @@ export function notesRequest(
     messages: [
       {
         role: "user",
-        content: `${ctx.withKids ? "Подорож з дітьми.\n" : ""}Пункти плану (факти з каталогу):\n<facts>\n${lines.join("\n")}\n</facts>`,
+        content: `${ctx.withKids ? "Подорож з дітьми.\n" : ""}${ctx.compact ? `План великий: пиши дуже коротко, до ${NOTE_COMPACT_MAX} символів.\n` : ""}Пункти плану (факти з каталогу):\n<facts>\n${lines.join("\n")}\n</facts>`,
       },
     ],
   };
 }
 
 /** Ввод инструмента → номер пункта → пояснение (лишние номера, пустые и не строки — отбрасываются, длина — обрезается). */
-export function parseNotes(input: unknown, allowed: ReadonlySet<number>): Map<number, string> {
+export function parseNotes(
+  input: unknown,
+  allowed: ReadonlySet<number>,
+  noteMax: number = NOTE_MAX,
+): Map<number, string> {
   const out = new Map<number, string>();
   const notes = (input as { notes?: unknown } | null)?.notes;
   if (!Array.isArray(notes)) return out;
@@ -114,7 +134,7 @@ export function parseNotes(input: unknown, allowed: ReadonlySet<number>): Map<nu
     if (typeof n !== "number" || !allowed.has(n) || typeof text !== "string") continue;
     const t = text.replace(/\s+/g, " ").trim();
     if (!t) continue;
-    out.set(n, t.length > NOTE_MAX ? `${t.slice(0, NOTE_MAX - 1).trimEnd()}…` : t);
+    out.set(n, t.length > noteMax ? `${t.slice(0, noteMax - 1).trimEnd()}…` : t);
   }
   return out;
 }

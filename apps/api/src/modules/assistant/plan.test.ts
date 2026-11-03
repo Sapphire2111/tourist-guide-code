@@ -7,6 +7,7 @@ import {
   hasTimeToday,
   hoursOn,
   openDuring,
+  planAreas,
   startMinuteFrom,
   travelOf,
   type PlanCandidate,
@@ -203,5 +204,79 @@ describe("помощники", () => {
     expect(hasTimeToday([], 20 * 60)).toBe(true);
     expect(hasTimeToday([], 22 * 60)).toBe(false);
     expect(hasTimeToday(["morning"], 12 * 60 + 30)).toBe(false);
+  });
+});
+
+describe("план по районам и без авто", () => {
+  /** Район: пам'ятки, обед, ужин и отдых вокруг точки в dx км к востоку. */
+  const area = (dx: number, rating = 4.5) => [
+    c("nature", dx, { rating }),
+    c("sights", dx + 0.3, { rating }),
+    c("museums", dx + 0.6, { rating }),
+    c("active", dx + 0.9, { rating }),
+    c("restaurants", dx + 0.4),
+    c("kolyby", dx + 0.7),
+    c("cafes", dx + 0.2),
+    c("restaurants", dx + 1),
+    c("chany", dx + 1.1),
+  ];
+  const dayN = (n: number): PlanDayInput => ({
+    dayNo: n,
+    date: `2026-11-${String(6 + n).padStart(2, "0")}`,
+    dayOfWeek: ((5 + n) % 7) + 1,
+    fromMinute: 0,
+  });
+  const distKm = (a: { lon: number }, b: { lon: number }) => Math.abs(a.lon - b.lon) * 73.8;
+
+  it("районы: лучшие по рейтингу, не ближе 15 км друг к другу; районов меньше дней — повтор; порядок от жилья", () => {
+    const all = [...area(0, 4.3), ...area(40, 4.9), ...area(80, 4.6), ...area(5, 4.2)];
+    const areas = planAreas(all, 3, { ...opts(), origin: HOME });
+    expect(areas).toHaveLength(3);
+    for (const [i, a] of areas.entries())
+      for (const b of areas.slice(i + 1)) expect(distKm(a, b)).toBeGreaterThanOrEqual(15);
+    // От жилья (0 км) — сначала ближний район, затем 40, затем 80.
+    expect(areas.map((a) => Math.round(distKm(a, HOME) / 10) * 10)).toEqual([0, 40, 80]);
+    const five = planAreas(all, 5, { ...opts(), origin: HOME });
+    expect(five).toHaveLength(5);
+    expect(new Set(five.map((a) => a.lon)).size).toBe(3);
+    expect(planAreas([], 3, opts())).toEqual([]);
+  });
+
+  it("день в районе: места только в радиусе района, без переезда от жилья; 5 дней без повторов", () => {
+    const all = [...area(0), ...area(40), ...area(80), ...area(120), ...area(160)];
+    const centers = [0, 40, 80, 120, 160].map((dx) => ({ lon: HOME.lon + dx / 73.8, lat: HOME.lat }));
+    const days = centers.map((center, i) => ({ ...dayN(i + 1), center }));
+    const plan = buildPlan(all, opts({ days }));
+    expect(plan.days).toHaveLength(5);
+    const byId = new Map(all.map((x) => [x.id, x]));
+    for (const [i, d] of plan.days.entries()) {
+      const stops = d.parts.flatMap((p) => p.stops);
+      expect(stops.length).toBeGreaterThanOrEqual(4);
+      for (const s of stops)
+        expect(distKm(byId.get(s.placeId)!.location, centers[i]!)).toBeLessThanOrEqual(12);
+      // Переезд к району — между днями: первый пункт дня без переезда.
+      expect(stops[0]).toMatchObject({ travel: null, travelMeters: null });
+    }
+    const ids = plan.days.flatMap((d) => d.parts.flatMap((p) => p.stops.map((s) => s.placeId)));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("без авто: переходы только пешком и не дальше 2 км; на авто — дальше на машине", () => {
+    const spread = [
+      c("nature", 0.5),
+      c("sights", 1.2),
+      c("museums", 6),
+      c("active", 8),
+      c("restaurants", 1.8),
+      c("restaurants", 9),
+      c("chany", 2.5),
+      c("chany", 10),
+    ];
+    const foot = buildPlan(spread, opts({ transport: "foot" }));
+    const stops = foot.days[0]!.parts.flatMap((p) => p.stops);
+    expect(stops.length).toBeGreaterThan(0);
+    expect(stops.every((s) => s.travel === "walk" && (s.travelMeters ?? 0) <= 2000)).toBe(true);
+    const car = buildPlan(spread, opts());
+    expect(car.days[0]!.parts.flatMap((p) => p.stops).some((s) => s.travel === "car")).toBe(true);
   });
 });

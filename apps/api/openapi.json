@@ -14478,6 +14478,16 @@
         "enum": ["today", "tomorrow", "weekend"],
         "description": "План: начало (null — сегодня)"
       },
+      "AssistantPlanScope": {
+        "type": "string",
+        "enum": ["here", "region", "localities"],
+        "description": "План: here — рядом (точка или выбор «Локація»), region — по всему региону (дни по районам), localities — пункты scopeLocalityIds; null — не названо"
+      },
+      "AssistantPlanTransport": {
+        "type": "string",
+        "enum": ["car", "foot"],
+        "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо"
+      },
       "AssistantIntentDto": {
         "type": "object",
         "properties": {
@@ -14486,7 +14496,7 @@
             "allOf": [{ "$ref": "#/components/schemas/AssistantKind" }]
           },
           "categories": {
-            "maxItems": 3,
+            "maxItems": 5,
             "description": "Коды категорий каталога",
             "type": "array",
             "items": { "type": "string" }
@@ -14521,7 +14531,7 @@
             "type": "integer",
             "nullable": true,
             "minimum": 1,
-            "maximum": 3,
+            "maximum": 7,
             "description": "План: дней; не план — null"
           },
           "dayParts": {
@@ -14533,6 +14543,28 @@
             "nullable": true,
             "description": "План: начало (null — сегодня)",
             "allOf": [{ "$ref": "#/components/schemas/AssistantPlanStart" }]
+          },
+          "related": {
+            "maxItems": 12,
+            "description": "Раскрытое желание: связанные понятия и синонимы (не фильтр — найденные по ним места выше)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "scope": {
+            "nullable": true,
+            "description": "План: here — рядом (точка или выбор «Локація»), region — по всему региону (дни по районам), localities — пункты scopeLocalityIds; null — не названо",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanScope" }]
+          },
+          "scopeLocalityIds": {
+            "maxItems": 10,
+            "description": "План, scope = localities: пункты, выбранные туристом в ответ на уточнение",
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          },
+          "transport": {
+            "nullable": true,
+            "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanTransport" }]
           }
         },
         "required": [
@@ -14692,12 +14724,43 @@
         },
         "required": ["part", "stops"]
       },
+      "AssistantPlanTransferDto": {
+        "type": "object",
+        "properties": {
+          "meters": {
+            "type": "integer",
+            "description": "Переезд к району дня (от прошлого района или жилья), м по прямой"
+          },
+          "taxi": {
+            "description": "Без авто: такси и трансферы каталога рядом (индексы в items); на авто — пусто",
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "excursions": {
+            "description": "Без авто: экскурсионные бюро каталога рядом (индексы в items)",
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "busStations": {
+            "description": "Без авто: автостанции каталога рядом (индексы в items); расписания в каталоге нет",
+            "type": "array",
+            "items": { "type": "integer" }
+          }
+        },
+        "required": ["meters", "taxi", "excursions", "busStations"]
+      },
       "AssistantPlanDayDto": {
         "type": "object",
         "properties": {
           "dayNo": { "type": "integer" },
           "date": { "type": "string", "format": "date", "example": "2026-11-07" },
-          "parts": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantPlanPartDto" } }
+          "parts": { "type": "array", "items": { "$ref": "#/components/schemas/AssistantPlanPartDto" } },
+          "transfer": {
+            "nullable": true,
+            "description": "Переезд в другой район перед этим днём (план по региону или пунктам); нет — null",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantPlanTransferDto" }]
+          }
         },
         "required": ["dayNo", "date", "parts"]
       },
@@ -14713,6 +14776,11 @@
         "type": "string",
         "enum": ["price_unknown", "none_open", "no_origin", "keyword_none", "widened", "plan_tomorrow"],
         "description": "Пояснения выдачи"
+      },
+      "AssistantQuestion": {
+        "type": "string",
+        "enum": ["scope", "transport"],
+        "description": "Уточняющие вопросы перед планом (мест нет): scope — «Де плануєте відпочивати?», transport — «На авто / Пішки»; ответы — previous.scope и previous.transport"
       },
       "AssistantResultDto": {
         "type": "object",
@@ -14739,9 +14807,14 @@
             "type": "array",
             "description": "Пояснения выдачи",
             "items": { "$ref": "#/components/schemas/AssistantNote" }
+          },
+          "questions": {
+            "type": "array",
+            "description": "Уточняющие вопросы перед планом (мест нет): scope — «Де плануєте відпочивати?», transport — «На авто / Пішки»; ответы — previous.scope и previous.transport",
+            "items": { "$ref": "#/components/schemas/AssistantQuestion" }
           }
         },
-        "required": ["intent", "items", "route", "plan", "notes"]
+        "required": ["intent", "items", "route", "plan", "notes", "questions"]
       },
       "AssistantTranscriptDto": {
         "type": "object",

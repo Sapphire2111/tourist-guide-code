@@ -3351,6 +3351,16 @@ export interface components {
      * @enum {string}
      */
     AssistantPlanStart: "today" | "tomorrow" | "weekend";
+    /**
+     * @description План: here — рядом (точка или выбор «Локація»), region — по всему региону (дни по районам), localities — пункты scopeLocalityIds; null — не названо
+     * @enum {string}
+     */
+    AssistantPlanScope: "here" | "region" | "localities";
+    /**
+     * @description План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо
+     * @enum {string}
+     */
+    AssistantPlanTransport: "car" | "foot";
     AssistantIntentDto: {
       /** @description places — места, tour — маршрут */
       kind: components["schemas"]["AssistantKind"];
@@ -3376,6 +3386,14 @@ export interface components {
       dayParts?: components["schemas"]["AssistantDayPart"][];
       /** @description План: начало (null — сегодня) */
       start?: components["schemas"]["AssistantPlanStart"] | null;
+      /** @description Раскрытое желание: связанные понятия и синонимы (не фильтр — найденные по ним места выше) */
+      related?: string[];
+      /** @description План: here — рядом (точка или выбор «Локація»), region — по всему региону (дни по районам), localities — пункты scopeLocalityIds; null — не названо */
+      scope?: components["schemas"]["AssistantPlanScope"] | null;
+      /** @description План, scope = localities: пункты, выбранные туристом в ответ на уточнение */
+      scopeLocalityIds?: string[];
+      /** @description План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо */
+      transport?: components["schemas"]["AssistantPlanTransport"] | null;
     };
     AssistantQueryDto: {
       /**
@@ -3453,6 +3471,16 @@ export interface components {
       part: components["schemas"]["AssistantDayPart"];
       stops: components["schemas"]["AssistantPlanStopDto"][];
     };
+    AssistantPlanTransferDto: {
+      /** @description Переезд к району дня (от прошлого района или жилья), м по прямой */
+      meters: number;
+      /** @description Без авто: такси и трансферы каталога рядом (индексы в items); на авто — пусто */
+      taxi: number[];
+      /** @description Без авто: экскурсионные бюро каталога рядом (индексы в items) */
+      excursions: number[];
+      /** @description Без авто: автостанции каталога рядом (индексы в items); расписания в каталоге нет */
+      busStations: number[];
+    };
     AssistantPlanDayDto: {
       dayNo: number;
       /**
@@ -3461,6 +3489,8 @@ export interface components {
        */
       date: string;
       parts: components["schemas"]["AssistantPlanPartDto"][];
+      /** @description Переезд в другой район перед этим днём (план по региону или пунктам); нет — null */
+      transfer?: components["schemas"]["AssistantPlanTransferDto"] | null;
     };
     AssistantPlanDto: {
       days: components["schemas"]["AssistantPlanDayDto"][];
@@ -3472,6 +3502,11 @@ export interface components {
      * @enum {string}
      */
     AssistantNote: "price_unknown" | "none_open" | "no_origin" | "keyword_none" | "widened" | "plan_tomorrow";
+    /**
+     * @description Уточняющие вопросы перед планом (мест нет): scope — «Де плануєте відпочивати?», transport — «На авто / Пішки»; ответы — previous.scope и previous.transport
+     * @enum {string}
+     */
+    AssistantQuestion: "scope" | "transport";
     AssistantResultDto: {
       intent: components["schemas"]["AssistantIntentDto"];
       /** @description Только места каталога; для tour — в порядке обхода; для plan — в порядке плана */
@@ -3482,6 +3517,8 @@ export interface components {
       plan: components["schemas"]["AssistantPlanDto"] | null;
       /** @description Пояснения выдачи */
       notes: components["schemas"]["AssistantNote"][];
+      /** @description Уточняющие вопросы перед планом (мест нет): scope — «Де плануєте відпочивати?», transport — «На авто / Пішки»; ответы — previous.scope и previous.transport */
+      questions: components["schemas"]["AssistantQuestion"][];
     };
     AssistantTranscriptDto: {
       /** @description Распознанный текст; пусто — речь не распознана */

@@ -12,26 +12,39 @@ import type {
 } from "./assistant.dto.js";
 import {
   AssistantRepository,
+  type KeywordQuery,
   type PlaceEnrichmentFacts,
   type PlaceRatingFacts,
 } from "./assistant.repository.js";
 import { AssistantBudget, BUDGET_UNITS } from "./budget.js";
 import {
+  CATEGORY_HINTS,
   intentRequest,
   parseIntent,
   toolInputOf,
   type AssistantIntent,
+  type AssistantQuestion,
   type DayPart,
   type IntentCategory,
   type IntentLocality,
 } from "./intent.js";
 import { expandKeywords, isKnownKeyword, keywordPattern } from "./keywords.js";
-import { NOTES_TOOL, notesRequest, parseNotes, type NoteFacts } from "./plan-notes.js";
 import {
+  NOTE_COMPACT_MAX,
+  NOTES_TOOL,
+  notesRequest,
+  notesSubset,
+  parseNotes,
+  type NoteFacts,
+} from "./plan-notes.js";
+import {
+  AREA,
   buildPlan,
   formatMinute,
+  FOOT_HOP_M,
   hasTimeToday,
   MAX_HOP_M,
+  planAreas,
   PLAN_SECTIONS,
   quality,
   startMinuteFrom,
@@ -60,8 +73,22 @@ export const PLAN_RADIUS_DEFAULT = 15_000;
 const CANDIDATES_PER_CATEGORY = 30;
 /** Мест, найденных по ключевым словам, — не больше. */
 const KEYWORD_CANDIDATES = 60;
-/** Кандидатов плана на раздел каталога. */
+/** Кандидатов плана на раздел каталога: на день; с каждым следующим днём — больше, до предела. */
 const PLAN_CANDIDATES_PER_SECTION = 60;
+const PLAN_CANDIDATES_PER_DAY = 15;
+const PLAN_CANDIDATES_MAX = 150;
+/** Пешком — план вокруг жилья компактнее. */
+export const PLAN_RADIUS_FOOT = 3000;
+/** План по районам: пам'ятки и активности (районы дней) — разделы и сколько лучших по региону на день. */
+const PLAN_AREA_SECTIONS = ["nearby", "fun", "ski"] as const;
+const PLAN_REGION_SIGHTS_PER_DAY = 40;
+/** Вокруг района — еда и отдых (пешком — все разделы плана), кандидатов на раздел. */
+const PLAN_AROUND_SECTIONS = ["eat", "relax"] as const;
+const PLAN_AREA_CANDIDATES = 25;
+/** Без авто: такси, экскурсии, автостанция — не дальше от района, м, и не больше на вид. */
+const TRANSFER_HELP_RADIUS = 20_000;
+const TRANSFER_HELP_MAX = 2;
+const BUS_STATION_TERMS = ["автостанц*", "автовокзал*", "автостанция", "bus station"];
 /** Меньше стольких рядом — поиск по ключевым словам расширяется на регион (если радиус не назвал турист): ближние
  * всё равно первыми (штраф за расстояние в keywordRank). */
 const WIDEN_BELOW = 5;
@@ -70,6 +97,8 @@ const NOTE_DESCRIPTION_MAX = 220;
 const TIMEZONE_DEFAULT = "Europe/Kyiv";
 /** Пояснения к плану — не дольше (иначе план без пояснений, а не ожидание общего таймаута Claude). */
 const NOTES_TIMEOUT_MS = 9000;
+/** Большой план: пунктов больше — ответ дольше. */
+const NOTES_TIMEOUT_COMPACT_MS = 14_000;
 
 export type AssistantQuery = {
   text: string;
@@ -144,6 +173,19 @@ export function keywordRank(
   );
 }
 
+/** Вес совпадения по связанным понятиям в keywordRank: подъём, а не замена рейтинга (одно упоминание — +0.4). */
+export const relatedBoost = (score: number) => Math.min(score, 6) * 0.4;
+
+/** Ответ без мест (уточнение, вопрос перед планом). */
+const EMPTY_RESULT = { items: [], route: null, plan: null, notes: [], questions: [] } satisfies Omit<
+  AssistantResultDto,
+  "intent"
+>;
+
+/** Точки без повторов (районы, повторённые на второй день). */
+const uniquePoints = (points: readonly LonLat[]) =>
+  points.filter((p, i) => points.findIndex((q) => q.lon === p.lon && q.lat === p.lat) === i);
+
 const addDays = (date: string, n: number) => {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
@@ -190,6 +232,7 @@ export class AssistantService {
       code: c.code,
       name: c.name.uk,
       parentName: c.parentId ? (nameOf.get(c.parentId) ?? null) : null,
+      hint: CATEGORY_HINTS[c.code],
     }));
     const catalog: Catalog = {
       idOf: new Map(withPlaces.map((c) => [c.code, c.id])),
@@ -229,17 +272,39 @@ export class AssistantService {
     const intent =
       parseIntent(toolInputOf(message), allowed, new Set(localityIdOf.keys())) ??
       clarifyIntent(q.previous, allowed);
-    const nothing = !intent.categories.length && !intent.nameQuery && !intent.keywords.length;
+    const nothing =
+      !intent.categories.length && !intent.nameQuery && !intent.keywords.length && !intent.related.length;
     if (intent.clarify || (intent.kind !== "plan" && nothing))
-      return { intent: { ...intent, clarify: true }, items: [], route: null, plan: null, notes: [] };
-    // Населённый пункт, названный в запросе, — главнее выбора туриста; радиус в запросе («в 500 м») без названного
-    // пункта и с точкой туриста — тоже: поиск от точки, выбор «Локація» не применяется. Выбор — только пункты этого региона.
+      return { ...EMPTY_RESULT, intent: { ...intent, clarify: true } };
     const regionLocalities = new Set(localityIdOf.values());
+    const inRegion = (ids: readonly string[]) =>
+      [...new Set(ids.map((id) => id.toLowerCase()))].filter((id) => regionLocalities.has(id));
+    if (intent.kind === "plan") {
+      // Ответы на уточнения (область, передвижение) — в прежнем намерении; модель могла их не повторить.
+      const prev = q.previous?.kind === "plan" ? q.previous : null;
+      intent.scope ??= prev?.scope ?? null;
+      intent.transport ??= prev?.transport ?? null;
+      intent.scopeLocalityIds = intent.scope === "localities" ? inRegion(prev?.scopeLocalityIds ?? []) : [];
+      // Пункты не выбраны (или чужие) — как по всему региону.
+      if (intent.scope === "localities" && !intent.scopeLocalityIds.length) intent.scope = "region";
+      // Многодневный план без области или передвижения — сначала уточнить (места не ищем).
+      if ((intent.days ?? 1) >= 2) {
+        const questions: AssistantQuestion[] = [];
+        if (!intent.scope && !intent.locality && intent.radiusMeters === null) questions.push("scope");
+        if (!intent.transport) questions.push("transport");
+        if (questions.length) return { ...EMPTY_RESULT, intent, questions };
+      }
+    }
+    // Населённый пункт, названный в запросе, — главнее выбора туриста; радиус в запросе («в 500 м») без названного
+    // пункта и с точкой туриста — тоже: поиск от точки, выбор «Локація» не применяется. Выбор — только пункты этого
+    // региона. План «по всьому регіону» — без пунктов; «обрані локації» — пункты из ответа на уточнение.
     const localityIds = intent.locality
       ? [localityIdOf.get(intent.locality)!]
-      : intent.radiusMeters !== null && q.origin
-        ? []
-        : (q.localityIds ?? []).map((id) => id.toLowerCase()).filter((id) => regionLocalities.has(id));
+      : intent.scope === "localities"
+        ? intent.scopeLocalityIds
+        : intent.scope === "region" || (intent.radiusMeters !== null && q.origin)
+          ? []
+          : inRegion(q.localityIds ?? []);
     const scope: Scope = {
       origin: q.origin,
       localityIds,
@@ -341,7 +406,9 @@ export class AssistantService {
     }
     if (!found.length && (intent.categories.length || intent.nameQuery)) {
       relevance = null;
-      found = await this.byCategories(regionId, intent, catalog, scope);
+      const c = await this.byCategories(regionId, intent, catalog, scope);
+      found = c.found;
+      notes.push(...c.notes);
       // Слово модели в nameQuery — блюдо из словаря («суші»), а не название заведения («Суші Барберрі»): мало по
       // названию — ищем ещё по описаниям и отзывам.
       if (
@@ -359,6 +426,21 @@ export class AssistantService {
           found = [...found, ...extra];
         }
       }
+      // Раскрытое желание («з дітьми цікаво» → атракціони, зоопарк, канатка): места категорий плюс найденные по
+      // связанным словам; совпавшие — выше (умеренно: рейтинг и расстояние тоже важны).
+      if (intent.related.length && !relevance) {
+        const k = await this.byKeywords(regionId, intent.related, intent, catalog, scope);
+        const seen = new Set(found.map((p) => p.id));
+        found = [...found, ...k.found.filter((p) => !seen.has(p.id))];
+        relevance = new Map([...k.relevance].map(([id, s]) => [id, relatedBoost(s)] as const));
+        if (k.notes.includes("widened") && found.length > c.found.length) notes.push("widened");
+      }
+    } else if (!found.length && intent.related.length) {
+      // Только связанные понятия без категорий — места, где они встречаются (одного отзыва мало: minScore 2).
+      const k = await this.byKeywords(regionId, intent.related, intent, catalog, scope);
+      found = k.found;
+      relevance = new Map([...k.relevance].map(([id, s]) => [id, relatedBoost(s)] as const));
+      notes.push(...k.notes);
     }
 
     if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
@@ -409,10 +491,18 @@ export class AssistantService {
         items: ordered.map(({ location: _, ...i }) => i),
         route: ordered.length > 1 ? { lengthMeters } : null,
         plan: null,
-        notes,
+        notes: [...new Set(notes)],
+        questions: [],
       };
     }
-    return { intent, items: items.slice(0, ASSISTANT_PLACES_MAX), route: null, plan: null, notes };
+    return {
+      intent,
+      items: items.slice(0, ASSISTANT_PLACES_MAX),
+      route: null,
+      plan: null,
+      notes: [...new Set(notes)],
+      questions: [],
+    };
   }
 
   /** Поиск по категориям намерения (и части названия): как раньше — по расстоянию или порядку каталога. */
@@ -421,6 +511,25 @@ export class AssistantService {
     intent: AssistantIntent,
     catalog: Catalog,
     scope: Scope,
+  ): Promise<{ found: PlaceSummaryDto[]; notes: AssistantNote[] }> {
+    const { origin, localityIds } = scope;
+    const byLocality = localityIds.length > 0;
+    const radius = byLocality || !origin ? undefined : (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT);
+    const found = await this.byCategoriesWithin(regionId, intent, catalog, scope, radius);
+    // Рядом мало и радиус не назван туристом (GPS-режим в 8–15 км от центра) — ближайшие по всему региону.
+    if (found.length < WIDEN_BELOW && radius !== undefined && intent.radiusMeters === null) {
+      const wide = await this.byCategoriesWithin(regionId, intent, catalog, scope, undefined);
+      if (wide.length > found.length) return { found: wide, notes: ["widened"] };
+    }
+    return { found, notes: [] };
+  }
+
+  private async byCategoriesWithin(
+    regionId: string,
+    intent: AssistantIntent,
+    catalog: Catalog,
+    scope: Scope,
+    radius: number | undefined,
   ): Promise<PlaceSummaryDto[]> {
     const { origin, localityIds } = scope;
     const byLocality = localityIds.length > 0;
@@ -433,7 +542,7 @@ export class AssistantService {
       cats.map((categoryId) =>
         this.guide.search(regionId, {
           origin,
-          radius: byLocality || !origin ? undefined : (intent.radiusMeters ?? ASSISTANT_RADIUS_DEFAULT),
+          radius,
           categoryId,
           localityIds: byLocality ? [...localityIds] : undefined,
           text: intent.nameQuery ?? undefined,
@@ -502,54 +611,138 @@ export class AssistantService {
       return { dayNo: i + 1, date, dayOfWeek: isoDay(date), fromMinute: offset + i === 0 ? nowFrom : 0 };
     });
 
-    // Где искать: выбранные пункты; иначе от точки туриста; иначе — вокруг лучшей пам'ятки региона.
+    const transport = intent.transport ?? "car";
+    const foot = transport === "foot";
     const byLocality = scope.localityIds.length > 0;
-    let center = scope.origin;
-    // В пункте без точки туриста (или она далеко — QR отеля в Косові, «план у Буковелі») — кандидаты ближе к центру
-    // пункта, а не первые по алфавиту.
-    const lc = scope.localityCenter;
-    // Жильё дальше предела переезда от пункта плана — день начинается на месте, без переезда от жилья.
-    const homeFar = Boolean(byLocality && lc && center && haversineMeters(center, lc) > MAX_HOP_M);
-    const planOrigin = homeFar ? undefined : scope.origin;
-    if (byLocality && lc && (!center || homeFar)) center = lc;
-    if (!byLocality && !center) center = await this.planAnchor(regionId, intent, catalog);
-    const radius = byLocality || !center ? undefined : (intent.radiusMeters ?? PLAN_RADIUS_DEFAULT);
+    // Несколько дней по региону (или по нескольким выбранным пунктам) — дни по разным районам.
+    const multiArea =
+      days.length >= 2 && ((intent.scope === "region" && !byLocality) || scope.localityIds.length >= 2);
     const sectionIds = PLAN_SECTIONS.map((code) => catalog.anyIdOf.get(code)).filter((id): id is string =>
       Boolean(id),
     );
-    const pages = await Promise.all(
-      sectionIds.map((categoryId) =>
-        this.guide.search(regionId, {
-          categoryId,
-          origin: center,
-          radius,
-          localityIds: byLocality ? [...scope.localityIds] : undefined,
-          limit: PLAN_CANDIDATES_PER_SECTION,
-          offset: 0,
-        }),
-      ),
+    // Кандидатов на раздел — с запасом на число дней (5–7 дней — до ~60 пунктов без повторов).
+    const perSection = Math.min(
+      PLAN_CANDIDATES_MAX,
+      PLAN_CANDIDATES_PER_SECTION + PLAN_CANDIDATES_PER_DAY * (days.length - 1),
     );
     const places = new Map<string, PlaceSummaryDto>();
-    for (const p of pages.flatMap((x) => x.items)) if (!places.has(p.id)) places.set(p.id, p);
-    const ids = [...places.keys()];
+    const add = (items: readonly PlaceSummaryDto[]) => {
+      for (const p of items) if (!places.has(p.id)) places.set(p.id, p);
+    };
     const wantedIds = new Set<string>();
-    if (intent.keywords.length && ids.length) {
-      const terms = expandKeywords(intent.keywords);
+    const wantedCats = new Set(intent.categories.map((c) => catalog.idOf.get(c)).filter(Boolean));
+    const wantedOf = (p: PlaceSummaryDto) =>
+      wantedIds.has(p.id) || wantedCats.has(p.categoryId) || wantedCats.has(catalog.rootOf.get(p.categoryId));
+    const wanted = async (q: Pick<KeywordQuery, "origin" | "radius">) => {
+      const terms = expandKeywords([...intent.keywords, ...intent.related]);
       const pattern = keywordPattern(terms);
       const namePattern = keywordPattern(terms, false);
-      if (pattern && namePattern)
-        for (const m of await this.repo.keywordMatches(regionId, {
-          pattern,
-          namePattern,
-          categoryIds: [],
-          localityIds: byLocality ? scope.localityIds : undefined,
-          origin: center,
-          radius,
-          minScore: 2,
-          limit: KEYWORD_CANDIDATES,
-        }))
-          wantedIds.add(m.id);
+      if (!pattern || !namePattern) return;
+      for (const m of await this.repo.keywordMatches(regionId, {
+        pattern,
+        namePattern,
+        categoryIds: [],
+        localityIds: byLocality ? scope.localityIds : undefined,
+        ...q,
+        minScore: 2,
+        limit: KEYWORD_CANDIDATES,
+      }))
+        wantedIds.add(m.id);
+    };
+    const opts = {
+      withKids: intent.withKids,
+      month: Number(days[0]!.date.slice(5, 7)),
+      priceMin: intent.priceMin,
+      priceMax: intent.priceMax,
+    };
+    let planOrigin = scope.origin;
+    let areas: LonLat[] = [];
+
+    if (multiArea) {
+      // 1) Пам'ятки и активности: по региону — лучшие по рейтингу (без радиуса), по пунктам — в этих пунктах.
+      const sightIds = PLAN_AREA_SECTIONS.map((code) => catalog.anyIdOf.get(code)).filter(
+        (id): id is string => Boolean(id),
+      );
+      const limit = Math.min(PLAN_CANDIDATES_MAX * 2, PLAN_REGION_SIGHTS_PER_DAY * days.length);
+      if (byLocality) {
+        const pages = await Promise.all(
+          sightIds.map((categoryId) =>
+            this.guide.search(regionId, {
+              categoryId,
+              localityIds: [...scope.localityIds],
+              limit: perSection,
+              offset: 0,
+            }),
+          ),
+        );
+        add(pages.flatMap((x) => x.items));
+      } else {
+        const ids = await this.repo.topRated(regionId, { categoryIds: sightIds, limit });
+        if (ids.length) add((await this.guide.search(regionId, { ids, limit: ids.length, offset: 0 })).items);
+      }
+      if (intent.keywords.length || intent.related.length) await wanted({});
+      const sightFacts = await this.repo.ratings(regionId, [...places.keys()]);
+      const sights = [...places.values()].map((p) =>
+        planCandidate(p, catalog, sightFacts.get(p.id), null, { wanted: wantedOf(p) }),
+      );
+      areas = planAreas(sights, days.length, { ...opts, origin: scope.origin, transport });
+      // 2) Вокруг каждого района — еда и отдых (пешком — и пам'ятки рядом: район компактный).
+      const aroundIds = (foot ? PLAN_SECTIONS : PLAN_AROUND_SECTIONS)
+        .map((code) => catalog.anyIdOf.get(code))
+        .filter((id): id is string => Boolean(id));
+      // Районы — по очереди (каждый — несколько запросов параллельно): не занимать весь пул соединений.
+      for (const at of uniquePoints(areas)) {
+        const pages = await Promise.all(
+          aroundIds.map((categoryId) =>
+            this.guide.search(regionId, {
+              categoryId,
+              origin: at,
+              radius: AREA[transport].radius,
+              localityIds: byLocality ? [...scope.localityIds] : undefined,
+              limit: PLAN_AREA_CANDIDATES,
+              offset: 0,
+            }),
+          ),
+        );
+        add(pages.flatMap((x) => x.items));
+      }
+      // День начинается в районе: переезд от жилья — между днями (transfer), не первым пунктом дня.
+      planOrigin = undefined;
+    } else {
+      // Где искать: выбранные пункты; иначе от точки туриста; иначе — вокруг лучшей пам'ятки региона.
+      let center = scope.origin;
+      // В пункте без точки туриста (или она далеко — QR отеля в Косові, «план у Буковелі») — кандидаты ближе к центру
+      // пункта, а не первые по алфавиту.
+      const lc = scope.localityCenter;
+      // Жильё дальше предела переезда от пункта плана — день начинается на месте, без переезда от жилья.
+      const homeFar = Boolean(
+        byLocality && lc && center && haversineMeters(center, lc) > (foot ? FOOT_HOP_M : MAX_HOP_M),
+      );
+      planOrigin = homeFar ? undefined : scope.origin;
+      if (byLocality && lc && (!center || homeFar)) center = lc;
+      if (!byLocality && !center) center = await this.planAnchor(regionId, intent, catalog);
+      const radius =
+        byLocality || !center
+          ? undefined
+          : (intent.radiusMeters ?? (foot ? PLAN_RADIUS_FOOT : PLAN_RADIUS_DEFAULT));
+      const pages = await Promise.all(
+        sectionIds.map((categoryId) =>
+          this.guide.search(regionId, {
+            categoryId,
+            origin: center,
+            radius,
+            localityIds: byLocality ? [...scope.localityIds] : undefined,
+            limit: perSection,
+            offset: 0,
+          }),
+        ),
+      );
+      add(pages.flatMap((x) => x.items));
+      if ((intent.keywords.length || intent.related.length) && places.size)
+        await wanted({ origin: center, radius });
     }
+
+    const ids = [...places.keys()];
     const [facts, schedules] = await Promise.all([
       this.repo.ratings(regionId, ids),
       this.repo.schedules(
@@ -558,28 +751,40 @@ export class AssistantService {
         days.map((d) => d.date),
       ),
     ]);
-    const wantedCats = new Set(intent.categories.map((c) => catalog.idOf.get(c)).filter(Boolean));
     const candidates: PlanCandidate[] = [...places.values()].map((p) =>
-      planCandidate(p, catalog, facts.get(p.id), schedules.get(p.id) ?? null, {
-        wanted:
-          wantedIds.has(p.id) ||
-          wantedCats.has(p.categoryId) ||
-          wantedCats.has(catalog.rootOf.get(p.categoryId)),
-      }),
+      planCandidate(p, catalog, facts.get(p.id), schedules.get(p.id) ?? null, { wanted: wantedOf(p) }),
     );
     const built = buildPlan(candidates, {
-      days,
+      days: areas.length ? days.map((d, i) => ({ ...d, center: areas[i] })) : days,
       parts: intent.dayParts,
       origin: planOrigin,
-      withKids: intent.withKids,
-      month: Number(days[0]!.date.slice(5, 7)),
-      priceMin: intent.priceMin,
-      priceMax: intent.priceMax,
+      transport,
+      ...opts,
     });
 
-    // Места плана — в порядке плана (каждое один раз), пункты ссылаются на индекс в items.
+    // Переезды в другой район перед днём (от жилья — перед первым). Без авто — такси, экскурсии, автостанция
+    // каталога рядом с районом (расписаний в каталоге нет — клиент советует уточнять у перевозчика).
+    const transfers = new Map<
+      number,
+      { meters: number; taxi: string[]; excursions: string[]; bus: string[] }
+    >();
+    for (const [i, at] of areas.entries()) {
+      const from = i ? areas[i - 1] : scope.origin;
+      const meters = from ? haversineMeters(from, at) : 0;
+      if (meters <= FOOT_HOP_M) continue;
+      const help = foot
+        ? await this.transferHelp(regionId, at, catalog)
+        : { places: [], ids: { taxi: [], excursions: [], bus: [] } };
+      for (const p of help.places) add([p]);
+      transfers.set(i + 1, { meters: Math.round(meters), ...help.ids });
+    }
+
+    // Места плана — в порядке плана (каждое один раз), пункты ссылаются на индекс в items; затем места переездов.
     const order: string[] = [];
     for (const d of built.days) for (const p of d.parts) for (const s of p.stops) order.push(s.placeId);
+    const planned = order.length;
+    for (const t of transfers.values())
+      for (const id of [...t.taxi, ...t.excursions, ...t.bus]) if (!order.includes(id)) order.push(id);
     const enrichment = await this.repo.enrichments(regionId, order);
     const items = order.map((id) => this.placeDto(places.get(id)!, enrichment.get(id)));
     const index = new Map(order.map((id, i) => [id, i]));
@@ -587,26 +792,98 @@ export class AssistantService {
     let n = 0;
     const plan: AssistantPlanDto = {
       lengthMeters: built.lengthMeters,
-      days: built.days.map((d) => ({
-        dayNo: d.dayNo,
-        date: d.date,
-        parts: d.parts.map((p) => ({
-          part: p.part,
-          stops: p.stops.map((s) => ({
-            item: index.get(s.placeId)!,
-            role: s.role,
-            start: formatMinute(s.startMinute),
-            durationMin: s.durationMin,
-            travel: s.travel,
-            travelMinutes: s.travelMinutes,
-            travelMeters: s.travelMeters,
-            hours: s.hours,
-            note: texts.get(++n) ?? null,
+      days: built.days.map((d) => {
+        const t = transfers.get(d.dayNo);
+        return {
+          dayNo: d.dayNo,
+          date: d.date,
+          parts: d.parts.map((p) => ({
+            part: p.part,
+            stops: p.stops.map((s) => ({
+              item: index.get(s.placeId)!,
+              role: s.role,
+              start: formatMinute(s.startMinute),
+              durationMin: s.durationMin,
+              travel: s.travel,
+              travelMinutes: s.travelMinutes,
+              travelMeters: s.travelMeters,
+              hours: s.hours,
+              note: texts.get(++n) ?? null,
+            })),
           })),
-        })),
-      })),
+          transfer: t
+            ? {
+                meters: t.meters,
+                taxi: t.taxi.map((id) => index.get(id)!),
+                excursions: t.excursions.map((id) => index.get(id)!),
+                busStations: t.bus.map((id) => index.get(id)!),
+              }
+            : null,
+        };
+      }),
     };
-    return { intent, items, route: null, plan: items.length ? plan : null, notes };
+    return {
+      intent,
+      items,
+      route: null,
+      plan: planned ? plan : null,
+      notes,
+      questions: [],
+    };
+  }
+
+  /** Без авто, переезд в район: такси и трансферы, экскурсионные бюро, автостанция каталога рядом. */
+  private async transferHelp(
+    regionId: string,
+    at: LonLat,
+    catalog: Catalog,
+  ): Promise<{ places: PlaceSummaryDto[]; ids: { taxi: string[]; excursions: string[]; bus: string[] } }> {
+    const near = async (code: string) => {
+      const categoryId = catalog.anyIdOf.get(code);
+      if (!categoryId) return [];
+      return (
+        await this.guide.search(regionId, {
+          categoryId,
+          origin: at,
+          radius: TRANSFER_HELP_RADIUS,
+          limit: TRANSFER_HELP_MAX,
+          offset: 0,
+        })
+      ).items;
+    };
+    const bus = async () => {
+      const pattern = keywordPattern(BUS_STATION_TERMS);
+      const namePattern = keywordPattern(BUS_STATION_TERMS, false);
+      if (!pattern || !namePattern) return [];
+      const found = await this.repo.keywordMatches(regionId, {
+        pattern,
+        namePattern,
+        categoryIds: [],
+        origin: at,
+        radius: TRANSFER_HELP_RADIUS,
+        // Название или тип Google («Автовокзал»), а не упоминание в отзыве.
+        minScore: 3,
+        limit: 1,
+      });
+      if (!found.length) return [];
+      return (
+        await this.guide.search(regionId, {
+          ids: found.map((m) => m.id),
+          origin: at,
+          limit: found.length,
+          offset: 0,
+        })
+      ).items;
+    };
+    const [taxi, excursions, stations] = await Promise.all([near("taxi"), near("excursions"), bus()]);
+    return {
+      places: [...taxi, ...excursions, ...stations],
+      ids: {
+        taxi: taxi.map((p) => p.id),
+        excursions: excursions.map((p) => p.id),
+        bus: stations.map((p) => p.id),
+      },
+    };
   }
 
   /** Без точки туриста и пунктов: центр плана — лучшая (по рейтингу и рекомендации) пам'ятка региона. */
@@ -673,13 +950,19 @@ export class AssistantService {
             kidsFriendly: item.kidsFriendly,
           });
         }
-    if (!stops.length) return new Map();
+    // Большой план (5–7 дней) — короче и только к пам'яткам и активностям: тот же один вызов в бюджете.
+    const { stops: sent, compact } = notesSubset(stops);
+    if (!sent.length) return new Map();
     try {
       await this.budget.spend(userId, BUDGET_UNITS.planNotes);
-      const message = await this.llm.create(notesRequest(stops, { withKids: intent.withKids }), {
-        timeoutMs: NOTES_TIMEOUT_MS,
+      const message = await this.llm.create(notesRequest(sent, { withKids: intent.withKids, compact }), {
+        timeoutMs: compact ? NOTES_TIMEOUT_COMPACT_MS : NOTES_TIMEOUT_MS,
       });
-      return parseNotes(toolInputOf(message, NOTES_TOOL), new Set(stops.map((s) => s.n)));
+      return parseNotes(
+        toolInputOf(message, NOTES_TOOL),
+        new Set(sent.map((s) => s.n)),
+        compact ? NOTE_COMPACT_MAX : undefined,
+      );
     } catch (e) {
       // План без пояснений лучше, чем ошибка: места и время уже подобраны.
       this.log.warn(`Пояснения к плану не получены: ${e instanceof Error ? e.message : String(e)}`);
@@ -719,6 +1002,7 @@ function clarifyIntent(previous: AssistantIntent | null, allowed: ReadonlySet<st
     categories: (previous?.categories ?? []).filter((c) => allowed.has(c)),
     nameQuery: previous?.nameQuery ?? null,
     keywords: previous?.keywords ?? [],
+    related: previous?.related ?? [],
     // Пункт прошлого запроса не переносится: уточнение без пункта — снова выбор туриста.
     locality: null,
     radiusMeters: previous?.radiusMeters ?? null,
@@ -731,6 +1015,9 @@ function clarifyIntent(previous: AssistantIntent | null, allowed: ReadonlySet<st
     days: kind === "plan" ? (previous?.days ?? 1) : null,
     dayParts: kind === "plan" ? (previous?.dayParts ?? []) : [],
     start: kind === "plan" ? (previous?.start ?? null) : null,
+    scope: kind === "plan" ? (previous?.scope ?? null) : null,
+    scopeLocalityIds: kind === "plan" ? (previous?.scopeLocalityIds ?? []) : [],
+    transport: kind === "plan" ? (previous?.transport ?? null) : null,
   };
 }
 

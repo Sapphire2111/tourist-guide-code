@@ -24,16 +24,33 @@ export const ASSISTANT_SUGGESTIONS = [
 ] as const;
 export type AssistantSuggestion = (typeof ASSISTANT_SUGGESTIONS)[number];
 
-/** Категорий в одном запросе — не больше. */
-export const INTENT_CATEGORIES_MAX = 3;
+/** Категорий в одном запросе — не больше (широкое желание раскрывается в несколько категорий). */
+export const INTENT_CATEGORIES_MAX = 5;
 export const INTENT_NAME_MAX = 60;
 export const INTENT_RADIUS_MIN = 300;
 export const INTENT_RADIUS_MAX = 20_000;
 /** Ключевых слов (блюдо, кухня, особенность) — не больше; длина слова. */
 export const INTENT_KEYWORDS_MAX = 8;
 export const INTENT_KEYWORD_MAX = 40;
+/** Связанных понятий (раскрытое желание: «з дітьми цікаво» → атракціони, зоопарк, канатка…) — не больше. */
+export const INTENT_RELATED_MAX = 12;
 /** Дней в плане отдыха ассистента. */
-export const INTENT_PLAN_DAYS_MAX = 3;
+export const INTENT_PLAN_DAYS_MAX = 7;
+
+/**
+ * Где строить план: here — рядом (точка туриста или выбор «Локація», как раньше), region — по всьому регіону
+ * (дни по разным районам), localities — выбранные в диалоге пункты (scopeLocalityIds).
+ */
+export const PLAN_SCOPES = ["here", "region", "localities"] as const;
+export type PlanScope = (typeof PLAN_SCOPES)[number];
+/** Передвижение в плане: car — на авто (пешком только рядом), foot — пешком (дальнее — трансфер, на другой день). */
+export const PLAN_TRANSPORTS = ["car", "foot"] as const;
+export type PlanTransport = (typeof PLAN_TRANSPORTS)[number];
+/**
+ * Уточняющие вопросы перед многодневным планом: scope — «Де плануєте відпочивати?», transport — «Як пересуваєтесь?».
+ */
+export const ASSISTANT_QUESTIONS = ["scope", "transport"] as const;
+export type AssistantQuestion = (typeof ASSISTANT_QUESTIONS)[number];
 
 /** Части дня плана: ранок, день, вечір. */
 export const DAY_PARTS = ["morning", "afternoon", "evening"] as const;
@@ -54,6 +71,11 @@ export type AssistantIntent = {
    * названию, типу Google, описаниям и отзывам мест каталога, а не только по названию.
    */
   keywords: string[];
+  /**
+   * Раскрытое желание: связанные понятия и синонимы («з дітьми цікаво» → атракціони, зоопарк, канатка) — не фильтр,
+   * а расширение поиска: места категорий намерения плюс найденные по этим словам (они выше).
+   */
+  related: string[];
   /** Код населённого пункта, если турист его назвал («у Буковелі»); иначе null — действует выбор туриста. */
   locality: string | null;
   radiusMeters: number | null;
@@ -65,15 +87,66 @@ export type AssistantIntent = {
   /** Запрос непонятен или не о местах региона — уточнить. */
   clarify: boolean;
   suggestions: AssistantSuggestion[];
-  /** План (kind = plan): дней 1–3; не план — null. */
+  /** План (kind = plan): дней 1–7; не план — null. */
   days: number | null;
   /** План: только названные части дня («ввечері» — evening); пусто — весь день. */
   dayParts: DayPart[];
   /** План: начало; null — сегодня. */
   start: PlanStart | null;
+  /** План: где отдыхать; null — не названо (многодневный план — сервер спросит). */
+  scope: PlanScope | null;
+  /** План, scope = localities: выбранные в диалоге пункты (id; ставит клиент, модель не выбирает). */
+  scopeLocalityIds: string[];
+  /** План: на авто или пешком; null — не сказано (многодневный план — сервер спросит; иначе — на авто). */
+  transport: PlanTransport | null;
 };
 
-export type IntentCategory = { code: string; name: string; parentName: string | null };
+export type IntentCategory = {
+  code: string;
+  name: string;
+  parentName: string | null;
+  /** Что в категории (подсказка модели, CATEGORY_HINTS); нет — только название. */
+  hint?: string;
+};
+
+/**
+ * Что лежит в категориях каталога (коды seed и импорта Google): модель раскрывает желание туриста в категории по
+ * смыслу, а не по буквальному слову. Категории без подсказки — только по названию.
+ */
+export const CATEGORY_HINTS: Readonly<Record<string, string>> = {
+  stay: "усе житло",
+  hotels: "готелі, апарт-готелі, курортні комплекси",
+  sadyby: "садиби, котеджі, гостьові будинки, хостели",
+  eat: "усі заклади харчування",
+  restaurants: "ресторани (у т. ч. з видом, панорамні, з терасою), бари, піцерії",
+  kolyby: "колиби — гуцульська кухня, банош, деруни, шашлик, атмосферні дерев'яні заклади",
+  cafes: "кафе, кав'ярні, кондитерські, десерти, сніданки",
+  "fast-food": "фастфуд, шаурма, бургери — швидко перекусити",
+  souvenirs: "сувеніри, гуцульські вироби, подарунки",
+  markets: "ринки (сувенірний ринок, сир, мед)",
+  relax: "релакс і оздоровлення",
+  chany: "чани (гарячі купелі просто неба), сауни, лазні — романтика, відпочинок після походу",
+  spa: "SPA, басейни, масаж, wellness",
+  fun: "розваги й активності",
+  excursions: "турфірми та організовані екскурсії (запис заздалегідь)",
+  museums: "музеї, етнографічні й історичні експозиції — підходить у дощ",
+  active:
+    "активний відпочинок: джипінг, рафтинг, зіплайн, канатки влітку, конні прогулянки, квадроцикли, походи",
+  entertainment:
+    "атракціони й розваги: парки розваг, мотузкові парки, канатні дороги, тролеї, батути, аквапарки",
+  kids: "для дітей: дитячі розваги, ігрові кімнати й майданчики, зоопарки й контактні зоопарки",
+  "adult-fun": "для дорослих: боулінг, більярд, караоке, квести, нічні клуби, картинг, пейнтбол",
+  "gear-rental": "прокат велосипедів, квадроциклів, спорядження",
+  ski: "гірськолижний відпочинок",
+  "ski-resorts": "гірськолижні курорти й траси (сезон — зима)",
+  "ski-lifts": "підйомники, крісельні канатки (і оглядові підйоми влітку)",
+  "ski-rental": "прокат лиж і сноубордів",
+  "ski-schools": "лижні школи й інструктори",
+  nearby: "що подивитися: природа й пам'ятки",
+  nature: "пам'ятки природи: водоспади, гори, скелі, озера, оглядові майданчики, стежки",
+  sights: "пам'ятки: оглядові майданчики, мости, церкви, історичні й визначні місця",
+  help: "аптеки, лікарні, банкомати — якщо щось трапилося",
+};
 /** Населённый пункт для модели: код, название, синонимы (курорт, старое название). */
 export type IntentLocality = { code: string; name: string; aliases: readonly string[] };
 
@@ -86,14 +159,18 @@ export const INTENT_SYSTEM = `Ти — модуль розбору запиті�
 
 Правила:
 - Завжди відповідай ЛИШЕ викликом ${INTENT_TOOL}, без тексту.
-- categories — лише коди зі списку категорій регіону в повідомленні. Не вигадуй кодів. Обирай найконкретнішу категорію; якщо підходять кілька — до ${INTENT_CATEGORIES_MAX}.
+- Розумій БАЖАННЯ туриста, а не лише буквальні слова: подумай, які місця каталогу йому справді підійдуть, і розкрий запит у категорії та пов'язані поняття. Приклади: «з дітьми цікаво» → категорії для дітей, атракціони, пам'ятки природи; related: атракціони, зоопарк, канатка, мотузковий парк, батут, водоспад, легкий маршрут. «Романтичний вечір» → ресторани, чани, SPA; related: з видом, панорамний, тераса, чан, романтичний, захід сонця. «Щось активне» → активний відпочинок, атракціони; related: джипінг, рафтинг, зіплайн, квадроцикл, канатка. «Що робити в дощ» → музеї, SPA, розваги.
+- categories — лише коди зі списку категорій регіону в повідомленні (там же — що в кожній). Не вигадуй кодів. Для конкретного запиту — найконкретніша категорія; для широкого бажання — кілька доречних, до ${INTENT_CATEGORIES_MAX}.
+- related — до ${INTENT_RELATED_MAX} пов'язаних понять і синонімів (українською, можна й російською чи англійською), як вони трапляються в назвах, описах і відгуках місць: що турист імовірно хоче побачити чи зробити. Це не фільтр — сервер покаже місця категорій, а знайдені за цими словами поставить вище. Для простого конкретного запиту («аптека», «кава поруч», «суші») — [].
 - Ти НЕ називаєш місць, цін, рейтингів чи відстаней — їх підбере сервер з каталогу.
 - locality — код населеного пункту зі списку, лише якщо турист сам назвав місцевість («у Буковелі», «в Яремчі»; враховуй синоніми), інакше null.
 - nameQuery — лише якщо турист назвав конкретний заклад чи пам'ятку (частина назви), інакше null. Страва чи кухня («суші», «піца») — не nameQuery, а keywords.
 - keywords — якщо шукають страву, кухню, напій чи особливість («суші», «піца», «бургер», «шаурма», «кава», «вареники», «банош», «з терасою»): до ${INTENT_KEYWORDS_MAX} слів у формах, як вони трапляються в назвах, описах і відгуках, — українською, російською й англійською (напр. «суші», «суши», «sushi», «роли», «роллы»). Категорію (ресторани, кафе тощо) теж обирай. Інакше [].
 - Проживання («готель», «де переночувати», «садиба», «хостел») — категорії розділу проживання зі списку (сам розділ або його підкатегорії); побажання на кшталт «з чаном» не замінюють категорію проживання.
-- kind = "plan", якщо просять план відпочинку, програму на день чи дні, «що робити сьогодні ввечері», «план на вихідні»: сервер сам складе план з пам'ятками, обідом, вечерею й відпочинком. Тоді days — кількість днів (1–${INTENT_PLAN_DAYS_MAX}; «вихідні» — 2); dayParts — лише названі частини дня (morning — ранок, afternoon — день, evening — вечір; «ввечері» → ["evening"]), інакше []; start — "today", "tomorrow" чи "weekend", якщо названо, інакше null; categories — лише якщо в плані хочуть щось конкретне (водоспади, музеї), інакше [].
-- kind = "tour", якщо просять екскурсію, маршрут, прогулянку чи «що подивитися» (пам'ятки, музеї, природа); інакше "places". Для "places" і "tour": days = null, dayParts = [], start = null.
+- kind = "plan", якщо просять план відпочинку, програму на день чи дні, «що робити сьогодні ввечері», «план на вихідні», «приїхав на 5 днів»: сервер сам складе план з пам'ятками, обідом, вечерею й відпочинком. Тоді days — кількість днів (1–${INTENT_PLAN_DAYS_MAX}; «вихідні» — 2; «тиждень» — 7; більше — ${INTENT_PLAN_DAYS_MAX}); dayParts — лише названі частини дня (morning — ранок, afternoon — день, evening — вечір; «ввечері» → ["evening"]), інакше []; start — "today", "tomorrow" чи "weekend", якщо названо, інакше null; categories і related — лише якщо в плані хочуть щось особливе (водоспади, музеї, «щоб дітям було цікаво»), інакше [].
+- scope (лише для плану) — де відпочивати, якщо турист це сказав: "region" — «по всьому Прикарпаттю», «по області», «різні місця», «об'їхати регіон»; "here" — «тут», «поруч», «недалеко», «без переїздів»; інакше null (і коли названо один населений пункт — тоді locality). Якщо в попередніх параметрах scope уже є — збережи його, доки турист не змінить.
+- transport (лише для плану) — як пересувається турист, якщо сказано: "car" — «на авто», «на машині», «своїм ходом на авто»; "foot" — «пішки», «без машини», «без авто», «громадським транспортом»; інакше null. Попередній transport зберігай.
+- kind = "tour", якщо просять екскурсію, маршрут, прогулянку чи «що подивитися» (пам'ятки, музеї, природа); інакше "places". Для "places" і "tour": days = null, dayParts = [], start = null, scope = null.
 - radiusMeters — лише якщо турист вказав відстань або «поруч/ближче/далі»: «поруч» ≈ 1000, «пішки» ≈ 1500; інакше null.
 - priceMin/priceMax — рівень цін 0 (безкоштовно) … 4 (дуже дорого): «недорого/дешевше» → priceMax 1–2, «дорожче/преміум» → priceMin 3; інакше null.
 - withKids — true, якщо згадано дітей; openNow — true, якщо «зараз/відкрито».
@@ -132,6 +209,11 @@ export function intentTool(
           items: { type: "string" },
           description: `Страва, кухня чи особливість у кількох написаннях (до ${INTENT_KEYWORDS_MAX}) або []`,
         },
+        related: {
+          type: "array",
+          items: { type: "string" },
+          description: `Пов'язані поняття й синоніми бажання туриста (до ${INTENT_RELATED_MAX}) або []`,
+        },
         locality: {
           anyOf: [
             localities.length ? { type: "string", enum: localities.map((l) => l.code) } : { type: "string" },
@@ -154,12 +236,21 @@ export function intentTool(
         days: { ...nullableInt, description: `План: днів 1–${INTENT_PLAN_DAYS_MAX} або null` },
         dayParts: { type: "array", items: { type: "string", enum: [...DAY_PARTS] } },
         start: { anyOf: [{ type: "string", enum: [...PLAN_STARTS] }, { type: "null" }] },
+        scope: {
+          anyOf: [{ type: "string", enum: ["here", "region"] }, { type: "null" }],
+          description: "План: here — поруч, region — по всьому регіону; не сказано — null",
+        },
+        transport: {
+          anyOf: [{ type: "string", enum: [...PLAN_TRANSPORTS] }, { type: "null" }],
+          description: "План: car — на авто, foot — пішки; не сказано — null",
+        },
       },
       required: [
         "kind",
         "categories",
         "nameQuery",
         "keywords",
+        "related",
         "locality",
         "radiusMeters",
         "priceMin",
@@ -171,6 +262,8 @@ export function intentTool(
         "days",
         "dayParts",
         "start",
+        "scope",
+        "transport",
       ],
       additionalProperties: false,
     },
@@ -186,7 +279,10 @@ export function intentUserMessage(input: {
   hasOrigin: boolean;
 }): string {
   const cats = input.categories
-    .map((c) => `- ${c.code}: ${c.name}${c.parentName ? ` (розділ «${c.parentName}»)` : ""}`)
+    .map(
+      (c) =>
+        `- ${c.code}: ${c.name}${c.parentName ? ` (розділ «${c.parentName}»)` : ""}${c.hint ? ` — ${c.hint}` : ""}`,
+    )
     .join("\n");
   const parts = [`Категорії регіону (код: назва):\n${cats}`];
   parts.push(
@@ -215,7 +311,7 @@ const clampInt = (v: unknown, min: number, max: number): number | null =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : null;
 
 /** Ключевые слова: строки, без лишних пробелов, в нижнем регистре, без повторов, не длиннее предела. */
-export function cleanKeywords(v: unknown): string[] {
+export function cleanKeywords(v: unknown, max: number = INTENT_KEYWORDS_MAX): string[] {
   return [
     ...new Set(
       (Array.isArray(v) ? v : [])
@@ -223,7 +319,7 @@ export function cleanKeywords(v: unknown): string[] {
         .map((k) => k.replace(/\s+/g, " ").trim().toLowerCase().slice(0, INTENT_KEYWORD_MAX).trim())
         .filter((k) => k.length >= 2),
     ),
-  ].slice(0, INTENT_KEYWORDS_MAX);
+  ].slice(0, max);
 }
 
 /**
@@ -265,6 +361,7 @@ export function parseIntent(
     categories,
     nameQuery: name.length >= 2 ? name.slice(0, INTENT_NAME_MAX) : null,
     keywords: cleanKeywords(o.keywords),
+    related: cleanKeywords(o.related, INTENT_RELATED_MAX),
     locality: typeof o.locality === "string" && allowedLocalities.has(o.locality) ? o.locality : null,
     radiusMeters: clampInt(o.radiusMeters, INTENT_RADIUS_MIN, INTENT_RADIUS_MAX),
     priceMin,
@@ -280,6 +377,10 @@ export function parseIntent(
       plan && typeof o.start === "string" && (PLAN_STARTS as readonly string[]).includes(o.start)
         ? (o.start as PlanStart)
         : null,
+    // Модель выбирает только here/region; localities ставит клиент (ответ на уточнение), сервер берёт его из previous.
+    scope: plan && (o.scope === "here" || o.scope === "region") ? o.scope : null,
+    scopeLocalityIds: [],
+    transport: plan && (o.transport === "car" || o.transport === "foot") ? o.transport : null,
   };
 }
 
