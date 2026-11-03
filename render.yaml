@@ -2,7 +2,7 @@
 # Секретов здесь нет: переменные с `sync: false` Render запросит при создании Blueprint,
 # дальше они живут только в Render → сервис → Environment. Как включить — README, «Окружения и конфигурация».
 #
-# Бот и воркер на staging работают в процессе api: Background Worker на Render платный, а отдельный
+# Бот и воркер на staging работают в процессе api (воркер — WORKER_IN_PROCESS=true, пока только bookings.process-due): Background Worker на Render платный, а отдельный
 # free Web Service засыпает через 15 мин без HTTP-трафика (очередь встала бы). Webhook Telegram приходит
 # в api (будит его), фоновые задачи там же (T1-21, T1-28). В prod — отдельные процессы (образы worker/bot).
 # Код бота (T1-28) — apps/bot: POST /telegram/webhook, очередь bot-outbox в Redis; подключение его в процесс
@@ -38,7 +38,7 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-      # События аналитики (T1-25) — сразу в БД из api: worker-рантайм в процесс api ещё не встроен, задачи
+      # События аналитики (T1-25) — сразу в БД из api: очереди analytics в процессе api не разбираются (WORKER_IN_PROCESS — только сроки броней), задачи
       # очереди analytics на staging никто бы не разбирал. После встраивания — убрать (будет queue).
       # Blueprint не подключён: файл сам не применяется — значение выставляется вручную в Render → api → Environment.
       - key: ANALYTICS_SINK
@@ -60,6 +60,10 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      # Фоновые задачи воркера в процессе api (bookings.process-due раз в минуту, advisory lock): выставить true вручную
+      # в Render → api → Environment. Пока api спит (free, 15 мин без HTTP), тиков нет — нужен внешний keep-alive /health.
+      - key: WORKER_IN_PROCESS
         sync: false
       # Вход админа (ADR-0018): ключ HMAC счётчиков неудачных входов, ≥ 32 байт; без него api не стартует.
       - key: ADMIN_LOGIN_HMAC_SECRET
@@ -99,11 +103,12 @@ services:
     # PUT https://api.render.com/v1/services/<id сайта>/headers  (тело — массив {path, name, value} ниже),
     # проверить: curl -sI https://<сайт>/ . Mini App открывается во фрейме web.telegram.org (Web K/A) — поэтому
     # frame-ancestors с Telegram и без X-Frame-Options; скрипт SDK — https://telegram.org. connect-src — адрес api
-    # (VITE_API_URL); фото мест (T1-20) — img-src https:. Добавятся внешние ресурсы (тайлы карты) — расширить CSP.
+    # (VITE_API_URL); фото мест (T1-20) — img-src https:. Карта — Google Maps JavaScript API (векторная): скрипт,
+    # тайлы и шрифты Google (*.googleapis.com, *.gstatic.com, *.google.com), воркеры и данные тайлов — blob:/data:.
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://tg-api-staging.onrender.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self' https://telegram.org https://*.googleapis.com https://*.gstatic.com https://*.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tg-api-staging.onrender.com https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
@@ -113,6 +118,13 @@ services:
       - path: /*
         name: Strict-Transport-Security
         value: max-age=31536000; includeSubDomains
+      # Ассеты Vite с хэшем в имени — неизменяемы: повторное открытие Mini App берёт JS/CSS/шрифты из кэша WebView
+      # без запроса (по умолчанию Render отдаёт max-age=0 — ревалидация каждого файла). index.html и season-boot.js
+      # (без хэша) — по умолчанию Render, чтобы новый деплой подхватывался сразу. Чанк старого хэша после деплоя
+      # (rewrite → index.html) тоже закэшируется, но новый index.html ссылается уже на другие имена.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     routes:
       - type: rewrite
         source: /*
@@ -125,6 +137,14 @@ services:
       # Имя бота (без @) — сканер QR принимает ссылки t.me/<бот> только этого бота; вшивается в бандл (не секрет).
       - key: VITE_BOT_USERNAME
         value: tourist_guide_test_bot
+      # Google Maps JavaScript API — карта мест (Mini App). Браузерный ключ вшивается в бандл, поэтому в Google Cloud он
+      # ограничен по HTTP referrer (сайт staging и http://localhost:5173) и только Maps JavaScript API. Map ID — векторная
+      # карта (AdvancedMarker). Значения — в панели Render (из .env.staging: GOOGLE_MAPS_BROWSER_KEY / GOOGLE_MAPS_MAP_ID),
+      # не в репозитории. Не заданы — вместо карты заглушка, список мест работает. Смена — пересборка сайта.
+      - key: VITE_GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false
       - key: NODE_VERSION
         value: 22.17.0
       - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS

@@ -2,7 +2,25 @@
 // app.actor = 'system' (RLS), пишут историю брони, аналитику и строки outbox notifications (уведомления переходов и
 // напоминания — в той же транзакции, что и переход/отметка, поэтому повтор задачи их не дублирует). Строки outbox
 // шаблонов воркера отправляет сам воркер через Bot API (api отправляет только свои строки сразу после коммита).
-import type { BookingsDueProcessor, BookingsDueResult } from "../queue/handlers.js";
+// В пакете (а не в apps/worker): тот же код запускает и api на staging (WORKER_IN_PROCESS) — app→app запрещено.
+
+/** Итог задачи сроков броней: числа броней и строк outbox, отправленных воркером. */
+export type BookingsDueResult = {
+  expired: number;
+  completed: number;
+  /** Поставленные отметки напоминаний (туристу и партнёру). */
+  reminded: number;
+  notifications: { sent: number; failed: number; skipped: number };
+};
+
+/**
+ * Сроки броней (функции БД bookings_expire_due, bookings_auto_complete — миграция api 0022; напоминания и отправка
+ * outbox воркера — 0023).
+ */
+export interface BookingsDueProcessor {
+  /** expired по SLA ответа (D-43, D-66), автозавершение (C-27), напоминания и отправка их уведомлений. */
+  processDue(): Promise<BookingsDueResult>;
+}
 
 /** Броней за один вызов функции (одна короткая транзакция). */
 export const BOOKINGS_DUE_BATCH = 500;

@@ -61,6 +61,16 @@ export const apiEnvSchema = z
       blankToUndefined,
       z.coerce.number().int().min(1).max(720).default(24),
     ),
+    // Фоновые задачи воркера в процессе api (staging, Render free — без отдельного worker): true — bookings.process-due
+    // раз в минуту под advisory lock (src/db/in-process-jobs.ts). Не задан — false (задачи выполняет apps/worker).
+    WORKER_IN_PROCESS: z.preprocess(
+      (v) =>
+        typeof v === "string" ? (v.trim().toLowerCase() === "" ? undefined : v.trim().toLowerCase()) : v,
+      z
+        .enum(["true", "false"])
+        .default("false")
+        .transform((v) => v === "true"),
+    ),
     // Dev-вход POST /auth/dev/sessions без проверки личности — только APP_ENV=local (ниже: иначе api не стартует).
     AUTH_DEV_LOGIN: z.preprocess(
       (v) =>

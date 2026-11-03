@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { analyticsClientEventsEnabled, mediaProcessingMode, type ApiEnv } from "./config.js";
 import { TenancyModule } from "./common/tenancy/index.js";
 import { DatabaseModule } from "./db/index.js";
+import { InProcessJobsModule } from "./db/in-process-jobs.js";
 import { AdminAuthModule } from "./modules/admin-auth/index.js";
 import { AnalyticsModule } from "./modules/analytics/index.js";
 import { AssistantModule } from "./modules/assistant/index.js";
@@ -39,6 +40,7 @@ export class AppModule {
           ApiEnv,
           | "APP_ENV"
           | "AUTH_DEV_LOGIN"
+          | "WORKER_IN_PROCESS"
           | "AUTH_SESSION_TTL_HOURS"
           | "REDIS_URL"
           | "ANALYTICS_SINK"
@@ -80,6 +82,15 @@ export class AppModule {
       module: AppModule,
       imports: [
         DatabaseModule.forRoot({ connectionString: env.DATABASE_URL }),
+        // Фоновые задачи воркера в процессе api (staging без отдельного worker).
+        ...(env.WORKER_IN_PROCESS
+          ? [
+              InProcessJobsModule.forRoot({
+                connectionString: env.DATABASE_URL,
+                telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+              }),
+            ]
+          : []),
         // Rate limit (T1-24) — первым из модулей с глобальными интерсепторами: 429 до идемпотентности и транзакции.
         RateLimitModule.forRoot({
           enabled: env.RATE_LIMIT !== "off",

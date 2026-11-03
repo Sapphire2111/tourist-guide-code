@@ -10,7 +10,7 @@ import {
   bookingsDueProcessor,
   WORKER_NOTIFICATION_TEMPLATES,
   type RowsQueryable,
-} from "./bookings-due.js";
+} from "@tg/queue-contract";
 
 /** БД-заглушка: ответ по началу текста запроса (очередь ответов на каждый вид). */
 function db(answers: Record<string, Record<string, unknown>[][]>) {
