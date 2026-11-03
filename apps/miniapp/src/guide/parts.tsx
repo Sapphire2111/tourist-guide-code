@@ -2,6 +2,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
+import { routeUrl, type LatLng } from "./geo.js";
 import { ICONS } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useMaybeGuide, type Async } from "./context.js";
@@ -126,10 +127,14 @@ export function PlaceSummaryCard({
   testId = "place-item",
   as: Tag = "li",
   distanceFrom,
+  quickRoute = false,
+  routeFrom,
 }: {
   place: PlaceSummary;
   /** Откуда расстояние, если не от пользователя/заведения: «від центру Яремче». */
   distanceFrom?: string;
+  quickRoute?: boolean;
+  routeFrom?: LatLng | null;
   layout?: "row" | "tile";
   testId?: string;
   as?: "li" | "div";
@@ -158,6 +163,18 @@ export function PlaceSummaryCard({
           {d && <span className="kosiv-chip">{d}</span>}
           <PlaceBadges place={place} />
         </span>
+        {quickRoute && place.location && (
+          <a
+            className="modern-route"
+            href={routeUrl(place.location, routeFrom)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => guide?.analytics.track("route_clicked", { placeId: place.id })}
+          >
+            {ICONS.arrow}
+            {t("miniapp.modern.route")}
+          </a>
+        )}
       </div>
     </Tag>
   );
@@ -167,15 +184,25 @@ export function PlaceList({
   places,
   testId = "place-list",
   distanceFrom,
+  quickRoute = false,
+  routeFrom,
 }: {
   places: PlaceSummary[];
   testId?: string;
   distanceFrom?: string;
+  quickRoute?: boolean;
+  routeFrom?: LatLng | null;
 }) {
   return (
     <ul data-testid={testId} style={listStyle}>
       {places.map((p) => (
-        <PlaceSummaryCard key={p.id} place={p} distanceFrom={distanceFrom} />
+        <PlaceSummaryCard
+          key={p.id}
+          place={p}
+          distanceFrom={distanceFrom}
+          quickRoute={quickRoute}
+          routeFrom={routeFrom}
+        />
       ))}
     </ul>
   );

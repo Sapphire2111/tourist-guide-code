@@ -1,0 +1,497 @@
+﻿/* Второе оформление использует те же сезонные поверхности и настоящие данные приложения. */
+.design-switch {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  border-radius: 14px;
+  margin-right: auto;
+  min-width: 0;
+}
+.design-switch button {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--app-text);
+  font: 600 12px/1.2 var(--font-body);
+  cursor: pointer;
+}
+.design-switch button[aria-pressed="true"] {
+  background: var(--app-text);
+  color: var(--app-bg);
+}
+html[data-design="modern"] {
+  --font-heading: "Inter", system-ui, sans-serif;
+  --shadow-card: 0 3px 16px rgb(43 33 24 / 4%);
+  --app-accent: #ad4327;
+  --app-accent-ink: #96381f;
+  --app-accent-2: #456044;
+  --color-button: #ad4327;
+  --color-link: #96381f;
+  --app-pill-bg: #f9e7d8;
+  --app-text: #243329;
+  --app-muted: #62695f;
+}
+html[data-design="modern"] .kosiv-top {
+  gap: 5px;
+  padding-bottom: 8px;
+  padding-top: calc(
+    var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+      var(--tg-content-safe-area-inset-top, 0px) + 8px
+  );
+  border-bottom: 1px solid var(--app-border);
+}
+html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
+  width: 40px;
+  min-width: 40px;
+  height: 44px;
+}
+.modern-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  min-width: 40px;
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.modern-help svg {
+  width: 20px;
+}
+html[data-design="modern"] .kosiv-content {
+  gap: 22px;
+}
+html[data-design="modern"] .kosiv-content h1 {
+  font-size: clamp(26px, 7vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.045em;
+}
+html[data-design="modern"] .kosiv-content h2 {
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -0.035em;
+}
+html[data-design="modern"] .kosiv-welcome {
+  gap: 3px;
+}
+html[data-design="modern"] .kosiv-welcome-hello {
+  font-size: 13px;
+  color: var(--app-muted);
+}
+html[data-design="modern"] .kosiv-welcome-sub {
+  font-size: 13px;
+}
+.modern-home {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.modern-intro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.modern-intro > div {
+  flex: 1;
+  min-width: 0;
+  z-index: 1;
+}
+html[data-design="modern"] .modern-intro h2 {
+  max-width: 330px;
+  font-size: clamp(29px, 8vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.055em;
+  margin: 0 0 12px;
+}
+.modern-intro p {
+  color: var(--app-muted);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 290px;
+}
+.modern-mountains {
+  width: 25%;
+  max-width: 130px;
+  flex-shrink: 0;
+  color: #b4774c;
+}
+.modern-host {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 22px;
+  color: var(--app-text);
+  text-decoration: none;
+}
+.modern-host-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 46px;
+  border-radius: 14px;
+  background: #fae9d5;
+  color: #974426;
+  flex-shrink: 0;
+}
+.modern-host > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.modern-host strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.modern-host small {
+  font-size: 11px;
+  color: var(--app-muted);
+}
+.modern-host-link {
+  margin-left: auto;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #96381f;
+}
+.modern-intentions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.modern-intention {
+  height: 100%;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+  position: relative;
+  padding: 20px 16px;
+  border-radius: 24px;
+  background: #f9e4cf;
+  color: #263426;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease;
+}
+.modern-intention[data-kind="nearby"] {
+  background: #e6ebd4;
+}
+.modern-intention[data-kind="relax"] {
+  background: #f5dfd2;
+}
+.modern-intention[data-kind="fun"] {
+  background: #efe8d5;
+}
+.modern-intention > svg:first-child {
+  width: 32px;
+  height: 32px;
+  color: #964c29;
+}
+.modern-intention[data-kind="nearby"] > svg:first-child {
+  color: #456044;
+}
+.modern-intention > svg:last-child {
+  position: absolute;
+  right: 14px;
+  top: 22px;
+  opacity: 0.65;
+}
+.modern-intention span {
+  max-width: 180px;
+  font-size: clamp(16px, 4.8vw, 20px);
+  line-height: 1.22;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+.modern-intention:hover {
+  border-color: #bc9d7e;
+  transform: translateY(-2px);
+}
+.modern-location-action {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #405a43;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.modern-location-action > svg:last-child {
+  margin-left: auto;
+}
+.modern-utilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.modern-utilities a {
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  color: var(--app-text);
+  text-decoration: none;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--app-surface);
+}
+.modern-utilities svg {
+  width: 22px;
+  height: 22px;
+  color: #96381f;
+}
+html[data-design="modern"] .kosiv-place {
+  border-width: 1px;
+  box-shadow: none;
+  border-radius: 20px;
+  overflow: hidden;
+}
+html[data-design="modern"] .kosiv-place-title {
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+html[data-design="modern"] .kosiv-nav {
+  background: var(--app-surface);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -4px 24px rgb(43 33 24 / 5%);
+  border-top: 1px solid var(--app-border);
+}
+html[data-design="modern"] .kosiv-nav-item {
+  font-size: 11px;
+}
+html[data-design="modern"] .kosiv-nav-item[aria-current="page"] .kosiv-nav-icon {
+  background: #ad4327;
+  color: white;
+  border-radius: 14px;
+}
+.modern-nearby {
+  --app-accent: #087d7f;
+  --app-accent-ink: #066366;
+  --app-pill-bg: #e4f2ef;
+  --color-button: #087d7f;
+  --color-link: #066366;
+}
+.modern-nearby [data-testid="nearby-caption"] {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 14px;
+}
+.modern-nearby .kosiv-range {
+  padding: 12px 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+}
+.modern-nearby-results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modern-search {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface);
+  color: #066366;
+}
+html[data-design="modern"] .modern-search input {
+  border: 0;
+  background: transparent;
+  padding: 13px 10px;
+  min-width: 0;
+  width: 100%;
+  box-shadow: none;
+}
+.modern-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 3px 2px 6px;
+  scrollbar-width: thin;
+}
+.modern-filters button {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: 24px;
+  border: 1px solid var(--app-border);
+  padding: 8px 14px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+}
+.modern-filters button svg {
+  width: 18px;
+  height: 18px;
+}
+.modern-filters button[aria-pressed="true"] {
+  color: #fff;
+  background: #087d7f;
+  border-color: #087d7f;
+}
+.modern-view-switch {
+  display: flex;
+  border: 1px solid var(--app-border);
+  padding: 4px;
+  gap: 4px;
+  border-radius: 16px;
+  background: var(--app-surface);
+}
+.modern-view-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 44px;
+  font: 600 14px var(--font-body);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--app-text);
+  cursor: pointer;
+}
+.modern-view-switch button[aria-pressed="true"] {
+  background: #087d7f;
+  color: #fff;
+}
+.modern-map-panel {
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 22px;
+  background: var(--app-surface);
+}
+.modern-map-panel > p {
+  padding: 18px;
+}
+.modern-results-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 0;
+}
+.modern-results-count {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+.modern-origin {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+.modern-empty {
+  padding: 24px 18px;
+  border-radius: 20px;
+  background: var(--app-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (max-width: 420px) {
+  .modern-help span {
+    display: none;
+  }
+  .modern-host-link {
+    font-size: 11px;
+  }
+  .design-switch button {
+    padding: 8px 7px;
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modern-intention {
+    transition: none;
+  }
+  .modern-intention:hover {
+    transform: none;
+  }
+}
+.modern-route {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  margin-top: 6px;
+  border-radius: 12px;
+  background: #087d7f;
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+/* Компактная панель оставляет место карте уже на первом экране. */
+.modern-nearby .kosiv-range summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.modern-nearby .kosiv-range summary span::after {
+  content: "⌄";
+  padding-left: 12px;
+}
+.modern-nearby .kosiv-range[open] summary {
+  margin-bottom: 12px;
+}
+html[data-design="modern"] .modern-nearby .modern-locate {
+  background: transparent;
+  color: #066366;
+  border: 1px solid var(--app-border);
+  font-size: 13px;
+  min-height: 44px;
+  padding: 8px 12px;
+}
+html[data-design="modern"] .kosiv-content .modern-search input[type="search"] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+}
+html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
+  display: none;
+}
