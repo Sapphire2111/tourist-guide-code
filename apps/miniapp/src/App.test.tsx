@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createApiClient } from "@tg/api-client";
 import { App } from "./App.js";
 import { getStubRole } from "./role.js";
 import { getWebApp, initTelegram, type TelegramWebApp } from "./telegram.js";
 
+beforeEach(() => {
+  window.localStorage.setItem("tg.design", "original");
+});
 afterEach(() => {
   cleanup();
   window.location.hash = "";

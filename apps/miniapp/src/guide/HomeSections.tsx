@@ -66,18 +66,36 @@ function ModernSections({ hasVenue }: { hasVenue: boolean }) {
           <h2 id="sections-title">{t("miniapp.modern.title")}</h2>
           <p>{t("miniapp.modern.subtitle")}</p>
         </div>
-        <svg className="modern-mountains" viewBox="0 0 160 100" fill="none" aria-hidden="true">
+        <svg className="modern-mountains" viewBox="0 0 180 120" fill="none" aria-hidden="true">
+          <circle cx="132" cy="26" r="18" fill="#F59E0B" opacity=".18" />
           <path
-            d="M4 83 55 20 89 62 111 36 157 84"
+            d="M132 10v32M116 26h32M121 15l22 22M143 15l-22 22"
+            stroke="#FBBF24"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx="132" cy="26" r="4.5" fill="#FDE68A" />
+          <path d="M4 96 48 34l34 40 28-30 66 52H4Z" fill="currentColor" opacity=".18" />
+          <path
+            d="M4 96 48 34l34 40 28-30 66 52"
             stroke="currentColor"
             strokeWidth="2.5"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <path d="m37 43 18-23 17 22-12-5-7 9-7-8Z" fill="currentColor" opacity=".14" />
+          <path d="M32 56 48 34l16 21-10-5-6 8-6-7-10 5Z" fill="#FFF8F0" opacity=".26" />
           <path
-            d="m89 88 13-25h-8l15-25 15 25h-8l13 25M109 88v10M130 95l10-20h-6l11-19 11 19h-6l10 20"
-            stroke="#456044"
-            strokeWidth="2.5"
+            d="M14 104c28-6 56-6 84 0s52 6 76-2"
+            stroke="#FCD34D"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            opacity=".55"
+          />
+          <path
+            d="m96 102 12-23h-7l13-22 13 22h-7l12 23M114 102v9M136 107l9-18h-5l10-17 10 17h-5l9 18"
+            stroke="#6EE7B7"
+            strokeWidth="2.2"
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>

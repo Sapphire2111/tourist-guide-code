@@ -83,6 +83,13 @@ describe("GoogleQuota — месячный предел по SKU", () => {
     expect(await q.take("place_photos", { daily: 3, monthly: 100 })).toBe(false);
     expect(usage.get(`${MONTH}|place_photos_month`)).toBe(0);
     expect(await q.take("place_photos", { monthly: 0 })).toBe(false);
+    // Несколько единиц — разом или ни одной (погода: «сейчас» + «по дням»).
+    const pair = new GoogleQuota(
+      usageDb(new Map([[`${MONTH}|weather_month`, 9]])).db,
+      at("2026-11-15T10:00:00Z"),
+    );
+    expect(await pair.take("weather", { monthly: 10 }, 2)).toBe(false);
+    expect(await pair.take("weather", { monthly: 11 }, 2)).toBe(true);
     const down = new GoogleQuota(usageDb(new Map(), { fails: true }).db, at("2026-11-15T10:00:00Z"));
     expect(await down.take("place_details", { monthly: 10 })).toBe(false);
   });

@@ -1,0 +1,147 @@
+/* Погода: пилюля на главной рядом с «Локація», лист прогноза, погода дня в «Мій план» (Weather.tsx, MyPlan.tsx). */
+.home-loc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.wx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.wx-chip[data-danger] {
+  border-color: var(--app-accent);
+}
+.wx-chip-temp {
+  font-variant-numeric: tabular-nums;
+}
+.wx-chip-alert {
+  font-size: 0.85rem;
+}
+.wx-icon {
+  display: inline-block;
+  flex: none;
+  line-height: 1;
+}
+.wx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* как лист «Локація»: выше шапки .kosiv-top (1100) */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.45);
+}
+.wx-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px 16px calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 16px);
+  border-radius: 20px 20px 0 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wx-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wx-sheet h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.wx-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  cursor: pointer;
+}
+.wx-warnings {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--app-accent);
+  background: var(--app-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+.wx-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wx-day {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) 32px minmax(76px, auto) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--app-border);
+}
+.wx-day-name {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.wx-day-temp {
+  font-variant-numeric: tabular-nums;
+}
+.wx-day-meta {
+  display: flex;
+  flex-direction: column;
+  color: var(--app-muted);
+  font-size: 0.8rem;
+}
+.wx-muted {
+  color: var(--app-muted);
+}
+.wx-source {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.75rem;
+}
+.wx-source a {
+  color: inherit;
+}
+/* «Мій план»: погода в заголовке дня и предупреждения в теле дня. */
+.plan-day-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.plan-weather-note {
+  margin: 0 0 8px;
+}
+.home-loc-row:empty {
+  display: none;
+}
+.home-loc-row > .loc-chip {
+  min-width: 0;
+}

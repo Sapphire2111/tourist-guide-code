@@ -1415,6 +1415,20 @@ export interface GoogleApiUsageTable {
   count: number;
 }
 
+/** Прогноз погоды по фиксированной точке (0026, global): центр населённого пункта или горная точка. */
+export interface WeatherForecastsTable {
+  point_key: string;
+  kind: "settlement" | "mountain";
+  lat: number;
+  lng: number;
+  source: Nullable<"google" | "open-meteo">;
+  forecast: ColumnType<JsonObject | null, JsonObject | null | undefined, JsonObject | null>;
+  content_hash: Nullable<string>;
+  fetched_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database {
   app_meta: AppMetaTable;
   feature_flags: FeatureFlagsTable;
@@ -1480,4 +1494,6 @@ export interface Database {
   bookings: BookingsTable;
   booking_events: BookingEventsTable;
   booking_reminders: BookingRemindersTable;
+  // Погода (0026).
+  weather_forecasts: WeatherForecastsTable;
 }

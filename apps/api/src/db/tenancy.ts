@@ -93,6 +93,8 @@ export const TABLE_TENANCY = {
   booking_events: "tenant",
   // Напоминания броней (0023): отметка «уже отправлено» — регион брони.
   booking_reminders: "tenant",
+  // Прогноз погоды (0026): публичные данные по координатам точки — общие.
+  weather_forecasts: "global",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

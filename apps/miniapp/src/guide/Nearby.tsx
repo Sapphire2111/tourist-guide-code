@@ -5,12 +5,12 @@ import { pickLocalized } from "@tg/i18n";
 import { useDesign } from "../design/DesignProvider.js";
 import { useCategoryIndex } from "./categories.js";
 import { ICONS } from "../design/Ornament.js";
-import { Button, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
-import { AsyncView, PlaceList } from "./parts.js";
+import { AsyncView, PlaceList, useDistance } from "./parts.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
 
 /** Ползунок радиуса, м: от 500 м до 10 км шагом 500 м. */
@@ -81,51 +81,79 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   return (
     <div className={design === "modern" ? "modern-nearby" : undefined}>
       <Stack>
-        <h1>{t("miniapp.nearby.title")}</h1>
-        {caption && <p data-testid="nearby-caption">{caption}</p>}
-        {geo.status === "denied" && (
-          <p role="alert" data-testid="geo-off">
-            {base?.point ? t("miniapp.nearby.geoOff", { base: base.name }) : t("miniapp.nearby.geoOffNoBase")}
-          </p>
-        )}
-        {geo.status === "denied" && canOpenLocationSettings(webApp) && (
-          <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
-            {t("miniapp.nearby.openSettings")}
-          </Button>
-        )}
-        <RangePanel className="kosiv-range">
+        <div className={design === "modern" ? "modern-nearby-head" : undefined}>
           {design === "modern" && (
-            <summary>
-              {t("miniapp.nearby.radius")}
-              <span>{radiusText}</span>
-            </summary>
+            <svg
+              className="modern-nearby-art"
+              viewBox="0 0 400 90"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M0 90 L0 38 L70 14 L155 44 L235 12 L320 40 L400 18 L400 90 Z"
+                fill="rgba(255,255,255,0.06)"
+              />
+              <path d="M0 90 L0 58 L95 36 L195 62 L290 32 L400 54 L400 90 Z" fill="rgba(255,255,255,0.08)" />
+              <ellipse cx="200" cy="70" rx="220" ry="18" fill="rgba(255,255,255,0.12)" />
+            </svg>
           )}
-          <div className="kosiv-range-head">
-            <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
-            <output htmlFor="nearby-radius" data-testid="radius-value">
-              {radiusText}
-            </output>
+          <div className={design === "modern" ? "modern-nearby-titles" : undefined}>
+            <h1>{t("miniapp.nearby.title")}</h1>
+            {caption && <p data-testid="nearby-caption">{caption}</p>}
+            {design === "modern" && (
+              <span className="modern-nearby-badge" aria-hidden="true">
+                {ICONS.nearby}
+              </span>
+            )}
           </div>
-          <input
-            id="nearby-radius"
-            type="range"
-            min={RADIUS_MIN}
-            max={RADIUS_MAX}
-            step={RADIUS_STEP}
-            value={radius}
-            aria-valuetext={radiusText}
-            onChange={(e) => setRadius(Number(e.target.value))}
-          />
-        </RangePanel>
-        {geo.status !== "granted" && (
-          <Button
-            className={design === "modern" ? "modern-locate" : undefined}
-            disabled={geo.status === "locating"}
-            onClick={locate}
-          >
-            {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
-          </Button>
-        )}
+          {geo.status === "denied" && (
+            <p role="alert" data-testid="geo-off">
+              {base?.point
+                ? t("miniapp.nearby.geoOff", { base: base.name })
+                : t("miniapp.nearby.geoOffNoBase")}
+            </p>
+          )}
+          {geo.status === "denied" && canOpenLocationSettings(webApp) && (
+            <Button onClick={() => webApp?.LocationManager?.openSettings?.()}>
+              {t("miniapp.nearby.openSettings")}
+            </Button>
+          )}
+          <div className={design === "modern" ? "modern-nearby-actions" : undefined}>
+            <RangePanel className="kosiv-range">
+              {design === "modern" && (
+                <summary>
+                  {t("miniapp.nearby.radius")}
+                  <span>{radiusText}</span>
+                </summary>
+              )}
+              <div className="kosiv-range-head">
+                <label htmlFor="nearby-radius">{t("miniapp.nearby.radius")}</label>
+                <output htmlFor="nearby-radius" data-testid="radius-value">
+                  {radiusText}
+                </output>
+              </div>
+              <input
+                id="nearby-radius"
+                type="range"
+                min={RADIUS_MIN}
+                max={RADIUS_MAX}
+                step={RADIUS_STEP}
+                value={radius}
+                aria-valuetext={radiusText}
+                onChange={(e) => setRadius(Number(e.target.value))}
+              />
+            </RangePanel>
+            {geo.status !== "granted" && (
+              <Button
+                className={design === "modern" ? "modern-locate" : undefined}
+                disabled={geo.status === "locating"}
+                onClick={locate}
+              >
+                {geo.status === "locating" ? t("miniapp.nearby.locating") : t("miniapp.nearby.useLocation")}
+              </Button>
+            )}
+          </div>
+        </div>
         {point ? (
           <NearbyPlaces
             point={point}
@@ -237,6 +265,7 @@ export function ModernNearbyResults({
   const { api } = useGuide();
   const categories = useCategoryIndex(api);
   const radiusText = useRadiusLabel()(radius);
+  const distanceLabel = useDistance();
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<HomeSection | "all">("all");
@@ -247,60 +276,88 @@ export function ModernNearbyResults({
     ]),
   );
   // Стабильная ссылка: иначе карта пересоздаёт маркеры и сбрасывает охват на каждый рендер.
+  // Места в списке под картой всегда идут от ближайшего к самому дальнему.
   const visible = useMemo(
     () =>
-      list.filter(
-        (p) =>
-          (section === "all" || categories.sectionOf(p.categoryId) === section) &&
-          `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
-            .toLocaleLowerCase(locale)
-            .includes(query.trim().toLocaleLowerCase(locale)),
-      ),
+      list
+        .filter(
+          (p) =>
+            (section === "all" || categories.sectionOf(p.categoryId) === section) &&
+            `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
+              .toLocaleLowerCase(locale)
+              .includes(query.trim().toLocaleLowerCase(locale)),
+        )
+        .sort(
+          (a, b) =>
+            (a.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.distanceMeters ?? Number.POSITIVE_INFINITY),
+        ),
     [list, section, query, categories, locale],
   );
+  const closest = visible[0];
+  const closestSection = closest ? categories.sectionOf(closest.categoryId) : null;
+  const closestDist = closest ? distanceLabel(closest.distanceMeters) : null;
   return (
     <div className="modern-nearby-results">
-      <label className="modern-search">
-        {ICONS.search}
-        <input
-          type="search"
-          value={query}
-          aria-label={t("miniapp.modern.search")}
-          placeholder={t("miniapp.modern.search")}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
-        <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
-          {t("miniapp.modern.all")}
-        </button>
-        {sections.map((s) => (
-          <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
-            {ICONS[s]}
-            {t(`miniapp.section.${s}`)}
-          </button>
-        ))}
-      </div>
-      <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
-        {(["map", "list"] as const).map((v) => (
-          <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
-            {v === "map" ? ICONS.plan : ICONS.nearby}
-            {t(`miniapp.modern.${v}`)}
-          </button>
-        ))}
-      </div>
-      {view === "map" && (
-        <div className="modern-map-panel">
-          <MapSlot
-            places={visible}
-            center={base}
-            centerLabel={baseLabel}
-            radius={base ? radius : undefined}
-            maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
-            me={me}
-          />
+      <div className="modern-map-stage">
+        <div className="modern-map-overlay">
+          <div className="modern-toolbar">
+            <label className="modern-search">
+              {ICONS.search}
+              <input
+                type="search"
+                value={query}
+                aria-label={t("miniapp.modern.search")}
+                placeholder={t("miniapp.modern.search")}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <div className="modern-view-switch" role="group" aria-label={t("miniapp.modern.views")}>
+              {(["map", "list"] as const).map((v) => (
+                <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
+                  {v === "map" ? ICONS.plan : ICONS.nearby}
+                  {t(`miniapp.modern.${v}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
+            <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
+              {t("miniapp.modern.all")}
+            </button>
+            {sections.map((s) => (
+              <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
+                {ICONS[s]}
+                {t(`miniapp.section.${s}`)}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+        {view === "map" && (
+          <div className="modern-map-panel">
+            <MapSlot
+              places={visible}
+              center={base}
+              centerLabel={baseLabel}
+              radius={base ? radius : undefined}
+              maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
+              me={me}
+            />
+            {closest && (
+              <div className="modern-map-spot">
+                <span className="modern-map-spot-icon" aria-hidden="true">
+                  {ICONS[closestSection ?? "nearby"]}
+                </span>
+                <div className="modern-map-spot-body">
+                  {closestDist && <span className="modern-map-spot-dist">{closestDist}</span>}
+                  <Link to={`/place/${closest.id}`} className="modern-map-spot-title">
+                    {pickLocalized(closest.name, locale)}
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="modern-results-sheet" aria-busy={loading}>
         <p role="status" className="modern-results-count" data-testid="nearby-status">
           {loading ? t("miniapp.guide.loading") : t("miniapp.modern.results", { n: visible.length })}

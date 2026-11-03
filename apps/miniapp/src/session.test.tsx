@@ -120,6 +120,7 @@ const flush = () => act(async () => void (await new Promise((r) => setTimeout(r,
 beforeEach(() => {
   setToken(null);
   window.localStorage.clear();
+  window.localStorage.setItem("tg.design", "original");
   window.sessionStorage.clear();
 });
 afterEach(() => {

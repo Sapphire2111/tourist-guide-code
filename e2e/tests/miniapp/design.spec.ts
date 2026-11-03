@@ -9,7 +9,7 @@ async function pickDesign(page: Page, name: "Сучасний" | "Оригіна
   await page.getByRole("button", { name, exact: true }).click();
 }
 
-test.use({ telegram: { startParam: "demoHotel01" } });
+test.use({ telegram: { startParam: "demoHotel01" }, design: null });
 test.beforeEach(async ({ page }) => {
   apiMockState.get(page)!.consents = [
     { kind: "terms", version: "2026-11-01-draft" },
@@ -23,8 +23,7 @@ test("modern home, preference persistence, nearby search/map/list and original r
   page,
 }, testInfo) => {
   await page.goto("/");
-  await expect(page.getByTestId("venue-summary")).toBeVisible();
-  await pickDesign(page, "Сучасний");
+  await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(4);
   await expectNoSeriousA11yViolations(page);
@@ -89,11 +88,12 @@ test("modern home, preference persistence, nearby search/map/list and original r
     .getByRole("link", { name: "Головна", exact: true })
     .click();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(11);
+  await page.reload();
+  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(11);
 });
 test("modern narrow screen retains working list", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
-  await pickDesign(page, "Сучасний");
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expectNoSeriousA11yViolations(page);
@@ -105,7 +105,6 @@ test.describe("without map provider", () => {
   test.use({ googleMaps: false });
   test("list remains available", async ({ page }) => {
     await page.goto("/");
-    await pickDesign(page, "Сучасний");
     await page.getByRole("link", { name: "Відкрити місця поруч" }).click();
     await expect(page.getByTestId("map-unavailable")).toBeVisible();
     await expect(page.getByTestId("place-item").first()).toBeVisible();

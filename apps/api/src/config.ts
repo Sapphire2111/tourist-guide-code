@@ -103,6 +103,16 @@ export const apiEnvSchema = z
       blankToUndefined,
       z.coerce.number().int().min(0).max(1_000_000).default(1000),
     ),
+    // Погода (модуль weather): Google Weather API по GOOGLE_MAPS_API_KEY — запросов в сутки и в месяц не больше
+    // (America/Los_Angeles, счётчик google_api_usage). Сверх предела и без ключа — бесплатный Open-Meteo.
+    GOOGLE_WEATHER_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(100_000).default(300),
+    ),
+    GOOGLE_WEATHER_MONTHLY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(1_000_000).default(5000),
+    ),
     // Ассистент на главной (POST /assistant/query): ключ Claude API для разбора запроса туриста. Не задан — ассистент
     // отвечает 503 errors.assistant.unavailable (не 500). Голос (POST /assistant/transcribe) — Google Speech-to-Text
     // по GOOGLE_MAPS_API_KEY (в проекте Google должен быть включён Speech-to-Text API).
