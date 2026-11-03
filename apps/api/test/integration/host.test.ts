@@ -9,6 +9,7 @@ import { createDatabase, regionContext, withTenant, type Db } from "../../src/db
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../../src/modules/audit/index.js";
 import { HostRepository, HostService, NotificationsService } from "../../src/modules/host/index.js";
 import { PlannerRepository, PlannerService } from "../../src/modules/planner/index.js";
+import { writeDrafts } from "../../src/scenarios-gen/writer.js";
 import {
   placeParentLoader,
   RbacService,
@@ -400,5 +401,70 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
     });
     expect(fewer.trip).toMatchObject({ days: 1, withCar: true });
     await planner.deletePlan(base.regions.a, GUEST, plan.id);
+  });
+
+  it("сезоны (0025): генератор пишет сценарий, турист видит его только в его сезон; повтор — пропуск", async () => {
+    const draft = {
+      code: "ai-test-summer-1d",
+      title: { uk: "Літній день" },
+      description: null,
+      days: 1,
+      tags: ["one_day" as const, "waterfalls" as const],
+      seasons: ["summer" as const],
+      items: [
+        {
+          dayNo: 1,
+          placeId: OTHER_HOTEL,
+          placeName: "—",
+          category: "hotels",
+          timeHint: "10:00",
+          durationMin: 60,
+          note: { uk: "Зручне взуття" },
+          alternatives: [HOTEL],
+        },
+      ],
+      dayStats: [],
+    };
+    expect(await writeDrafts(appDb, base.regions.a, [draft], { publish: true })).toMatchObject({
+      written: 1,
+    });
+    expect(await writeDrafts(appDb, base.regions.a, [draft], { publish: true })).toMatchObject({
+      written: 0,
+      existing: 1,
+    });
+    // Ошибка одного сценария (CHECK на название) не откатывает соседний: у каждого своя транзакция.
+    const isolated = await writeDrafts(
+      appDb,
+      base.regions.a,
+      [
+        { ...draft, code: "ai-test-bad-title", title: { uk: " " } },
+        { ...draft, code: "ai-test-after-bad" },
+      ],
+      { publish: false },
+    );
+    expect(isolated).toMatchObject({ written: 1, existing: 0 });
+    expect(isolated.failed.map((f) => f.code)).toEqual(["ai-test-bad-title"]);
+    const summer = await planner.scenarios(base.regions.a, { season: "summer" });
+    expect(summer.items.find((x) => x.code === draft.code)).toMatchObject({
+      seasons: ["summer"],
+      itemCount: 1,
+    });
+    const winter = await planner.scenarios(base.regions.a, { season: "winter" });
+    expect(winter.items.some((x) => x.code === draft.code)).toBe(false);
+    // Демо-сценарии без сезонов — круглый год.
+    expect(winter.items.some((x) => x.code === "one-day-yaremche")).toBe(true);
+    const admin = await withTenant(appDb, regionContext(base.regions.a), () =>
+      planner.adminList({ season: "winter" }),
+    );
+    expect(admin.items.some((x) => x.code === draft.code)).toBe(false);
+    const { rows } = await sql("SELECT status, seasons FROM scenarios WHERE code = $1", [draft.code]);
+    expect(rows[0]).toMatchObject({ status: "published", seasons: ["summer"] });
+    // Аудит генератора — одна запись scenario.create (актор SYSTEM); повтор не пишет.
+    const { rows: audit } = await sql(
+      `SELECT count(*)::int AS n FROM audit_logs l JOIN scenarios s ON s.id::text = l.entity_id
+       WHERE l.action = 'scenario.create' AND s.code = $1`,
+      [draft.code],
+    );
+    expect(audit[0]).toMatchObject({ n: 1 });
   });
 });

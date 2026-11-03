@@ -3,8 +3,13 @@
 // что будет делать. Без Nest и БД. Ничего не выдумываем: подпись — категория места (или «Водоспад»/«Бар» по названию
 // из Google), причина — что даёт эта категория в эту часть дня, расстояние — по прямой от предыдущего пункта дня
 // (или базовой точки), время в пути — оценка по средней скорости. Цен, рейтингов, часов работы не придумываем.
-import type { LonLat, PlanSlot } from "../../db/index.js";
+import type { LonLat, PlanSlot, ScenarioSeason } from "../../db/index.js";
 import { sphericalMeters } from "./plan-rules.js";
+import { placeFitsSeason } from "./season.js";
+import { isMountainHike } from "./visit-duration.js";
+
+/** Горный поход — одно определение для сезона и погоды (visit-duration.ts). */
+export { isMountainHike };
 
 export const PLAN_DAYS_MAX = 14;
 export const OPTIONS_PER_SLOT = 5;
@@ -104,16 +109,6 @@ const BAR_RE = word(
 );
 /** Ночная жизнь — не для детей в любой категории. */
 const NIGHTLIFE_RE = /нічн\p{L}*\s+клуб|night\s*club|кальян|hookah|стрип|strip/iu;
-/**
- * Поход в горы / на вершину (по названию из Google): гора, вершина, полонина, хребет, перевал, известные вершины
- * Карпат, peak/summit/trail. Погода: в грозу, сильный ветер, снегопад, гололёд такие места не предлагаем.
- */
-const MOUNTAIN_RE = word(
-  "гор[аиуі]|вершин\\p{L}*|полонин\\p{L}*|хреб\\p{L}*|перевал\\p{L}*|говерл\\p{L}*|хом['’]?як\\p{L}*|" +
-    "петрос\\p{L}*|піп\\s+іван\\p{L}*|чорногор\\p{L}*|peak|summit|mountain|mount|ridge|trail|hiking|" +
-    "стежк\\p{L}*|похід\\p{L}*",
-);
-const MOUNTAIN_CATEGORIES = new Set(["nature", "active", "excursions", "sights"]);
 /** ТРЦ/ТЦ — под крышей; прочие магазины в «якщо дощ» не предлагаем. */
 const MALL_RE = word("трц|тц|mall|торгов\\p{L}*\\s+центр");
 
@@ -122,11 +117,6 @@ export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKin
     return "waterfall";
   if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n))) return "bar";
   return p.category;
-}
-
-/** Горный поход: природа/активный отдых/экскурсии/пам'ятки с горным названием. */
-export function isMountainHike(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
-  return categoriesOf(p).some((c) => MOUNTAIN_CATEGORIES.has(c)) && p.names.some((n) => MOUNTAIN_RE.test(n));
 }
 
 /** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
@@ -302,7 +292,7 @@ export function slotOptions(
 
 /**
  * Варианты по всем дням плана. Точка отсчёта части дня — последний выбранный пункт раньше в этот день, иначе базовая
- * точка плана. Одно место не предлагается дважды в разные части дня/дни (кроме «якщо дощ» — запасной набор на
+ * точка плана; места — только уместные в сезон поездки. Одно место не предлагается дважды в разные части дня/дни (кроме «якщо дощ» — запасной набор на
  * каждый день), выбранные места плана — не предлагаются.
  */
 export function planOptions(input: {
@@ -311,10 +301,15 @@ export function planOptions(input: {
   places: readonly CatalogPlace[];
   trip: TripParams;
   base: LonLat | null;
+  /** Сезон поездки: места не по сезону (зимой — вершины и «Літо») не предлагаются; не задан — без фильтра. */
+  season?: ScenarioSeason;
   /** Дни, когда погода опасна для гор (прогноз): горные походы в эти дни не предлагаются. */
   noMountainDays?: ReadonlySet<number>;
 }): DayOptions[] {
-  const places = input.places.map(prepare);
+  const season = input.season;
+  const places = (season ? input.places.filter((p) => placeFitsSeason(p, season)) : input.places).map(
+    prepare,
+  );
   const inPlan = new Set(input.items.map((i) => i.placeId));
   const offered = new Set(inPlan);
   const out: DayOptions[] = [];

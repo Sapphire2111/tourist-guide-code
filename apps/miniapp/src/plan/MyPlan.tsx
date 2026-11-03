@@ -108,27 +108,47 @@ export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
 function ScenarioList() {
   const { t, locale } = useT();
   const { api } = useHost();
-  const [list, retry] = useAsync(() => api.scenarios(), [api]);
+  // Дата поездки: сценарии её сезона (зимой можно спланировать летнюю поездку); без даты — текущий сезон.
+  const [tripDate, setTripDate] = useState("");
+  const [list, retry] = useAsync(() => api.scenarios(tripDate || null), [api, tripDate]);
+  const dateId = useId();
   return (
-    <AsyncView state={list} retry={retry}>
-      {(items: ScenarioSummary[]) =>
-        items.length ? (
-          <ul style={listStyle} data-testid="scenarios">
-            {items.map((s) => (
-              <li key={s.id} style={card} data-testid="scenario-item">
-                <Link to={`/plan/scenario/${s.id}`} style={{ fontSize: "1.2rem", fontWeight: 700 }}>
-                  {pickLocalized(s.title, locale)}
-                </Link>
-                <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: s.days })}</span>
-                {s.description && <p style={{ margin: "4px 0 0" }}>{pickLocalized(s.description, locale)}</p>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p data-testid="scenarios-empty">{t("miniapp.plan.empty")}</p>
-        )
-      }
-    </AsyncView>
+    <>
+      <label htmlFor={dateId} className="plan-date">
+        <span>{t("miniapp.plan.trip.startDate")}</span>
+        <input
+          id={dateId}
+          type="date"
+          value={tripDate}
+          data-testid="scenarios-date"
+          onChange={(e) => setTripDate(e.target.value)}
+        />
+      </label>
+      <AsyncView state={list} retry={retry}>
+        {(items: ScenarioSummary[]) =>
+          items.length ? (
+            <ul style={listStyle} data-testid="scenarios">
+              {items.map((s) => (
+                <li key={s.id} style={card} data-testid="scenario-item">
+                  <Link
+                    to={`/plan/scenario/${s.id}${tripDate ? `?date=${tripDate}` : ""}`}
+                    style={{ fontSize: "1.2rem", fontWeight: 700 }}
+                  >
+                    {pickLocalized(s.title, locale)}
+                  </Link>
+                  <span style={{ display: "block" }}>{t("miniapp.plan.days", { n: s.days })}</span>
+                  {s.description && (
+                    <p style={{ margin: "4px 0 0" }}>{pickLocalized(s.description, locale)}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p data-testid="scenarios-empty">{t("miniapp.plan.empty")}</p>
+          )
+        }
+      </AsyncView>
+    </>
   );
 }
 
@@ -340,18 +360,25 @@ export function NewPlanScreen() {
 
 // --- сценарий ---
 
+/** Дата поездки из адреса (#/plan/scenario/<id>?date=YYYY-MM-DD) — со списка сценариев; иначе null. */
+export function tripDateFromHash(hash: string = window.location.hash): string | null {
+  const d = new URLSearchParams(hash.split("?")[1] ?? "").get("date");
+  return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
 export function ScenarioScreen({ id }: { id: string }) {
   const { api } = useHost();
   const [s, retry] = useAsync(() => api.scenario(id), [api, id]);
+  const startDate = tripDateFromHash();
   return (
     <AsyncView state={s} retry={retry}>
-      {(sc) => <ScenarioView scenario={sc} />}
+      {(sc) => <ScenarioView scenario={sc} startDate={startDate} />}
     </AsyncView>
   );
 }
 
 /** Готовый сценарий: просмотр по дням; правки — после «Зберегти як план» (план пользователя на сервере). */
-function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
+function ScenarioView({ scenario, startDate }: { scenario: ScenarioDetail; startDate: string | null }) {
   const { t, locale } = useT();
   const { signedIn } = useGuide();
   const { api } = useHost();
@@ -363,7 +390,8 @@ function ScenarioView({ scenario }: { scenario: ScenarioDetail }) {
     setBusy(true);
     setStatus(null);
     try {
-      const plan = await api.savePlan(scenario.id);
+      // Дата поездки со списка — в план: варианты на выбор считаются по её сезону.
+      const plan = await api.savePlan(scenario.id, startDate);
       navigate(`/plan/saved/${plan.id}`, { replace: true });
     } catch (err) {
       setStatus({ text: errorText(err, "miniapp.plan.saveError"), alert: true });
