@@ -12,7 +12,7 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { createDatabase, type Db } from "../db/index.js";
 import { GenArgsError, parseGenArgs } from "../scenarios-gen/args.js";
-import { allBriefs, WANTED_AREAS, type Brief } from "../scenarios-gen/briefs.js";
+import { allBriefs, AREAS, targetBriefs, WANTED_AREAS, type Brief } from "../scenarios-gen/briefs.js";
 import { selectCandidates, type CandidateSet } from "../scenarios-gen/candidates.js";
 import { loadCatalog } from "../scenarios-gen/catalog.js";
 import {
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     // Заказы: по кругу тем, без уже записанных кодов, только те, что собираются из каталога.
     const skipped: { code: string; reason: string }[] = [];
     const chosen: { brief: Brief; set: CandidateSet }[] = [];
-    for (const brief of allBriefs()) {
+    for (const brief of allBriefs(AREAS, targetBriefs(catalog.places))) {
       if (chosen.length >= args.count) break;
       if (args.themes.size && !args.themes.has(brief.theme.code)) continue;
       if (args.areas.size && !args.areas.has(brief.area)) continue;
@@ -126,14 +126,34 @@ async function main(): Promise<void> {
       throw new GenArgsError("Нужен ANTHROPIC_API_KEY");
     const client = new Anthropic();
     let done = 0;
+    // Разнообразие: сколько раз место уже взято в готовые сценарии прогона — штраф при подборе следующих.
+    const usedCounts = new Map<string, number>();
     const outcomes: GenOutcome[] = await pool(chosen, args.concurrency, async ({ brief, set }) => {
-      const r = await generateOne(client.messages, brief, set, usage, { retries: args.retries });
+      const fresh = selectCandidates(brief, catalog, usedCounts);
+      const r = await generateOne(client.messages, brief, fresh.viable ? fresh : set, usage, {
+        retries: args.retries,
+        criticRounds: args.criticRounds,
+      });
+      for (const i of r.draft?.items ?? []) usedCounts.set(i.placeId, (usedCounts.get(i.placeId) ?? 0) + 1);
       done++;
+      const fixedByCritic = r.critic.filter((c) => c.accepted && c.verdict === "fix").length;
       console.log(
-        `[${done}/${chosen.length}] ${brief.code}: ${r.draft ? `ок (${r.draft.items.length} пунктов, попыток ${r.attempts})` : `отброшен — ${r.errors.slice(0, 2).join("; ")}`}`,
+        `[${done}/${chosen.length}] ${brief.code}: ` +
+          (r.draft
+            ? `ок (${r.draft.items.length} пунктов, попыток ${r.attempts}, правок критика ${fixedByCritic})`
+            : `отброшен — ${r.errors.slice(0, 2).join("; ")}`) +
+          ` ≈ $${usd(usage)} всего`,
       );
       return r;
     });
+    report.critic = Object.fromEntries(
+      outcomes.filter((o) => o.critic.length).map((o) => [o.code, o.critic]),
+    );
+    report.reuse = [...usedCounts.entries()]
+      .filter(([, n]) => n > 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([id, n]) => ({ place: catalog.places.find((p) => p.id === id)?.name ?? id, scenarios: n }));
     drafts = outcomes.flatMap((o) => (o.draft ? [o.draft] : []));
     report.failed = outcomes.filter((o) => !o.draft).map((o) => ({ code: o.code, errors: o.errors }));
     report.fixes = Object.fromEntries(outcomes.filter((o) => o.fixes.length).map((o) => [o.code, o.fixes]));

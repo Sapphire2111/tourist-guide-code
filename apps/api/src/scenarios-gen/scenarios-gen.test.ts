@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LonLat } from "../db/index.js";
 import { GenArgsError, parseGenArgs } from "./args.js";
-import { allBriefs, THEMES, type Brief, type ThemeCode } from "./briefs.js";
+import { allBriefs, targetBriefs, TARGET_THEMES, THEMES, type Brief, type ThemeCode } from "./briefs.js";
 import { fitsBrief, selectCandidates, weeklyShort, type CandidateSet } from "./candidates.js";
 import { genPlace, type GenCatalog, type GenPlace } from "./catalog.js";
 import { emptyUsage, generateOne, pool, usd, type MessagesApi } from "./generate.js";
@@ -28,11 +28,13 @@ const place = (category: string, name: string, m: number, over: Partial<GenPlace
     rating: 4.7,
     ratingCount: 100,
     typeLabel: null,
+    priceLevel: null,
+    summary: null,
     weekly: [],
     ...over,
   });
 
-const theme = (code: ThemeCode) => THEMES.find((t) => t.code === code)!;
+const theme = (code: ThemeCode) => [...THEMES, ...TARGET_THEMES].find((t) => t.code === code)!;
 const brief = (code: ThemeCode, over: Partial<Brief> = {}): Brief => ({
   code: `ai-yaremche-${code}-test-1d`,
   theme: theme(code),
@@ -42,7 +44,13 @@ const brief = (code: ThemeCode, over: Partial<Brief> = {}): Brief => ({
   ...over,
 });
 const setOf = (places: GenPlace[]): CandidateSet => {
-  const candidates = places.map((p, i) => ({ ref: `p${i + 1}`, place: p, distance: 0, focus: true }));
+  const candidates = places.map((p, i) => ({
+    ref: `p${i + 1}`,
+    place: p,
+    distance: 0,
+    focus: true,
+    used: 0,
+  }));
   return {
     candidates,
     byRef: new Map(candidates.map((c) => [c.ref, c.place])),
@@ -150,7 +158,7 @@ describe("проверка сценария", () => {
     const r = validateScenario(
       brief("peak"),
       set,
-      scenario([item("p1", "08:00", 90), item("p2", "10:00", 75), item("p3", "18:00", 120)]),
+      scenario([item("p1", "08:00", 90, ["p3"]), item("p2", "10:00", 75), item("p3", "18:00", 120)]),
     );
     expect(r.errors).toEqual([]);
     const [hike, meal] = r.draft!.items;
@@ -230,7 +238,7 @@ describe("проверка сценария", () => {
 
 describe("генерация", () => {
   const set = setOf([probii, lunch, chan]);
-  const good = scenario([item("p1", "10:00", 45), item("p2", "12:00", 75), item("p3", "15:00", 120)]);
+  const good = scenario([item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)]);
   const res = (text: string) => ({
     stop_reason: "end_turn",
     usage: {
@@ -256,12 +264,12 @@ describe("генерация", () => {
     expect(r.draft?.items).toHaveLength(3);
     expect(r.attempts).toBe(2);
     expect(usage).toEqual({ input: 2000, cacheWrite: 100, cacheRead: 200, output: 1000, requests: 2 });
-    // 2000×2 + 100×2,5 + 200×0,2 + 1000×10 = 14 290 мкдолл. → $0,01
-    expect(usd(usage)).toBe(0.01);
+    // Opus 5.5: 2000×4 + 100×5 + 200×0,4 + 1000×20 = 28 580 мкдолл. → $0,03
+    expect(usd(usage)).toBe(0.03);
     const second = create.mock.calls[1]![0] as { messages: { content: string }[] };
     expect(second.messages[0]!.content).toMatch(/не пройшла перевірку[\s\S]*p7/);
     const params = requestParams(brief("waterfalls"), set);
-    expect(params.model).toBe("claude-sonnet-5-5");
+    expect(params.model).toBe("claude-opus-5-5");
     expect(params.output_config).toMatchObject({ format: { type: "json_schema", schema: OUTPUT_SCHEMA } });
   });
 
@@ -318,7 +326,7 @@ describe("--from-file: проверка готового сценария", () =
     const draft = validateScenario(
       brief("peak"),
       set,
-      scenario([item("p1", "08:00", 390), item("p2", "15:00", 75), item("p3", "18:00", 120)]),
+      scenario([item("p1", "08:00", 390, ["p3"]), item("p2", "15:00", 75), item("p3", "18:00", 120)]),
     ).draft!;
     const byId = new Map([khomiak, lunch, chan].map((x) => [x.id, x]));
     expect(checkDraft(draft, byId)).toEqual([]);
@@ -359,5 +367,149 @@ describe("--from-file: проверка готового сценария", () =
     expect(checkDraft(upper, byId)).toEqual([]);
     // Зимний сезон для похода на вершину — нет.
     expect(checkDraft({ ...draft, seasons: ["winter"] }, byId).join()).toMatch(/сезону winter/);
+  });
+});
+
+describe("комфорт туриста (решение владельца 03.11.2026)", () => {
+  const museum = place("museums", "Музей Гуцульщини", 1100);
+  it("зимой надворі — до заката; поход — с запасом 30 хв", () => {
+    const set = setOf([probii, lunch, chan, museum]);
+    const r = validateScenario(
+      brief("waterfalls", { seasons: ["winter"] }),
+      set,
+      scenario([item("p2", "12:00", 75), item("p1", "16:00", 45, ["p4"]), item("p3", "18:00", 120)]),
+    );
+    expect(r.errors.join("\n")).toMatch(/після заходу сонця \(16:15/);
+  });
+
+  it("обед в окне 11:30–15:30; запасной вариант на дождь; с детьми — одна большая активность", () => {
+    const set = setOf([probii, lunch, chan, museum]);
+    const late = validateScenario(
+      brief("waterfalls"),
+      set,
+      scenario([item("p1", "10:00", 45, ["p4"]), item("p4", "11:00", 60), item("p2", "16:30", 75)]),
+    );
+    expect(late.errors.join("\n")).toMatch(/немає обіду/);
+    const noAlt = validateScenario(
+      brief("waterfalls"),
+      set,
+      scenario([item("p1", "10:00", 45), item("p2", "12:00", 75), item("p3", "15:00", 120)]),
+    );
+    expect(noAlt.errors.join("\n")).toMatch(/запасного варіанту на дощ/);
+    const zoo = place("kids", "Звіринець", 900);
+    const park = place("entertainment", "Парк розваг", 950);
+    const kids = validateScenario(
+      brief("kids"),
+      setOf([zoo, park, lunch, museum]),
+      scenario([item("p1", "10:00", 180, ["p4"]), item("p3", "13:15", 75), item("p2", "14:45", 180)]),
+    );
+    expect(kids.errors.join("\n")).toMatch(/з дітьми — не більше однієї великої/);
+  });
+
+  it("зигзаг по карте — ошибка; место-цель обязательно", () => {
+    const a = place("nature", "Водоспад А", 0);
+    const far1 = place("nature", "Водоспад Б", 12_000);
+    const c = place("restaurants", "Колиба Б", 200, {
+      weekly: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "09:00", closesAt: "22:00" })),
+    });
+    const set = setOf([a, far1, c, museum]);
+    const zig = validateScenario(
+      brief("waterfalls"),
+      set,
+      scenario([item("p1", "09:00", 60, ["p4"]), item("p2", "10:30", 60), item("p3", "12:30", 75)]),
+    );
+    expect(zig.errors.join("\n")).not.toMatch(/зигзаг/);
+    const set2 = setOf([a, far1, c, museum, place("nature", "Водоспад В", 12_100)]);
+    const zz = validateScenario(
+      brief("waterfalls"),
+      set2,
+      scenario([
+        item("p1", "08:00", 60, ["p4"]),
+        item("p2", "09:30", 60),
+        item("p3", "11:30", 75),
+        item("p5", "13:30", 60),
+      ]),
+    );
+    expect(zz.errors.join("\n")).toMatch(/зигзагом/);
+    const targeted = validateScenario(
+      { ...brief("summit"), target: { placeId: khomiak.id, name: "Хом'як", location: khomiak.location } },
+      setOf([probii, lunch, chan]),
+      scenario([item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)]),
+    );
+    expect(targeted.errors.join("\n")).toMatch(/немає обовʼязкового пункту «Хом'як»/);
+  });
+
+  it("место не каждый день — график в примечание (ринок у Косові по суботах)", () => {
+    const market = place("markets", "Косівський ринок", 300, {
+      weekly: [{ dayOfWeek: 6, opensAt: "06:00", closesAt: "13:00" }],
+    });
+    const r = validateScenario(
+      brief("culture"),
+      setOf([market, lunch, museum]),
+      scenario([item("p1", "08:00", 60, ["p3"]), item("p3", "10:00", 60), item("p2", "12:00", 75)]),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.draft!.items[0]!.note!.uk).toMatch(/Графік: сб 06:00-13:00/);
+  });
+
+  it("targetBriefs: вершины, скит, ринок — по одному месту на ключ, коды стабильны", () => {
+    const hoverla = place("nature", "Говерла", 0, { ratingCount: 5000 });
+    const hoverla2 = place("nature", "Hoverla", 10, { ratingCount: 10 });
+    const skete = place("sights", "Манявський скит", 0);
+    const market = place("markets", "Косівський ринок", 0, { locality: "kosiv" });
+    const briefs = targetBriefs([hoverla, hoverla2, skete, market, place("hotels", "Готель Говерла", 0)]);
+    const codes = briefs.map((b) => b.code);
+    expect(codes).toContain("ai-summit-hoverla-sa-1d");
+    expect(codes).toContain("ai-summit-hoverla-s-1d");
+    expect(codes).toContain("ai-maniava-spsa-1d");
+    expect(codes).toContain("ai-kosiv-market-all-1d");
+    expect(briefs.find((b) => b.code === "ai-summit-hoverla-s-1d")!.target!.placeId).toBe(hoverla.id);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it("критик: правка принимается, только если проходит проверку; «ok» — конец", async () => {
+    const set = setOf([probii, lunch, chan]);
+    const good = scenario([
+      item("p1", "10:00", 45, ["p3"]),
+      item("p2", "12:00", 75),
+      item("p3", "15:00", 120),
+    ]);
+    const better = scenario([
+      item("p1", "09:30", 45, ["p3"]),
+      item("p2", "12:00", 75),
+      item("p3", "16:00", 120),
+    ]);
+    const bad = scenario([item("p9", "09:30", 45)]);
+    const res = (o: unknown) => ({
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+      content: [{ type: "text", text: JSON.stringify(o) }],
+    });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(res(good))
+      .mockResolvedValueOnce(res({ verdict: "fix", issues: ["неіснуюче місце"], revised: bad }))
+      .mockResolvedValueOnce(res({ verdict: "fix", issues: ["раніше на водоспад"], revised: better }))
+      .mockResolvedValueOnce(res({ verdict: "ok", issues: [], revised: better }));
+    const r = await generateOne(
+      { create } as unknown as MessagesApi,
+      brief("waterfalls"),
+      set,
+      emptyUsage(),
+      {
+        retries: 0,
+        criticRounds: 3,
+      },
+    );
+    expect(r.critic.map((c) => [c.verdict, c.accepted])).toEqual([
+      ["fix", false],
+      ["fix", true],
+      ["ok", true],
+    ]);
+    expect(r.draft!.items[0]!.timeHint).toBe("09:30");
+    // Второй раунд критика получил ошибки программы.
+    const second = create.mock.calls[2]![0] as { messages: { content: string }[]; model: string };
+    expect(second.messages[0]!.content).toMatch(/не пройшло перевірку програмою[\s\S]*p9/);
+    expect(second.model).toBe("claude-opus-5-5");
   });
 });

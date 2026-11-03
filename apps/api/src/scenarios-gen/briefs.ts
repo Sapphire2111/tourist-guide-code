@@ -1,9 +1,14 @@
 // Заказы на сценарии (brief): район × тема × сезон × дни. Детерминированный список — повторный прогон даёт те же коды
 // (уже записанные пропускаются), --count N берёт первые N по кругу тем (разнообразие с первых сценариев).
-import type { ScenarioSeason } from "../db/index.js";
-import type { ScenarioTag } from "../modules/planner/index.js";
+import type { LonLat, ScenarioSeason } from "../db/index.js";
+import { landmarkOf, type ScenarioTag } from "../modules/planner/index.js";
+import type { GenPlace } from "./catalog.js";
 
 export type ThemeCode =
+  | "summit"
+  | "maniava"
+  | "sheshory"
+  | "kosiv-market"
   | "waterfalls"
   | "dovbush"
   | "peak"
@@ -185,9 +190,20 @@ export const THEMES: readonly Theme[] = [
   },
 ];
 
-export const AREAS = ["yaremche", "mykulychyn", "tatariv", "polianytsia", "vorokhta", "yablunytsia"] as const;
-/** Охват из задания владельца, которого нет в каталоге населённых пунктов (Косів и окрестности). */
-export const WANTED_AREAS: Readonly<Record<string, string>> = { kosiv: "Косів і околиці" };
+export const AREAS = [
+  "yaremche",
+  "mykulychyn",
+  "tatariv",
+  "polianytsia",
+  "vorokhta",
+  "yablunytsia",
+  "kosiv",
+] as const;
+/** Охват из задания владельца, которого нет в каталоге населённых пунктов (раньше — Косів; теперь есть). */
+export const WANTED_AREAS: Readonly<Record<string, string>> = {};
+
+/** Место-цель заказа (вершина, скит, водоспад, ринок): центр подбора и обязательный пункт. */
+export type BriefTarget = { placeId: string; name: string; location: LonLat };
 
 export type Brief = {
   /** Код сценария (уникален, латиницей). */
@@ -196,14 +212,109 @@ export type Brief = {
   area: string;
   seasons: readonly ScenarioSeason[];
   days: number;
+  target?: BriefTarget;
 };
 
 const SEASON_CODE: Record<ScenarioSeason, string> = { winter: "w", spring: "sp", summer: "s", autumn: "a" };
 const seasonsCode = (s: readonly ScenarioSeason[]) =>
   s.length ? s.map((x) => SEASON_CODE[x]).join("") : "all";
 
-/** Все заказы по кругу тем: сначала по одному каждой темы, затем следующие варианты. */
-export function allBriefs(areas: readonly string[] = AREAS): Brief[] {
+/**
+ * Темы с обязательным местом из каталога (просьба владельца 03.11.2026): вершины (Говерла, Хом'як, Петрос, Піп Іван,
+ * Синяк…) — летом и ранней осенью, Манявський скит (+ водоспад, если есть), Шешори, суботній ринок у Косові.
+ */
+type TargetTheme = Theme & { key: (p: GenPlace) => string | null };
+
+export const TARGET_THEMES: readonly TargetTheme[] = [
+  {
+    code: "summit",
+    ask:
+      "Похід на вершину (обовʼязковий пункт — сама вершина): весь день, старт рано (до 8:00–9:00) від звичайної точки " +
+      "старту, з запасом часу на підйом і спуск до заходу сонця; у примітці — звідки стартувати, вода/їжа/дощовик, що " +
+      "можна піти з гідом (турфірма зі списку, якщо є). Після спуску — вечеря поруч і чан/SPA. Більше нічого великого.",
+    focus: ["nature", "sights", "excursions"],
+    tags: ["hiking", "mountains", "active"],
+    seasons: [["summer", "autumn"], ["summer"]],
+    days: [1],
+    radius: 30_000,
+    key: (p) => {
+      const lm = landmarkOf(p);
+      return lm?.kind === "hike" && lm.highMountain ? lm.code : null;
+    },
+  },
+  {
+    code: "maniava",
+    ask:
+      "Манявський скит: дорога (далеко — врахуй час), огляд скиту, Манявський водоспад, якщо він є у списку, обід поруч; " +
+      "решта дня — неспішно.",
+    focus: ["sights", "nature", "museums"],
+    tags: ["culture", "waterfalls"],
+    seasons: [WARM, ALL_YEAR],
+    days: [1],
+    radius: 25_000,
+    key: (p) => (landmarkOf(p)?.code === "maniava-skete" ? "maniava" : null),
+  },
+  {
+    code: "sheshory",
+    ask: "Шешори й Пістинь: водоспади на Пістиньці, прогулянка, гуцульська кухня; Косів поруч — музей чи ремесла.",
+    focus: ["nature", "sights", "museums", "markets"],
+    tags: ["waterfalls", "culture"],
+    seasons: [WARM],
+    days: [1],
+    radius: 20_000,
+    key: (p) =>
+      p.category === "nature" && p.names.some((n) => /шешор|пістин/iu.test(n)) ? "sheshory" : null,
+  },
+  {
+    code: "kosiv-market",
+    ask:
+      "Субота в Косові: Косівський ринок (працює лише в суботу, зранку — приходити рано), музеї Гуцульщини й народної " +
+      "творчості, обід. У назві й описі вкажи, що це план на суботу.",
+    focus: ["markets", "museums", "sights", "souvenirs"],
+    tags: ["culture", "gastro"],
+    seasons: [ALL_YEAR],
+    days: [1],
+    radius: 15_000,
+    key: (p) => (p.category === "markets" && p.names.some((n) => /косів/iu.test(n)) ? "kosiv-market" : null),
+  },
+];
+
+/** Порядок вершин в прогоне: сначала главные (Говерла, Хом'як, Петрос, Піп Іван), затем остальные. */
+const SUMMIT_ORDER = ["hoverla", "khomiak", "petros", "pip-ivan", "synyak", "makovytsia", "yavirnyk"];
+const rank = (k: string) => (SUMMIT_ORDER.includes(k) ? SUMMIT_ORDER.indexOf(k) : SUMMIT_ORDER.length);
+
+/** Заказы с местом-целью: по одному месту на ключ (лучшее по популярности). */
+export function targetBriefs(places: readonly GenPlace[]): Brief[] {
+  const out: Brief[] = [];
+  for (const theme of TARGET_THEMES) {
+    const best = new Map<string, GenPlace>();
+    for (const p of places) {
+      const k = theme.key(p);
+      if (!k) continue;
+      const cur = best.get(k);
+      if (!cur || (p.ratingCount ?? 0) > (cur.ratingCount ?? 0)) best.set(k, p);
+    }
+    for (const [k, p] of [...best.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)))
+      for (const seasons of theme.seasons)
+        for (const days of theme.days)
+          out.push({
+            // ai-summit-hoverla-s-1d, ai-maniava-spsa-1d, ai-kosiv-market-all-1d
+            code: `ai-${theme.code === "summit" ? `summit-${k}` : k}-${seasonsCode(seasons)}-${days}d`,
+            theme,
+            area: p.locality ?? "region",
+            seasons,
+            days,
+            target: { placeId: p.id, name: p.name, location: p.location },
+          });
+  }
+  return out;
+}
+
+/**
+ * Все заказы по кругу тем: сначала по одному каждой темы, затем следующие варианты. Заказы с местом-целью
+ * (targets — из каталога, targetBriefs) идут в круг как отдельные темы.
+ */
+export function allBriefs(areas: readonly string[] = AREAS, targets: readonly Brief[] = []): Brief[] {
   const perTheme = THEMES.map((theme) => {
     const out: Brief[] = [];
     for (const area of theme.areas ?? areas) {
@@ -220,8 +331,11 @@ export function allBriefs(areas: readonly string[] = AREAS): Brief[] {
     }
     return out;
   });
+  const byTheme = new Map<string, Brief[]>();
+  for (const t of targets) byTheme.set(t.theme.code, [...(byTheme.get(t.theme.code) ?? []), t]);
+  const lists = [...byTheme.values(), ...perTheme];
   const out: Brief[] = [];
-  for (let round = 0; perTheme.some((l) => l.length > round); round++)
-    for (const list of perTheme) if (list[round]) out.push(list[round]!);
+  for (let round = 0; lists.some((l) => l.length > round); round++)
+    for (const list of lists) if (list[round]) out.push(list[round]!);
   return out;
 }

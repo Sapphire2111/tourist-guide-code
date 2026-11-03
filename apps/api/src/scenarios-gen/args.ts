@@ -1,5 +1,5 @@
 // Аргументы scenarios:generate (cli/scenarios-generate.ts).
-import { THEMES, type ThemeCode } from "./briefs.js";
+import { TARGET_THEMES, THEMES, type ThemeCode } from "./briefs.js";
 
 export class GenArgsError extends Error {}
 
@@ -14,6 +14,8 @@ export type GenArgs = {
   fromFile: string | null;
   concurrency: number;
   retries: number;
+  /** Раундов «критика» (второй проход модели как местного гида), 0 — без критика. */
+  criticRounds: number;
   themes: Set<ThemeCode>;
   areas: Set<string>;
 };
@@ -35,10 +37,11 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
     fromFile: null,
     concurrency: 4,
     retries: 1,
+    criticRounds: 2,
     themes: new Set(),
     areas: new Set(),
   };
-  const themeCodes = new Set<string>(THEMES.map((t) => t.code));
+  const themeCodes = new Set<string>([...THEMES, ...TARGET_THEMES].map((t) => t.code));
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]!;
     const v = () => {
@@ -76,6 +79,9 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
         break;
       case "--retries":
         a.retries = int(k, v(), 0, 3);
+        break;
+      case "--critic-rounds":
+        a.criticRounds = int(k, v(), 0, 3);
         break;
       case "--theme":
         for (const t of v().split(",")) {

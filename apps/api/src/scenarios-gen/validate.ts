@@ -4,6 +4,7 @@
 // это время, сезон и аудитория (діти, без авто, дощ) соблюдены, дублей нет.
 import type { LocalizedText, ScenarioSeason } from "../db/index.js";
 import {
+  isMountainHike,
   placeFitsSeason,
   SCENARIO_SEASONS,
   SCENARIO_TAGS,
@@ -12,7 +13,16 @@ import {
   type ScenarioTag,
 } from "../modules/planner/index.js";
 import type { Brief } from "./briefs.js";
-import { INDOOR_CATEGORIES, MEAL_CATEGORIES, seasonsOf, type CandidateSet } from "./candidates.js";
+import {
+  INDOOR_CATEGORIES,
+  MEAL_CATEGORIES,
+  RELAX_CATEGORIES,
+  seasonsOf,
+  weeklyShort,
+  type CandidateSet,
+} from "./candidates.js";
+
+const RELAX_SET: ReadonlySet<string> = new Set(RELAX_CATEGORIES);
 import type { GenPlace } from "./catalog.js";
 import type { GenScenario } from "./prompt.js";
 
@@ -29,7 +39,35 @@ export const FOOT_HOP_MAX_M = 2_500;
 /** На авто — не дальше, м по прямой. */
 export const CAR_HOP_MAX_M = 35_000;
 /** Место открыто в это время — хотя бы в столько дней недели (график известен). */
-export const OPEN_DAYS_MIN = 4;
+export const OPEN_DAYS_MIN = 1;
+/**
+ * Захід сонця для 48,4° пн. ш. (Яремче) — консервативно, на кінець сезону, з запасом на сутінки в горах, хв:
+ * зима ~16:15, весна ~18:30 (березень), літо ~20:15 (серпень), осінь ~16:45 (листопад).
+ */
+export const SUNSET_MIN: Readonly<Record<ScenarioSeason, number>> = {
+  winter: 16 * 60 + 15,
+  spring: 18 * 60 + 30,
+  summer: 20 * 60 + 15,
+  autumn: 16 * 60 + 45,
+};
+/** Похід має закінчитися не пізніше ніж за стільки хв до заходу. */
+export const HIKE_SUNSET_MARGIN = 30;
+/** Обід: якщо день триває через 12:00–15:00 — їжа має початися в цьому вікні. */
+export const LUNCH_WINDOW = { from: 11 * 60 + 30, to: 15 * 60 + 30 } as const;
+/** З дітьми — не більше однієї великої активності (від 150 хв) на день. */
+export const KIDS_BIG_MIN = 150;
+/** Гірські дороги: до відстані по прямій ×1,45 (серпантини), 35 км/год, +5 хв на паркування. */
+export const ROAD_FACTOR = 1.45;
+export const CAR_KMH = 35;
+/** «Зигзаг»: шлях дня довший за 2,5× розмах точок + 4 км. */
+const ZIGZAG = { factor: 2.5, slackM: 4_000 } as const;
+/** Надворі (до заходу сонця й із запасним варіантом на дощ): походи, прогулянки, природа, пам'ятки, активності. */
+const OUTDOOR_KINDS = new Set(["hike", "walk"]);
+const OUTDOOR_CATEGORIES = new Set(["nature", "sights", "active", "ski-resorts", "ski-lifts", "markets"]);
+export const isOutdoor = (p: GenPlace) =>
+  OUTDOOR_KINDS.has(p.estimate.kind) || OUTDOOR_CATEGORIES.has(p.category);
+const isIndoor = (p: GenPlace) =>
+  (INDOOR_CATEGORIES as readonly string[]).includes(p.category) || p.tags.includes("rainy-day");
 export const ITEMS_PER_DAY = { min: 2, max: 8 } as const;
 export const ALTERNATIVES_MAX = 3;
 
@@ -78,7 +116,7 @@ export function realisticMinutes(p: GenPlace, asked: number): number {
   return Math.min(hi, Math.max(lo, round5(Number.isFinite(asked) ? asked : est)));
 }
 
-/** Дорога между пунктами, хв: пешком при близости или без авто, иначе на авто (+5 хв на парковку). */
+/** Дорога между пунктами, хв: пешком при близости или без авто, иначе на авто гірськими дорогами (+5 хв паркування). */
 export function hopMinutes(
   from: GenPlace,
   to: GenPlace,
@@ -86,7 +124,7 @@ export function hopMinutes(
 ): { meters: number; minutes: number } {
   const meters = sphericalMeters(from.location, to.location);
   if (noCar || meters <= 1200) return { meters, minutes: meters < 50 ? 0 : travelMinutes(meters, "walk") };
-  return { meters, minutes: travelMinutes(meters, "car") + 5 };
+  return { meters, minutes: Math.max(1, Math.round(((meters * ROAD_FACTOR) / 1000 / CAR_KMH) * 60)) + 5 };
 }
 
 /** Открыто ли место в [from, to) (минуты дня) хотя бы в OPEN_DAYS_MIN дней недели; график неизвестен — да. */
@@ -111,6 +149,9 @@ export const MODEL_TAGS = SCENARIO_TAGS.filter(
   (t) => !["one_day", "multi_day", "kids", "no_car", "rain", "ski", "excursion"].includes(t),
 );
 
+/** Длина примечания к пункту (символов): практичные советы гида, без обрыва. */
+export const NOTE_MAX = 320;
+
 const clean = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(0, max).trim();
 const BAD_TEXT = /https?:|www\.|[<>`*#]|\+?\d[\d\s-]{8,}/i;
 
@@ -126,6 +167,7 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
   const dayStats: ScenarioDraft["dayStats"] = [];
   let anyAdultsOnly = false;
   const placesById = new Map([...set.byRef.values()].map((p) => [p.id, p]));
+  const sunset = Math.min(...seasons.map((x) => SUNSET_MIN[x]));
 
   for (const d of days) {
     const list = d.items;
@@ -139,6 +181,11 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
     let meal = false;
     let start: number | null = null;
     let end = 0;
+    let lunch = false;
+    let kidsBig = 0;
+    let outdoor = false;
+    let rainAlt = false;
+    const points: GenPlace[] = [];
     for (const it of list) {
       const place = set.byRef.get(it.ref.trim());
       if (!place) {
@@ -189,7 +236,20 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
             `${it.ref} (${place.name}): похід ${minutes} хв має починатися до 10:00, а не о ${fromMin(at)}`,
           );
       }
-      if ((MEAL_CATEGORIES as readonly string[]).includes(place.category)) meal = true;
+      const isMeal = (MEAL_CATEGORIES as readonly string[]).includes(place.category);
+      if (isMeal) meal = true;
+      if (isMeal && at >= LUNCH_WINDOW.from && at <= LUNCH_WINDOW.to) lunch = true;
+      points.push(place);
+      if (isOutdoor(place)) {
+        outdoor = true;
+        const limit = place.estimate.kind === "hike" ? sunset - HIKE_SUNSET_MARGIN : sunset;
+        if (finish > limit)
+          errors.push(
+            `${it.ref} (${place.name}): надворі до ${fromMin(finish)} — після заходу сонця (${fromMin(sunset)}` +
+              `${place.estimate.kind === "hike" ? ", для походу — з запасом 30 хв" : ""})`,
+          );
+      }
+      if (!isMeal && !RELAX_SET.has(place.category) && minutes >= KIDS_BIG_MIN) kidsBig++;
       if (
         b.theme.rain &&
         !(INDOOR_CATEGORIES as readonly string[]).includes(place.category) &&
@@ -208,9 +268,16 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
           fixes.push(`${it.ref}: альтернатива «${a}» прибрана`);
           continue;
         }
-        if (alternatives.length < ALTERNATIVES_MAX) alternatives.push(alt.id);
+        if (alternatives.length < ALTERNATIVES_MAX) {
+          alternatives.push(alt.id);
+          if (isIndoor(alt)) rainAlt = true;
+        }
       }
-      const note = clean(it.note_uk ?? "", 200);
+      let note = clean(it.note_uk ?? "", NOTE_MAX);
+      // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день.
+      const openDays = new Set(place.weekly.map((w) => w.dayOfWeek)).size;
+      if (openDays > 0 && openDays < 7)
+        note = clean(`${note} Графік: ${weeklyShort(place.weekly)}.`, NOTE_MAX + 80);
       if (note && BAD_TEXT.test(note)) errors.push(`${it.ref}: у примітці посилання, телефон або розмітка`);
       items.push({
         dayNo: d.day,
@@ -231,8 +298,32 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
     if (big > 1)
       errors.push(`день ${d.day}: ${big} великі пункти (похід/екскурсія/лижі) — має бути не більше одного`);
     if (list.length >= 3 && !meal) errors.push(`день ${d.day}: немає де поїсти`);
+    // День большого похода/экскурсии — обед на маршруте (с собой), окно обеда не требуется.
+    if (start !== null && start <= 12 * 60 && end >= 15 * 60 && !lunch && big === 0)
+      errors.push(`день ${d.day}: немає обіду між 11:30 і 15:30`);
+    if (b.theme.kids && kidsBig > 1)
+      errors.push(`день ${d.day}: з дітьми — не більше однієї великої активності (від ${KIDS_BIG_MIN} хв)`);
+    if (!b.theme.rain && outdoor && !rainAlt)
+      errors.push(
+        `день ${d.day}: немає запасного варіанту на дощ (альтернатива під дахом хоча б для одного пункту)`,
+      );
+    if (points.length >= 3) {
+      let path = 0;
+      let spread = 0;
+      for (let k = 1; k < points.length; k++)
+        path += sphericalMeters(points[k - 1]!.location, points[k]!.location);
+      for (const a of points)
+        for (const c of points) spread = Math.max(spread, sphericalMeters(a.location, c.location));
+      if (path > ZIGZAG.factor * spread + ZIGZAG.slackM)
+        errors.push(
+          `день ${d.day}: маршрут зигзагом (${(path / 1000).toFixed(0)} км шляху при розмаху ` +
+            `${(spread / 1000).toFixed(0)} км) — впорядкуй за географією`,
+        );
+    }
     dayStats.push({ dayNo: d.day, activeMin: active, start: fromMin(start ?? 0), end: fromMin(end) });
   }
+
+  if (b.target && !used.has(b.target.placeId)) errors.push(`немає обовʼязкового пункту «${b.target.name}»`);
 
   const title = clean(gen.title_uk, 80);
   const description = clean(gen.description_uk, 400);
@@ -248,6 +339,17 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
   if (!b.theme.rain) tags.delete("rain");
   if (b.seasons.length !== 1 || b.seasons[0] !== "winter") tags.delete("ski");
   if (anyAdultsOnly) tags.delete("kids");
+  // Описательные теги — только если в плане есть такое (у скиту без водоспаду — без «Водоспади»).
+  const picked = items.map((i) => placesById.get(i.placeId)!);
+  if (!picked.some((x) => x.kind === "waterfall")) tags.delete("waterfalls");
+  if (
+    !picked.some(
+      (x) => x.estimate.kind === "hike" || (x.estimate.kind === "walk" && x.estimate.minutes >= 120),
+    )
+  )
+    tags.delete("hiking");
+  if (!picked.some((x) => isMountainHike(x) || ["ski-resorts", "ski-lifts"].includes(x.category)))
+    tags.delete("mountains");
 
   // То же место под разными карточками Google: тот же маршрут или та же точка (до 150 м) той же категории.
   const seen = new Map<string, string>();
@@ -378,4 +480,51 @@ export function checkDraft(raw: unknown, places: ReadonlyMap<string, GenPlace>):
   }
   for (let n = 1; n <= days; n++) if (!seenDays.has(n)) e.push(`день ${n} без пунктів`);
   return e;
+}
+
+/** Готовый сценарий обратно в формат ответа модели (ссылки p1…pN) — для критика. */
+export function draftToGen(d: ScenarioDraft, set: CandidateSet): GenScenario {
+  const refOf = new Map(set.candidates.map((c) => [c.place.id, c.ref]));
+  return {
+    title_uk: d.title.uk,
+    title_en: d.title.en ?? "",
+    description_uk: d.description?.uk ?? "",
+    tags: d.tags.filter((t) => (MODEL_TAGS as readonly string[]).includes(t)),
+    days: Array.from({ length: d.days }, (_, k) => ({
+      day: k + 1,
+      items: d.items
+        .filter((i) => i.dayNo === k + 1)
+        .map((i) => ({
+          ref: refOf.get(i.placeId) ?? i.placeId,
+          time: i.timeHint,
+          minutes: i.durationMin,
+          note_uk: i.note?.uk ?? "",
+          alternatives: i.alternatives.map((a) => refOf.get(a) ?? a),
+        })),
+    })),
+  };
+}
+
+/** Расчёты программы для критика: по дням — время, длительность, дорога от предыдущего, закат. */
+export function draftFacts(b: Brief, set: CandidateSet, d: ScenarioDraft): string[] {
+  const byId = new Map(set.candidates.map((c) => [c.place.id, c]));
+  const sunset = Math.min(...seasonsOf(b).map((x) => SUNSET_MIN[x]));
+  const out = [`захід сонця (консервативно для сезону): ~${fromMin(sunset)}`];
+  for (let day = 1; day <= d.days; day++) {
+    let prev: GenPlace | null = null;
+    for (const i of d.items.filter((x) => x.dayNo === day)) {
+      const c = byId.get(i.placeId);
+      if (!c) continue;
+      const hop = prev ? hopMinutes(prev, c.place, Boolean(b.theme.noCar)) : null;
+      const end = (toMin(i.timeHint) ?? 0) + i.durationMin;
+      const road = hop
+        ? `; дорога від попереднього ~${hop.minutes} хв, ${(hop.meters / 1000).toFixed(1)} км по прямій`
+        : "";
+      out.push(
+        `день ${day}: ${i.timeHint}–${fromMin(end)} ${c.ref} ${c.place.name} (${i.durationMin} хв${road})`,
+      );
+      prev = c.place;
+    }
+  }
+  return out;
 }

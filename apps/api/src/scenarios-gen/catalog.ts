@@ -23,6 +23,10 @@ export type GenPlace = {
   ratingCount: number | null;
   /** Тип по Google («Водоспад», «Піцерія»). */
   typeLabel: string | null;
+  /** Ціни Google: 0 — безкоштовно … 4 — дуже дорого. */
+  priceLevel: number | null;
+  /** Короткий опис місця (ІІ-текст картки з фактів Google/Вікіпедії, places:enrich) або опис Google. */
+  summary: string | null;
   weekly: WeeklyRow[];
   estimate: VisitEstimate;
   kind: string;
@@ -66,6 +70,7 @@ export async function loadCatalog(db: Db, regionCode: string): Promise<GenCatalo
         "categories.code as category",
         "localities.code as locality",
         "place_enrichments.google",
+        "place_enrichments.ai_summary_uk",
       ])
       .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
       // Коды активных тегов и доп. категорий — подзапросами (как planner.repository.catalogPlaces).
@@ -97,7 +102,14 @@ export async function loadCatalog(db: Db, regionCode: string): Promise<GenCatalo
       recommended: boolean;
       category: string;
       locality: string | null;
-      google: { rating?: number | null; ratingCount?: number | null; typeLabel?: string | null } | null;
+      google: {
+        rating?: number | null;
+        ratingCount?: number | null;
+        typeLabel?: string | null;
+        priceLevel?: number | null;
+        summary?: string | null;
+      } | null;
+      ai_summary_uk: string | null;
       location: LonLat;
       tags: string[];
       extra: string[];
@@ -147,6 +159,8 @@ export async function loadCatalog(db: Db, regionCode: string): Promise<GenCatalo
           rating: r.google?.rating ?? null,
           ratingCount: r.google?.ratingCount ?? null,
           typeLabel: r.google?.typeLabel ?? null,
+          priceLevel: r.google?.priceLevel ?? null,
+          summary: r.ai_summary_uk ?? r.google?.summary ?? null,
           weekly: weekly.get(r.id) ?? [],
         });
       }),

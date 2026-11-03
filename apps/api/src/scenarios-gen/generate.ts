@@ -1,10 +1,19 @@
 // Генерация сценариев: заказ → кандидаты → запрос к модели (структурированный JSON) → проверка программой; не прошёл —
-// ещё попытка с перечнем ошибок. Ключ — ANTHROPIC_API_KEY из env (SDK читает сам), в логи не попадает.
+// ещё попытка с перечнем ошибок. Затем «критик» (второй проход модели как опытного местного гида: реализм времени,
+// логистика, усталость, еда, световой день, погода) — до N раундов; каждая правка критика снова проходит проверку
+// программой, не прошла — критик получает ошибки. Ключ — ANTHROPIC_API_KEY из env (SDK читает сам), в логи не попадает.
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Brief } from "./briefs.js";
 import type { CandidateSet } from "./candidates.js";
-import { GEN_USD_PER_MTOK, parseScenario, requestParams } from "./prompt.js";
-import { validateScenario, type ScenarioDraft } from "./validate.js";
+import {
+  criticParams,
+  GEN_USD_PER_MTOK,
+  parseCritic,
+  parseScenario,
+  requestParams,
+  type GenScenario,
+} from "./prompt.js";
+import { draftFacts, draftToGen, validateScenario, type ScenarioDraft } from "./validate.js";
 
 /** Часть клиента Anthropic, нужная генератору (подменяется в тестах). */
 export type MessagesApi = Pick<Anthropic["messages"], "create">;
@@ -26,6 +35,8 @@ export type GenOutcome = {
   errors: string[];
   fixes: string[];
   attempts: number;
+  /** Замечания критика по раундам (что исправлено). */
+  critic: { round: number; verdict: string; issues: string[]; accepted: boolean }[];
 };
 
 export const usd = (u: Usage, discount = 1) =>
@@ -39,44 +50,84 @@ export const usd = (u: Usage, discount = 1) =>
       100,
   ) / 100;
 
+/** Запрос к модели: текст ответа или причина отказа; токены — в usage. */
+async function ask(
+  messages: MessagesApi,
+  params: Anthropic.MessageCreateParamsNonStreaming,
+  usage: Usage,
+): Promise<{ text: string } | { error: string }> {
+  try {
+    const res = await messages.create(params);
+    usage.requests++;
+    usage.input += res.usage.input_tokens;
+    usage.cacheWrite += res.usage.cache_creation_input_tokens ?? 0;
+    usage.cacheRead += res.usage.cache_read_input_tokens ?? 0;
+    usage.output += res.usage.output_tokens;
+    if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens")
+      return { error: `модель зупинилась: ${res.stop_reason}` };
+    return { text: res.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("") };
+  } catch (err) {
+    return { error: `запит не вдався: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
 export async function generateOne(
   messages: MessagesApi,
   b: Brief,
   set: CandidateSet,
   usage: Usage,
-  opts: { retries: number },
+  opts: { retries: number; criticRounds?: number },
 ): Promise<GenOutcome> {
   let errors: string[] = [];
   let fixes: string[] = [];
-  for (let attempt = 1; attempt <= opts.retries + 1; attempt++) {
-    let text = "";
-    try {
-      const res = await messages.create(requestParams(b, set, errors));
-      usage.requests++;
-      usage.input += res.usage.input_tokens;
-      usage.cacheWrite += res.usage.cache_creation_input_tokens ?? 0;
-      usage.cacheRead += res.usage.cache_read_input_tokens ?? 0;
-      usage.output += res.usage.output_tokens;
-      if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") {
-        errors = [`модель зупинилась: ${res.stop_reason}`];
-        continue;
-      }
-      text = res.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("");
-    } catch (err) {
-      errors = [`запит не вдався: ${err instanceof Error ? err.message : String(err)}`];
+  let draft: ScenarioDraft | null = null;
+  let attempts = 0;
+  for (let attempt = 1; attempt <= opts.retries + 1 && !draft; attempt++) {
+    attempts = attempt;
+    const r0 = await ask(messages, requestParams(b, set, errors), usage);
+    if ("error" in r0) {
+      errors = [r0.error];
       continue;
     }
-    const gen = parseScenario(text);
+    const gen = parseScenario(r0.text);
     if (!gen) {
       errors = ["відповідь не JSON за схемою"];
       continue;
     }
     const r = validateScenario(b, set, gen);
     fixes = r.fixes;
-    if (r.draft) return { code: b.code, draft: r.draft, errors: [], fixes, attempts: attempt };
+    draft = r.draft;
     errors = r.errors;
   }
-  return { code: b.code, draft: null, errors, fixes, attempts: opts.retries + 1 };
+  const critic: GenOutcome["critic"] = [];
+  if (!draft) return { code: b.code, draft: null, errors, fixes, attempts, critic };
+
+  // Критик: до criticRounds раундов; правка принимается, только если проходит проверку программой.
+  let current: GenScenario = draftToGen(draft, set);
+  let programErrors: string[] = [];
+  for (let round = 1; round <= (opts.criticRounds ?? 0); round++) {
+    const rc = await ask(
+      messages,
+      criticParams(b, set, current, draftFacts(b, set, draft), programErrors),
+      usage,
+    );
+    if ("error" in rc) break;
+    const c = parseCritic(rc.text);
+    if (!c) break;
+    if (c.verdict === "ok" && c.issues.length === 0) {
+      critic.push({ round, verdict: "ok", issues: [], accepted: true });
+      break;
+    }
+    const r = validateScenario(b, set, c.revised);
+    critic.push({ round, verdict: c.verdict, issues: c.issues, accepted: r.draft !== null });
+    if (r.draft) {
+      draft = r.draft;
+      fixes = r.fixes;
+      current = draftToGen(draft, set);
+      programErrors = [];
+    } else programErrors = r.errors;
+  }
+  return { code: b.code, draft, errors: [], fixes, attempts, critic };
 }
 
 /** Пул: не больше concurrency запросов одновременно; порядок результатов — порядок заказов. */
