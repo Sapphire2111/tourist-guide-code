@@ -1,13 +1,6 @@
-import type { Page } from "@playwright/test";
 import { apiMockState } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
-
-/** Переключатель дизайна живёт в листе меню: открыть, выбрать, лист закрывается сам. */
-async function pickDesign(page: Page, name: "Сучасний" | "Оригінальний") {
-  await page.getByTestId("menu-btn").click();
-  await page.getByRole("button", { name, exact: true }).click();
-}
 
 test.use({ telegram: { startParam: "demoHotel01" } });
 test.beforeEach(async ({ page }) => {
@@ -19,22 +12,19 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ json: { status: "ok" }, headers: { "access-control-allow-origin": "*" } }),
   );
 });
-test("modern home, preference persistence, nearby search/map/list and original restoration", async ({
-  page,
-}, testInfo) => {
+test("modern home (legacy saved choice ignored), nearby search/map/list", async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem("tg.design", "original"));
   await page.goto("/");
-  await expect(page.getByTestId("venue-summary")).toBeVisible();
-  await pickDesign(page, "Сучасний");
+  await expect(page.getByTestId("venue-summary")).toBeAttached();
+  await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(4);
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({ path: testInfo.outputPath("implemented-modern-home.png"), fullPage: false });
   await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await page.getByTestId("menu-btn").click();
-  await expect(page.getByRole("button", { name: "Сучасний", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByRole("group", { name: "Дизайн інтерфейсу" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page
     .getByRole("navigation", { name: "Основна навігація" })
@@ -81,19 +71,10 @@ test("modern home, preference persistence, nearby search/map/list and original r
     path: testInfo.outputPath("implemented-modern-nearby-map.png"),
     fullPage: true,
   });
-  await pickDesign(page, "Оригінальний");
-  await expect(page).toHaveURL(/nearby/);
-  await expect(page.getByTestId("places-map")).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Основна навігація" })
-    .getByRole("link", { name: "Головна", exact: true })
-    .click();
-  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(11);
 });
 test("modern narrow screen retains working list", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
-  await pickDesign(page, "Сучасний");
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expectNoSeriousA11yViolations(page);
@@ -105,7 +86,6 @@ test.describe("without map provider", () => {
   test.use({ googleMaps: false });
   test("list remains available", async ({ page }) => {
     await page.goto("/");
-    await pickDesign(page, "Сучасний");
     await page.getByRole("link", { name: "Відкрити місця поруч" }).click();
     await expect(page.getByTestId("map-unavailable")).toBeVisible();
     await expect(page.getByTestId("place-item").first()).toBeVisible();

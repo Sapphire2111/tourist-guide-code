@@ -42,7 +42,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await next.click();
     await page.getByRole("button", { name: "Меню" }).click();
-    await page.getByRole("link", { name: "Профіль" }).click();
+    await page.getByRole("dialog", { name: "Меню" }).getByRole("link", { name: "Профіль" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Профіль" })).toBeVisible();
     expect(await telegramCalls(page)).toContain("requestWriteAccess");
     const state = apiMockState.get(page)!;
@@ -120,7 +120,7 @@ test.describe("сбои и подтверждения", () => {
     await page.getByLabel("Погоджуюся з політикою конфіденційності").check();
     await page.getByRole("button", { name: "Продовжити" }).click();
     await page.getByRole("button", { name: "Меню" }).click();
-    await page.getByRole("link", { name: "Профіль" }).click();
+    await page.getByRole("dialog", { name: "Меню" }).getByRole("link", { name: "Профіль" }).click();
     await page.getByRole("button", { name: "Запросити видалення даних" }).click();
     expect(apiMockState.get(page)!.privacyRequests).toHaveLength(0);
     await page.getByRole("button", { name: "Так, видалити мої дані" }).click();

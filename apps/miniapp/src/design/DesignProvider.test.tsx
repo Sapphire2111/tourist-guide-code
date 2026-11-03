@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { DesignProvider, DesignSwitcher, DESIGN_STORAGE_KEY, readDesign } from "./DesignProvider.js";
+import { cleanup, render, screen } from "@testing-library/react";
+import { DesignProvider, useDesign } from "./DesignProvider.js";
 
 afterEach(() => {
   cleanup();
@@ -8,40 +8,30 @@ afterEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset.design;
 });
-describe("design preference", () => {
-  it("defaults to original, persists selection and restores after remount", () => {
-    const mount = () =>
-      render(
-        <DesignProvider>
-          <DesignSwitcher />
-        </DesignProvider>,
-      );
-    const view = mount();
-    expect(document.documentElement.dataset.design).toBe("original");
-    fireEvent.click(screen.getByRole("button", { name: "Сучасний" }));
-    expect(localStorage.getItem(DESIGN_STORAGE_KEY)).toBe("modern");
-    expect(document.documentElement.dataset.design).toBe("modern");
-    view.unmount();
-    mount();
-    expect(screen.getByRole("button", { name: "Сучасний" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Оригінальний" }));
-    expect(document.documentElement.dataset.design).toBe("original");
-  });
-  it("invalid or inaccessible storage falls back safely and switching still works", () => {
-    localStorage.setItem(DESIGN_STORAGE_KEY, "unknown");
-    expect(readDesign()).toBe("original");
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("denied");
-    });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("denied");
-    });
+function Probe() {
+  return <p>{useDesign().design}</p>;
+}
+describe("design", () => {
+  it("is always modern", () => {
     render(
       <DesignProvider>
-        <DesignSwitcher />
+        <Probe />
       </DesignProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Сучасний" }));
+    expect(screen.getByText("modern")).toBeTruthy();
     expect(document.documentElement.dataset.design).toBe("modern");
+  });
+  it("ignores the legacy saved value and never touches storage", () => {
+    localStorage.setItem("tg.design", "original");
+    const get = vi.spyOn(Storage.prototype, "getItem");
+    const set = vi.spyOn(Storage.prototype, "setItem");
+    render(
+      <DesignProvider>
+        <Probe />
+      </DesignProvider>,
+    );
+    expect(document.documentElement.dataset.design).toBe("modern");
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
   });
 });

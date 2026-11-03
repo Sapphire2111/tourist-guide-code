@@ -20,7 +20,7 @@ test.describe("QR отеля demoHotel01", () => {
     state.staff = true;
     state.acceptingNow = false;
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Про заклад" }).click();
+    await page.getByRole("link", { name: /Про заклад/ }).click();
     await expect(page.getByTestId("venue-name")).toHaveText("Тестовий готель");
     await expect(page.getByRole("heading", { name: "Правила проживання" })).toBeVisible();
     await expect(page.getByText("Пароль: welcome123")).toBeVisible();
@@ -99,7 +99,7 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("без роли персонала ссылки нет, экран закрыт", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
     await expect(page.getByTestId("staff-link")).toHaveCount(0);
     await page.goto("/#/staff");
     await expect(page.getByTestId("staff-forbidden")).toBeVisible();
@@ -109,10 +109,10 @@ test.describe("QR отеля demoHotel01", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
     await expect(page.getByTestId("staff-link")).toHaveCount(0);
     apiMockState.get(page)!.staff = true;
-    await page.getByTestId("home-sections").getByRole("link", { name: "Про заклад" }).click();
+    await page.getByRole("link", { name: /Про заклад/ }).click();
     await expect(page.getByTestId("venue-name")).toBeVisible();
     await page.goBack();
     await page.getByTestId("staff-link").click();
@@ -125,12 +125,12 @@ test.describe("QR отеля demoHotel01", () => {
       route.fulfill({ json: { items: [{ key: "module.host_requests", enabled: false }] } }),
     );
     await page.goto("/");
-    await expect(page.getByTestId("venue-summary")).toBeVisible();
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
     const nav = page.getByRole("navigation", { name: "Основна навігація" });
     await expect(nav.getByRole("link", { name: "Обране" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Мій план" })).toHaveCount(0);
     await expect(page.getByTestId("staff-link")).toHaveCount(0);
-    await page.getByTestId("home-sections").getByRole("link", { name: "Про заклад" }).click();
+    await page.getByRole("link", { name: /Про заклад/ }).click();
     await expect(page.getByRole("heading", { name: "Правила проживання" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Замовити/ })).toHaveCount(0);
     await expect(page.getByTestId("my-requests-link")).toHaveCount(0);

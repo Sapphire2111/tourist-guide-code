@@ -4,13 +4,7 @@
 // первый кадр уже в цветах сезона. Отдельный файл, а не inline: CSP сайта не разрешает inline-скрипты.
 // Логика — как в src/design/season.ts (readSeason, WINDOW_COLORS); менять вместе.
 (function () {
-  var design = "original";
-  try {
-    design = window.localStorage.getItem("tg.design") === "modern" ? "modern" : "original";
-  } catch (e) {
-    /* Storage unavailable. */
-  }
-  document.documentElement.setAttribute("data-design", design);
+  document.documentElement.setAttribute("data-design", "modern");
   var m = new Date().getMonth();
   var auto = m === 11 || m < 2 ? "winter" : m < 5 ? "spring" : m < 8 ? "summer" : "autumn";
   var season = auto;

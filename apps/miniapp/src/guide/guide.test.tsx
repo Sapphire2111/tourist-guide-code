@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createApiClient, type ApiSchemas } from "@tg/api-client";
 import { clientAnalyticsBatchSchema } from "@tg/shared";
 import { createAnalytics, uuidv7, type Analytics } from "./analytics.js";
@@ -97,17 +97,32 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("11 разделов при QR заведения; без заведения «Про заклад» скрыт (C-13)", () => {
-    const { rerender } = render(<HomeSections hasVenue />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(11);
-    // «Де жити» — отдельная плитка с подписью (раньше раздел stay висел на «Про заклад» и плитки не было).
-    expect(screen.getByRole("link", { name: /Де жити/ }).getAttribute("href")).toBe("#/section/stay");
-    expect(screen.getByTestId("tile-hint-stay").textContent).toBe("Готелі, садиби");
-    expect(screen.getByRole("link", { name: "Де поїсти" }).getAttribute("href")).toBe("#/section/eat");
-    expect(screen.getByRole("link", { name: "Халепа?" }).getAttribute("href")).toBe("#/help");
-    rerender(<HomeSections hasVenue={false} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(10);
-    expect(screen.queryByRole("link", { name: "Про заклад" })).toBeNull();
+  it("modern: 4 намерения и 6 служебных разделов; «Про заклад» — только при QR заведения (C-13)", () => {
+    const { env } = setup();
+    const view = (hasVenue: boolean) => (
+      <GuideProvider value={env}>
+        <HomeSections hasVenue={hasVenue} />
+      </GuideProvider>
+    );
+    const { rerender } = render(view(true));
+    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(4);
+    const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
+    expect(href(/Смачно поїсти/)).toBe("#/section/eat");
+    expect(href(/Відкрити місця поруч/)).toBe("#/nearby");
+    expect(href(/Відпочити/)).toBe("#/section/relax");
+    expect(href(/Знайти розваги/)).toBe("#/section/fun");
+    const more = within(screen.getByRole("navigation", { name: "Ще для вашої подорожі" }));
+    expect(more.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
+      "#/section/transfer",
+      "#/section/shop",
+      "#/help",
+      "#/section/stay",
+      "#/section/ski",
+      "#/section/services",
+    ]);
+    expect(href(/Про заклад/)).toBe("#/about");
+    rerender(view(false));
+    expect(screen.queryByRole("link", { name: /Про заклад/ })).toBeNull();
   });
 });
 
@@ -346,7 +361,7 @@ describe("«Що поруч»: ползунок радиуса и категор
 });
 
 describe("«Що поруч»: строка статуса", () => {
-  it("50 мест — «Найближчих місць: 50.»; меньше — строка пустая, но на месте", async () => {
+  it("modern: счётчик «Знайдено: N»; при 50 местах — пометка об ограничении", async () => {
     const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
     const search = vi.fn(async () => many);
     const { env } = setup({ api: fakeApi({ search }) });
@@ -356,7 +371,8 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчих місць: 50.");
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Знайдено: 50");
+    expect(screen.getByText("Найближчих місць: 50.")).toBeDefined();
     cleanup();
     const { env: env2 } = setup();
     render(
@@ -365,7 +381,8 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("");
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Знайдено: 2");
+    expect(screen.queryByText(/Найближчих місць/)).toBeNull();
   });
 });
 

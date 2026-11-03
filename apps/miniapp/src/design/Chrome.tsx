@@ -4,7 +4,7 @@ import type { MessageKey } from "@tg/i18n";
 import { Link, useT } from "@tg/ui";
 import { interceptBack } from "../telegram.js";
 import { ICONS, VaseIcon } from "./Ornament.js";
-import { DesignSwitcher, useDesign } from "./DesignProvider.js";
+import { useDesign } from "./DesignProvider.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
@@ -215,7 +215,6 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
               </button>
             </div>
             <SeasonSwitcher onPicked={close} />
-            <DesignSwitcher onPicked={close} />
             {design === "modern" && (
               <Link to="/favorites" className="kosiv-sheet-link">
                 {ICONS.heart}

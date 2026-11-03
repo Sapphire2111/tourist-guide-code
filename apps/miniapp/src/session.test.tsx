@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { createApiClient } from "@tg/api-client";
 import { App } from "./App.js";
@@ -406,7 +406,9 @@ describe("C01 онбординг", () => {
     fireEvent.click(screen.getByLabelText(/Отримувати новини/));
     fireEvent.click(button);
     fireEvent.click(await screen.findByRole("button", { name: "Меню" }));
-    expect(await screen.findByRole("link", { name: "Профіль" })).toBeDefined();
+    expect(
+      within(await screen.findByRole("dialog", { name: "Меню" })).getByRole("link", { name: "Профіль" }),
+    ).toBeDefined();
     const bodies = async (path: string) =>
       Promise.all(calls.filter((r) => new URL(r.url).pathname === path).map((r) => r.json()));
     expect(await bodies("/me/consents")).toEqual([
@@ -540,7 +542,9 @@ describe("находки ревью", () => {
     expect(bodies).toEqual([{ purpose: "service", granted: false, source: "request_write_access" }]);
     fireEvent.click(screen.getByRole("button", { name: "Продовжити" }));
     fireEvent.click(await screen.findByRole("button", { name: "Меню" }));
-    expect(await screen.findByRole("link", { name: "Профіль" })).toBeDefined();
+    expect(
+      within(await screen.findByRole("dialog", { name: "Меню" })).getByRole("link", { name: "Профіль" }),
+    ).toBeDefined();
   });
 
   it("профиль: включение сервисных без разрешения Telegram — не включается; удаление — с подтверждением", async () => {

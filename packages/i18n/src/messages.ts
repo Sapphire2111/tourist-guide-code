@@ -3,9 +3,6 @@
 // Ключи ошибок совпадают с ERROR_MESSAGE_KEYS из @tg/shared. Параметры подстановки — `{name}`.
 
 export const uk = {
-  "miniapp.design.label": "Дизайн інтерфейсу",
-  "miniapp.design.original": "Оригінальний",
-  "miniapp.design.modern": "Сучасний",
   "miniapp.modern.title": "Що хочеться сьогодні?",
   "miniapp.modern.subtitle": "Місця, враження та маленькі відкриття поруч.",
   "miniapp.modern.eat": "Смачно поїсти",
@@ -1579,9 +1576,6 @@ export type Messages = Partial<Record<MessageKey, string>>;
 
 // Тестовая локаль (D-05 открыт): намеренно неполная, чтобы проверять fallback на uk.
 export const en: Messages = {
-  "miniapp.design.label": "Interface design",
-  "miniapp.design.original": "Original",
-  "miniapp.design.modern": "Modern",
   "miniapp.modern.title": "What would you like today?",
   "miniapp.modern.subtitle": "Places, experiences and little discoveries nearby.",
   "miniapp.modern.eat": "Enjoy a good meal",
