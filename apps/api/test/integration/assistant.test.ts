@@ -101,8 +101,10 @@ describe.skipIf(!dockerAvailable)(`Ассистент: ключевые слов
       const region = base.regions[p.region ?? "a"];
       const at = shift(p.north);
       await sql(
-        `INSERT INTO places (id, region_id, category_id, name_i18n, location, status, first_published_at)
-         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326), $7,
+        // Опубликованному месту нужны описание и адрес (places_published_complete); в них нет ключевых слов.
+        `INSERT INTO places (id, region_id, category_id, name_i18n, description_i18n, address_i18n, location, status,
+           first_published_at)
+         VALUES ($1, $2, $3, $4, '{"uk":"Опис"}', '{"uk":"Адреса"}', ST_SetSRID(ST_MakePoint($5, $6), 4326), $7,
            CASE WHEN $7 = 'draft' THEN NULL ELSE now() END)`,
         [
           placeId(p.key),
