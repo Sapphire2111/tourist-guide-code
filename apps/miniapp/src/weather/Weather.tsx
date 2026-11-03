@@ -4,7 +4,7 @@
 // Іконка — Google (через прокси нашого api) з alt з опису, при Open-Meteo — своя за погодою.
 import type { MessageKey } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAsync, useGuide } from "../guide/context.js";
 import type { LatLng } from "../guide/geo.js";
@@ -142,7 +142,18 @@ export function WeatherChip({ api }: { api: WeatherApi }) {
   );
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
-  const f = state.status === "ready" ? state.data : null;
+  // Пока грузится прогноз для новой точки — прежний (открытый лист не пропадает и не мигает).
+  const [last, setLast] = useState<Forecast | null>(null);
+  useEffect(() => {
+    if (state.status === "ready") setLast(state.data);
+    else if (state.status === "error") setLast(null);
+  }, [state]);
+  // Стабильная ссылка: эффект листа (фокус, Escape, «Назад») не перезапускается на каждый рендер.
+  const close = useCallback(() => {
+    setOpen(false);
+    button.current?.focus();
+  }, []);
+  const f = state.status === "ready" ? state.data : state.status === "loading" ? last : null;
   const today = f?.days[0];
   if (!f || !today) return null;
   const now = f.current;
@@ -177,15 +188,7 @@ export function WeatherChip({ api }: { api: WeatherApi }) {
           </span>
         )}
       </button>
-      {open && (
-        <WeatherSheet
-          forecast={f}
-          onClose={() => {
-            setOpen(false);
-            button.current?.focus();
-          }}
-        />
-      )}
+      {open && <WeatherSheet forecast={f} onClose={close} />}
     </>
   );
 }
@@ -197,8 +200,23 @@ export function WeatherSheet({ forecast, onClose }: { forecast: Forecast; onClos
   const { t, locale } = useT();
   const text = useConditionText();
   const sheet = useRef<HTMLDivElement>(null);
+  const { webApp } = useGuide();
+  const back = webApp?.BackButton;
   useEffect(() => {
     sheet.current?.querySelector<HTMLElement>("button")?.focus();
+  }, []);
+  // «Назад» Telegram: на главной кнопки нет — показываем её, пока лист открыт; нажатие закрывает лист.
+  useEffect(() => {
+    if (!back) return;
+    back.onClick(onClose);
+    back.show();
+    return () => {
+      back.offClick(onClose);
+      // Лист — только на главной, где своей кнопки нет; при уходе с главной новый экран покажет её снова.
+      back.hide();
+    };
+  }, [back, onClose]);
+  useEffect(() => {
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const releaseBack = interceptBack(onClose);

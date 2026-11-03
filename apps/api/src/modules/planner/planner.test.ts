@@ -172,7 +172,7 @@ const place = (n: number, status = "published"): PlanPlaceRow => ({
 
 function plannerService(
   repo: Partial<Record<keyof PlannerRepository, unknown>>,
-  weather?: Pick<WeatherService, "forecastAt">,
+  weather?: Pick<WeatherService, "snapshotAt" | "flushRefresh">,
 ) {
   const { db } = recordingDb({});
   const items = [
@@ -479,6 +479,7 @@ describe("PlannerService: параметри поїздки і варіанти 
       ],
     };
     const forecastAt = vi.fn(() => Promise.resolve(forecast));
+    const flushRefresh = vi.fn();
     const hike = { ...planItemsFromScenario([item({ place_id: P(10), time_hint: "10:00:00" })])[0]! };
     const row = customRow({ start_date: "2026-11-10", days: 3, children: 0, items: [hike] });
     const mountains = [
@@ -493,9 +494,11 @@ describe("PlannerService: параметри поїздки і варіанти 
           Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
         ),
       },
-      { forecastAt },
+      { snapshotAt: forecastAt, flushRefresh },
     );
     const dto = await service.plan(REGION, USER, PLAN);
+    // Снимки — внутри транзакции, фоновое обновление — после неё.
+    expect(flushRefresh).toHaveBeenCalledTimes(1);
     expect(dto.weatherSource).toBe("google");
     // День 3 (12.11) — вне прогноза: погоды нет.
     expect(dto.weather.map((w) => [w.dayNo, w.date, w.rainy, w.noMountains])).toEqual([
@@ -518,7 +521,7 @@ describe("PlannerService: параметри поїздки і варіанти 
           Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
         ),
       },
-      { forecastAt },
+      { snapshotAt: forecastAt, flushRefresh },
     );
     const plain = await noDate.service.plan(REGION, USER, PLAN);
     expect(plain).toMatchObject({ weather: [], weatherSource: null });

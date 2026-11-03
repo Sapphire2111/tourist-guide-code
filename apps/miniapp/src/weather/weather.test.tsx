@@ -6,6 +6,7 @@ import type { ApiClient } from "@tg/api-client";
 import { I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
+import type { TelegramWebApp } from "../telegram.js";
 import { formatTemp, WeatherChip } from "./Weather.js";
 import {
   createWeatherApi,
@@ -56,22 +57,27 @@ const forecast: Forecast = {
   ],
 };
 
-function setup(api: WeatherApi) {
-  return render(
+function tree(api: WeatherApi, point = { lat: 48.45, lng: 24.55 }, webApp?: TelegramWebApp) {
+  return (
     <I18nProvider locale="uk">
       <GuideProvider
         value={{
           api: noopGuideApi(),
           analytics: noopAnalytics,
-          base: { name: "Hotel", point: { lat: 48.45, lng: 24.55 } },
+          base: { name: "Hotel", point },
           regionId: "r",
           signedIn: false,
+          webApp,
         }}
       >
         <WeatherChip api={api} />
       </GuideProvider>
-    </I18nProvider>,
+    </I18nProvider>
   );
+}
+
+function setup(api: WeatherApi) {
+  return render(tree(api));
 }
 
 describe("погода на главной", () => {
@@ -112,6 +118,32 @@ describe("погода на главной", () => {
     expect(screen.getByTestId("weather-source").textContent).toBe(
       "Source: Includes weather data from Google.",
     );
+  });
+
+  it("«Назад» Telegram: кнопка видна, пока лист открыт, и закрывает его; смена точки не закрывает лист", async () => {
+    let onBack: (() => void) | null = null;
+    const back = {
+      show: vi.fn(),
+      hide: vi.fn(),
+      onClick: vi.fn((cb: () => void) => (onBack = cb)),
+      offClick: vi.fn(),
+    };
+    const webApp = { BackButton: back } as unknown as TelegramWebApp;
+    const api = { forecast: vi.fn(async (): Promise<Forecast | null> => forecast) };
+    const { rerender } = render(tree(api, undefined, webApp));
+    fireEvent.click(await screen.findByTestId("weather-chip"));
+    expect(back.show).toHaveBeenCalledTimes(1);
+    // Новая точка (сменили «Локація»): прогноз грузится — лист остаётся с прежними данными.
+    api.forecast.mockImplementation(() => new Promise<Forecast | null>(() => {}));
+    rerender(tree(api, { lat: 48.34, lng: 24.57 }, webApp));
+    expect(api.forecast).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("dialog", { name: "Погода на 5 днів" })).toBeTruthy();
+    // Перерисовка не перезапускает эффект листа (onClose стабилен).
+    expect(back.show).toHaveBeenCalledTimes(1);
+    act(() => onBack!());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(back.hide).toHaveBeenCalled();
+    expect(back.offClick).toHaveBeenCalled();
   });
 
   it("нет прогноза — ничего не показывается", async () => {

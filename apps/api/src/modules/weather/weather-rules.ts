@@ -55,8 +55,9 @@ export const THRESHOLDS = {
   heavySnowCm: 10,
   heatC: 32,
   thunderPercent: 50,
-  /** Дождь (для «якщо дощ»): жидкие осадки за сутки, мм. */
+  /** Дождь (для «якщо дощ»): жидкие осадки за сутки, мм, или вероятность дождя (Google), %. */
   rainMm: 2,
+  rainPercent: 50,
 } as const;
 
 /**
@@ -143,7 +144,11 @@ export function dayWarnings(d: WarningInput): WeatherWarning[] {
   if (has("thunderstorm") || (d.thunderProbability ?? 0) >= THRESHOLDS.thunderPercent)
     out.push("thunderstorm");
   if (has("heavy_rain") || (d.liquidMm ?? 0) >= THRESHOLDS.heavyRainMm) out.push("heavy_rain");
-  if ((d.windGustsMax ?? 0) >= THRESHOLDS.windGustKmh || (d.windSpeedMax ?? 0) >= THRESHOLDS.windKmh)
+  if (
+    has("windy") ||
+    (d.windGustsMax ?? 0) >= THRESHOLDS.windGustKmh ||
+    (d.windSpeedMax ?? 0) >= THRESHOLDS.windKmh
+  )
     out.push("strong_wind");
   if (d.temperatureMin !== null && d.temperatureMin <= THRESHOLDS.frostC) out.push("frost");
   if (has("heavy_snow") || (d.snowfallCm ?? 0) >= THRESHOLDS.heavySnowCm) out.push("heavy_snow");

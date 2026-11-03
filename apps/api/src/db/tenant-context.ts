@@ -72,14 +72,6 @@ export function rejectConnectionInsideTenant(): void {
     );
 }
 
-/**
- * fn вне tenant-контекста и транзакции запроса: фоновая работа с глобальными таблицами и сетью (обновление погоды из
- * «Мій план»), которая не должна держать транзакцию региона и ходит в БД своими соединениями.
- */
-export function outsideTenant<T>(fn: () => T): T {
-  return storage.exit(fn);
-}
-
 /** Значения переменных сессии для RLS (политики — миграция 0003). */
 export function rlsSettings(tenant: TenantContext): { regionId: string; actor: string } {
   return tenant.kind === "region"

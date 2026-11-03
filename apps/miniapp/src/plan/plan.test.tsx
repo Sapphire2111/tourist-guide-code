@@ -155,6 +155,19 @@ describe("Мій план: погода", () => {
     );
   });
 
+  it("план перечитан с дождём в прогнозе — «якщо дощ» раскрывается", async () => {
+    const updatePlan = vi.fn(async () => plan({ weather: [day], weatherSource: "open-meteo" }));
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan(), updatePlan }, {}, true, {
+      "module.weather": true,
+    });
+    const rain = await screen.findByRole("button", { name: /Якщо дощ/ });
+    expect(rain.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Змінити параметри" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Зберегти параметри" })));
+    expect(updatePlan).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Якщо дощ/ }).getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("без даты начала — подсказка про погоду; без флага — ничего; «якщо дощ» без дождя свёрнут", async () => {
     setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan({ startDate: null }) }, {}, true, {
       "module.weather": true,

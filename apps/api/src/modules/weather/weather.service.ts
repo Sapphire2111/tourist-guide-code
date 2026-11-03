@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
-import { InjectDb, outsideTenant, type Db, type JsonObject } from "../../db/index.js";
+import { currentTenant, InjectDb, type Db, type JsonObject } from "../../db/index.js";
 import { GoogleQuota } from "../../places-enrich/quota.js";
 import {
   GOOGLE_ICON_BASE,
@@ -42,12 +42,11 @@ export const GOOGLE_WEATHER_DAILY_LIMIT_DEFAULT = 300;
 export const GOOGLE_WEATHER_MONTHLY_LIMIT_DEFAULT = 5000;
 /** Запросов к Google на одно обновление точки: сейчас + по дням. */
 export const GOOGLE_CALLS_PER_REFRESH = 2;
-/** Период обновления точки: не чаще раза в час и не реже раза в 6 часов. */
+/** Период обновления точки: не чаще раза в час; верхнего предела нет — точек много, квота мала — реже. */
 export const REFRESH_MIN_MS = 3600_000;
-export const REFRESH_MAX_MS = 6 * 3600_000;
 /** Без ключа Google (только Open-Meteo, квоты нет) — раз в 2 часа. */
 export const REFRESH_OPEN_METEO_MS = 2 * 3600_000;
-/** Снимок старше этого не отдаётся вовсе (лучше без погоды, чем вчерашняя). */
+/** Снимок старше этого (и старше двух периодов) не отдаётся вовсе (лучше без погоды, чем вчерашняя). */
 export const SNAPSHOT_MAX_AGE_MS = 12 * 3600_000;
 export const WEATHER_TIMEOUT_MS = 4_000;
 /** Обновление точки не удалось — следующая попытка не раньше (не долбим источники на каждый запрос). */
@@ -64,17 +63,21 @@ const ICONS_MAX = 200;
 
 export type Point = { lat: number; lng: number };
 
+/** Метка очереди: точек ещё нет — сверить с localities. */
+const SYNC_KEY = "sync:points";
+
 /**
  * Период обновления по квоте Google: на сутки — min(суточный предел, месячный / 31) запросов, на точку за обновление —
- * GOOGLE_CALLS_PER_REFRESH. Период = 24 ч × точки × 2 / бюджет, округлён вверх до часа, в [1 ч; 6 ч]. Пример: 14 точек,
- * 300/сутки и 5000/мес → бюджет 161/сутки → 24 × 28 / 161 ≈ 4,2 ч → каждые 5 ч (≈ 134 запроса в сутки).
+ * GOOGLE_CALLS_PER_REFRESH. Период = 24 ч × точки × 2 / бюджет, округлён вверх до часа, не меньше 1 ч (верхнего
+ * предела нет: расход всегда в квоте). Пример: 14 точек, 300/сутки и 5000/мес → бюджет 161/сутки →
+ * 24 × 28 / 161 ≈ 4,2 ч → каждые 5 ч (≈ 134 запроса в сутки); 200 точек → каждые 60 ч.
  */
 export function refreshEveryMs(points: number, google: { daily: number; monthly: number } | null): number {
   if (!google) return REFRESH_OPEN_METEO_MS;
   const budget = Math.min(google.daily, Math.floor(google.monthly / 31));
   if (budget <= 0) return REFRESH_OPEN_METEO_MS;
   const hours = Math.ceil((24 * Math.max(1, points) * GOOGLE_CALLS_PER_REFRESH) / budget);
-  return Math.min(REFRESH_MAX_MS, Math.max(REFRESH_MIN_MS, hours * 3600_000));
+  return Math.max(REFRESH_MIN_MS, hours * 3600_000);
 }
 
 /** Отпечаток содержимого прогноза без времени замера (updated_at — только при изменении). */
@@ -104,7 +107,8 @@ export function todayIn(timezone: string | null, now: Date): string {
  * снимки — в weather_forecasts. Запрос по координатам отдаётся из ближайшей точки; снимок устарел — обновляется лениво
  * (одно обновление точки на все параллельные запросы). Источник: Google Weather (ключ на сервере, квота в БД как у
  * фото Google), запасной — Open-Meteo (нет ключа, предел, 429, ошибка, таймаут). Ничего нет — null (не 500).
- * Всё — вне транзакции запроса (outsideTenant): «Мій план» зовёт сервис изнутри транзакции региона.
+ * Сеть и запись — только вне транзакции запроса: «Мій план» внутри транзакции региона берёт snapshotAt (без сети),
+ * устаревшие точки обновляет flushRefresh после ответа.
  */
 @Injectable()
 export class WeatherService {
@@ -123,6 +127,8 @@ export class WeatherService {
   private rows: { at: number; list: WeatherRow[] } | null = null;
   private syncedAt = -Infinity;
   private readonly refreshing = new Map<string, Promise<Forecast | null>>();
+  /** Точки, которым snapshotAt нужен свежий снимок: обновляются в фоне (flushRefresh) вне транзакции. */
+  private readonly pending = new Set<string>();
   private readonly failedUntil = new Map<string, number>();
   private googlePausedUntil = -Infinity;
   private readonly warnedAt = new Map<string, number>();
@@ -163,34 +169,80 @@ export class WeatherService {
    * Прогноз для координат: ближайшая точка (не дальше 30 км; mountain — горная точка рядом, для похода). Дни — с
    * сегодняшнего в поясе точки. null — точки нет или прогноза нет.
    */
-  forecastAt(at: Point, opts: { mountain?: boolean } = {}): Promise<Forecast | null> {
-    return outsideTenant(async () => {
-      try {
-        const rows = await this.loadRows();
-        const row = nearestPoint(rows, at, opts);
-        if (!row) return null;
-        return this.trim(await this.fresh(row, rows.length));
-      } catch (e) {
-        this.warn("db", `Погода: ошибка хранилища (${errName(e)})`);
-        return null;
+  async forecastAt(at: Point, opts: { mountain?: boolean } = {}): Promise<Forecast | null> {
+    // Сеть и свои соединения с БД — только вне транзакции запроса (из «Мій план» — snapshotAt).
+    if (currentTenant()) return this.snapshotAt(at, opts);
+    try {
+      const rows = await this.loadRows();
+      const row = nearestPoint(rows, at, opts);
+      if (!row) return null;
+      return this.trim(await this.fresh(row, rows.length));
+    } catch (e) {
+      this.warn("db", `Погода: ошибка хранилища (${errName(e)})`);
+      return null;
+    }
+  }
+
+  /**
+   * Только готовый снимок (память или чтение weather_forecasts в текущей транзакции) — без сети и записи: для
+   * «Мій план» внутри транзакции региона. Устаревшая или пустая точка ставится в очередь — её обновит flushRefresh
+   * после ответа. Снимок отдаётся, пока не старше maxAge.
+   */
+  async snapshotAt(at: Point, opts: { mountain?: boolean } = {}): Promise<Forecast | null> {
+    if (!this.repo) return null;
+    try {
+      const now = this.now();
+      if (!this.rows || now - this.rows.at >= ROWS_TTL_MS)
+        this.rows = { at: now, list: await this.repo.list() };
+      const rows = this.rows.list;
+      if (rows.length === 0) this.pending.add(SYNC_KEY);
+      const row = nearestPoint(rows, at, opts);
+      if (!row) return null;
+      const age = row.fetchedAt ? now - row.fetchedAt.getTime() : Infinity;
+      const snap = snapshotOf(row);
+      const every = this.refreshEvery(rows.length);
+      if (!snap || age >= every * 1.5) this.pending.add(row.key);
+      return snap && age < this.maxAge(every) ? this.trim(snap) : null;
+    } catch (e) {
+      this.warn("db", `Погода: ошибка хранилища (${errName(e)})`);
+      return null;
+    }
+  }
+
+  /**
+   * Фоновое обновление точек из очереди snapshotAt (fire-and-forget, дубли — одно обновление на точку). Вызывать вне
+   * транзакции — после ответа; внутри tenant-контекста ничего не делает (очередь ждёт следующего вызова).
+   */
+  flushRefresh(): void {
+    if (currentTenant() || this.pending.size === 0) return;
+    const keys = [...this.pending];
+    this.pending.clear();
+    void (async () => {
+      const rows = keys.includes(SYNC_KEY) ? await this.loadRows(true) : (this.rows?.list ?? []);
+      for (const key of keys) {
+        const row = rows.find((r) => r.key === key);
+        if (row) await this.refreshPoint(row);
       }
-    });
+    })().catch((e: unknown) => this.warn("db", `Погода: фоновое обновление не выполнено (${errName(e)})`));
   }
 
   /** Фоновый тик: обновить точки, чей снимок старше 90 % периода. Возвращает число обновлённых. */
-  refreshDue(): Promise<number> {
-    return outsideTenant(async () => {
-      const rows = await this.loadRows(true);
-      const every = this.refreshEvery(rows.length);
-      let n = 0;
-      for (const row of rows) {
-        const age = row.fetchedAt ? this.now() - row.fetchedAt.getTime() : Infinity;
-        if (age < every * 0.9) continue;
-        if (await this.refreshPoint(row)) n++;
-      }
-      if (n) this.rows = null;
-      return n;
-    });
+  async refreshDue(): Promise<number> {
+    const rows = await this.loadRows(true);
+    const every = this.refreshEvery(rows.length);
+    let n = 0;
+    for (const row of rows) {
+      const age = row.fetchedAt ? this.now() - row.fetchedAt.getTime() : Infinity;
+      if (age < every * 0.9) continue;
+      if (await this.refreshPoint(row)) n++;
+    }
+    if (n) this.rows = null;
+    return n;
+  }
+
+  /** Снимок старше этого не отдаётся: 12 ч, а при редком обновлении (много точек) — два периода. */
+  private maxAge(every: number): number {
+    return Math.max(SNAPSHOT_MAX_AGE_MS, every * 2);
   }
 
   /** Строки точек: память ROWS_TTL_MS, иначе БД; раз в час (или когда точек нет) — сверка с localities. */
@@ -209,14 +261,15 @@ export class WeatherService {
     return list;
   }
 
-  /** Снимок точки; устарел (старше периода × 1,5) — ленивое обновление, не вышло — прежний, если не старше 12 ч. */
+  /** Снимок точки; устарел (старше периода × 1,5) — ленивое обновление, не вышло — прежний, если не старше maxAge. */
   private async fresh(row: WeatherRow, points: number): Promise<Forecast | null> {
     const age = row.fetchedAt ? this.now() - row.fetchedAt.getTime() : Infinity;
     const snap = snapshotOf(row);
-    if (snap && age < this.refreshEvery(points) * 1.5) return snap;
+    const every = this.refreshEvery(points);
+    if (snap && age < every * 1.5) return snap;
     const updated = await this.refreshPoint(row);
     if (updated) return updated;
-    return snap && age < SNAPSHOT_MAX_AGE_MS ? snap : null;
+    return snap && age < this.maxAge(every) ? snap : null;
   }
 
   /** Обновить одну точку (параллельные вызовы — одно обновление); сохранить снимок в БД и в память. */
@@ -309,7 +362,8 @@ export class WeatherService {
     const key = this.cfg.googleApiKey;
     if (!key || !this.quota || this.now() < this.googlePausedUntil) return null;
     const limits = { daily: this.cfg.googleDailyLimit, monthly: this.cfg.googleMonthlyLimit };
-    if (!(await this.quota.take("weather", limits)) || !(await this.quota.take("weather", limits))) {
+    // Обе единицы (сейчас + по дням) — разом: при отказе не остаётся занятой одна.
+    if (!(await this.quota.take("weather", limits, GOOGLE_CALLS_PER_REFRESH))) {
       this.googlePausedUntil = this.now() + GOOGLE_PAUSE_MS;
       this.warn("quota", "Предел запросов Google Weather (сутки/месяц) исчерпан — прогноз Open-Meteo");
       return null;

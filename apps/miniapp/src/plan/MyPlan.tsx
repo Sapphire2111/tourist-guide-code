@@ -742,6 +742,10 @@ function SlotSection({
   const { t } = useT();
   const headingId = `day-${day}-${slot}`;
   const [open, setOpen] = useState(slot !== "rain" || items.length > 0 || rainy);
+  // Прогноз изменился (план перечитан) и обещает дождь — раскрыть «якщо дощ»; свернуть сам не сворачиваем.
+  useEffect(() => {
+    if (rainy) setOpen(true);
+  }, [rainy]);
   const list = (opts: PlanOption[]) => (
     <ul className="plan-choices" aria-label={t("miniapp.plan.options")}>
       {opts.map((o) => (

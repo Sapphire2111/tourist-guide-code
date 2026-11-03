@@ -498,6 +498,7 @@ export class PlannerService {
    * Погода плана (module.weather): прогноз базовой точки на даты дней (startDate + dayNo − 1; без даты начала — нет).
    * Дни с опасной для гор погодой (гроза, ветер, снегопад, гололёд) — без горных походов в вариантах; выбранный
    * горный поход в такой день (или в мороз) — с предупреждением по прогнозу у его горной точки. Ошибки — без погоды.
+   * Только снимки (WeatherService.snapshotAt): устаревшие точки обновятся в фоне после ответа (inRegion).
    */
   private async planWeather(
     r: UserPlan,
@@ -508,7 +509,8 @@ export class PlannerService {
     const out = NO_WEATHER();
     if (!this.weather || !baseAt || r.start_date === null) return out;
     if (this.flags && !(await this.flags.isEnabled("module.weather", r.region_id))) return out;
-    const f = await this.weather.forecastAt({ lat: baseAt.lat, lng: baseAt.lon });
+    // Внутри транзакции региона (и под FOR UPDATE в updatePlan) — только готовые снимки, без сети.
+    const f = await this.weather.snapshotAt({ lat: baseAt.lat, lng: baseAt.lon });
     if (!f) return out;
     out.source = f.source;
     const start = dateOnly(r.start_date);
@@ -535,7 +537,7 @@ export class PlannerService {
       .slice(0, MOUNTAIN_ITEMS_MAX);
     for (const h of hikes) {
       const local =
-        (await this.weather.forecastAt({ lat: h.at.lat, lng: h.at.lon }, { mountain: true })) ?? f;
+        (await this.weather.snapshotAt({ lat: h.at.lat, lng: h.at.lon }, { mountain: true })) ?? f;
       const w = local.days.find((x) => x.date === dateOf(h.dayNo));
       const warnings = (w?.warnings ?? []).filter((x) => HIKE_RELEVANT.includes(x));
       if (warnings.length) out.items.set(h.id, warnings);
@@ -612,7 +614,10 @@ export class PlannerService {
   private async inRegion<T>(regionId: string, fn: (region: Region) => Promise<T>): Promise<T> {
     const region = await this.regions.findById(regionId.toLowerCase());
     if (region?.status !== "active") throw new ApiError("NOT_FOUND");
-    return withTenant(this.db, regionContext(region.id), () => fn(region));
+    const out = await withTenant(this.db, regionContext(region.id), () => fn(region));
+    // Транзакция региона закрыта: устаревшие снимки погоды, которые план отдал как есть, — обновить в фоне.
+    this.weather?.flushRefresh();
+    return out;
   }
 }
 

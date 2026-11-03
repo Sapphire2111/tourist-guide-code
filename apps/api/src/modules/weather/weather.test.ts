@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
 import { configureApp } from "../../bootstrap/configure-app.js";
 import { TenancyModule } from "../../common/tenancy/index.js";
-import { DATABASE, DatabaseModule, type JsonObject } from "../../db/index.js";
+import { DATABASE, DatabaseModule, regionContext, withTenant, type JsonObject } from "../../db/index.js";
 import { FeatureFlagsModule, FeatureFlagsService } from "../feature-flags/index.js";
 import {
   PRINCIPAL_SOURCE,
@@ -48,18 +48,29 @@ const openMeteoBody = (over: Record<string, unknown[]> = {}) => ({
   },
 });
 
+/** Часть суток forecast/days:lookup в форме реального ответа Google (03.11.2026, Яремче): лёд и snowQpf — здесь. */
 const gPart = (type: string, over: Record<string, unknown> = {}) => ({
+  interval: { startTime: "2026-11-03T05:00:00Z", endTime: "2026-11-03T17:00:00Z" },
   weatherCondition: {
     iconBaseUri: `https://maps.gstatic.com/weather/v1/${type.toLowerCase()}`,
     description: { text: type === "CLEAR" ? "Ясно" : "Гроза", languageCode: "uk" },
     type,
   },
-  precipitation: { probability: { percent: 10, type: "RAIN" }, qpf: { quantity: 0, unit: "MILLIMETERS" } },
-  thunderstormProbability: 0,
-  wind: {
-    speed: { value: 10, unit: "KILOMETERS_PER_HOUR" },
-    gust: { value: 20, unit: "KILOMETERS_PER_HOUR" },
+  precipitation: {
+    probability: { type: "RAIN", percent: 10 },
+    snowQpf: { unit: "MILLIMETERS", quantity: 0 },
+    qpf: { unit: "MILLIMETERS", quantity: 0 },
   },
+  wind: {
+    direction: { cardinal: "EAST_NORTHEAST", degrees: 58 },
+    speed: { unit: "KILOMETERS_PER_HOUR", value: 10 },
+    gust: { unit: "KILOMETERS_PER_HOUR", value: 20 },
+  },
+  iceThickness: { unit: "MILLIMETERS", thickness: 0 },
+  relativeHumidity: 93,
+  uvIndex: 0,
+  thunderstormProbability: 0,
+  cloudCover: 100,
   ...over,
 });
 const googleDaysBody = {
@@ -88,8 +99,36 @@ const googleDaysBody = {
       maxTemperature: { degrees: 9, unit: "CELSIUS" },
       minTemperature: { degrees: 3, unit: "CELSIUS" },
     },
+    {
+      // Снег слоем 12 см днём (snowQpf, мм), ночью гололёд (iceThickness части суток).
+      displayDate: { year: 2026, month: 11, day: 5 },
+      daytimeForecast: gPart("SNOW_PERIODICALLY_HEAVY", {
+        precipitation: {
+          probability: { type: "SNOW", percent: 90 },
+          snowQpf: { unit: "MILLIMETERS", quantity: 120 },
+          qpf: { unit: "MILLIMETERS", quantity: 11 },
+        },
+      }),
+      nighttimeForecast: gPart("CLOUDY", { iceThickness: { unit: "MILLIMETERS", thickness: 0.6 } }),
+      maxTemperature: { degrees: -1, unit: "CELSIUS" },
+      minTemperature: { degrees: -5, unit: "CELSIUS" },
+    },
+    {
+      // Дождь вероятен (60 %) при облачности — «якщо дощ» по вероятности; метель ночью — ветер и снегопад.
+      displayDate: { year: 2026, month: 11, day: 6 },
+      daytimeForecast: gPart("CLOUDY", {
+        precipitation: {
+          probability: { type: "RAIN", percent: 60 },
+          snowQpf: { unit: "MILLIMETERS", quantity: 0 },
+          qpf: { unit: "MILLIMETERS", quantity: 0.5 },
+        },
+      }),
+      nighttimeForecast: gPart("BLOWING_SNOW"),
+      maxTemperature: { degrees: 2, unit: "CELSIUS" },
+      minTemperature: { degrees: -3, unit: "CELSIUS" },
+    },
   ],
-  timeZone: { id: "Europe/Kyiv" },
+  timeZone: { id: "Europe/Kiev", version: "" },
 };
 const googleCurrentBody = {
   currentTime: "2026-11-03T08:00:00Z",
@@ -140,7 +179,7 @@ describe("разбор источников и предупреждения", ()
 
   it("Google: дни (день+ночь), описание на украинском, иконка maps.gstatic.com, порывы ночью — сильный ветер", () => {
     const d = parseGoogleDays(googleDaysBody)!;
-    expect(d.timezone).toBe("Europe/Kyiv");
+    expect(d.timezone).toBe("Europe/Kiev");
     expect(d.days[0]).toMatchObject({
       date: "2026-11-03",
       condition: "clear",
@@ -156,6 +195,17 @@ describe("разбор источников и предупреждения", ()
       precipitationSum: 9,
       windGustsMax: 65,
       warnings: ["thunderstorm", "strong_wind"],
+    });
+    expect(d.days[2]).toMatchObject({
+      condition: "heavy_snow",
+      snowfallSum: 12,
+      rainy: false,
+      warnings: ["heavy_snow", "ice"],
+    });
+    expect(d.days[3]).toMatchObject({
+      condition: "cloudy",
+      rainy: true,
+      warnings: ["strong_wind", "heavy_snow"],
     });
     const now = parseGoogleCurrent(googleCurrentBody)!;
     expect(now.now).toMatchObject({
@@ -192,10 +242,11 @@ describe("точки и период обновления", () => {
     expect(nearestPoint(points, nearKhomiak, { mountain: true })?.key).toBe("mountain:khomiak");
   });
 
-  it("период по квоте Google: 14 точек, 300/сутки, 5000/мес — 5 ч; мало точек — не чаще часа; без ключа — 2 ч", () => {
+  it("период по квоте Google: 14 точек, 300/сутки, 5000/мес — 5 ч; мало точек — не чаще часа; много — реже; без ключа — 2 ч", () => {
     expect(refreshEveryMs(14, { daily: 300, monthly: 5000 })).toBe(5 * 3600_000);
     expect(refreshEveryMs(2, { daily: 300, monthly: 5000 })).toBe(3600_000);
-    expect(refreshEveryMs(200, { daily: 300, monthly: 5000 })).toBe(6 * 3600_000);
+    // Много точек — реже, без верхнего предела (расход всё равно в квоте): 200 точек → каждые 60 ч.
+    expect(refreshEveryMs(200, { daily: 300, monthly: 5000 })).toBe(60 * 3600_000);
     expect(refreshEveryMs(14, null)).toBe(2 * 3600_000);
   });
 
@@ -264,6 +315,31 @@ function service(opts: {
 const isGoogle = (url: string) => url.startsWith("https://weather.googleapis.com/");
 
 describe("WeatherService", () => {
+  it("внутри транзакции региона — только снимок, без сети; обновление — в фоне после неё (flushRefresh)", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(json(openMeteoBody())));
+    const { s, repo } = service({ fetch: fetchMock as unknown as typeof fetch, google: false });
+    const { db } = recordingDb({});
+    const REGION = "0190f5c2-7d3e-7000-8000-00000000000a";
+    // Точек ещё нет: снимка нет, сверка точек — в очереди.
+    await withTenant(db, regionContext(REGION), async () => {
+      expect(await s.forecastAt(YAREMCHE)).toBeNull();
+      // Внутри транзакции очередь не трогается.
+      s.flushRefresh();
+    });
+    expect(repo.syncPoints).not.toHaveBeenCalled();
+    s.flushRefresh();
+    await vi.waitFor(() => expect(repo.syncPoints).toHaveBeenCalled());
+    // Точка есть, снимка нет — в очередь; после транзакции — одно обновление у источника.
+    expect(await withTenant(db, regionContext(REGION), () => s.snapshotAt(YAREMCHE))).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    s.flushRefresh();
+    s.flushRefresh();
+    await vi.waitFor(() => expect(repo.saveForecast).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const snap = await withTenant(db, regionContext(REGION), () => s.snapshotAt(YAREMCHE));
+    expect(snap).toMatchObject({ source: "open-meteo" });
+  });
+
   it("Google: ключ в заголовке (не в адресе), 2 единицы квоты, снимок в хранилище; повтор — из снимка", async () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       expect(url).not.toContain("server-key");
@@ -274,8 +350,9 @@ describe("WeatherService", () => {
     const f = await s.forecastAt({ lat: 48.451, lng: 24.552 });
     expect(f).toMatchObject({ source: "google", current: { temperature: 2.1 } });
     expect(f!.days[0]!.date).toBe("2026-11-03");
-    expect(quota.take).toHaveBeenCalledTimes(2);
-    expect(quota.take).toHaveBeenCalledWith("weather", { daily: 300, monthly: 5000 });
+    // Две единицы (сейчас + по дням) — одним атомарным списанием.
+    expect(quota.take).toHaveBeenCalledTimes(1);
+    expect(quota.take).toHaveBeenCalledWith("weather", { daily: 300, monthly: 5000 }, 2);
     expect(repo.syncPoints).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ key: "mountain:hoverla" })]),
     );

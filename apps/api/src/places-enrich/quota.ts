@@ -36,20 +36,24 @@ export class GoogleQuota {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Занять один запрос: в пределах месяца (и суток, если задан daily). false — предел или ошибка БД. */
-  async take(sku: GoogleSku, limits: QuotaLimits): Promise<boolean> {
-    if (limits.monthly <= 0 || (limits.daily !== undefined && limits.daily <= 0)) return false;
+  /**
+   * Занять units запросов (по умолчанию один) разом: в пределах месяца (и суток, если задан daily) — или ни одного.
+   * false — предел или ошибка БД.
+   */
+  async take(sku: GoogleSku, limits: QuotaLimits, units = 1): Promise<boolean> {
+    if (!Number.isInteger(units) || units < 1) return false;
+    if (limits.monthly < units || (limits.daily !== undefined && limits.daily < units)) return false;
     const now = this.now();
     try {
-      if (!(await this.inc(monthOf(now), `${sku}_month`, limits.monthly))) return false;
-      if (limits.daily !== undefined && !(await this.inc(dayOf(now), sku, limits.daily))) {
-        // Сутки исчерпаны — месячный запрос возвращается.
+      if (!(await this.inc(monthOf(now), `${sku}_month`, limits.monthly, units))) return false;
+      if (limits.daily !== undefined && !(await this.inc(dayOf(now), sku, limits.daily, units))) {
+        // Сутки исчерпаны — месячные запросы возвращаются.
         await this.db
           .updateTable("google_api_usage")
-          .set({ count: sql`count - 1` })
+          .set({ count: sql`count - ${units}` })
           .where("day", "=", monthOf(now))
           .where("kind", "=", `${sku}_month`)
-          .where("count", ">", 0)
+          .where("count", ">=", units)
           .execute();
         return false;
       }
@@ -59,15 +63,16 @@ export class GoogleQuota {
     }
   }
 
-  private async inc(day: string, kind: string, limit: number): Promise<boolean> {
+  /** +units атомарно, только если не выйдет за предел (units ≤ limit проверено в take). */
+  private async inc(day: string, kind: string, limit: number, units: number): Promise<boolean> {
     const row = await this.db
       .insertInto("google_api_usage")
-      .values({ day, kind, count: 1 })
+      .values({ day, kind, count: units })
       .onConflict((oc) =>
         oc
           .columns(["day", "kind"])
-          .doUpdateSet({ count: sql`google_api_usage.count + 1` })
-          .where("google_api_usage.count", "<", limit),
+          .doUpdateSet({ count: sql`google_api_usage.count + ${units}` })
+          .where("google_api_usage.count", "<=", limit - units),
       )
       .returning("count")
       .executeTakeFirst();

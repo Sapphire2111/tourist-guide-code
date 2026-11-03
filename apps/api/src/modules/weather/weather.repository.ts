@@ -1,6 +1,14 @@
 import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
-import { InjectDb, lonLatOf, SYSTEM_CONTEXT, withTenant, type Db, type JsonObject } from "../../db/index.js";
+import {
+  currentDb,
+  InjectDb,
+  lonLatOf,
+  SYSTEM_CONTEXT,
+  withTenant,
+  type Db,
+  type JsonObject,
+} from "../../db/index.js";
 import type { WeatherPoint } from "./weather-points.js";
 import type { WeatherSource } from "./weather-rules.js";
 
@@ -14,7 +22,8 @@ export type WeatherRow = WeatherPoint & {
 
 /**
  * Прогнозы по точкам (weather_forecasts, 0026, global) и точки населённых пунктов (localities kind = settlement во
- * всех активных регионах — чтение в SYSTEM-контексте). Вызывается вне транзакции запроса (outsideTenant).
+ * всех активных регионах — чтение в SYSTEM-контексте). list — и внутри транзакции запроса (только чтение,
+ * «Мій план»), остальное — вне её (фон, GET /weather).
  */
 @Injectable()
 export class WeatherRepository {
@@ -41,7 +50,11 @@ export class WeatherRepository {
   }
 
   async list(): Promise<WeatherRow[]> {
-    const rows = await this.db.selectFrom("weather_forecasts").selectAll().orderBy("point_key").execute();
+    const rows = await currentDb(this.db)
+      .selectFrom("weather_forecasts")
+      .selectAll()
+      .orderBy("point_key")
+      .execute();
     return rows.map((r) => ({
       key: r.point_key,
       kind: r.kind,

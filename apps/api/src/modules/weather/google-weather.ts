@@ -38,13 +38,20 @@ export function googleDaysUrl(base: string, lat: number, lng: number, days: numb
   return `${base}/forecast/days:lookup?${q.toString()}`;
 }
 
+/** Тип погоды Google с сильным ветром: ветер, ветер с дождём, метель. */
+export function googleWindy(type: unknown): boolean {
+  return typeof type === "string" && /WINDY|WIND_AND_RAIN|BLOWING_SNOW|BLIZZARD/.test(type);
+}
+
 /** Тип погоды Google (weatherCondition.type) → погода одним словом. */
 export function googleCondition(type: unknown): WeatherCondition | null {
   if (typeof type !== "string") return null;
   if (/THUNDER/.test(type)) return "thunderstorm";
   if (/HAIL/.test(type)) return "hail";
   if (type === "RAIN_AND_SNOW") return "sleet";
-  if (/HEAVY_SNOW|SNOWSTORM|MODERATE_TO_HEAVY_SNOW|BLIZZARD/.test(type)) return "heavy_snow";
+  // Метель (BLOWING_SNOW) — по смыслу сильный снег с ветром (ветер — в googleWindy).
+  if (/HEAVY_SNOW|SNOWSTORM|MODERATE_TO_HEAVY_SNOW|SNOW_PERIODICALLY_HEAVY|BLIZZARD|BLOWING_SNOW/.test(type))
+    return "heavy_snow";
   if (/SNOW/.test(type)) return "snow";
   if (/HEAVY_RAIN|MODERATE_TO_HEAVY_RAIN|RAIN_PERIODICALLY_HEAVY/.test(type)) return "heavy_rain";
   if (/SHOWERS/.test(type)) return "showers";
@@ -109,8 +116,13 @@ function part(p: unknown) {
   return {
     cond,
     condition: googleCondition(path(cond, "type")),
+    windy: googleWindy(path(cond, "type")),
+    /** Все осадки в воде, мм (снег — тоже в воде). */
     qpf: mm(path(p, "precipitation", "qpf")),
+    /** Снег слоем, мм (в ответе Google ~10× больше qpf того же снега — это высота, а не вода). */
+    snowQpf: mm(path(p, "precipitation", "snowQpf")),
     snowy: typeof precipType === "string" && precipType === "SNOW",
+    ice: mm({ quantity: num(path(p, "iceThickness", "thickness")), unit: path(p, "iceThickness", "unit") }),
     probability: num(path(p, "precipitation", "probability", "percent")),
     thunder: num(path(p, "thunderstormProbability")),
     wind: kmh(path(p, "wind", "speed")),
@@ -138,7 +150,7 @@ export function parseGoogleDays(body: unknown): { days: WeatherDay[]; timezone: 
     const night = part(path(fd, "nighttimeForecast"));
     const precipitationSum =
       day.qpf === null && night.qpf === null ? null : (day.qpf ?? 0) + (night.qpf ?? 0);
-    // Снег в воде у Google без отдельной величины: осадки части суток с типом SNOW — не дождь.
+    // Осадки части суток с типом SNOW — снег, не дождь.
     const liquid =
       day.qpf === null && night.qpf === null
         ? null
@@ -156,30 +168,31 @@ export function parseGoogleDays(body: unknown): { days: WeatherDay[]; timezone: 
       temperatureMin,
       precipitationSum,
       precipitationProbabilityMax: maxOf(day.probability, night.probability),
-      snowfallSum: null,
+      snowfallSum:
+        day.snowQpf === null && night.snowQpf === null
+          ? null
+          : Math.round(((day.snowQpf ?? 0) + (night.snowQpf ?? 0)) * 10) / 100,
       windSpeedMax,
       windGustsMax,
     };
-    // «Якщо дощ» — по дневной части: днём турист в пути.
+    // «Якщо дощ» — по дневной части (днём турист в пути): дождливая погода, вероятность дождя от 50 % или от 2 мм.
     const dayLiquid = day.snowy ? 0 : day.qpf;
     days.push({
       ...d,
       rainy:
         isRainyCondition(day.condition) ||
-        (dayLiquid !== null && dayLiquid >= THRESHOLDS.rainMm && (day.probability ?? 100) >= 50),
+        (!day.snowy && (day.probability ?? 0) >= THRESHOLDS.rainPercent) ||
+        (dayLiquid !== null && dayLiquid >= THRESHOLDS.rainMm),
       warnings: dayWarnings({
-        conditions: [day.condition, night.condition],
+        conditions: [day.condition, night.condition, ...(day.windy || night.windy ? ["windy" as const] : [])],
         temperatureMax,
         temperatureMin,
         liquidMm: liquid,
-        snowfallCm: null,
+        snowfallCm: d.snowfallSum,
         windSpeedMax,
         windGustsMax,
         thunderProbability: maxOf(day.thunder, night.thunder),
-        iceMm: mm({
-          quantity: num(path(fd, "iceThickness", "thickness")),
-          unit: path(fd, "iceThickness", "unit"),
-        }),
+        iceMm: maxOf(day.ice, night.ice),
       }),
     });
   }
