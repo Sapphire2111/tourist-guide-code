@@ -157,8 +157,43 @@ const SCHEDULE_RE = /\s*Графік:\s*(?:(?:пн|вт|ср|чт|пт|сб|нд
 export const stripSchedule = (note: string) =>
   note.replace(SCHEDULE_RE, (m) => (/\d{2}:\d{2}/.test(m) ? "" : m)).trim();
 
-/** Длина примечания к пункту (символов): практичные советы гида, без обрыва. */
-export const NOTE_MAX = 320;
+/**
+ * Длина примечания к пункту (символов, без приписки «Графік: …»). Модели и критику называем NOTE_ASK_MAX; NOTE_MAX —
+ * предел программы с запасом: модель считает символы приблизительно, а вторая платная попытка (весь сценарий) ради
+ * лишней фразы не окупается. БД (jsonb) и экран «Мій план» длину не ограничивают, DTO админки — 2000.
+ */
+export const NOTE_ASK_MAX = 400;
+export const NOTE_MAX = 480;
+
+/** Точка после сокращения или числа — не конец предложения («у м. Яремче», «5 км. на схід», «1. Йти»). */
+const NOT_SENTENCE_END =
+  /(?:^|[^\p{L}\d])(?:\p{L}|\d+|вул|пл|просп|смт|ім|оз|св|ст|напр|див|бл|прибл|тел|хв|год|грн|км|ін|тис)$/iu;
+const SENTENCE_END = /[.!?…]+["»”')]*(?=\s|$)/gu;
+const ENDS_SENTENCE = /[.!?…]["»”')]*$/u;
+/** Хвост-заготовка: за ним должно было идти продолжение («Правило розвороту:»). */
+const DANGLING = /[:;,–—-]$/u;
+
+/**
+ * Примечание без обрыва: длинное — до последнего законченного предложения в пределах max; хвост без конца предложения
+ * («… тихо. Вра», «… Правило розвороту:») снимается и при допустимой длине. Если законченного предложения нет, а текст
+ * длинный или висит на двоеточии — пустая строка (лучше без совета, чем оборванный). Готовый результат не меняется
+ * при повторном вызове. Короткий фрагмент без точки («Прогулянка») остаётся как есть.
+ */
+export function trimNote(raw: string, max: number = NOTE_MAX): string {
+  const s = raw.replace(/\s+/g, " ").trim();
+  if (s.length <= max && (s === "" || ENDS_SENTENCE.test(s))) return s;
+  let end = 0;
+  for (const m of s.matchAll(SENTENCE_END)) {
+    const stop = m.index + m[0].length;
+    if (stop > max) break;
+    const next = s[stop + 1];
+    if (next && /\p{Ll}/u.test(next)) continue;
+    if (m[0].startsWith(".") && NOT_SENTENCE_END.test(s.slice(0, m.index))) continue;
+    end = stop;
+  }
+  if (end) return s.slice(0, end);
+  return s.length <= max && !DANGLING.test(s) ? s : "";
+}
 
 const clean = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(0, max).trim();
 const BAD_TEXT = /https?:|www\.|[<>`*#]|\+?\d[\d\s-]{8,}/i;
@@ -282,11 +317,18 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
         }
       }
       // Графік дописує программа — прежний (из раунда критика) снимаем и пишем заново один раз.
-      let note = clean(stripSchedule(it.note_uk ?? ""), NOTE_MAX);
-      // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день.
+      const askedNote = stripSchedule(it.note_uk ?? "").replace(/\s+/g, " ");
+      let note = trimNote(askedNote);
+      if (note !== askedNote)
+        fixes.push(
+          note
+            ? `${it.ref} ${place.name}: примітку скорочено до закінченого речення (${askedNote.length} → ${note.length} символів)`
+            : `${it.ref} ${place.name}: примітку прибрано — немає закінченого речення (${askedNote.length} символів)`,
+        );
+      // Працює не щодня (ринок у Косові — лише в суботу) — графік у примітку, щоб турист обрав день. Лимит — только на
+      // совет выше: приписка не режется и не вытесняет его предложения.
       const openDays = new Set(place.weekly.map((w) => w.dayOfWeek)).size;
-      if (openDays > 0 && openDays < 7)
-        note = clean(`${note} Графік: ${weeklyShort(place.weekly)}.`, NOTE_MAX + 80);
+      if (openDays > 0 && openDays < 7) note = `${note} Графік: ${weeklyShort(place.weekly)}.`.trim();
       if (note && BAD_TEXT.test(note)) errors.push(`${it.ref}: у примітці посилання, телефон або розмітка`);
       items.push({
         dayNo: d.day,
