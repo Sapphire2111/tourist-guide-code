@@ -22,6 +22,7 @@ import type {
 import { useBookings } from "./context.js";
 import {
   addDays,
+  bookingZone,
   dayLabel,
   localDate,
   localTime,
@@ -397,9 +398,9 @@ function BookingCard({
   onChanged: () => void;
 }) {
   const { t, locale } = useT();
-  const { api } = useBookings();
+  const { api, timeZone: envZone } = useBookings();
   // Время брони — в поясе её места (сервер).
-  const timeZone = b.timezone;
+  const timeZone = bookingZone(b.timezone, envZone);
   const errorText = useBookingErrorText();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
@@ -597,8 +598,8 @@ function AlternativeForm({
   onSubmit: (iso: string) => void;
 }) {
   const { t } = useT();
-  const { api } = useBookings();
-  const timeZone = booking.timezone;
+  const { api, timeZone: envZone } = useBookings();
+  const timeZone = bookingZone(booking.timezone, envZone);
   // Свободные слоты ресурса на выбранную дату — сетка партнёра (есть и у неопубликованного места); ошибка — только
   // ручной ввод времени.
   const [slots] = useAsync(

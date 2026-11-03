@@ -14,7 +14,7 @@ import { Live, type Message } from "../partner/parts.js";
 import type { TelegramWebApp } from "../telegram.js";
 import type { Booking, Resource, Slot, StatusChange } from "./bookings-api.js";
 import { useBookings } from "./context.js";
-import { addDays, dayLabel, localDate, localTime, normalizePhone, whenLabel } from "./format.js";
+import { addDays, bookingZone, dayLabel, localDate, localTime, normalizePhone, whenLabel } from "./format.js";
 import { Reason, StatusBadge, useBookingErrorText, useIdempotencyKey } from "./parts.js";
 
 /** Bot API 6.9+: запрос номера пользователя; номер — в responseUnsafe.contact (новые клиенты). */
@@ -304,8 +304,10 @@ function BookingForm({
   const tg = webApp as ContactWebApp | undefined;
   const user = tg?.initDataUnsafe?.user;
   const contactName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : null;
-  // Имя для заведения: по умолчанию — из Telegram; поле можно поправить (сервер обрежет длинное).
-  const customerName = (name ?? contactName ?? "").trim();
+  // Имя для заведения — только введённое туристом: имя из Telegram в бронь не копируется (партнёр и так видит имя
+  // профиля), поле его лишь подсказывает. Сервер обрежет длинное.
+  const customerName = (name ?? "").trim();
+  const shownName = customerName || contactName;
   const cap = resource.capacityPeople;
 
   const shareContact = () => {
@@ -392,10 +394,10 @@ function BookingForm({
               </dd>
             </>
           )}
-          {customerName && (
+          {shownName && (
             <>
               <dt>{t("miniapp.booking.contact")}</dt>
-              <dd>{customerName}</dd>
+              <dd>{shownName}</dd>
             </>
           )}
           {phone && (
@@ -445,7 +447,8 @@ function BookingForm({
             id={ids.name}
             autoComplete="name"
             maxLength={200}
-            value={name ?? contactName ?? ""}
+            placeholder={contactName ?? undefined}
+            value={name ?? ""}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
@@ -590,9 +593,9 @@ export function MyBookings() {
 
 function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (b: Booking) => void }) {
   const { t, locale } = useT();
-  const { api } = useBookings();
+  const { api, timeZone: envZone } = useBookings();
   // Время брони — в поясе места (сервер), а не текущего контекста входа.
-  const timeZone = b.timezone;
+  const timeZone = bookingZone(b.timezone, envZone);
   const errorText = useBookingErrorText();
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);

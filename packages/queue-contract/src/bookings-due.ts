@@ -46,14 +46,17 @@ export const WORKER_NOTIFICATION_TEMPLATES = [
   "booking.reminder",
   "booking.partner_reminder",
 ] as const;
-/** Строк outbox за один вызов функции. */
-const DISPATCH_BATCH = 100;
+/** Ожидание ответа Bot API на одну отправку, мс. */
+const SEND_TIMEOUT_MS = 10_000;
+/** Строк outbox за один вызов функции (с SEND_TIMEOUT_MS и повтором 429 в вызове пачка укладывается в аренду). */
+const DISPATCH_BATCH = 50;
 /**
- * Попыток отправки строки outbox воркера (взятие = попытка): после стольких — failed (max_attempts). Аренда взятой
- * строки, с: воркер упал между взятием и отметкой — строку возьмут снова после аренды (миграция api 0024).
+ * Попыток отправки строки outbox воркера (взятие = попытка; 429 попытку не тратит): после стольких — failed
+ * (max_attempts). Аренда взятой строки, с: дольше худшего времени пачки (50 × до 25 с), чтобы её не взял второй
+ * воркер, пока первый отправляет; воркер упал между взятием и отметкой — строку возьмут снова после аренды (0024).
  */
 export const NOTIFICATION_MAX_ATTEMPTS = 5;
-export const NOTIFICATION_LEASE_SEC = 600;
+export const NOTIFICATION_LEASE_SEC = 1800;
 /** Пауза перед повтором при повторяемой ошибке без retry_after, с: 60, 120, 240… не больше часа. */
 export function notificationBackoffSec(attempt: number): number {
   return Math.min(3600, 60 * 2 ** Math.max(0, attempt - 1));
@@ -72,8 +75,9 @@ export interface TelegramSender {
 }
 
 /**
- * Ошибка отправки: retryable — повторить позже (429, 5xx, сеть, таймаут); retryAfterSec — сколько ждать по ответу
- * Telegram (429 parameters.retry_after). Прочие 4xx (бот заблокирован, чат не найден) — не повторяются.
+ * Ошибка отправки: retryable — запрос заведомо не доставлен или Telegram просит повторить (429, 5xx, отказ соединения
+ * до отправки); retryAfterSec — сколько ждать по ответу 429 (parameters.retry_after). Таймаут и обрыв после отправки
+ * — не retryable: сообщение могло дойти, повтор дал бы дубль (не больше одного раза). Прочие 4xx — не повторяются.
  */
 export class TelegramSendError extends Error {
   constructor(
@@ -84,6 +88,23 @@ export class TelegramSendError extends Error {
     super(message);
     this.name = "TelegramSendError";
   }
+}
+
+/** Ошибки соединения, при которых запрос до Telegram не дошёл (DNS, отказ, нет маршрута) — повтор безопасен. */
+const NOT_SENT_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** Код системной ошибки fetch (undici: TypeError «fetch failed» с cause.code). */
+function errorCode(err: unknown): string | undefined {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  const code = e?.code ?? e?.cause?.code;
+  return typeof code === "string" ? code : undefined;
 }
 
 export type BotApiSenderOptions = {
@@ -115,7 +136,7 @@ export class BotApiTelegramSender implements TelegramSender {
     this.fetchFn = o.fetch ?? fetch;
     this.baseUrl = o.baseUrl ?? "https://api.telegram.org";
     this.sleep = o.sleep ?? defaultSleep;
-    this.maxRetries = o.maxRetries ?? 2;
+    this.maxRetries = o.maxRetries ?? 1;
     this.maxWaitSec = o.maxWaitSec ?? 5;
   }
 
@@ -127,11 +148,15 @@ export class BotApiTelegramSender implements TelegramSender {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ chat_id: chatId, text }),
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
         });
       } catch (err) {
-        // Текст без URL: в нём токен.
-        throw new TelegramSendError(`Bot API sendMessage: ${(err as Error).name}`, true);
+        // Текст без URL: в нём токен. Повтор — только если запрос точно не ушёл.
+        const code = errorCode(err);
+        throw new TelegramSendError(
+          `Bot API sendMessage: ${(err as Error).name}${code ? ` ${code}` : ""}`,
+          code !== undefined && NOT_SENT_CODES.has(code),
+        );
       }
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -177,15 +202,22 @@ type Claimed = { id: string; chat_id: string; body: string; attempts: number | s
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 300);
 
 /**
- * Отправка строк outbox шаблонов воркера: взять (попытка — attempts, аренда — next_attempt_at), отправить, отметить
- * итог. Повторяемая ошибка (429 с retry_after, 5xx, сеть) — строка возвращается в очередь с отсрочкой
- * (notifications_release), пока не исчерпаны попытки; 429 — остальные взятые строки тоже откладываются (лимит Telegram
- * на бота общий), тик заканчивается.
+ * Отправка строк outbox шаблонов воркера: взять (attempts — номер взятия, аренда — next_attempt_at), отправить,
+ * отметить итог этим номером (истёкшую аренду уже взял другой — чужое взятие не отмечается). Повторяемая ошибка —
+ * строка возвращается в очередь (notifications_release) и пачка прерывается: остальные взятые строки возвращаются без
+ * траты попытки (Telegram или сеть недоступны — не тратим на них время аренды). 429 попытку не тратит (лимит бота, не
+ * сбой строки) — и на последней попытке; 5xx и отказ соединения — тратят, после последней — failed.
  */
 async function dispatch(db: RowsQueryable, sender: TelegramSender | null) {
   const result = { sent: 0, failed: 0, skipped: 0, retried: 0 };
-  const release = async (id: string, delaySec: number, error: string) => {
-    await db.query("SELECT notifications_release($1, $2, $3) AS ok", [id, delaySec, error]);
+  const release = async (row: Claimed, delaySec: number, error: string, refund: boolean) => {
+    await db.query("SELECT notifications_release($1, $2, $3, $4, $5) AS ok", [
+      row.id,
+      delaySec,
+      error,
+      Number(row.attempts),
+      refund,
+    ]);
     result.retried += 1;
   };
   for (let i = 0; i < MAX_BATCHES; i++) {
@@ -194,10 +226,10 @@ async function dispatch(db: RowsQueryable, sender: TelegramSender | null) {
       [WORKER_NOTIFICATION_TEMPLATES, DISPATCH_BATCH, NOTIFICATION_MAX_ATTEMPTS, NOTIFICATION_LEASE_SEC],
     );
     const claimed = rows as Claimed[];
-    let throttled: { delaySec: number; error: string } | null = null;
+    let stop: { delaySec: number; error: string } | null = null;
     for (const row of claimed) {
-      if (throttled) {
-        await release(row.id, throttled.delaySec, throttled.error);
+      if (stop) {
+        await release(row, stop.delaySec, stop.error, true);
         continue;
       }
       let status: "sent" | "failed" | "skipped" = "sent";
@@ -210,20 +242,27 @@ async function dispatch(db: RowsQueryable, sender: TelegramSender | null) {
           await sender.send(row.chat_id, row.body);
         } catch (err) {
           error = errorText(err);
-          const attempts = Number(row.attempts) || NOTIFICATION_MAX_ATTEMPTS;
-          if (err instanceof TelegramSendError && err.retryable && attempts < NOTIFICATION_MAX_ATTEMPTS) {
-            const delaySec = err.retryAfterSec ?? notificationBackoffSec(attempts);
-            await release(row.id, delaySec, error);
-            if (err.retryAfterSec !== null) throttled = { delaySec, error };
-            continue;
+          if (err instanceof TelegramSendError && err.retryable) {
+            const attempt = Number(row.attempts) || NOTIFICATION_MAX_ATTEMPTS;
+            const throttled = err.retryAfterSec !== null;
+            stop = { delaySec: err.retryAfterSec ?? notificationBackoffSec(attempt), error };
+            if (throttled || attempt < NOTIFICATION_MAX_ATTEMPTS) {
+              await release(row, stop.delaySec, error, throttled);
+              continue;
+            }
           }
           status = "failed";
         }
       }
-      await db.query("SELECT notifications_mark_dispatched($1, $2, $3) AS ok", [row.id, status, error]);
+      await db.query("SELECT notifications_mark_dispatched($1, $2, $3, $4) AS ok", [
+        row.id,
+        status,
+        error,
+        Number(row.attempts),
+      ]);
       result[status] += 1;
     }
-    if (throttled || claimed.length < DISPATCH_BATCH) break;
+    if (stop || claimed.length < DISPATCH_BATCH) break;
   }
   return result;
 }

@@ -1013,14 +1013,26 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     expect(await claim()).toEqual([]);
     await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);
     expect(await claim()).toEqual([{ id, attempts: 2 }]);
-    // 429: отсрочка по retry_after — до срока не берётся.
+    // Просроченное взятие №1 не отмечает и не возвращает строку, которую уже держит взятие №2.
+    const stale = await appClient.query(`SELECT notifications_mark_dispatched($1, 'sent', NULL, 1) AS ok`, [
+      id,
+    ]);
+    expect(stale.rows[0].ok).toBe(false);
+    const staleRelease = await appClient.query(`SELECT notifications_release($1, 0, 'x', 1, true) AS ok`, [
+      id,
+    ]);
+    expect(staleRelease.rows[0].ok).toBe(false);
+    // 429: отсрочка по retry_after без траты попытки — до срока не берётся, затем то же взятие №2.
     const rel = await appClient.query(
-      `SELECT notifications_release($1, 30, 'Bot API sendMessage: 429') AS ok`,
+      `SELECT notifications_release($1, 30, 'Bot API sendMessage: 429', 2, true) AS ok`,
       [id],
     );
     expect(rel.rows[0].ok).toBe(true);
     expect(await claim()).toEqual([]);
     await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);
+    expect(await claim()).toEqual([{ id, attempts: 2 }]);
+    // 5xx: попытка посчитана.
+    await appClient.query(`SELECT notifications_release($1, 0, 'Bot API sendMessage: 502', 2, false)`, [id]);
     expect(await claim()).toEqual([{ id, attempts: 3 }]);
     // Последняя попытка тоже не отмечена — после аренды строка failed (max_attempts), не висит pending.
     await sql(`UPDATE notifications SET next_attempt_at = now() - interval '1 second' WHERE id = $1`, [id]);

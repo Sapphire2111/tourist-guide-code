@@ -102,12 +102,17 @@ export function bookingDto(over: Partial<Booking> & { id: string }): Booking {
     resourceName: name("Чан біля річки"),
     status: "pending_partner",
     statusReason: null,
+    statusReasonCode: null,
+    timezone: TZ,
     startsAt: kyiv(0, 18),
     endsAt: kyiv(0, 19),
     peopleCount: 3,
     comment: "Будемо з дітьми",
     alternative: null,
     partnerResponseDueAt: kyiv(0, 17),
+    cancelDeadline: null,
+    cancelTooLate: false,
+    cancelBeforeStartHours: 2,
     allowedTransitions: ["confirmed", "alternative_proposed", "cancelled_by_partner"],
     history: [],
     createdAt: "2026-11-03T08:00:00Z",
@@ -193,14 +198,15 @@ export async function installBookingsMock(
         if (query.regionId !== REGION_ID) return error(route, 404, "NOT_FOUND");
         return json(route, { items: query.placeId === CAFE_PLACE ? [touristResource()] : [] });
       }
-      if (/^\/resources\/[^/]+\/slots$/.test(path)) {
+      // Слоты: публичные и партнёра (/partner/resources/{id}/slots — место может быть не опубликовано).
+      if (/^\/(partner\/)?resources\/[^/]+\/slots$/.test(path)) {
         const items = slotStarts().map((s) => ({
           startsAt: s,
           endsAt: new Date(Date.parse(s) + 3_600_000).toISOString(),
           free: !taken(s),
         }));
         return json(route, {
-          resourceId: path.split("/")[2],
+          resourceId: path.split("/").at(-2),
           timezone: TZ,
           from: kyiv(0, 12).slice(0, 10),
           days: 2,
@@ -255,7 +261,7 @@ export async function installBookingsMock(
           Object.assign(booking, { startsAt: alt.startsAt, endsAt: alt.endsAt, alternative: null });
         }
         if (b.status === "cancelled_by_user" && booking.status === "alternative_proposed")
-          Object.assign(booking, { statusReason: "alternative_declined", alternative: null });
+          Object.assign(booking, { statusReasonCode: "alternative_declined", alternative: null });
         if (b.status === "cancelled_by_partner") booking.statusReason = b.reason ?? null;
         booking.status = String(b.status);
         booking.allowedTransitions =

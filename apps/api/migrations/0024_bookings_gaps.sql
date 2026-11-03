@@ -5,8 +5,9 @@
 -- booking_safe_timezone() (Europe/Kyiv → Europe/Kiev на старой tzdata, иначе UTC), а уведомления каждой брони — в
 -- отдельном блоке исключений (ошибка одной записи не откатывает переходы остальных). (3) Outbox воркера: взятая, но не
 -- отмеченная строка (воркер упал, attempts = 1) больше не висит вечно — аренда next_attempt_at, повтор до
--- p_max_attempts, затем failed; повторяемая ошибка (429 Telegram с retry_after, 5xx, сеть) — notifications_release
--- откладывает повтор.
+-- p_max_attempts, затем failed; итог и возврат в очередь отмечаются номером взятия (просроченная аренда не даёт
+-- отметить чужое взятие); повторяемая ошибка (429 Telegram с retry_after — без траты попытки, 5xx, отказ соединения)
+-- — notifications_release откладывает повтор.
 
 SELECT set_config('app.actor', 'system', true);
 
@@ -291,15 +292,16 @@ WHERE status = 'pending' AND attempts > 0 AND next_attempt_at IS NULL
   AND template IN ('booking.expired', 'booking.auto_completed', 'booking.reminder', 'booking.partner_reminder');
 
 CREATE INDEX notifications_worker_retry_idx ON notifications (next_attempt_at)
-  WHERE status = 'pending' AND attempts > 0;
+  WHERE status = 'pending' AND next_attempt_at IS NOT NULL;
 
--- Взятие строк к отправке: новые (attempts = 0) и те, чья аренда или срок повтора истёк (attempts < p_max_attempts).
--- Взятая строка получает attempts + 1 и аренду now() + p_lease_sec: воркер упал — через аренду её возьмут снова.
--- Исчерпавшие попытки с истёкшей арендой — failed (max_attempts). Возвращает строки к отправке и номер попытки.
+-- Взятие строк к отправке: попыток меньше p_max_attempts и строку никто не держит (next_attempt_at NULL — новая, или
+-- аренда / срок повтора истёк). Взятая строка получает attempts + 1 (номер взятия — им отмечается итог) и аренду
+-- now() + p_lease_sec: воркер упал — после аренды её возьмут снова. Исчерпавшие попытки с истёкшей арендой — failed
+-- (max_attempts). Возвращает строки к отправке и номер взятия.
 DROP FUNCTION notifications_claim_pending(text[], integer);
 
 CREATE FUNCTION notifications_claim_pending(
-  p_templates text[], p_batch integer DEFAULT 100, p_max_attempts integer DEFAULT 5, p_lease_sec integer DEFAULT 600)
+  p_templates text[], p_batch integer DEFAULT 50, p_max_attempts integer DEFAULT 5, p_lease_sec integer DEFAULT 1800)
 RETURNS TABLE (id uuid, chat_id text, body text, attempts integer)
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -323,8 +325,8 @@ BEGIN
   RETURN QUERY
     WITH picked AS (
       SELECT x.id FROM public.notifications x
-      WHERE x.status = 'pending' AND x.template = ANY (p_templates)
-        AND (x.attempts = 0 OR (x.attempts < p_max_attempts AND x.next_attempt_at <= now()))
+      WHERE x.status = 'pending' AND x.template = ANY (p_templates) AND x.attempts < p_max_attempts
+        AND (x.next_attempt_at IS NULL OR x.next_attempt_at <= now())
       ORDER BY x.created_at, x.id
       LIMIT p_batch
       FOR UPDATE SKIP LOCKED
@@ -349,8 +351,12 @@ $$;
 REVOKE EXECUTE ON FUNCTION notifications_claim_pending(text[], integer, integer, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION notifications_claim_pending(text[], integer, integer, integer) TO app;
 
--- Итог отправки (0023) + снятие аренды.
-CREATE OR REPLACE FUNCTION notifications_mark_dispatched(p_id uuid, p_status text, p_error text DEFAULT NULL)
+-- Итог отправки (0023) + снятие аренды. p_attempt — номер взятия из notifications_claim_pending: строку с истёкшей
+-- арендой уже взял другой воркер (attempts другой) — отметка не применяется (false). NULL — без проверки (как в 0023).
+DROP FUNCTION notifications_mark_dispatched(uuid, text, text);
+
+CREATE FUNCTION notifications_mark_dispatched(
+  p_id uuid, p_status text, p_error text DEFAULT NULL, p_attempt integer DEFAULT NULL)
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -368,16 +374,23 @@ BEGIN
   UPDATE public.notifications
   SET status = p_status, last_error = left(p_error, 300), sent_at = CASE WHEN p_status = 'sent' THEN now() END,
       next_attempt_at = NULL
-  WHERE id = p_id AND status = 'pending';
+  WHERE id = p_id AND status = 'pending' AND (p_attempt IS NULL OR attempts = p_attempt);
   GET DIAGNOSTICS updated = ROW_COUNT;
   PERFORM set_config('app.actor', prev_actor, true);
   RETURN updated > 0;
 END
 $$;
 
--- Повторяемая ошибка отправки взятой строки (429 Telegram — retry_after, 5xx, сеть): строка остаётся pending, повтор
--- не раньше now() + p_delay_sec (попытки уже посчитаны при взятии). true — строка обновлена.
-CREATE FUNCTION notifications_release(p_id uuid, p_delay_sec integer, p_error text DEFAULT NULL)
+REVOKE EXECUTE ON FUNCTION notifications_mark_dispatched(uuid, text, text, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION notifications_mark_dispatched(uuid, text, text, integer) TO app;
+
+-- Вернуть взятую строку в очередь: остаётся pending, повтор не раньше now() + p_delay_sec. p_refund — попытка не
+-- тратится (attempts − 1, не ниже 0): 429 Telegram (retry_after — лимит бота, не сбой строки) и строки пачки, до
+-- которых отправка не дошла. Без p_refund (5xx, отказ соединения) — попытка посчитана. p_attempt — как в
+-- notifications_mark_dispatched. true — строка обновлена.
+CREATE FUNCTION notifications_release(
+  p_id uuid, p_delay_sec integer, p_error text DEFAULT NULL, p_attempt integer DEFAULT NULL,
+  p_refund boolean DEFAULT false)
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -388,18 +401,20 @@ DECLARE
   prev_actor text := coalesce(current_setting('app.actor', true), '');
   updated integer;
 BEGIN
-  IF p_delay_sec IS NULL OR p_delay_sec < 0 OR p_delay_sec > 86400 THEN
-    RAISE EXCEPTION 'notifications_release: задержка — 0…86400 с' USING ERRCODE = '22023';
+  IF p_delay_sec IS NULL OR p_delay_sec < 0 OR p_delay_sec > 86400 OR p_refund IS NULL THEN
+    RAISE EXCEPTION 'notifications_release: задержка — 0…86400 с, p_refund обязателен' USING ERRCODE = '22023';
   END IF;
   PERFORM set_config('app.actor', 'system', true);
   UPDATE public.notifications
-  SET next_attempt_at = now() + make_interval(secs => p_delay_sec), last_error = left(p_error, 300)
-  WHERE id = p_id AND status = 'pending';
+  SET next_attempt_at = now() + make_interval(secs => p_delay_sec),
+      last_error = coalesce(left(p_error, 300), last_error),
+      attempts = CASE WHEN p_refund THEN greatest(attempts - 1, 0) ELSE attempts END
+  WHERE id = p_id AND status = 'pending' AND (p_attempt IS NULL OR attempts = p_attempt);
   GET DIAGNOSTICS updated = ROW_COUNT;
   PERFORM set_config('app.actor', prev_actor, true);
   RETURN updated > 0;
 END
 $$;
 
-REVOKE EXECUTE ON FUNCTION notifications_release(uuid, integer, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION notifications_release(uuid, integer, text) TO app;
+REVOKE EXECUTE ON FUNCTION notifications_release(uuid, integer, text, integer, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION notifications_release(uuid, integer, text, integer, boolean) TO app;

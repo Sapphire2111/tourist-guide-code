@@ -417,7 +417,7 @@ describe("C07/C08: бронирование", () => {
     );
   });
 
-  it("имя для закладу (по умолчанию из Telegram) и контекст входа (QR) уходят в заявку", async () => {
+  it("имя из Telegram — только подсказка, в заявку не уходит; контекст входа (QR) — уходит", async () => {
     const webApp = {
       ready() {},
       expand() {},
@@ -430,7 +430,31 @@ describe("C07/C08: бронирование", () => {
     });
     await toForm();
     const name = screen.getByLabelText("Імʼя для закладу") as HTMLInputElement;
-    expect(name.value).toBe("Олена Коваль");
+    expect(name.value).toBe("");
+    expect(name.placeholder).toBe("Олена Коваль");
+    fireEvent.change(screen.getByLabelText("Телефон для підтвердження"), {
+      target: { value: "+380501234567" },
+    });
+    fireEvent.click(screen.getByTestId("phone-consent"));
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    const body = vi.mocked(api.create).mock.calls[0]![0];
+    expect(body).not.toHaveProperty("customerName");
+    expect(body.entryContextId).toBe("00000000-0000-4000-8000-0000000000e1");
+  });
+
+  it("имя, введённое туристом, уходит в заявку", async () => {
+    const webApp = {
+      ready() {},
+      expand() {},
+      initDataUnsafe: { user: { id: 1, first_name: "Олена", last_name: "Коваль" } },
+    } as unknown as TelegramWebApp;
+    const api = renderWith(<BookingFlow placeId={PLACE} />, {
+      webApp,
+      entryContextId: "00000000-0000-4000-8000-0000000000e1",
+      api: fakeApi({ create: vi.fn(async () => booking()) }),
+    });
+    await toForm();
+    const name = screen.getByLabelText("Імʼя для закладу") as HTMLInputElement;
     fireEvent.change(name, { target: { value: "  Олена К. " } });
     fireEvent.change(screen.getByLabelText("Телефон для підтвердження"), {
       target: { value: "+380501234567" },

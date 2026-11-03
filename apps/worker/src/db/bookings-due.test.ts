@@ -63,10 +63,10 @@ describe("bookingsDueProcessor", () => {
     ).toThrow();
   });
 
-  it("outbox воркера: только свои шаблоны; отправлено/ошибка — отметка итога; без бота — skipped", async () => {
+  it("outbox воркера: только свои шаблоны; отправлено/ошибка — отметка итога номером взятия; без бота — skipped", async () => {
     const claimed = [
       { id: "n1", chat_id: "101", body: "Бронювання №1", attempts: 1 },
-      { id: "n2", chat_id: "102", body: "Бронювання №2", attempts: 1 },
+      { id: "n2", chat_id: "102", body: "Бронювання №2", attempts: 2 },
     ];
     const send = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Bot API: 403"));
     const q = db({ notifications_claim_pending: [claimed] });
@@ -76,14 +76,15 @@ describe("bookingsDueProcessor", () => {
     const claim = q.query.mock.calls.find(([t]) => t.includes("notifications_claim_pending"))!;
     expect(claim[1]).toEqual([
       WORKER_NOTIFICATION_TEMPLATES,
-      100,
+      50,
       NOTIFICATION_MAX_ATTEMPTS,
       NOTIFICATION_LEASE_SEC,
     ]);
     const marks = q.query.mock.calls.filter(([t]) => t.includes("notifications_mark_dispatched"));
+    // Номер взятия: отметка не применится, если аренда истекла и строку взял другой воркер.
     expect(marks.map(([, v]) => v)).toEqual([
-      ["n1", "sent", null],
-      ["n2", "failed", "Bot API: 403"],
+      ["n1", "sent", null, 1],
+      ["n2", "failed", "Bot API: 403", 2],
     ]);
 
     const noBot = db({ notifications_claim_pending: [claimed.slice(0, 1)] });
@@ -93,10 +94,10 @@ describe("bookingsDueProcessor", () => {
       skipped: 1,
       retried: 0,
     });
-    expect(noBot.query.mock.calls.at(-1)![1]).toEqual(["n1", "skipped", "bot_not_configured"]);
+    expect(noBot.query.mock.calls.at(-1)![1]).toEqual(["n1", "skipped", "bot_not_configured", 1]);
   });
 
-  it("повторяемая ошибка: 5xx — отсрочка по backoff; 429 — retry_after, остальные взятые строки тоже отложены", async () => {
+  it("5xx — строка в очередь по backoff (попытка посчитана), пачка прерывается: остальные — без траты попытки", async () => {
     const claimed = [
       { id: "n1", chat_id: "101", body: "1", attempts: 2 },
       { id: "n2", chat_id: "102", body: "2", attempts: 1 },
@@ -104,35 +105,70 @@ describe("bookingsDueProcessor", () => {
     ];
     const send = vi
       .fn()
-      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 502 Bad Gateway", true))
-      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 429 Too Many Requests", true, 30));
+      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 502 Bad Gateway", true));
     const q = db({ notifications_claim_pending: [claimed] });
     const out = await bookingsDueProcessor(q, { sender: { send } }).processDue();
     expect(out.notifications).toEqual({ sent: 0, failed: 0, skipped: 0, retried: 3 });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(1);
     const releases = q.query.mock.calls
       .filter(([t]) => t.includes("notifications_release"))
       .map(([, v]) => v);
+    const err = "Bot API sendMessage: 502 Bad Gateway";
     expect(releases).toEqual([
-      ["n1", notificationBackoffSec(2), "Bot API sendMessage: 502 Bad Gateway"],
-      ["n2", 30, "Bot API sendMessage: 429 Too Many Requests"],
-      ["n3", 30, "Bot API sendMessage: 429 Too Many Requests"],
+      ["n1", notificationBackoffSec(2), err, 2, false],
+      ["n2", notificationBackoffSec(2), err, 1, true],
+      ["n3", notificationBackoffSec(2), err, 1, true],
     ]);
-    // После 429 тик не берёт следующую пачку.
+    // Прерванная пачка — следующая в этом тике не берётся.
     expect(q.query.mock.calls.filter(([t]) => t.includes("notifications_claim_pending"))).toHaveLength(1);
     expect(q.query.mock.calls.some(([t]) => t.includes("notifications_mark_dispatched"))).toBe(false);
   });
 
-  it("повторяемая ошибка на последней попытке — failed; неповторяемая (403) — failed сразу", async () => {
+  it("429 — retry_after без траты попытки, и на последней попытке; остальные взятые строки тоже отложены", async () => {
     const claimed = [
       { id: "n1", chat_id: "101", body: "1", attempts: NOTIFICATION_MAX_ATTEMPTS },
       { id: "n2", chat_id: "102", body: "2", attempts: 1 },
     ];
     const send = vi
       .fn()
-      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: TimeoutError", true))
-      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 403 Forbidden", false));
+      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 429 Too Many Requests", true, 30));
     const q = db({ notifications_claim_pending: [claimed] });
+    const out = await bookingsDueProcessor(q, { sender: { send } }).processDue();
+    expect(out.notifications).toEqual({ sent: 0, failed: 0, skipped: 0, retried: 2 });
+    const releases = q.query.mock.calls
+      .filter(([t]) => t.includes("notifications_release"))
+      .map(([, v]) => v);
+    expect(releases).toEqual([
+      ["n1", 30, "Bot API sendMessage: 429 Too Many Requests", NOTIFICATION_MAX_ATTEMPTS, true],
+      ["n2", 30, "Bot API sendMessage: 429 Too Many Requests", 1, true],
+    ]);
+  });
+
+  it("5xx на последней попытке — failed (остаток пачки отложен); неповторяемая (403, таймаут) — failed сразу", async () => {
+    const last = db({
+      notifications_claim_pending: [
+        [
+          { id: "n1", chat_id: "101", body: "1", attempts: NOTIFICATION_MAX_ATTEMPTS },
+          { id: "n2", chat_id: "102", body: "2", attempts: 1 },
+        ],
+      ],
+    });
+    const send5xx = vi.fn().mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 503", true));
+    expect(
+      (await bookingsDueProcessor(last, { sender: { send: send5xx } }).processDue()).notifications,
+    ).toEqual({ sent: 0, failed: 1, skipped: 0, retried: 1 });
+    const q = db({
+      notifications_claim_pending: [
+        [
+          { id: "n1", chat_id: "101", body: "1", attempts: 1 },
+          { id: "n2", chat_id: "102", body: "2", attempts: 1 },
+        ],
+      ],
+    });
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: TimeoutError", false))
+      .mockRejectedValueOnce(new TelegramSendError("Bot API sendMessage: 403 Forbidden", false));
     const out = await bookingsDueProcessor(q, { sender: { send } }).processDue();
     expect(out.notifications).toEqual({ sent: 0, failed: 2, skipped: 0, retried: 0 });
     expect(notificationBackoffSec(1)).toBe(60);
@@ -173,6 +209,24 @@ describe("bookingsDueProcessor", () => {
     await expect(
       new BotApiTelegramSender("1:T", { fetch: down as unknown as typeof fetch }).send("1", "t"),
     ).rejects.toMatchObject({ retryable: true, retryAfterSec: null });
+  });
+
+  it("Bot API: таймаут и обрыв — не повторяются (могло дойти); отказ соединения и DNS — повторяются", async () => {
+    const failWith = (err: Error) =>
+      new BotApiTelegramSender("1:T", vi.fn().mockRejectedValue(err) as unknown as typeof fetch)
+        .send("1", "t")
+        .catch((e: unknown) => e);
+    const fetchFailed = (code: string) =>
+      Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(code), { code }) });
+    expect(await failWith(Object.assign(new Error("x"), { name: "TimeoutError" }))).toMatchObject({
+      retryable: false,
+    });
+    expect(await failWith(fetchFailed("ECONNRESET"))).toMatchObject({ retryable: false });
+    expect(await failWith(fetchFailed("ECONNREFUSED"))).toMatchObject({
+      retryable: true,
+      message: "Bot API sendMessage: TypeError ECONNREFUSED",
+    });
+    expect(await failWith(fetchFailed("ENOTFOUND"))).toMatchObject({ retryable: true });
   });
 
   it("Bot API: текст ошибки без токена", async () => {

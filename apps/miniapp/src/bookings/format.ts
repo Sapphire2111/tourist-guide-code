@@ -16,6 +16,14 @@ export function zoneOf(tz: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Пояс брони: с сервера (BookingDto.timezone — пояс места); нет его (старый ответ) — пояс окружения (регион входа).
+ * Незнакомый движку пояс дальше подменяет zoneOf.
+ */
+export function bookingZone(tz: string | null | undefined, fallback: string): string {
+  return tz?.trim() ? tz : fallback;
+}
+
 function parts(instant: number, tz: string): Record<string, string> {
   return Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
