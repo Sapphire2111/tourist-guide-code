@@ -8,6 +8,7 @@ import {
   DEAD_LETTER_PURGE_SCHEDULE,
   SCHEDULES,
   SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
+  BOOKINGS_PROCESS_DUE_SCHEDULE,
 } from "./queue/schedules.js";
 import { QueueService, type WorkerDbFactory, type QueueRuntimeFactory } from "./queue/queue.service.js";
 import type { QueueRuntime } from "./queue/runtime.js";
@@ -64,6 +65,7 @@ describe("AppModule", () => {
       analytics: { record: vi.fn() },
       media: { claim: vi.fn(), complete: vi.fn(), reject: vi.fn() },
       serviceRequests: { anonymizeExpired: vi.fn() },
+      bookings: { processDue: vi.fn() },
       close: closeDb,
     });
     const withDb = parseEnv("worker", workerEnvSchema, {
@@ -82,6 +84,7 @@ describe("AppModule", () => {
           DEAD_LETTER_PURGE_SCHEDULE,
           AUDIT_PII_PURGE_SCHEDULE,
           SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
+          BOOKINGS_PROCESS_DUE_SCHEDULE,
         ],
       }),
     );

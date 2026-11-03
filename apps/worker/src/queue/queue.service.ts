@@ -14,6 +14,7 @@ import { createHandlers } from "./handlers.js";
 import { startQueueRuntime, type QueueRuntime, type QueueRuntimeOptions } from "./runtime.js";
 import {
   AUDIT_PII_PURGE_SCHEDULE,
+  BOOKINGS_PROCESS_DUE_SCHEDULE,
   DEAD_LETTER_PURGE_SCHEDULE,
   SCHEDULES,
   SERVICE_REQUESTS_ANONYMIZE_SCHEDULE,
@@ -69,6 +70,7 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
         handlers: createHandlers({
           auditPii: db?.purger,
           serviceRequests: db?.serviceRequests,
+          bookings: db?.bookings,
           analytics: db?.analytics,
           // Очередь dead-letter открывает рантайм — геттер читает её на момент задачи.
           deadLetter: deadLetterPurger(() => this.runtime?.deadLetter),
@@ -80,7 +82,9 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
         schedules: [
           ...SCHEDULES,
           DEAD_LETTER_PURGE_SCHEDULE,
-          ...(db ? [AUDIT_PII_PURGE_SCHEDULE, SERVICE_REQUESTS_ANONYMIZE_SCHEDULE] : []),
+          ...(db
+            ? [AUDIT_PII_PURGE_SCHEDULE, SERVICE_REQUESTS_ANONYMIZE_SCHEDULE, BOOKINGS_PROCESS_DUE_SCHEDULE]
+            : []),
         ],
         logger: this.logger,
         errorTracker: this.errorTracker,

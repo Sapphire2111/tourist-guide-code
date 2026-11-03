@@ -101,7 +101,7 @@ function fakeDb(init: { flags?: FlagRow[]; marks?: string[] } = {}) {
 }
 
 @Controller("t122/bookings")
-@RequireFeature("module.bookings")
+@RequireFeature("module.ambassadors")
 class BookingsProbeController {
   @Get()
   list() {
@@ -208,7 +208,7 @@ describe("@RequireFeature: выключенный модуль недоступ�
   });
 
   it("модуль выключен в регионе — 404 для запроса в контексте этого региона, в другом — 200", async () => {
-    const flags = [{ key: "module.bookings", target_region_id: A, enabled: false, updated_by: null }];
+    const flags = [{ key: "module.ambassadors", target_region_id: A, enabled: false, updated_by: null }];
     let s = await start({ principal: { userId: USER }, grants: [REGION_ADMIN_A], flags });
     app = s.app;
     await request(app.getHttpServer()).get("/t122/bookings").expect(404);
@@ -226,7 +226,7 @@ describe("@RequireFeature: выключенный модуль недоступ�
 describe("@RequireFeature: регион без tenant-контекста (гость, турист)", () => {
   const flags = [
     { key: "module.reviews", target_region_id: A, enabled: false, updated_by: null },
-    { key: "module.bookings", target_region_id: A, enabled: false, updated_by: null },
+    { key: "module.ambassadors", target_region_id: A, enabled: false, updated_by: null },
   ];
 
   it("резолвер региона: региональный off — 404 в этом регионе, в другом — 200; не uuid — значение окружения", async () => {

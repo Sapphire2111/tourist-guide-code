@@ -93,6 +93,8 @@ export interface UsersTable {
   display_name: ColumnType<string | null, string | null | undefined, string | null>;
   /** Псевдоним для аналитики (pseudonymous_user_id, ADR-004): случайный uuid, не users.id (0010). */
   analytics_id: ColumnType<string, string | undefined, string>;
+  /** Счётчик no_show броней (0022, D-44 А): порог — параметр api (ограничение онлайн-брони). */
+  booking_no_show_count: ColumnType<number, number | undefined, number>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -1087,6 +1089,150 @@ export interface OffersTable {
 }
 export type Offer = Selectable<OffersTable>;
 
+// --- Бронирования (0022, блок 7): ресурс, правила доступности, согласие на телефон, бронь и её история (tenant) ---
+
+export const RESOURCE_STATUSES = ["active", "inactive", "archived"] as const;
+export type ResourceStatus = (typeof RESOURCE_STATUSES)[number];
+export const BOOKING_MODES = ["request_confirm", "auto_confirm"] as const;
+export type BookingMode = (typeof BOOKING_MODES)[number];
+export const MANUAL_AVAILABILITY = ["available_now", "busy", "unknown"] as const;
+export type ManualAvailability = (typeof MANUAL_AVAILABILITY)[number];
+
+export interface ResourcesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  organization_id: ColumnType<string, string, never>;
+  place_id: ColumnType<string, string, never>;
+  type: ColumnType<"hourly_slot", "hourly_slot" | undefined, never>;
+  capacity_mode: ColumnType<"exclusive", "exclusive" | undefined, never>;
+  name_i18n: Jsonb<LocalizedText>;
+  description_i18n: Nullable<LocalizedText>;
+  capacity_people: ColumnType<number, number | undefined, number>;
+  slot_duration_min: ColumnType<number, number | undefined, number>;
+  buffer_before_min: ColumnType<number, number | undefined, number>;
+  buffer_after_min: ColumnType<number, number | undefined, number>;
+  lead_time_min: ColumnType<number, number | undefined, number>;
+  horizon_days: ColumnType<number, number | undefined, number>;
+  confirm_sla_min: ColumnType<number, number | undefined, number>;
+  booking_mode: ColumnType<BookingMode, BookingMode | undefined, BookingMode>;
+  /** bigint: pg отдаёт строкой. */
+  price_minor: ColumnType<string | null, number | null | undefined, number | null>;
+  currency: Nullable<string>;
+  manual_availability: ColumnType<ManualAvailability, ManualAvailability | undefined, ManualAvailability>;
+  manual_availability_expires_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  manual_availability_set_by: Nullable<string>;
+  manual_availability_set_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  status: ColumnType<ResourceStatus, ResourceStatus | undefined, ResourceStatus>;
+  version: ColumnType<number, number | undefined, number>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Resource = Selectable<ResourcesTable>;
+
+export interface AvailabilityRulesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  resource_id: ColumnType<string, string, never>;
+  day_of_week: ColumnType<number | null, number | null | undefined, never>;
+  /** date: "YYYY-MM-DD" (тип date приводится к строке в database.ts) или Date — сервис нормализует. */
+  date: ColumnType<Date | string | null, string | null | undefined, never>;
+  closed: ColumnType<boolean, boolean | undefined, never>;
+  opens_min: ColumnType<number | null, number | null | undefined, never>;
+  closes_min: ColumnType<number | null, number | null | undefined, never>;
+  created_at: InsertedAt;
+}
+export type AvailabilityRule = Selectable<AvailabilityRulesTable>;
+
+export interface PartnerPhoneConsentsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  user_id: ColumnType<string, string, never>;
+  organization_id: ColumnType<string, string, never>;
+  place_id: ColumnType<string, string, never>;
+  document_version: ColumnType<string, string, never>;
+  channel: ColumnType<"mini_app" | "bot", "mini_app" | "bot" | undefined, never>;
+  granted_at: ColumnType<Date, Date | undefined, never>;
+  withdrawn_at: ColumnType<Date | null, never, Date>;
+  created_at: InsertedAt;
+}
+export type PartnerPhoneConsent = Selectable<PartnerPhoneConsentsTable>;
+
+/** Статусы брони (ТЗ §10.2 + expired; C-04: refunded в MVP нет; C-14: new и pending_partner раздельно). */
+export const BOOKING_STATUSES = [
+  "new",
+  "pending_partner",
+  "confirmed",
+  "alternative_proposed",
+  "cancelled_by_user",
+  "cancelled_by_partner",
+  "expired",
+  "completed",
+  "no_show",
+] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+export const BOOKING_SOURCES = ["platform", "manual", "phone"] as const;
+export type BookingSource = (typeof BOOKING_SOURCES)[number];
+export const PHONE_SOURCES = ["telegram_contact", "manual", "partner"] as const;
+export type PhoneSource = (typeof PHONE_SOURCES)[number];
+export const BOOKING_ACTORS = ["user", "staff", "system"] as const;
+export type BookingActor = (typeof BOOKING_ACTORS)[number];
+
+export interface BookingsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  organization_id: ColumnType<string, string, never>;
+  place_id: ColumnType<string, string, never>;
+  resource_id: ColumnType<string, string, never>;
+  user_id: ColumnType<string | null, string | null | undefined, never>;
+  source: ColumnType<BookingSource, BookingSource, never>;
+  entry_context_id: ColumnType<string | null, string | null | undefined, never>;
+  starts_at: ColumnType<Date, Date, Date>;
+  ends_at: ColumnType<Date, Date, Date>;
+  occupied_from: ColumnType<Date, Date, Date>;
+  occupied_until: ColumnType<Date, Date, Date>;
+  people_count: ColumnType<number, number, never>;
+  comment: ColumnType<string | null, string | null | undefined, never>;
+  customer_name: ColumnType<string | null, string | null | undefined, never>;
+  contact_phone: ColumnType<string | null, string | null | undefined, never>;
+  contact_phone_source: ColumnType<PhoneSource | null, PhoneSource | null | undefined, never>;
+  phone_consent_id: ColumnType<string | null, string | null | undefined, never>;
+  /** bigint: pg отдаёт строкой. */
+  price_quote_minor: ColumnType<string | null, number | string | null | undefined, never>;
+  currency: ColumnType<string | null, string | null | undefined, never>;
+  status: ColumnType<BookingStatus, BookingStatus, BookingStatus>;
+  status_reason: Nullable<string>;
+  partner_response_due_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  alternative_starts_at: ColumnType<Date | null, never, Date | null>;
+  alternative_ends_at: ColumnType<Date | null, never, Date | null>;
+  customer_response_due_at: ColumnType<Date | null, never, Date | null>;
+  confirmed_by: Nullable<string>;
+  confirmed_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  completed_at: ColumnType<Date | null, never, Date | null>;
+  closed_at: ColumnType<Date | null, never, Date | null>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  version: ColumnType<number, never, number>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Booking = Selectable<BookingsTable>;
+
+/** Только дописывается (у app — SELECT, INSERT). */
+export interface BookingEventsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  booking_id: ColumnType<string, string, never>;
+  from_status: ColumnType<BookingStatus | null, BookingStatus | null, never>;
+  to_status: ColumnType<BookingStatus, BookingStatus, never>;
+  actor_type: ColumnType<BookingActor, BookingActor, never>;
+  actor_user_id: ColumnType<string | null, string | null | undefined, never>;
+  role_assignment_id: ColumnType<string | null, string | null | undefined, never>;
+  reason: ColumnType<string | null, string | null | undefined, never>;
+  payload: ColumnType<JsonObject, JsonObject | undefined, never>;
+  created_at: InsertedAt;
+}
+export type BookingEvent = Selectable<BookingEventsTable>;
+
 // --- Богатая картка місця (0018): обогащение Google / Вікіпедія / ИИ (tenant) и кэш адресов фото Google (global) ---
 
 /** Удобство места по данным Google Place Details (только «да»; нет данных или «нет» — не пишется). */
@@ -1302,4 +1448,10 @@ export interface Database {
   google_photo_uris: GooglePhotoUrisTable;
   google_api_usage: GoogleApiUsageTable;
   place_cover_photos: PlaceCoverPhotosTable;
+  // Бронирования (0022, блок 7).
+  resources: ResourcesTable;
+  availability_rules: AvailabilityRulesTable;
+  partner_phone_consents: PartnerPhoneConsentsTable;
+  bookings: BookingsTable;
+  booking_events: BookingEventsTable;
 }

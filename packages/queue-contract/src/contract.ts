@@ -36,6 +36,11 @@ export const JOBS = {
   mediaProcessImage: "media.process-image",
   /** Обезличивание заявок гостиницы старше срока хранения (D-49, ADR-0020; функция БД миграции api 0015). */
   serviceRequestsAnonymize: "service-requests.anonymize-expired",
+  /**
+   * Сроки броней (блок 7; функции БД миграции api 0022): expired по SLA ответа партнёра (D-43) и ответа туриста на
+   * альтернативу (D-66), автозавершение confirmed после окончания (C-27).
+   */
+  bookingsProcessDue: "bookings.process-due",
 } as const;
 export type JobName = (typeof JOBS)[keyof typeof JOBS];
 
@@ -50,6 +55,7 @@ export interface JobPayloads {
   /** Только id: состояние и ключи worker читает из БД (media_assets) — payload не устаревает. */
   "media.process-image": { assetId: string };
   "service-requests.anonymize-expired": Record<string, never>;
+  "bookings.process-due": Record<string, never>;
 }
 
 /** Данные задачи в Redis: контекст выполнения + payload. Только JSON-сериализуемые значения. */
@@ -67,6 +73,7 @@ export const JOB_QUEUE: Readonly<Record<JobName, WorkQueueName>> = {
   "dead-letter.purge-expired": QUEUES.system,
   "media.process-image": QUEUES.media,
   "service-requests.anonymize-expired": QUEUES.system,
+  "bookings.process-due": QUEUES.system,
 };
 
 /**
@@ -90,6 +97,8 @@ export const JOB_OPTIONS: Partial<Record<JobName, JobSchedulerTemplateOptions>> 
   "analytics.record": { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
   // Ресайз: 3 попытки с паузой 5 с → 10 с (первая может застать ещё не закоммиченное подтверждение загрузки).
   "media.process-image": { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
+  // Тик раз в минуту: следующий тик повторит работу — долгие ретраи пропущенного не нужны.
+  "bookings.process-due": { attempts: 2 },
 };
 
 /** Расписание периодической тестовой задачи. */
@@ -100,6 +109,9 @@ export const AUDIT_PII_PURGE_EVERY_MS = 60 * 60_000;
 
 /** Обезличивание заявок гостиницы по сроку хранения — раз в час (срок — в днях). */
 export const SERVICE_REQUESTS_ANONYMIZE_EVERY_MS = 60 * 60_000;
+
+/** Сроки броней — раз в минуту: SLA ответа партнёра — минуты (D-43), точности до минуты достаточно. */
+export const BOOKINGS_PROCESS_DUE_EVERY_MS = 60_000;
 
 /** Очистка dead-letter по сроку — раз в час (как очистка ПДн аудита). */
 export const DEAD_LETTER_PURGE_EVERY_MS = 60 * 60_000;

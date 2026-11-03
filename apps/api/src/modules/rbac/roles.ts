@@ -126,8 +126,22 @@ const MODERATOR_PERMISSIONS: readonly PermissionCode[] = [
   "audit.read",
 ];
 
-/** Сотрудник (кассир, P10): заявки гостей. Права касс P02/P03 — блок 9. */
-const ORG_STAFF_PERMISSIONS: readonly PermissionCode[] = ["service_request.read", "service_request.process"];
+/**
+ * Сотрудник (кассир, P10): заявки гостей; брони — урезанные P04/P05 (блок 7, states-and-rules §3.4; принята
+ * рекомендация «ORG_STAFF видит урезанные P04/P05 в своём scope»): видеть, подтверждать, ручная запись, completed и
+ * no_show, ручной статус «Доступно зараз» (D-78 А). Без отказа/альтернативы и без телефона клиента (C-20). Права касс
+ * P02/P03 — блок 9.
+ */
+const ORG_STAFF_PERMISSIONS: readonly PermissionCode[] = [
+  "service_request.read",
+  "service_request.process",
+  "booking.read",
+  "booking.confirm",
+  "booking.manual.create",
+  "booking.complete",
+  "booking.no_show",
+  "availability.status.manual",
+];
 
 /**
  * Менеджер (S-06 п. 7, P06 «ORG_MANAGER — часть полей», P07): карточка заведения без полей личности места (название,
@@ -140,6 +154,12 @@ const ORG_MANAGER_PERMISSIONS: readonly PermissionCode[] = [
   "media.upload",
   "offer.manage",
   "host_module.settings.edit",
+  // Бронирования (блок 7): ресурсы и правила, отказ, альтернатива, исправление no_show, телефон клиента (C-20).
+  "resource.manage",
+  "availability.edit",
+  "booking.reject",
+  "booking.propose_alternative",
+  "booking.admin.read",
 ];
 
 /** Владелец (S-05, S-06): всё по своей организации, включая отправку на модерацию и сотрудников. */

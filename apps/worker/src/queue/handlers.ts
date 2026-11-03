@@ -65,6 +65,12 @@ export interface ServiceRequestsAnonymizer {
   anonymizeExpired(): Promise<number>;
 }
 
+/** Сроки броней (функции БД bookings_expire_due, bookings_auto_complete, миграция api 0022). */
+export interface BookingsDueProcessor {
+  /** expired по SLA ответа (D-43, D-66) и автозавершение (C-27); возвращает числа обработанных броней. */
+  processDue(): Promise<{ expired: number; completed: number }>;
+}
+
 /** Очистка dead-letter от записей с истёкшим сроком хранения (dead-letter.ts, DEAD_LETTER_RETENTION_MS). */
 export interface DeadLetterPurger {
   /** Удаляет истёкшие записи; возвращает их число. */
@@ -104,6 +110,7 @@ export interface HandlerDeps {
   readonly deadLetter?: DeadLetterPurger;
   readonly media?: MediaDeps;
   readonly serviceRequests?: ServiceRequestsAnonymizer;
+  readonly bookings?: BookingsDueProcessor;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -154,6 +161,15 @@ export function createHandlers(deps: HandlerDeps = {}): JobHandlers {
       const anonymized = await deps.serviceRequests.anonymizeExpired();
       logger.log(`Заявки гостиницы: обезличено по сроку хранения — ${anonymized}`);
       return { anonymized };
+    },
+    // Повтор безопасен: функции БД берут только брони с наступившим сроком в текущем статусе (SKIP LOCKED).
+    "bookings.process-due": async (_payload, { logger }) => {
+      if (!deps.bookings)
+        throw new UnrecoverableError("Сроки броней: у воркера нет подключения к БД (DATABASE_URL)");
+      const result = await deps.bookings.processDue();
+      if (result.expired > 0 || result.completed > 0)
+        logger.log(`Брони: истекло по сроку — ${result.expired}, автозавершено — ${result.completed}`);
+      return result;
     },
     "audit.purge-expired-pii": async (_payload, { logger }) => {
       if (!deps.auditPii)

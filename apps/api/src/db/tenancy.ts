@@ -85,6 +85,12 @@ export const TABLE_TENANCY = {
   google_photo_uris: "global",
   google_api_usage: "global",
   place_cover_photos: "tenant",
+  // Бронирования (0022, блок 7): ресурс, правила, согласие на телефон партнёру, бронь и история — регион места.
+  resources: "tenant",
+  availability_rules: "tenant",
+  partner_phone_consents: "tenant",
+  bookings: "tenant",
+  booking_events: "tenant",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };
 
 /** Колонка tenant в tenant/tenant-optional таблицах. */

@@ -95,6 +95,7 @@ export class MemoryIdentity {
         language: u.language ?? "uk",
         display_name: u.display_name ?? null,
         analytics_id: u.analytics_id ?? randomUUID(),
+        booking_no_show_count: u.booking_no_show_count ?? 0,
         created_at: now(),
         updated_at: now(),
       };

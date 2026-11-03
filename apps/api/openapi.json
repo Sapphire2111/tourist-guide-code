@@ -10719,6 +10719,1092 @@
         "tags": ["admin"]
       }
     },
+    "/resources": {
+      "get": {
+        "description": "Без аутентификации. Только активные ресурсы опубликованного места. availability.availableNow — только при реальном свободном слоте в ближайшие 2 ч или ручном статусе партнёра с неистёкшим TTL (BR-04); иначе — «Уточнити доступність». 404 — места нет в регионе или оно не опубликовано.",
+        "operationId": "listResources",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "placeId",
+            "required": true,
+            "in": "query",
+            "description": "Опубликованное место",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ResourceListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Ресурсы бронирования заведения (C07) с «Доступно зараз»",
+        "tags": ["bookings"]
+      }
+    },
+    "/resources/{id}/slots": {
+      "get": {
+        "description": "Без аутентификации. Слоты не раньше lead time и не дальше горизонта ресурса; занятость — брони и ручные записи с buffer до/после (BR-08). 404 — ресурс не активен или место не опубликовано.",
+        "operationId": "listResourceSlots",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Первая местная дата (по умолчанию — сегодня в таймзоне региона)",
+            "schema": { "format": "date", "example": "2026-11-05", "type": "string" }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "schema": { "minimum": 1, "maximum": 14, "default": 7, "type": "integer" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SlotListDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Слоты ресурса (C07): сетка из правил доступности в таймзоне региона, свободен/занят",
+        "tags": ["bookings"]
+      }
+    },
+    "/bookings": {
+      "post": {
+        "description": "Телефон и согласие на его передачу этому заведению обязательны (ТЗ §14.1, D-42): phoneShareConsent=false — 422 errors.booking.phoneConsentRequired. Слот — из GET /resources/{id}/slots: иначе 422 errors.booking.slotUnavailable; слот уже занят (в т. ч. параллельной бронью или ручной записью) — 409 errors.booking.slotTaken. 422 errors.booking.noShowLimit — порог no_show (D-44), только «зателефонувати»; 422 errors.booking.tooManyPending, errors.booking.capacityExceeded. Повтор с тем же Idempotency-Key — тот же ответ.",
+        "operationId": "createBooking",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateBookingDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Онлайн-бронь (C08): new → pending_partner (или confirmed при автоподтверждении)",
+        "tags": ["bookings"]
+      },
+      "get": {
+        "operationId": "listMyBookings",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingListDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Мої бронювання»: брони пользователя в регионе со статусами, альтернативой и историей",
+        "tags": ["bookings"]
+      }
+    },
+    "/bookings/{id}/status": {
+      "patch": {
+        "description": "Турист-владелец: cancelled_by_user (confirmed — не позже чем за 2 ч до начала, иначе 422 cancelTooLate); confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).",
+        "operationId": "updateBookingStatus",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateBookingStatusDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerBookingDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05",
+        "tags": ["bookings"]
+      }
+    },
+    "/partner/bookings": {
+      "get": {
+        "description": "Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё).",
+        "operationId": "listPartnerBookings",
+        "parameters": [
+          {
+            "name": "placeId",
+            "required": false,
+            "in": "query",
+            "description": "Одно из своих мест; без него — все",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": { "$ref": "#/components/schemas/BookingStatus" }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Начало брони не раньше",
+            "schema": { "format": "date-time", "type": "string" }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Начало брони раньше",
+            "schema": { "format": "date-time", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerBookingListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Брони заведений партнёра (P04, P05): только места своих организаций",
+        "tags": ["partner-bookings"]
+      },
+      "post": {
+        "description": "Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken; ресурс неактивен — 422 errors.booking.resourceInactive; пустое имя — 422 customerNameRequired. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.",
+        "operationId": "createManualBooking",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateManualBookingDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerBookingDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ручная запись партнёра (P04): сразу confirmed, блокирует интервал для онлайн-брони",
+        "tags": ["partner-bookings"]
+      }
+    },
+    "/partner/resources": {
+      "get": {
+        "operationId": "listPartnerResources",
+        "parameters": [
+          {
+            "name": "placeId",
+            "required": true,
+            "in": "query",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerResourceListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ресурсы заведения партнёра с правилами доступности и ручным статусом",
+        "tags": ["partner-bookings"]
+      },
+      "post": {
+        "description": "Право resource.manage (владелец, менеджер). 403 — нет права на место. AuditLog.",
+        "operationId": "createPartnerResource",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateResourceDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerResourceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Новый ресурс заведения (D-04 А: почасовые слоты): длительность, buffer, вместимость, SLA",
+        "tags": ["partner-bookings"]
+      }
+    },
+    "/partner/resources/{id}": {
+      "patch": {
+        "description": "version — оптимистичная блокировка: ресурс изменили после чтения — 409 errors.resource.versionConflict (details.currentVersion).",
+        "operationId": "updatePartnerResource",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateResourceDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerResourceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Правка ресурса (и статус active/inactive/archived)",
+        "tags": ["partner-bookings"]
+      }
+    },
+    "/partner/resources/{id}/availability": {
+      "put": {
+        "description": "Местное время региона, окно не переходит через полночь (закрытие до 24:00). 422 errors.resource.rulesInvalid (details.problems) — пересечение окон, закрытая дата с окнами, неверная форма. Существующие брони не меняются. Право availability.edit.",
+        "operationId": "putResourceAvailability",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PutAvailabilityDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerResourceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Правила доступности ресурса целиком: недельные окна и правила на дату (выходной/свои часы)",
+        "tags": ["partner-bookings"]
+      }
+    },
+    "/partner/resources/{id}/manual-availability": {
+      "put": {
+        "description": "available_now / busy — до now + ttlMinutes; unknown — снять. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.",
+        "operationId": "putResourceManualAvailability",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PutManualAvailabilityDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerResourceDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ручной статус «Доступно зараз» с TTL (D-78: короткий, по умолчанию 60 мин)",
+        "tags": ["partner-bookings"]
+      }
+    },
     "/feature-flags": {
       "get": {
         "operationId": "getFeatureFlags",
@@ -15637,6 +16723,615 @@
           }
         },
         "required": ["reason"]
+      },
+      "BookingMode": { "type": "string", "enum": ["request_confirm", "auto_confirm"] },
+      "AvailabilityNowDto": {
+        "type": "object",
+        "properties": {
+          "availableNow": {
+            "type": "boolean",
+            "description": "«Доступно зараз»; false — «Уточнити доступність» (BR-04)"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["slot", "manual"],
+            "nullable": true,
+            "description": "slot — реальный свободный слот; manual — ручной статус партнёра с неистёкшим TTL"
+          },
+          "manualExpiresAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["availableNow", "source", "manualExpiresAt"]
+      },
+      "ResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "capacityPeople": { "type": "integer" },
+          "slotDurationMin": { "type": "integer" },
+          "bookingMode": { "allOf": [{ "$ref": "#/components/schemas/BookingMode" }] },
+          "priceMinor": { "type": "integer", "nullable": true, "description": "Ориентир цены, копейки" },
+          "currency": { "type": "string", "nullable": true, "example": "UAH" },
+          "availability": { "$ref": "#/components/schemas/AvailabilityNowDto" }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "name",
+          "description",
+          "capacityPeople",
+          "slotDurationMin",
+          "bookingMode",
+          "priceMinor",
+          "currency",
+          "availability"
+        ]
+      },
+      "ResourceListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ResourceDto" } }
+        },
+        "required": ["items"]
+      },
+      "SlotDto": {
+        "type": "object",
+        "properties": {
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" },
+          "free": { "type": "boolean", "description": "Свободен (иначе занят бронью или ручной записью)" }
+        },
+        "required": ["startsAt", "endsAt", "free"]
+      },
+      "SlotListDto": {
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string", "format": "uuid" },
+          "timezone": { "type": "string", "example": "Europe/Kyiv" },
+          "from": { "type": "string", "format": "date" },
+          "days": { "type": "integer" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/SlotDto" } },
+          "availability": { "$ref": "#/components/schemas/AvailabilityNowDto" }
+        },
+        "required": ["resourceId", "timezone", "from", "days", "items", "availability"]
+      },
+      "TouristPhoneSource": {
+        "type": "string",
+        "enum": ["telegram_contact", "manual"],
+        "description": "telegram_contact — requestContact Telegram; manual — введён вручную"
+      },
+      "CreateBookingDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "resourceId": { "type": "string", "format": "uuid" },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Начало слота из GET /resources/{id}/slots"
+          },
+          "peopleCount": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "comment": { "type": "string", "maxLength": 500 },
+          "phone": { "type": "string", "example": "+380501234567", "description": "Телефон E.164 (D-42)" },
+          "phoneSource": {
+            "description": "telegram_contact — requestContact Telegram; manual — введён вручную",
+            "allOf": [{ "$ref": "#/components/schemas/TouristPhoneSource" }]
+          },
+          "phoneShareConsent": {
+            "type": "boolean",
+            "description": "Согласие на передачу телефона этому заведению (галочка C08, ТЗ §14.1). false — 422 phoneConsentRequired"
+          },
+          "entryContextId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "EntryContext входа (атрибуция)"
+          }
+        },
+        "required": [
+          "regionId",
+          "resourceId",
+          "startsAt",
+          "peopleCount",
+          "phone",
+          "phoneSource",
+          "phoneShareConsent"
+        ]
+      },
+      "BookingStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "pending_partner",
+          "confirmed",
+          "alternative_proposed",
+          "cancelled_by_user",
+          "cancelled_by_partner",
+          "expired",
+          "completed",
+          "no_show"
+        ]
+      },
+      "BookingAlternativeDto": {
+        "type": "object",
+        "properties": {
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" },
+          "respondBy": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Ответить до (D-66), затем expired"
+          }
+        },
+        "required": ["startsAt", "endsAt", "respondBy"]
+      },
+      "BookingTargetStatus": {
+        "type": "string",
+        "enum": [
+          "confirmed",
+          "alternative_proposed",
+          "cancelled_by_user",
+          "cancelled_by_partner",
+          "completed",
+          "no_show"
+        ],
+        "description": "Переходы, доступные текущему пользователю"
+      },
+      "BookingActor": { "type": "string", "enum": ["user", "staff", "system"] },
+      "BookingEventDto": {
+        "type": "object",
+        "properties": {
+          "fromStatus": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
+          "toStatus": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
+          "actor": { "allOf": [{ "$ref": "#/components/schemas/BookingActor" }] },
+          "reason": { "type": "string", "nullable": true },
+          "at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["fromStatus", "toStatus", "actor", "reason", "at"]
+      },
+      "BookingDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "resourceId": { "type": "string", "format": "uuid" },
+          "resourceName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
+          "statusReason": { "type": "string", "nullable": true },
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" },
+          "peopleCount": { "type": "integer" },
+          "comment": { "type": "string", "nullable": true },
+          "alternative": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/BookingAlternativeDto" }]
+          },
+          "partnerResponseDueAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Срок ответа партнёра (D-43)"
+          },
+          "allowedTransitions": {
+            "type": "array",
+            "description": "Переходы, доступные текущему пользователю",
+            "items": { "$ref": "#/components/schemas/BookingTargetStatus" }
+          },
+          "history": { "type": "array", "items": { "$ref": "#/components/schemas/BookingEventDto" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "resourceId",
+          "resourceName",
+          "status",
+          "statusReason",
+          "startsAt",
+          "endsAt",
+          "peopleCount",
+          "comment",
+          "alternative",
+          "partnerResponseDueAt",
+          "allowedTransitions",
+          "history",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "BookingListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/BookingDto" } }
+        },
+        "required": ["items"]
+      },
+      "UpdateBookingStatusDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/BookingTargetStatus" }] },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Причина — обязательна для cancelled_by_partner"
+          },
+          "alternativeStartsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Начало предложенного слота — обязательно для alternative_proposed (D-66: одна альтернатива)"
+          }
+        },
+        "required": ["regionId", "status"]
+      },
+      "BookingSource": { "type": "string", "enum": ["platform", "manual", "phone"] },
+      "PartnerBookingDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "resourceId": { "type": "string", "format": "uuid" },
+          "resourceName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/BookingStatus" }] },
+          "statusReason": { "type": "string", "nullable": true },
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" },
+          "peopleCount": { "type": "integer" },
+          "comment": { "type": "string", "nullable": true },
+          "alternative": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/BookingAlternativeDto" }]
+          },
+          "partnerResponseDueAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Срок ответа партнёра (D-43)"
+          },
+          "allowedTransitions": {
+            "type": "array",
+            "description": "Переходы, доступные текущему пользователю",
+            "items": { "$ref": "#/components/schemas/BookingTargetStatus" }
+          },
+          "history": { "type": "array", "items": { "$ref": "#/components/schemas/BookingEventDto" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "source": { "allOf": [{ "$ref": "#/components/schemas/BookingSource" }] },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя клиента (пользователь или ручная запись)"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Телефон клиента: только при согласии на передачу этому партнёру (D-42) и роли с правом booking.admin.read (менеджер, владелец; кассиру — нет, C-20); у ручной записи — введённый партнёром"
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "resourceId",
+          "resourceName",
+          "status",
+          "statusReason",
+          "startsAt",
+          "endsAt",
+          "peopleCount",
+          "comment",
+          "alternative",
+          "partnerResponseDueAt",
+          "allowedTransitions",
+          "history",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "source",
+          "customerName",
+          "contactPhone"
+        ]
+      },
+      "PartnerBookingListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerBookingDto" } }
+        },
+        "required": ["items"]
+      },
+      "ManualBookingSource": { "type": "string", "enum": ["manual", "phone"] },
+      "CreateManualBookingDto": {
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string", "format": "uuid" },
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Конец (по умолчанию — длительность слота ресурса)"
+          },
+          "peopleCount": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "customerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Имя клиента (вводит партнёр)"
+          },
+          "customerPhone": { "type": "string", "example": "+380501234567" },
+          "comment": { "type": "string", "maxLength": 500 },
+          "source": { "default": "manual", "allOf": [{ "$ref": "#/components/schemas/ManualBookingSource" }] }
+        },
+        "required": ["resourceId", "startsAt", "peopleCount", "customerName"]
+      },
+      "ResourceStatus": { "type": "string", "enum": ["active", "inactive", "archived"] },
+      "ManualAvailability": { "type": "string", "enum": ["available_now", "busy", "unknown"] },
+      "AvailabilityRuleViewDto": {
+        "type": "object",
+        "properties": {
+          "dayOfWeek": { "type": "integer", "nullable": true },
+          "date": { "type": "string", "format": "date", "nullable": true },
+          "closed": { "type": "boolean" },
+          "opensAt": { "type": "string", "nullable": true, "example": "10:00" },
+          "closesAt": { "type": "string", "nullable": true, "example": "22:00" }
+        },
+        "required": ["dayOfWeek", "date", "closed", "opensAt", "closesAt"]
+      },
+      "PartnerResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "capacityPeople": { "type": "integer" },
+          "slotDurationMin": { "type": "integer" },
+          "bookingMode": { "allOf": [{ "$ref": "#/components/schemas/BookingMode" }] },
+          "priceMinor": { "type": "integer", "nullable": true, "description": "Ориентир цены, копейки" },
+          "currency": { "type": "string", "nullable": true, "example": "UAH" },
+          "availability": { "$ref": "#/components/schemas/AvailabilityNowDto" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ResourceStatus" }] },
+          "bufferBeforeMin": { "type": "integer" },
+          "bufferAfterMin": { "type": "integer" },
+          "leadTimeMin": { "type": "integer" },
+          "horizonDays": { "type": "integer" },
+          "confirmSlaMin": { "type": "integer" },
+          "manualAvailability": { "allOf": [{ "$ref": "#/components/schemas/ManualAvailability" }] },
+          "rules": { "type": "array", "items": { "$ref": "#/components/schemas/AvailabilityRuleViewDto" } },
+          "version": { "type": "integer" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "name",
+          "description",
+          "capacityPeople",
+          "slotDurationMin",
+          "bookingMode",
+          "priceMinor",
+          "currency",
+          "availability",
+          "organizationId",
+          "status",
+          "bufferBeforeMin",
+          "bufferAfterMin",
+          "leadTimeMin",
+          "horizonDays",
+          "confirmSlaMin",
+          "manualAvailability",
+          "rules",
+          "version",
+          "updatedAt"
+        ]
+      },
+      "PartnerResourceListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerResourceDto" } }
+        },
+        "required": ["items"]
+      },
+      "CreateResourceDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedDescriptionDto" }]
+          },
+          "capacityPeople": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Людей на слот (D-04 А)"
+          },
+          "slotDurationMin": { "type": "integer", "minimum": 15, "maximum": 720 },
+          "bufferBeforeMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 240,
+            "description": "Buffer до слота, мин"
+          },
+          "bufferAfterMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 240,
+            "description": "Buffer после слота, мин"
+          },
+          "leadTimeMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Бронь не раньше чем за, мин"
+          },
+          "horizonDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Горизонт бронирования, дней"
+          },
+          "confirmSlaMin": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "SLA ответа партнёра, мин (D-43)"
+          },
+          "bookingMode": { "allOf": [{ "$ref": "#/components/schemas/BookingMode" }] },
+          "priceMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Ориентир цены, копейки"
+          },
+          "currency": { "type": "string", "example": "UAH", "nullable": true },
+          "placeId": { "type": "string", "format": "uuid", "description": "Место партнёра" },
+          "name": { "$ref": "#/components/schemas/LocalizedNameDto" }
+        },
+        "required": ["placeId", "name"]
+      },
+      "UpdateResourceDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedDescriptionDto" }]
+          },
+          "capacityPeople": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Людей на слот (D-04 А)"
+          },
+          "slotDurationMin": { "type": "integer", "minimum": 15, "maximum": 720 },
+          "bufferBeforeMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 240,
+            "description": "Buffer до слота, мин"
+          },
+          "bufferAfterMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 240,
+            "description": "Buffer после слота, мин"
+          },
+          "leadTimeMin": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10080,
+            "description": "Бронь не раньше чем за, мин"
+          },
+          "horizonDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Горизонт бронирования, дней"
+          },
+          "confirmSlaMin": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "SLA ответа партнёра, мин (D-43)"
+          },
+          "bookingMode": { "allOf": [{ "$ref": "#/components/schemas/BookingMode" }] },
+          "priceMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Ориентир цены, копейки"
+          },
+          "currency": { "type": "string", "example": "UAH", "nullable": true },
+          "name": { "$ref": "#/components/schemas/LocalizedNameDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ResourceStatus" }] },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Версия из PartnerResourceDto: изменилась — 409 errors.resource.versionConflict"
+          }
+        }
+      },
+      "AvailabilityRuleDto": {
+        "type": "object",
+        "properties": {
+          "dayOfWeek": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "nullable": true,
+            "description": "ISO: 1 — пн"
+          },
+          "date": { "type": "string", "format": "date", "nullable": true, "description": "Правило на дату" },
+          "closed": { "type": "boolean", "description": "Выходной на дату" },
+          "opensAt": { "type": "string", "example": "10:00", "nullable": true },
+          "closesAt": {
+            "type": "string",
+            "example": "22:00",
+            "nullable": true,
+            "description": "Позже opensAt; до 24:00"
+          }
+        }
+      },
+      "PutAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "rules": {
+            "maxItems": 60,
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AvailabilityRuleDto" }
+          }
+        },
+        "required": ["rules"]
+      },
+      "PutManualAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "available_now — «є вільні місця», busy — «немає місць», unknown — снять ручной статус",
+            "allOf": [{ "$ref": "#/components/schemas/ManualAvailability" }]
+          },
+          "ttlMinutes": {
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 240,
+            "default": 60,
+            "description": "TTL ручного статуса, мин (D-78 А: короткий)"
+          }
+        },
+        "required": ["status"]
       },
       "FeatureFlagKey": {
         "type": "string",
