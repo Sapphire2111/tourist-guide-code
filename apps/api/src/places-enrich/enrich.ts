@@ -2,6 +2,7 @@
 // пам'яток. Общий для --plan (только оценка), --dry-run и записи. Запросы мимо кэша ограничены лимитами клиентов.
 import type { PlaceEnrichmentGoogle, PlaceEnrichmentWiki } from "../db/index.js";
 import {
+  GoogleRateLimitedError,
   MonthlyLimitError,
   NoApiKeyError,
   RequestLimitError,
@@ -56,6 +57,8 @@ export type EnrichStats = {
   monthlyLimitReached: boolean;
   /** Мест, которым Details не достались из-за предела (продолжить в следующем месяце). */
   detailsDeferred: number;
+  /** Мест/запросов, отложенных из-за поминутной квоты Google (429 после всех повторов) — повторить прогоном позже. */
+  rateLimited: number;
   /** Мест с данными из кэша импорта (без платного Details). */
   fromImport: number;
   wikiLimitReached: boolean;
@@ -136,6 +139,7 @@ export async function enrich(
     googleLimitReached: false,
     monthlyLimitReached: false,
     detailsDeferred: 0,
+    rateLimited: 0,
     fromImport: 0,
     wikiLimitReached: false,
     skippedByCategory: 0,
@@ -177,6 +181,10 @@ export async function enrich(
           if (!warnedNoKeyDetails) log("Нет GOOGLE_MAPS_API_KEY: Place Details не из кэша пропущены.");
           warnedNoKeyDetails = true;
           stats.detailsDeferred++;
+        } else if (err instanceof GoogleRateLimitedError) {
+          log(`Details ${p.googlePlaceId}: ${err.message}`);
+          stats.rateLimited++;
+          stats.detailsDeferred++;
         } else if (!(err instanceof RequestLimitError)) throw err;
         else {
           if (!stats.googleLimitReached) log(err.message);
@@ -198,7 +206,14 @@ export async function enrich(
             // Без ключа фото не из кэша не получить — шаг пропускается, прогон идёт дальше.
             if (!warnedNoKey) log("Нет GOOGLE_MAPS_API_KEY: фото мест не из кэша пропущены.");
             warnedNoKey = true;
+          } else if (err instanceof GoogleRateLimitedError) {
+            log(`Фото ${p.googlePlaceId}: ${err.message}`);
+            stats.rateLimited++;
           } else if (!(err instanceof RequestLimitError)) throw err;
+          else if (!stats.googleLimitReached) {
+            log(err.message);
+            stats.googleLimitReached = true;
+          }
         }
       }
       g = fromSearch(fromImport, photos);

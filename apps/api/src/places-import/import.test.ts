@@ -113,7 +113,13 @@ describe("клиент Google: кэш, лимит, ключ", () => {
 
   it("ошибка HTTP Google — GoogleApiError, в кэш не пишется", async () => {
     const fetch = vi.fn(async () => new Response("quota", { status: 429 }));
-    const c = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
+    const c = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 9,
+      fetch,
+      maxRateRetries: 0,
+    });
     await expect(c.searchText(body)).rejects.toThrow(/429/);
     expect(await readdir(dir)).toEqual([]);
   });

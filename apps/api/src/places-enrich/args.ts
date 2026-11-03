@@ -39,6 +39,8 @@ export type EnrichArgs = {
   monthlyLimit: number;
   /** Скачать обложки (одна на место) в place_cover_photos. */
   covers: boolean;
+  /** Запросов в минуту к Google (равномерный темп; 0 — без темпа). */
+  rpm: number;
 };
 
 export class EnrichArgsError extends Error {
@@ -48,6 +50,7 @@ export class EnrichArgsError extends Error {
 export const DEFAULT_ENRICH_MAX_REQUESTS = 100;
 export const DEFAULT_WIKI_MAX_REQUESTS = 1000;
 export const DEFAULT_MAX_AI = 0;
+export const DEFAULT_RPM = 30;
 
 const list = (v: string) =>
   new Set(
@@ -78,6 +81,7 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
     details: true,
     monthlyLimit: 1000,
     covers: false,
+    rpm: DEFAULT_RPM,
   };
   let maxAiSet = false;
   for (let i = 0; i < argv.length; i++) {
@@ -115,6 +119,9 @@ export function parseEnrichArgs(argv: readonly string[]): EnrichArgs {
         break;
       case "--covers":
         args.covers = true;
+        break;
+      case "--rpm":
+        args.rpm = int(0);
         break;
       case "--monthly-limit":
         args.monthlyLimit = int(0);

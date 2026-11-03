@@ -3,7 +3,11 @@
 // Google (запрос Place Photos в месячном пределе google_api_usage; скачивание файла по photoUri не тарифицируется).
 // Подпись автора обязательна и хранится рядом с файлом.
 import { regionContext, withTenant, type Db, type GoogleAuthor } from "../db/index.js";
-import { RequestLimitError, type GooglePlacesClient } from "../places-import/google-client.js";
+import {
+  GoogleRateLimitedError,
+  RequestLimitError,
+  type GooglePlacesClient,
+} from "../places-import/google-client.js";
 import type { EnrichedPlace } from "./enrich.js";
 
 export const COVER_WIDTH = 400;
@@ -184,6 +188,8 @@ export type CoverStats = {
   deferred: number;
   /** Wikimedia временно недоступна (429/5xx/сеть) — отложены до следующего прогона. */
   wikiUnavailable: number;
+  /** Отложены: поминутная квота Google (429 после всех повторов) — повторить прогоном позже. */
+  rateLimited: number;
 };
 
 /** Обложки для мест без неё; запись — только с db (иначе — подсчёт). */
@@ -209,6 +215,7 @@ export async function runCovers(
     failed: 0,
     deferred: 0,
     wikiUnavailable: 0,
+    rateLimited: 0,
   };
   let googleStopped = false;
   // После 429 от Wikimedia — к ней больше не обращаться до конца прогона.
@@ -245,6 +252,11 @@ export async function runCovers(
         deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message} — отложена до следующего прогона`);
         if (err.rateLimited) wikiStopped = true;
         stats.wikiUnavailable++;
+        continue;
+      }
+      if (err instanceof GoogleRateLimitedError) {
+        deps.log?.(`Обложка ${p.googlePlaceId}: ${err.message}`);
+        stats.rateLimited++;
         continue;
       }
       if (err instanceof RequestLimitError) {
