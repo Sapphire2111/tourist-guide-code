@@ -121,6 +121,7 @@ function user(id: string, status: User["status"] = "active"): User {
     language: "uk",
     display_name: null,
     analytics_id: randomUUID(),
+    booking_no_show_count: 0,
     created_at: new Date(),
     updated_at: new Date(),
   };

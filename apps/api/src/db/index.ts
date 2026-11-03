@@ -241,3 +241,25 @@ export {
   type StaffInviteRole,
   type VerificationMethod,
 } from "./schema.js";
+// Бронирования (0022, блок 7).
+export {
+  BOOKING_ACTORS,
+  BOOKING_MODES,
+  BOOKING_SOURCES,
+  BOOKING_STATUSES,
+  MANUAL_AVAILABILITY,
+  PHONE_SOURCES,
+  RESOURCE_STATUSES,
+  type AvailabilityRule,
+  type Booking,
+  type BookingActor,
+  type BookingEvent,
+  type BookingMode,
+  type BookingSource,
+  type BookingStatus,
+  type ManualAvailability,
+  type PartnerPhoneConsent,
+  type PhoneSource,
+  type Resource,
+  type ResourceStatus,
+} from "./schema.js";

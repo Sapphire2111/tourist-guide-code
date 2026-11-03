@@ -64,10 +64,28 @@ export const ANALYTICS_EVENTS = {
   place_viewed: { emitter: "client", props: z.strictObject({ placeId: id }) },
   route_clicked: { emitter: "client", props: z.strictObject({ placeId: id }) },
   call_clicked: { emitter: "client", props: z.strictObject({ placeId: id }) },
-  // Бронирования.
-  booking_created: { emitter: "server", props: z.strictObject({ bookingId: id, placeId: id }) },
+  // Бронирования (блок 7). source — онлайн-бронь туриста (platform) или ручная запись партнёра (manual, phone).
+  booking_created: {
+    emitter: "server",
+    props: z.strictObject({
+      bookingId: id,
+      placeId: id,
+      source: z.enum(["platform", "manual", "phone"]).optional(),
+    }),
+  },
   booking_confirmed: { emitter: "server", props: z.strictObject({ bookingId: id, placeId: id }) },
   booking_completed: { emitter: "server", props: z.strictObject({ bookingId: id, placeId: id }) },
+  booking_alternative_proposed: { emitter: "server", props: z.strictObject({ bookingId: id, placeId: id }) },
+  booking_no_show: { emitter: "server", props: z.strictObject({ bookingId: id, placeId: id }) },
+  // Пишет функция БД bookings_expire_due (воркер): SLA ответа партнёра (D-43) или ответа туриста на альтернативу (D-66).
+  booking_expired: {
+    emitter: "server",
+    props: z.strictObject({
+      bookingId: id,
+      placeId: id,
+      reason: z.enum(["partner_sla", "customer_timeout"]),
+    }),
+  },
   booking_cancelled: {
     emitter: "server",
     props: z.strictObject({

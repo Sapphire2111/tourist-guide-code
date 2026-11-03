@@ -1056,6 +1056,20 @@ export const uk = {
   "errors.place.mediaInvalid": "Це фото не можна прив'язати до місця.",
   "errors.place.badgeState": "Позначка «Ми рекомендуємо» вже в цьому стані.",
   "errors.favorites.limitReached": "В обраному вже максимум місць — приберіть якесь, щоб додати нове.",
+  // Бронирования (блок 7): details.reason уточняет причину.
+  "errors.booking.slotTaken": "Цей час щойно зайняли — оберіть інший.",
+  "errors.booking.slotUnavailable": "Цей час недоступний для бронювання — оберіть інший слот.",
+  "errors.booking.invalidTransition": "Статус бронювання вже змінився — оновіть сторінку.",
+  "errors.booking.phoneConsentRequired": "Потрібні телефон і згода на його передачу закладу.",
+  "errors.booking.noShowLimit": "Онлайн-бронювання недоступне — зателефонуйте закладу.",
+  "errors.booking.tooManyPending":
+    "Забагато бронювань очікують підтвердження — дочекайтеся відповіді закладу.",
+  "errors.booking.capacityExceeded": "Забагато гостей для цього ресурсу.",
+  "errors.booking.alternativeTooLate": "Запропонований час надто близько — оберіть пізніший.",
+  "errors.booking.notStarted": "Позначка доступна лише після початку бронювання.",
+  "errors.booking.correctionWindow": "Час на виправлення позначки минув.",
+  "errors.booking.reasonRequired": "Вкажіть причину.",
+  "errors.resource.rulesInvalid": "Розклад ресурсу має помилки: перевірте дні та інтервали.",
 
   "admin.scenarios": "Сценарії «Мій план»",
   "admin.host": "Модуль готелю",

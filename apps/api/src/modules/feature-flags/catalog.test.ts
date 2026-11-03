@@ -49,7 +49,12 @@ describe("каталог фича-флагов", () => {
 
 describe("evaluateFlags", () => {
   it("приоритет: регион → окружение → значение по умолчанию", () => {
-    expect(rawValue("module.bookings", "prod", NO_OVERRIDES)).toBe(true);
+    expect(rawValue("module.reviews", "prod", NO_OVERRIDES)).toBe(true);
+    // Бронирования (блок 7) по умолчанию выключены во всех окружениях — включает админ платформы.
+    expect(rawValue("module.bookings", "staging", NO_OVERRIDES)).toBe(false);
+    expect(rawValue("module.bookings", "local", { global: { "module.bookings": true }, region: {} })).toBe(
+      true,
+    );
     expect(rawValue("release.r1", "prod", NO_OVERRIDES)).toBe(false);
     expect(rawValue("release.r1", "prod", { global: { "release.r1": true }, region: {} })).toBe(true);
     expect(
@@ -60,14 +65,14 @@ describe("evaluateFlags", () => {
 
   it("requires: флаг действует, только если действуют все флаги, от которых он зависит (транзитивно)", () => {
     const local = evaluateFlags("local", NO_OVERRIDES);
-    expect(local["module.bookings"]).toBe(true);
+    expect(local["module.reviews"]).toBe(true);
     expect(local["finance.engine"]).toBe(true);
     const noR1 = evaluateFlags("local", { global: { "release.r1": false }, region: {} });
     // release.mvp → release.r1; finance.engine → release.mvp; module.qr_transactions → finance.engine.
     expect(noR1["release.mvp"]).toBe(false);
     expect(noR1["finance.engine"]).toBe(false);
     expect(noR1["module.qr_transactions"]).toBe(false);
-    expect(noR1["module.bookings"]).toBe(false);
+    expect(noR1["module.reviews"]).toBe(false);
   });
 
   it("включённый finance.live без finance.engine не действует", () => {

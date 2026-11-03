@@ -3,11 +3,13 @@ import pg from "pg";
 import type {
   AnalyticsWriter,
   AuditPiiPurger,
+  BookingsDueProcessor,
   MediaAssetStore,
   ServiceRequestsAnonymizer,
 } from "../queue/handlers.js";
 import { analyticsWriter } from "./analytics-writer.js";
 import { auditPiiPurger } from "./audit-pii-purger.js";
+import { bookingsDueProcessor } from "./bookings-due.js";
 import { mediaAssetStore } from "./media-assets-store.js";
 import { serviceRequestsAnonymizer } from "./service-requests-anonymizer.js";
 
@@ -17,6 +19,7 @@ export interface WorkerDb {
   analytics: AnalyticsWriter;
   media: MediaAssetStore;
   serviceRequests: ServiceRequestsAnonymizer;
+  bookings: BookingsDueProcessor;
   close(): Promise<void>;
 }
 
@@ -36,6 +39,7 @@ export function createWorkerDb(connectionString: string, serviceRequestRetention
     analytics: analyticsWriter(pool),
     media: mediaAssetStore(pool),
     serviceRequests: serviceRequestsAnonymizer(pool, serviceRequestRetentionDays),
+    bookings: bookingsDueProcessor(pool),
     close: () => pool.end(),
   };
 }

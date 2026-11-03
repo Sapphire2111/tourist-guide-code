@@ -7,6 +7,7 @@ import type { JobSchedulerTemplateOptions } from "bullmq";
 import {
   systemContext,
   AUDIT_PII_PURGE_EVERY_MS,
+  BOOKINGS_PROCESS_DUE_EVERY_MS,
   DEAD_LETTER_PURGE_EVERY_MS,
   SERVICE_REQUESTS_ANONYMIZE_EVERY_MS,
   HEARTBEAT_EVERY_MS,
@@ -64,6 +65,17 @@ export const SERVICE_REQUESTS_ANONYMIZE_SCHEDULE = {
   every: SERVICE_REQUESTS_ANONYMIZE_EVERY_MS,
   data: { context: systemContext(null), payload: {} },
 } as const satisfies Schedule<typeof JOBS.serviceRequestsAnonymize>;
+
+/**
+ * Сроки броней (блок 7): expired по SLA (D-43, D-66) и автозавершение (C-27). Только при DATABASE_URL; кросс-tenant:
+ * функции БД сами выставляют app.actor.
+ */
+export const BOOKINGS_PROCESS_DUE_SCHEDULE = {
+  id: `${STATIC_SCHEDULE_PREFIX}bookings.process-due`,
+  name: JOBS.bookingsProcessDue,
+  every: BOOKINGS_PROCESS_DUE_EVERY_MS,
+  data: { context: systemContext(null), payload: {} },
+} as const satisfies Schedule<typeof JOBS.bookingsProcessDue>;
 
 /**
  * Очистка dead-letter по сроку хранения (T1-25, D-73). Не входит в SCHEDULES: обработчику нужна очередь dead-letter

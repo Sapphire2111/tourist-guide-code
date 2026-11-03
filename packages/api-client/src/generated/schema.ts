@@ -1762,6 +1762,189 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/resources": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ресурсы бронирования заведения (C07) с «Доступно зараз»
+     * @description Без аутентификации. Только активные ресурсы опубликованного места. availability.availableNow — только при реальном свободном слоте в ближайшие 2 ч или ручном статусе партнёра с неистёкшим TTL (BR-04); иначе — «Уточнити доступність». 404 — места нет в регионе или оно не опубликовано.
+     */
+    get: operations["listResources"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/resources/{id}/slots": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Слоты ресурса (C07): сетка из правил доступности в таймзоне региона, свободен/занят
+     * @description Без аутентификации. Слоты не раньше lead time и не дальше горизонта ресурса; занятость — брони и ручные записи с buffer до/после (BR-08). 404 — ресурс не активен или место не опубликовано.
+     */
+    get: operations["listResourceSlots"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/bookings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** «Мої бронювання»: брони пользователя в регионе со статусами, альтернативой и историей */
+    get: operations["listMyBookings"];
+    put?: never;
+    /**
+     * Онлайн-бронь (C08): new → pending_partner (или confirmed при автоподтверждении)
+     * @description Телефон и согласие на его передачу этому заведению обязательны (ТЗ §14.1, D-42): phoneShareConsent=false — 422 errors.booking.phoneConsentRequired. Слот — из GET /resources/{id}/slots: иначе 422 errors.booking.slotUnavailable; слот уже занят (в т. ч. параллельной бронью или ручной записью) — 409 errors.booking.slotTaken. 422 errors.booking.noShowLimit — порог no_show (D-44), только «зателефонувати»; 422 errors.booking.tooManyPending, errors.booking.capacityExceeded. Повтор с тем же Idempotency-Key — тот же ответ.
+     */
+    post: operations["createBooking"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/bookings/{id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Смена статуса брони: турист — отмена и ответ на альтернативу; партнёр — P05
+     * @description Турист-владелец: cancelled_by_user; confirmed — принять альтернативу до срока ответа (D-66). Партнёр (право на место брони): confirmed, alternative_proposed (alternativeStartsAt; исходный слот освобождается), cancelled_by_partner (reason обязателен), completed (после начала; проводок ledger нет — D-45), no_show (после начала + grace; счётчик no_show клиента — D-44), no_show → completed — исправление менеджером в окне 48 ч. completed → no_show запрещён (C-27). Ответ партнёру — PartnerBookingDto. 404 — брони нет или она чужая; 403 — нет права на переход; 409 errors.booking.invalidTransition (details.currentStatus) или errors.booking.slotTaken (предложенный интервал занят).
+     */
+    patch: operations["updateBookingStatus"];
+    trace?: never;
+  };
+  "/partner/bookings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Брони заведений партнёра (P04, P05): только места своих организаций
+     * @description Права — назначения ORG_OWNER/ORG_MANAGER/ORG_STAFF на организацию или место (booking.read). Телефон клиента — только при согласии на передачу этому партнёру и роли менеджера/владельца. 403 not_partner — нет мест с правом (или placeId не своё).
+     */
+    get: operations["listPartnerBookings"];
+    put?: never;
+    /**
+     * Ручная запись партнёра (P04): сразу confirmed, блокирует интервал для онлайн-брони
+     * @description Тот же механизм занятости (BR-08): интервал с buffer занят — 409 errors.booking.slotTaken. 404 — ресурса нет; 403 — нет права booking.manual.create на место ресурса. AuditLog.
+     */
+    post: operations["createManualBooking"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/resources": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Ресурсы заведения партнёра с правилами доступности и ручным статусом */
+    get: operations["listPartnerResources"];
+    put?: never;
+    /**
+     * Новый ресурс заведения (D-04 А: почасовые слоты): длительность, buffer, вместимость, SLA
+     * @description Право resource.manage (владелец, менеджер). 403 — нет права на место. AuditLog.
+     */
+    post: operations["createPartnerResource"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/resources/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Правка ресурса (и статус active/inactive/archived) */
+    patch: operations["updatePartnerResource"];
+    trace?: never;
+  };
+  "/partner/resources/{id}/availability": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Правила доступности ресурса целиком: недельные окна и правила на дату (выходной/свои часы)
+     * @description Местное время региона, окно не переходит через полночь (закрытие до 24:00). 422 errors.resource.rulesInvalid (details.problems) — пересечение окон, закрытая дата с окнами, неверная форма. Существующие брони не меняются. Право availability.edit.
+     */
+    put: operations["putResourceAvailability"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/resources/{id}/manual-availability": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Ручной статус «Доступно зараз» с TTL (D-78: короткий, по умолчанию 60 мин)
+     * @description available_now / busy — до now + ttlMinutes; unknown — снять. Ставят ORG_MANAGER и ORG_STAFF (availability.status.manual), запись в AuditLog.
+     */
+    put: operations["putResourceManualAvailability"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/feature-flags": {
     parameters: {
       query?: never;
@@ -4473,6 +4656,382 @@ export interface components {
     ModerationReasonDto: {
       /** @description Причина / что исправить (обязательна, видна партнёру) */
       reason: string;
+    };
+    /** @enum {string} */
+    BookingMode: "request_confirm" | "auto_confirm";
+    AvailabilityNowDto: {
+      /** @description «Доступно зараз»; false — «Уточнити доступність» (BR-04) */
+      availableNow: boolean;
+      /**
+       * @description slot — реальный свободный слот; manual — ручной статус партнёра с неистёкшим TTL
+       * @enum {string|null}
+       */
+      source: "slot" | "manual" | null;
+      /** Format: date-time */
+      manualExpiresAt: string | null;
+    };
+    ResourceDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      description: components["schemas"]["LocalizedTextDto"] | null;
+      capacityPeople: number;
+      slotDurationMin: number;
+      bookingMode: components["schemas"]["BookingMode"];
+      /** @description Ориентир цены, копейки */
+      priceMinor: number | null;
+      /** @example UAH */
+      currency: string | null;
+      availability: components["schemas"]["AvailabilityNowDto"];
+    };
+    ResourceListDto: {
+      items: components["schemas"]["ResourceDto"][];
+    };
+    SlotDto: {
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      /** @description Свободен (иначе занят бронью или ручной записью) */
+      free: boolean;
+    };
+    SlotListDto: {
+      /** Format: uuid */
+      resourceId: string;
+      /** @example Europe/Kyiv */
+      timezone: string;
+      /** Format: date */
+      from: string;
+      days: number;
+      items: components["schemas"]["SlotDto"][];
+      availability: components["schemas"]["AvailabilityNowDto"];
+    };
+    /**
+     * @description telegram_contact — requestContact Telegram; manual — введён вручную
+     * @enum {string}
+     */
+    TouristPhoneSource: "telegram_contact" | "manual";
+    CreateBookingDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      /** Format: uuid */
+      resourceId: string;
+      /**
+       * Format: date-time
+       * @description Начало слота из GET /resources/{id}/slots
+       */
+      startsAt: string;
+      peopleCount: number;
+      comment?: string;
+      /**
+       * @description Телефон E.164 (D-42)
+       * @example +380501234567
+       */
+      phone: string;
+      /** @description telegram_contact — requestContact Telegram; manual — введён вручную */
+      phoneSource: components["schemas"]["TouristPhoneSource"];
+      /** @description Согласие на передачу телефона этому заведению (галочка C08, ТЗ §14.1). false — 422 phoneConsentRequired */
+      phoneShareConsent: boolean;
+      /**
+       * Format: uuid
+       * @description EntryContext входа (атрибуция)
+       */
+      entryContextId?: string;
+    };
+    /** @enum {string} */
+    BookingStatus:
+      | "new"
+      | "pending_partner"
+      | "confirmed"
+      | "alternative_proposed"
+      | "cancelled_by_user"
+      | "cancelled_by_partner"
+      | "expired"
+      | "completed"
+      | "no_show";
+    BookingAlternativeDto: {
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      /**
+       * Format: date-time
+       * @description Ответить до (D-66), затем expired
+       */
+      respondBy: string;
+    };
+    /**
+     * @description Переходы, доступные текущему пользователю
+     * @enum {string}
+     */
+    BookingTargetStatus:
+      | "confirmed"
+      | "alternative_proposed"
+      | "cancelled_by_user"
+      | "cancelled_by_partner"
+      | "completed"
+      | "no_show";
+    /** @enum {string} */
+    BookingActor: "user" | "staff" | "system";
+    BookingEventDto: {
+      fromStatus: components["schemas"]["BookingStatus"] | null;
+      toStatus: components["schemas"]["BookingStatus"];
+      actor: components["schemas"]["BookingActor"];
+      reason: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    BookingDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["LocalizedTextDto"];
+      /** Format: uuid */
+      resourceId: string;
+      resourceName: components["schemas"]["LocalizedTextDto"];
+      status: components["schemas"]["BookingStatus"];
+      statusReason: string | null;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      peopleCount: number;
+      comment: string | null;
+      alternative: components["schemas"]["BookingAlternativeDto"] | null;
+      /**
+       * Format: date-time
+       * @description Срок ответа партнёра (D-43)
+       */
+      partnerResponseDueAt: string | null;
+      /** @description Переходы, доступные текущему пользователю */
+      allowedTransitions: components["schemas"]["BookingTargetStatus"][];
+      history: components["schemas"]["BookingEventDto"][];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    BookingListDto: {
+      items: components["schemas"]["BookingDto"][];
+    };
+    UpdateBookingStatusDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      status: components["schemas"]["BookingTargetStatus"];
+      /** @description Причина — обязательна для cancelled_by_partner */
+      reason?: string;
+      /**
+       * Format: date-time
+       * @description Начало предложенного слота — обязательно для alternative_proposed (D-66: одна альтернатива)
+       */
+      alternativeStartsAt?: string;
+    };
+    /** @enum {string} */
+    BookingSource: "platform" | "manual" | "phone";
+    PartnerBookingDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["LocalizedTextDto"];
+      /** Format: uuid */
+      resourceId: string;
+      resourceName: components["schemas"]["LocalizedTextDto"];
+      status: components["schemas"]["BookingStatus"];
+      statusReason: string | null;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      peopleCount: number;
+      comment: string | null;
+      alternative: components["schemas"]["BookingAlternativeDto"] | null;
+      /**
+       * Format: date-time
+       * @description Срок ответа партнёра (D-43)
+       */
+      partnerResponseDueAt: string | null;
+      /** @description Переходы, доступные текущему пользователю */
+      allowedTransitions: components["schemas"]["BookingTargetStatus"][];
+      history: components["schemas"]["BookingEventDto"][];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      /** Format: uuid */
+      organizationId: string;
+      source: components["schemas"]["BookingSource"];
+      /** @description Имя клиента (пользователь или ручная запись) */
+      customerName: string | null;
+      /** @description Телефон клиента: только при согласии на передачу этому партнёру (D-42) и роли с правом booking.admin.read (менеджер, владелец; кассиру — нет, C-20); у ручной записи — введённый партнёром */
+      contactPhone: string | null;
+    };
+    PartnerBookingListDto: {
+      items: components["schemas"]["PartnerBookingDto"][];
+    };
+    /** @enum {string} */
+    ManualBookingSource: "manual" | "phone";
+    CreateManualBookingDto: {
+      /** Format: uuid */
+      resourceId: string;
+      /** Format: date-time */
+      startsAt: string;
+      /**
+       * Format: date-time
+       * @description Конец (по умолчанию — длительность слота ресурса)
+       */
+      endsAt?: string;
+      peopleCount: number;
+      /** @description Имя клиента (вводит партнёр) */
+      customerName: string;
+      /** @example +380501234567 */
+      customerPhone?: string;
+      comment?: string;
+      /** @default manual */
+      source: components["schemas"]["ManualBookingSource"];
+    };
+    /** @enum {string} */
+    ResourceStatus: "active" | "inactive" | "archived";
+    /** @enum {string} */
+    ManualAvailability: "available_now" | "busy" | "unknown";
+    AvailabilityRuleViewDto: {
+      dayOfWeek: number | null;
+      /** Format: date */
+      date: string | null;
+      closed: boolean;
+      /** @example 10:00 */
+      opensAt: string | null;
+      /** @example 22:00 */
+      closesAt: string | null;
+    };
+    PartnerResourceDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      description: components["schemas"]["LocalizedTextDto"] | null;
+      capacityPeople: number;
+      slotDurationMin: number;
+      bookingMode: components["schemas"]["BookingMode"];
+      /** @description Ориентир цены, копейки */
+      priceMinor: number | null;
+      /** @example UAH */
+      currency: string | null;
+      availability: components["schemas"]["AvailabilityNowDto"];
+      /** Format: uuid */
+      organizationId: string;
+      status: components["schemas"]["ResourceStatus"];
+      bufferBeforeMin: number;
+      bufferAfterMin: number;
+      leadTimeMin: number;
+      horizonDays: number;
+      confirmSlaMin: number;
+      manualAvailability: components["schemas"]["ManualAvailability"];
+      rules: components["schemas"]["AvailabilityRuleViewDto"][];
+      version: number;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    PartnerResourceListDto: {
+      items: components["schemas"]["PartnerResourceDto"][];
+    };
+    CreateResourceDto: {
+      description?: components["schemas"]["LocalizedDescriptionDto"] | null;
+      /** @description Людей на слот (D-04 А) */
+      capacityPeople?: number;
+      slotDurationMin?: number;
+      /** @description Buffer до слота, мин */
+      bufferBeforeMin?: number;
+      /** @description Buffer после слота, мин */
+      bufferAfterMin?: number;
+      /** @description Бронь не раньше чем за, мин */
+      leadTimeMin?: number;
+      /** @description Горизонт бронирования, дней */
+      horizonDays?: number;
+      /** @description SLA ответа партнёра, мин (D-43) */
+      confirmSlaMin?: number;
+      bookingMode?: components["schemas"]["BookingMode"];
+      /** @description Ориентир цены, копейки */
+      priceMinor?: number | null;
+      /** @example UAH */
+      currency?: string | null;
+      /**
+       * Format: uuid
+       * @description Место партнёра
+       */
+      placeId: string;
+      name: components["schemas"]["LocalizedNameDto"];
+    };
+    UpdateResourceDto: {
+      description?: components["schemas"]["LocalizedDescriptionDto"] | null;
+      /** @description Людей на слот (D-04 А) */
+      capacityPeople?: number;
+      slotDurationMin?: number;
+      /** @description Buffer до слота, мин */
+      bufferBeforeMin?: number;
+      /** @description Buffer после слота, мин */
+      bufferAfterMin?: number;
+      /** @description Бронь не раньше чем за, мин */
+      leadTimeMin?: number;
+      /** @description Горизонт бронирования, дней */
+      horizonDays?: number;
+      /** @description SLA ответа партнёра, мин (D-43) */
+      confirmSlaMin?: number;
+      bookingMode?: components["schemas"]["BookingMode"];
+      /** @description Ориентир цены, копейки */
+      priceMinor?: number | null;
+      /** @example UAH */
+      currency?: string | null;
+      name?: components["schemas"]["LocalizedNameDto"];
+      status?: components["schemas"]["ResourceStatus"];
+    };
+    AvailabilityRuleDto: {
+      /** @description ISO: 1 — пн */
+      dayOfWeek?: number | null;
+      /**
+       * Format: date
+       * @description Правило на дату
+       */
+      date?: string | null;
+      /** @description Выходной на дату */
+      closed?: boolean;
+      /** @example 10:00 */
+      opensAt?: string | null;
+      /**
+       * @description Позже opensAt; до 24:00
+       * @example 22:00
+       */
+      closesAt?: string | null;
+    };
+    PutAvailabilityDto: {
+      rules: components["schemas"]["AvailabilityRuleDto"][];
+    };
+    PutManualAvailabilityDto: {
+      /** @description available_now — «є вільні місця», busy — «немає місць», unknown — снять ручной статус */
+      status: components["schemas"]["ManualAvailability"];
+      /**
+       * @description TTL ручного статуса, мин (D-78 А: короткий)
+       * @default 60
+       */
+      ttlMinutes: number;
     };
     /** @enum {string} */
     FeatureFlagKey:
@@ -15815,6 +16374,1128 @@ export interface operations {
       };
       /** @description Ошибка */
       409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listResources: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+        /** @description Опубликованное место */
+        placeId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResourceListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listResourceSlots: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+        /** @description Первая местная дата (по умолчанию — сегодня в таймзоне региона) */
+        from?: string;
+        days?: number;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SlotListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listMyBookings: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BookingListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createBooking: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateBookingDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BookingDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  updateBookingStatus: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateBookingStatusDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerBookingDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPartnerBookings: {
+    parameters: {
+      query?: {
+        /** @description Одно из своих мест; без него — все */
+        placeId?: string;
+        status?: components["schemas"]["BookingStatus"];
+        /** @description Начало брони не раньше */
+        from?: string;
+        /** @description Начало брони раньше */
+        to?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerBookingListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createManualBooking: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateManualBookingDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerBookingDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPartnerResources: {
+    parameters: {
+      query: {
+        placeId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerResourceListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createPartnerResource: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateResourceDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerResourceDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  updatePartnerResource: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateResourceDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerResourceDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  putResourceAvailability: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PutAvailabilityDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerResourceDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  putResourceManualAvailability: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PutManualAvailabilityDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerResourceDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

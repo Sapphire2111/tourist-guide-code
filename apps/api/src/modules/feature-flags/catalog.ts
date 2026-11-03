@@ -66,7 +66,9 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   ),
   "module.host_requests": flag("Заявки гостиницы и планировщик (блок 5)", ALWAYS, ["release.r1"]),
   "module.partner_cabinet": flag("Партнёрский кабинет (блок 6)", ALWAYS, ["release.mvp"]),
-  "module.bookings": flag("Бронирования (блок 7)", ALWAYS, ["release.mvp"]),
+  // Бронирования: серверная часть готова раньше интерфейсов — по умолчанию выключен везде; включает админ платформы
+  // (на окружение или регион), когда готовы экраны C07/C08 и кабинет P04/P05.
+  "module.bookings": flag("Бронирования (блок 7)", OFF, ["release.mvp"]),
   "module.qr_transactions": flag("QR-транзакции и взаиморасчёты (блок 9)", ALWAYS, ["finance.engine"]),
   "module.reviews": flag("Подтверждённые отзывы (блок 10)", ALWAYS, ["release.mvp"]),
   "module.ambassadors": flag("Амбассадоры (блок 11)", ALWAYS, ["release.mvp"]),
