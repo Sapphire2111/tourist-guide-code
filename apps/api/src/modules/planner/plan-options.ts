@@ -115,8 +115,12 @@ export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKin
 }
 
 /** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
-export function adultsOnly(p: Pick<CatalogPlace, "category" | "names">): boolean {
-  return p.category === "adult-fun" || placeKind(p) === "bar" || p.names.some((n) => NIGHTLIFE_RE.test(n));
+export function adultsOnly(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
+  return (
+    categoriesOf(p).includes("adult-fun") ||
+    placeKind(p) === "bar" ||
+    p.names.some((n) => NIGHTLIFE_RE.test(n))
+  );
 }
 
 /** Часть дня пункта: выбранная или по времени (до 12 — ранок, до 17 — день, далі — вечір; без часу — день). */
@@ -179,6 +183,8 @@ function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
   const cats = categoriesOf(p);
   if (slot !== "rain") return cats.some((c) => SLOT_CATEGORIES[slot].includes(c));
   if (p.tags.includes("rainy-day")) return true;
+  // Магазин (основная stores) — только ТРЦ, доп. категории его «под крышу» не переводят.
+  if (p.category === "stores") return p.names.some((n) => MALL_RE.test(n));
   if (cats.some((c) => c !== "stores" && SLOT_CATEGORIES.rain.includes(c))) return true;
   return cats.includes("stores") && p.names.some((n) => MALL_RE.test(n));
 }

@@ -259,6 +259,7 @@ export class GuideRepository {
                 )
                 .select("x.place_id")
                 .whereRef("x.place_id", "=", "places.id")
+                .where("xc.active", "=", true)
                 .where("xr.home_section", "in", [...exclude]),
             ),
           ),

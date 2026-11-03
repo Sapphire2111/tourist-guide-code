@@ -372,6 +372,8 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
   });
 
   it("неактивная доп. категория: место не попадает ни в счётчик раздела, ни в выдачу", async () => {
+    await sql(`UPDATE categories SET active = false WHERE id = $1`, [categoryId("museums")]);
+    // База — после выключения museums (демо-место museum-khata в основной museums), до вставки доп. категории.
     const funBefore = (await service.categories(base.regions.a)).items.find(
       (c) => c.id === categoryId("fun"),
     )!;
@@ -380,7 +382,6 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
       placeId("east"),
       categoryId("museums"),
     ]);
-    await sql(`UPDATE categories SET active = false WHERE id = $1`, [categoryId("museums")]);
     try {
       const fun = (await service.categories(base.regions.a)).items.find((c) => c.id === categoryId("fun"))!;
       const found = await service.search(base.regions.a, {
