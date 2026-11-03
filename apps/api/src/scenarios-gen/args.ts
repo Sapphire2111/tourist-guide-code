@@ -10,10 +10,15 @@ export type GenArgs = {
   /** Без запросов к модели: какие заказы собираются, размер промптов. */
   plan: boolean;
   publish: boolean;
+  /** Отчёт и журнал JSONL рядом (journal.ts: runPaths); обязателен при генерации. */
   out: string | null;
   fromFile: string | null;
   concurrency: number;
   retries: number;
+  /** Лимит расходов на весь журнал, $: после порога новые заказы не берутся, идущие дорабатывают. */
+  maxUsd: number | null;
+  /** Продолжение: не повторять и упавшие коды журнала (по умолчанию — повторять, пропускаются только готовые). */
+  skipFailed: boolean;
   /** Раундов «критика» (второй проход модели как местного гида), 0 — без критика. */
   criticRounds: number;
   themes: Set<ThemeCode>;
@@ -37,6 +42,8 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
     fromFile: null,
     concurrency: 4,
     retries: 1,
+    maxUsd: null,
+    skipFailed: false,
     criticRounds: 2,
     themes: new Set(),
     areas: new Set(),
@@ -80,6 +87,15 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
       case "--retries":
         a.retries = int(k, v(), 0, 3);
         break;
+      case "--max-usd": {
+        const usdLimit = Number(v());
+        if (!Number.isFinite(usdLimit) || usdLimit <= 0) throw new GenArgsError(`${k}: сумма в $ больше 0`);
+        a.maxUsd = usdLimit;
+        break;
+      }
+      case "--skip-failed":
+        a.skipFailed = true;
+        break;
       case "--critic-rounds":
         a.criticRounds = int(k, v(), 0, 3);
         break;
@@ -98,6 +114,11 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
     }
   }
   if (a.dryRun && a.publish) throw new GenArgsError("--dry-run и --publish вместе не имеют смысла");
-  if (a.dryRun && !a.plan && !a.out) throw new GenArgsError("--dry-run: укажите --out <файл.json>");
+  if (!a.plan && !a.out && (a.dryRun || !a.fromFile))
+    throw new GenArgsError(
+      "Укажите --out <файл.json>: готовые сценарии сразу дописываются в журнал <файл>.jsonl, иначе оплаченное теряется при сбое",
+    );
+  if (a.fromFile && (a.maxUsd !== null || a.skipFailed))
+    throw new GenArgsError("--max-usd и --skip-failed — только для генерации, не для --from-file");
   return a;
 }

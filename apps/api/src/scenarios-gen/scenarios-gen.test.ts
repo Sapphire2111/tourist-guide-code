@@ -1,15 +1,60 @@
 // Unit: генератор сценариев — заказы, кандидаты, проверка программой (места только из списка, реалистичная
 // длительность, дорога, график, сезон, без авто), повтор с ошибками, аргументы CLI. Модель и БД подменены.
+import { appendFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { LonLat } from "../db/index.js";
 import { GenArgsError, parseGenArgs } from "./args.js";
 import { allBriefs, targetBriefs, TARGET_THEMES, THEMES, type Brief, type ThemeCode } from "./briefs.js";
 import { fitsBrief, selectCandidates, weeklyShort, type CandidateSet } from "./candidates.js";
 import { genPlace, type GenCatalog, type GenPlace } from "./catalog.js";
-import { emptyUsage, generateOne, pool, usd, type MessagesApi } from "./generate.js";
+import {
+  answerText,
+  emptyUsage,
+  generateOne,
+  pool,
+  usd,
+  type GenOutcome,
+  type MessagesApi,
+  type Usage,
+} from "./generate.js";
+import {
+  latestByCode,
+  openJournal,
+  parseScenariosFile,
+  readJournal,
+  readyCodes,
+  runPaths,
+  totalUsage,
+  type GenRecord,
+} from "./journal.js";
 import { wantedReport } from "./missing.js";
-import { OUTPUT_SCHEMA, parseScenario, requestParams, type GenScenario } from "./prompt.js";
-import { checkDraft, openEnough, realisticMinutes, validateScenario } from "./validate.js";
+import {
+  GEN_MAX_TOKENS,
+  OUTPUT_SCHEMA,
+  parseScenario,
+  priceOf,
+  requestParams,
+  type GenScenario,
+} from "./prompt.js";
+import { chooseOrders, planEstimate, runOrders, summarize, type Order } from "./run.js";
+import {
+  checkDraft,
+  openEnough,
+  realisticMinutes,
+  stripSchedule,
+  validateScenario,
+  type ScenarioDraft,
+} from "./validate.js";
+import { eachIsolated } from "./writer.js";
+
+/** Поток модели в тестах: finalMessage отдаёт ответ подменённой функции. */
+const api = (create: (params: unknown) => unknown) =>
+  ({
+    stream: (params: unknown) => ({ finalMessage: () => Promise.resolve(create(params)) }),
+  }) as unknown as MessagesApi;
 
 const CENTER: LonLat = { lon: 24.55, lat: 48.45 };
 const east = (m: number): LonLat => ({ lon: CENTER.lon + m / 73_800, lat: CENTER.lat });
@@ -264,13 +309,14 @@ describe("генерация", () => {
       )
       .mockResolvedValueOnce(res(JSON.stringify(good)));
     const usage = emptyUsage();
-    const r = await generateOne({ create } as unknown as MessagesApi, brief("waterfalls"), set, usage, {
+    const r = await generateOne(api(create), brief("waterfalls"), set, usage, {
       retries: 1,
     });
     expect(r.draft?.items).toHaveLength(3);
     expect(r.attempts).toBe(2);
-    expect(usage).toEqual({ input: 2000, cacheWrite: 100, cacheRead: 200, output: 1000, requests: 2 });
-    // Opus 5.5: 2000×4 + 100×5 + 200×0,4 + 1000×20 = 28 580 мкдолл. → $0,03
+    expect(usage).toMatchObject({ input: 2000, cacheWrite: 100, cacheRead: 200, output: 1000, requests: 2 });
+    // Opus 5.5: 2000×4 + 100×5 + 200×0,2 + 1000×20 = 28 540 мкдолл. → $0,03
+    expect(usage.costUsd).toBeCloseTo(28_540 / 1e6, 9);
     expect(usd(usage)).toBe(0.03);
     const second = create.mock.calls[1]![0] as { messages: { content: string }[] };
     expect(second.messages[0]!.content).toMatch(/не пройшла перевірку[\s\S]*p7/);
@@ -281,13 +327,7 @@ describe("генерация", () => {
 
   it("не JSON и отказ — сценарий отброшен", async () => {
     const create = vi.fn().mockResolvedValue(res("не json"));
-    const r = await generateOne(
-      { create } as unknown as MessagesApi,
-      brief("waterfalls"),
-      set,
-      emptyUsage(),
-      { retries: 0 },
-    );
+    const r = await generateOne(api(create), brief("waterfalls"), set, emptyUsage(), { retries: 0 });
     expect(r.draft).toBeNull();
     expect(parseScenario('{"title_uk":"x","days":[]}')).toMatchObject({ title_uk: "x", tags: [] });
   });
@@ -308,13 +348,26 @@ describe("генерация", () => {
 });
 
 describe("аргументы", () => {
-  it("по умолчанию — 10 черновиками; --dry-run требует --out; темы проверяются", () => {
-    expect(parseGenArgs([])).toMatchObject({
+  it("по умолчанию — 10 черновиками; --out обязателен при генерации; темы проверяются", () => {
+    expect(parseGenArgs(["--out", "x.json"])).toMatchObject({
       count: 10,
       dryRun: false,
       publish: false,
       region: "test-region",
+      maxUsd: null,
+      skipFailed: false,
     });
+    expect(() => parseGenArgs([])).toThrow(/--out/);
+    expect(() => parseGenArgs(["--count", "200"])).toThrow(/--out/);
+    expect(parseGenArgs(["--from-file", "x.jsonl"]).fromFile).toBe("x.jsonl");
+    expect(() => parseGenArgs(["--from-file", "x.jsonl", "--dry-run"])).toThrow(/--out/);
+    expect(parseGenArgs(["--out", "x", "--max-usd", "12.5", "--skip-failed"])).toMatchObject({
+      maxUsd: 12.5,
+      skipFailed: true,
+    });
+    expect(() => parseGenArgs(["--out", "x", "--max-usd", "0"])).toThrow(GenArgsError);
+    expect(() => parseGenArgs(["--out", "x", "--max-usd", "abc"])).toThrow(GenArgsError);
+    expect(() => parseGenArgs(["--from-file", "x", "--max-usd", "1"])).toThrow(GenArgsError);
     expect(parseGenArgs(["--dry-run", "--out", "x.json", "--count", "3"])).toMatchObject({
       dryRun: true,
       count: 3,
@@ -500,7 +553,7 @@ describe("комфорт туриста (решение владельца 03.11
       .mockResolvedValueOnce(
         res({ verdict: "fix", issues: ["b"], revised: base("Приходьте о 7:00. Графік: сб 06:00-13:00.") }),
       );
-    const r = await generateOne({ create } as unknown as MessagesApi, brief("culture"), set, emptyUsage(), {
+    const r = await generateOne(api(create), brief("culture"), set, emptyUsage(), {
       retries: 0,
       criticRounds: 2,
     });
@@ -535,16 +588,10 @@ describe("комфорт туриста (решение владельца 03.11
       .mockResolvedValueOnce(res({ verdict: "fix", issues: ["неіснуюче місце"], revised: bad }))
       .mockResolvedValueOnce(res({ verdict: "fix", issues: ["раніше на водоспад"], revised: better }))
       .mockResolvedValueOnce(res({ verdict: "ok", issues: [], revised: better }));
-    const r = await generateOne(
-      { create } as unknown as MessagesApi,
-      brief("waterfalls"),
-      set,
-      emptyUsage(),
-      {
-        retries: 0,
-        criticRounds: 3,
-      },
-    );
+    const r = await generateOne(api(create), brief("waterfalls"), set, emptyUsage(), {
+      retries: 0,
+      criticRounds: 3,
+    });
     expect(r.critic.map((c) => [c.verdict, c.accepted])).toEqual([
       ["fix", false],
       ["fix", true],
@@ -566,5 +613,547 @@ describe("комфорт туриста (решение владельца 03.11
     expect(second.messages[0]!.content[1]!.cache_control).toBeUndefined();
     expect(second).toMatchObject({ fallbacks: "default", betas: ["server-side-fallback-2026-07-01"] });
     expect(second.model).toBe("claude-opus-5-5");
+  });
+});
+
+describe("приписка «Графік: …» и совет туриста", () => {
+  it("снимается только график: совет после и до него остаётся", () => {
+    expect(stripSchedule("Графік: сб 06:00-13:00. Приходьте о 7:00 і беріть готівку.")).toBe(
+      "Приходьте о 7:00 і беріть готівку.",
+    );
+    expect(stripSchedule("Беріть готівку. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.")).toBe(
+      "Беріть готівку.",
+    );
+    expect(stripSchedule("Зранку. Графік: пн-пт 09:00-13:00,14:00-18:00. Беріть готівку.")).toBe(
+      "Зранку. Беріть готівку.",
+    );
+    // Обрезано лимитом длины примечания.
+    expect(stripSchedule("Зранку. Графік: пн 09:00-13:00,14:00-18")).toBe("Зранку.");
+    // Свой текст модели без часов — не приписка программы.
+    expect(stripSchedule("Графік: за домовленістю, телефонуйте.")).toBe(
+      "Графік: за домовленістю, телефонуйте.",
+    );
+    expect(stripSchedule("Без графіка.")).toBe("Без графіка.");
+  });
+
+  it("ринок: совет после графика доходит до туриста, график один", () => {
+    const market = place("markets", "Косівський ринок", 300, {
+      weekly: [{ dayOfWeek: 6, opensAt: "06:00", closesAt: "13:00" }],
+    });
+    const r = validateScenario(
+      brief("culture"),
+      setOf([market, lunch, place("museums", "Музей", 1100)]),
+      scenario([
+        {
+          ...item("p1", "08:00", 60, ["p3"]),
+          note_uk: "Графік: сб 06:00-13:00. Приходьте о 7:00 і беріть готівку.",
+        },
+        item("p3", "10:00", 60),
+        item("p2", "12:00", 75),
+      ]),
+    );
+    expect(r.draft!.items[0]!.note!.uk).toBe(
+      "Приходьте о 7:00 і беріть готівку. Графік: сб 06:00-13:00; вихідний пн,вт,ср,чт,пт,нд.",
+    );
+  });
+});
+
+describe("сбои, запасная модель, деньги", () => {
+  const set = setOf([probii, lunch, chan]);
+  const good = scenario([item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)]);
+  const res = (o: unknown, over: Record<string, unknown> = {}) => ({
+    stop_reason: "end_turn",
+    model: "claude-opus-5-5",
+    usage: { input_tokens: 10, output_tokens: 10 },
+    content: [{ type: "text", text: typeof o === "string" ? o : JSON.stringify(o) }],
+    ...over,
+  });
+
+  it.each([
+    ["max_tokens", res("{", { stop_reason: "max_tokens" }), /max_tokens/],
+    [
+      "отказ",
+      res("", { stop_reason: "refusal", stop_details: { category: "bio" }, content: [] }),
+      /refusal \(bio\)/,
+    ],
+    ["не JSON", res("не json"), /не JSON/],
+  ])("критик: %s — раунд записан как error, черновик остаётся", async (_name, bad, reason) => {
+    const create = vi.fn().mockResolvedValueOnce(res(good)).mockResolvedValueOnce(bad);
+    const usage = emptyUsage();
+    const r = await generateOne(api(create), brief("waterfalls"), set, usage, {
+      retries: 0,
+      criticRounds: 2,
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(r.draft).not.toBeNull();
+    expect(r.critic).toEqual([
+      { round: 1, verdict: "error", issues: [expect.stringMatching(reason)], accepted: false },
+    ]);
+    expect(usage.maxTokensCritic).toBe(_name === "max_tokens" ? 1 : 0);
+    expect(usage.maxTokensGen).toBe(0);
+  });
+
+  it("генерация: max_tokens считается отдельно, повторы — в сумме", async () => {
+    const create = vi.fn().mockResolvedValue(res("{", { stop_reason: "max_tokens" }));
+    const usage = emptyUsage();
+    const r = await generateOne(api(create), brief("waterfalls"), set, usage, { retries: 1 });
+    expect(r.draft).toBeNull();
+    expect(usage).toMatchObject({ maxTokensGen: 2, maxTokensCritic: 0, requests: 2, input: 20, output: 20 });
+    expect(usage.costUsd).toBeCloseTo((20 * 4 + 20 * 20) / 1e6, 9);
+  });
+
+  it("запасная модель: попытки из usage.iterations, каждая по своей цене, фактическая модель сохранена", async () => {
+    const create = vi.fn().mockResolvedValueOnce(
+      res(good, {
+        model: "claude-opus-4-8",
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          iterations: [
+            {
+              type: "message",
+              model: "claude-opus-5-5",
+              input_tokens: 1000,
+              output_tokens: 200,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            },
+            {
+              type: "fallback_message",
+              model: "claude-opus-4-8",
+              input_tokens: 1000,
+              output_tokens: 500,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            },
+          ],
+        },
+        content: [
+          { type: "fallback", from: { model: "claude-opus-5-5" }, to: { model: "claude-opus-4-8" } },
+          { type: "text", text: JSON.stringify(good) },
+        ],
+      }),
+    );
+    const usage = emptyUsage();
+    const r = await generateOne(api(create), brief("waterfalls"), set, usage, { retries: 0 });
+    expect(r.draft).not.toBeNull();
+    expect(r.model).toBe("claude-opus-4-8");
+    expect(usage).toMatchObject({
+      input: 2000,
+      output: 700,
+      requests: 1,
+      fallbacks: 1,
+      servedBy: { "claude-opus-4-8": 1 },
+    });
+    // Opus 5.5: 1000×4 + 200×20; Opus 4.8: 1000×5 + 500×25 — микродоллары.
+    expect(usage.costUsd).toBeCloseTo(25_500 / 1e6, 9);
+  });
+
+  it("правка критика от запасной модели: модель итогового черновика — запасная", async () => {
+    const better = scenario([
+      item("p1", "09:30", 45, ["p3"]),
+      item("p2", "12:00", 75),
+      item("p3", "16:00", 120),
+    ]);
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(res(good))
+      .mockResolvedValueOnce(
+        res({ verdict: "fix", issues: ["x"], revised: better }, { model: "claude-opus-5" }),
+      );
+    const r = await generateOne(api(create), brief("waterfalls"), set, emptyUsage(), {
+      retries: 0,
+      criticRounds: 1,
+    });
+    expect(r.model).toBe("claude-opus-5");
+  });
+
+  it("обрыв потока: попытка считается, вход из message_start идёт в сумму и отмечен как неполный", async () => {
+    const usage = emptyUsage();
+    const messages = {
+      stream: () => ({
+        finalMessage: () => Promise.reject(new Error("connection lost")),
+        currentMessage: { model: "claude-opus-5-5", usage: { input_tokens: 1000, output_tokens: 1 } },
+      }),
+    } as unknown as MessagesApi;
+    const r = await generateOne(messages, brief("waterfalls"), set, usage, { retries: 0 });
+    expect(r.errors[0]).toMatch(/connection lost/);
+    expect(usage).toMatchObject({ requests: 0, failedRequests: 1, interrupted: 1, input: 1000 });
+  });
+
+  it("текст ответа: продолжение после отказа — склейка; новый ответ — текст после блока fallback", () => {
+    const fb = {
+      type: "fallback",
+      from: { model: "claude-opus-5-5" },
+      to: { model: "claude-opus-4-8" },
+    };
+    const text = (t: string) => ({ type: "text", text: t });
+    type Blocks = Parameters<typeof answerText>[0];
+    expect(answerText([text('{"a":'), fb, text("1}")] as unknown as Blocks)).toBe('{"a":1}');
+    expect(answerText([text('{"a":'), fb, text('{"b":2}')] as unknown as Blocks)).toBe('{"b":2}');
+    expect(answerText([fb, text('{"b":2}')] as unknown as Blocks)).toBe('{"b":2}');
+    expect(answerText([text("x"), text("y")] as unknown as Blocks)).toBe("xy");
+  });
+
+  it("настоящий SDK на подменённом fetch: поток, beta-заголовок, finalMessage, отказ посреди вывода", async () => {
+    const json = JSON.stringify(good);
+    const cut = Math.floor(json.length / 2);
+    const events = [
+      {
+        type: "message_start",
+        message: {
+          id: "m",
+          type: "message",
+          role: "assistant",
+          model: "claude-opus-5-5",
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 1000, output_tokens: 1 },
+        },
+      },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: json.slice(0, cut) } },
+      { type: "content_block_stop", index: 0 },
+      {
+        type: "content_block_start",
+        index: 1,
+        content_block: {
+          type: "fallback",
+          from: { model: "claude-opus-5-5" },
+          to: { model: "claude-opus-4-8" },
+        },
+      },
+      { type: "content_block_stop", index: 1 },
+      { type: "content_block_start", index: 2, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: json.slice(cut) } },
+      { type: "content_block_stop", index: 2 },
+      {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          iterations: [
+            { type: "message", model: "claude-opus-5-5", input_tokens: 1000, output_tokens: 300 },
+            { type: "fallback_message", model: "claude-opus-4-8", input_tokens: 1000, output_tokens: 500 },
+          ],
+        },
+      },
+      { type: "message_stop" },
+    ];
+    const sse = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+    const requests: { headers: Headers; body: Record<string, unknown> }[] = [];
+    const fakeFetch = vi.fn((_url: unknown, init?: RequestInit) => {
+      requests.push({
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return Promise.resolve(
+        new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      );
+    });
+    const client = new Anthropic({ apiKey: "test", fetch: fakeFetch as typeof fetch, maxRetries: 0 });
+    const usage = emptyUsage();
+    const r = await generateOne(client.beta.messages, brief("waterfalls"), set, usage, { retries: 0 });
+    expect(r.errors).toEqual([]);
+    expect(r.draft).not.toBeNull();
+    expect(r.model).toBe("claude-opus-4-8");
+    expect(usage).toMatchObject({ input: 2000, output: 800, requests: 1, fallbacks: 1 });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.body).toMatchObject({
+      stream: true,
+      max_tokens: GEN_MAX_TOKENS,
+      model: "claude-opus-5-5",
+      fallbacks: "default",
+    });
+    expect(requests[0]!.body.betas).toBeUndefined();
+    expect(requests[0]!.headers.get("anthropic-beta")).toContain("server-side-fallback-2026-07-01");
+  });
+
+  it("настоящий SDK: max_tokens с обрезанным JSON не роняет finalMessage, токены и причина видны", async () => {
+    const events = [
+      {
+        type: "message_start",
+        message: {
+          id: "m",
+          type: "message",
+          role: "assistant",
+          model: "claude-opus-5-5",
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 100, output_tokens: 1 },
+        },
+      },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: '{"title_uk":"обр' } },
+      { type: "content_block_stop", index: 0 },
+      {
+        type: "message_delta",
+        delta: { stop_reason: "max_tokens", stop_sequence: null },
+        usage: { output_tokens: 64000 },
+      },
+      { type: "message_stop" },
+    ];
+    const sse = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+    const client = new Anthropic({
+      apiKey: "test",
+      maxRetries: 0,
+      fetch: (() =>
+        Promise.resolve(
+          new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } }),
+        )) as typeof fetch,
+    });
+    const usage = emptyUsage();
+    const r = await generateOne(client.beta.messages, brief("waterfalls"), set, usage, { retries: 0 });
+    expect(r.errors[0]).toMatch(/max_tokens/);
+    expect(usage).toMatchObject({ maxTokensGen: 1, output: 64000, failedRequests: 0 });
+  });
+});
+
+describe("журнал и прогон", () => {
+  const usageOf = (costUsd: number): Usage => ({ ...emptyUsage(), costUsd });
+  const draftOf = (code: string) => ({ code, items: [] }) as unknown as ScenarioDraft;
+  const rec = (code: string, over: Partial<GenRecord> = {}): GenRecord => ({
+    code,
+    region: "r",
+    status: "ok",
+    draft: draftOf(code),
+    errors: [],
+    fixes: [],
+    attempts: 1,
+    critic: [],
+    model: "claude-opus-5-5",
+    usage: usageOf(1),
+    at: "2026-11-04T00:00:00.000Z",
+    ...over,
+  });
+  const order = (code: string): Order => ({ brief: brief("waterfalls", { code }), set: setOf([probii]) });
+  const outcome = (code: string, over: Partial<GenOutcome> = {}): GenOutcome => ({
+    code,
+    draft: draftOf(code),
+    errors: [],
+    fixes: [],
+    attempts: 1,
+    critic: [],
+    model: "claude-opus-5-5",
+    ...over,
+  });
+  const run = (over: Partial<Parameters<typeof runOrders>[0]>) =>
+    runOrders({
+      orders: [],
+      region: "r",
+      concurrency: 1,
+      maxUsd: null,
+      spentBefore: 0,
+      generate: () => Promise.reject(new Error("не задан")),
+      append: () => Promise.resolve(),
+      log: () => undefined,
+      ...over,
+    });
+
+  it("runPaths: журнал и отчёт из --out", () => {
+    expect(runPaths("a/run.json")).toEqual({ journal: "a/run.jsonl", report: "a/run.json" });
+    expect(runPaths("a/run.jsonl")).toEqual({ journal: "a/run.jsonl", report: "a/run.json" });
+    expect(runPaths("run")).toEqual({ journal: "run.jsonl", report: "run" });
+  });
+
+  it("запись сразу на диск; оборванная строка пропускается, следующая с новой строки; повторный код заменяет", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "scenarios-journal-"));
+    const file = path.join(dir, "sub", "run.jsonl");
+    try {
+      const append = await openJournal(file);
+      await Promise.all([append(rec("a")), append(rec("b", { status: "rejected", draft: null }))]);
+      expect((await readJournal(file)).records.map((r) => r.code)).toEqual(["a", "b"]);
+      // Процесс убит посреди записи.
+      await appendFile(file, '{"code":"c","draft":{"co');
+      const after = await openJournal(file);
+      await after(rec("b"));
+      const { records, broken } = await readJournal(file);
+      expect(broken).toBe(1);
+      expect(records.map((r) => r.code)).toEqual(["a", "b", "b"]);
+      expect(latestByCode(records).map((r) => [r.code, r.status])).toEqual([
+        ["a", "ok"],
+        ["b", "ok"],
+      ]);
+      // Деньги — за все строки, и за заменённую.
+      expect(totalUsage(records).costUsd).toBe(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    expect(await readJournal(file)).toEqual({ records: [], broken: 0 });
+  });
+
+  it("готовые коды: упавшие повторяем, --skip-failed — нет", () => {
+    const records = [rec("a"), rec("b", { status: "rejected", draft: null })];
+    expect([...readyCodes(records, false)]).toEqual(["a"]);
+    expect([...readyCodes(records, true)]).toEqual(["a", "b"]);
+  });
+
+  it("--from-file: итоговый файл и журнал JSONL", () => {
+    expect(parseScenariosFile(JSON.stringify({ model: "x", scenarios: [draftOf("a")] }, null, 2))).toEqual({
+      scenarios: [draftOf("a")],
+      broken: 0,
+    });
+    expect(parseScenariosFile(JSON.stringify({ model: "x" }))).toEqual({ scenarios: [], broken: 1 });
+    const jsonl = [
+      JSON.stringify(rec("a", { draft: null, status: "rejected" })),
+      JSON.stringify(rec("b")),
+      JSON.stringify(rec("a")),
+      '{"code":"c","dr',
+      "",
+    ].join("\n");
+    const parsed = parseScenariosFile(jsonl);
+    expect(parsed.broken).toBe(1);
+    expect(parsed.scenarios).toEqual([draftOf("a"), draftOf("b")]);
+    // Журнал из одной строки — тоже журнал.
+    expect(parseScenariosFile(JSON.stringify(rec("z"))).scenarios).toEqual([draftOf("z")]);
+  });
+
+  it("лимит: новые заказы не берутся, идущие дорабатывают; потраченное и остаток в итоге", async () => {
+    const appended: string[] = [];
+    const started: string[] = [];
+    const result = await run({
+      orders: ["a", "b", "c", "d", "e"].map(order),
+      concurrency: 2,
+      maxUsd: 3,
+      spentBefore: 1,
+      append: (r) => {
+        appended.push(r.code);
+        return Promise.resolve();
+      },
+      generate: async ({ brief: b }, usage) => {
+        started.push(b.code);
+        await new Promise((r) => setTimeout(r, 5));
+        usage.costUsd += 1;
+        usage.requests++;
+        await new Promise((r) => setTimeout(r, 5));
+        usage.costUsd += 0.5; // критик того же заказа — уже после порога
+        return outcome(b.code);
+      },
+    });
+    expect(result.stoppedBy).toBe("budget");
+    expect(started).toEqual(["a", "b"]);
+    expect(appended.sort()).toEqual(["a", "b"]);
+    expect(result.notStarted).toEqual(["c", "d", "e"]);
+    expect(result.usage.costUsd).toBe(3);
+    expect(result.usage.requests).toBe(2);
+  });
+
+  it("лимит уже исчерпан по журналу — ни одного запроса", async () => {
+    const generate = vi.fn();
+    const result = await run({ orders: [order("a")], maxUsd: 2, spentBefore: 2, generate });
+    expect(generate).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ stoppedBy: "budget", notStarted: ["a"], records: [] });
+  });
+
+  it("исключение заказа записывается с потраченным и не рушит пул", async () => {
+    const appended: GenRecord[] = [];
+    const result = await run({
+      orders: ["a", "b", "c"].map(order),
+      concurrency: 2,
+      append: (r) => {
+        appended.push(r);
+        return Promise.resolve();
+      },
+      generate: ({ brief: b }, usage) => {
+        usage.costUsd += 0.25;
+        return b.code === "a" ? Promise.reject(new Error("сбой")) : Promise.resolve(outcome(b.code));
+      },
+    });
+    expect(result.records).toHaveLength(3);
+    expect(result.stoppedBy).toBeNull();
+    const failed = appended.find((r) => r.code === "a")!;
+    expect(failed).toMatchObject({ status: "error", draft: null, errors: ["сбой"] });
+    expect(failed.usage.costUsd).toBe(0.25);
+  });
+
+  it("журнал не пишется — новые заказы не берутся, готовое остаётся в итоге", async () => {
+    const log = vi.fn();
+    const result = await run({
+      orders: ["a", "b"].map(order),
+      log,
+      append: () => Promise.reject(new Error("диск заполнен")),
+      generate: ({ brief: b }) => Promise.resolve(outcome(b.code)),
+    });
+    expect(result).toMatchObject({ stoppedBy: "journal", notStarted: ["b"] });
+    expect(result.records.map((r) => r.code)).toEqual(["a"]);
+    expect(log.mock.calls.flat().join()).toMatch(/диск заполнен/);
+  });
+
+  it("итоги: средняя цена, сбои критика, фактические модели", () => {
+    const s = summarize([
+      rec("a", {
+        usage: usageOf(2),
+        critic: [{ round: 1, verdict: "error", issues: ["x"], accepted: false }],
+      }),
+      rec("b", {
+        usage: usageOf(1),
+        model: "claude-opus-4-8",
+        critic: [{ round: 1, verdict: "fix", issues: ["x"], accepted: true }],
+      }),
+      rec("c", { usage: usageOf(1), status: "rejected", draft: null, model: null }),
+    ]);
+    expect(s).toMatchObject({
+      ok: 2,
+      failed: 1,
+      usdPerScenario: 2,
+      criticErrors: 1,
+      criticFixes: 1,
+      models: { "claude-opus-5-5": 1, "claude-opus-4-8": 1 },
+    });
+    expect(summarize([]).usdPerScenario).toBeNull();
+  });
+
+  it("выбор заказов: готовые из журнала входят в --count, не генерируются повторно", () => {
+    const catalog: GenCatalog = {
+      regionId: "r",
+      timezone: "Europe/Kyiv",
+      places: [probii, lunch, chan, place("cafes", "Кава", 300), place("nature", "Водоспад Гук", 700)],
+      localities: [{ code: "yaremche", name: "Яремче", location: CENTER }],
+      existingCodes: new Set(["in-db"]),
+    };
+    const briefs = ["done", "in-db", "x", "y", "z"].map((code) => brief("waterfalls", { code }));
+    const args = { count: 3, themes: new Set<ThemeCode>(), areas: new Set<string>() };
+    const r = chooseOrders(briefs, catalog, args, new Set(["done"]));
+    expect(r.resumed).toBe(1);
+    expect(r.chosen.map((c) => c.brief.code)).toEqual(["x", "y"]);
+    expect(r.skipped).toEqual([{ code: "in-db", reason: "уже есть в БД" }]);
+  });
+
+  it("оценка без запросов: нижняя граница и ориентир с критиком различаются и подписаны числом запросов", () => {
+    const orders = [order("a"), order("b")];
+    const e = planEstimate(orders, 2);
+    expect(e.lowerBound.requests).toBe(2);
+    expect(e.lowerBound.output).toBe(1400);
+    expect(e.guess.requests).toBe(6);
+    expect(e.guess.costUsd).toBeGreaterThan(e.lowerBound.costUsd * 5);
+  });
+
+  it("запись в БД: ошибка одного сценария не прерывает остальные", async () => {
+    const done: string[] = [];
+    const failed: string[] = [];
+    await eachIsolated(
+      ["a", "b", "c"],
+      (x) => {
+        if (x === "b") return Promise.reject(new Error("constraint"));
+        done.push(x);
+        return Promise.resolve();
+      },
+      (x) => failed.push(x),
+    );
+    expect(done).toEqual(["a", "c"]);
+    expect(failed).toEqual(["b"]);
+  });
+
+  it("цены: Opus 5.5 — чтение кэша $0,20; запасная и незнакомая модель — по старшей цене", () => {
+    expect(priceOf("claude-opus-5-5")).toMatchObject({ input: 4, cacheRead: 0.2, output: 20 });
+    expect(priceOf("claude-opus-4-8")).toMatchObject({ input: 5, cacheRead: 0.5, output: 25 });
+    expect(priceOf("claude-opus-5")).toEqual(priceOf("claude-opus-4-8"));
+    expect(usd({ costUsd: 1.234 })).toBe(1.23);
+    expect(requestParams(brief("waterfalls"), setOf([probii])).max_tokens).toBe(GEN_MAX_TOKENS);
   });
 });

@@ -11,10 +11,26 @@ import { DAY_ACTIVE_MAX_MIN, DAY_END, DAY_START, MODEL_TAGS } from "./validate.j
  */
 export const GEN_MODEL = "claude-opus-5-5";
 export const GEN_EFFORT = "high" as const;
-/** $ за 1 млн токенов Opus 5.5 (обычные запросы): запись в кэш ×1,25, чтение ×0,1. Размышление — как вывод. */
-export const GEN_USD_PER_MTOK = { input: 4, cacheWrite: 5, cacheRead: 0.2, output: 20 } as const;
-/** Без потоковой выдачи (skill claude-api: ~16 тыс. для обычных запросов); ответ со сценарием — 2–5 тыс. */
-export const GEN_MAX_TOKENS = 16_000;
+export type GenPrice = { input: number; cacheWrite: number; cacheRead: number; output: number };
+/** $ за 1 млн токенов Opus 5.5 (обычные запросы): запись в кэш ×1,25, чтение ×0,05. Размышление — как вывод. */
+export const GEN_USD_PER_MTOK: GenPrice = { input: 4, cacheWrite: 5, cacheRead: 0.2, output: 20 };
+/** Запасные модели server-side fallback (Opus 5, Opus 4.8): $5 / $25, запись в кэш ×1,25, чтение ×0,1. */
+const FALLBACK_USD_PER_MTOK: GenPrice = { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 };
+/** Цена модели, которая реально отработала попытку; другая модель — по старшей цене (сумма не занижается). */
+export const priceOf = (model: string): GenPrice =>
+  model === GEN_MODEL ? GEN_USD_PER_MTOK : FALLBACK_USD_PER_MTOK;
+/**
+ * Поток: размышление считается в max_tokens, а критик выводит сценарий целиком; 64 тыс. — по skill claude-api для
+ * потоковых запросов (предел модели 128 тыс.). Лимит не стоит денег: оплачивается только то, что модель вывела.
+ */
+export const GEN_MAX_TOKENS = 64_000;
+/** Зависший поток не держит место в пуле: по оценке SDK (128 тыс. токенов за час) 64 тыс. — около 30 мин. */
+export const GEN_REQUEST_TIMEOUT_MS = 40 * 60_000;
+/**
+ * Скрытые повторы SDK (HTTP 408/409/429/5xx и обрыв связи до начала ответа): не оплачиваются токенами и не тратят
+ * платные --retries; при 429 SDK ждёт retry-after. Обрыв уже идущего потока SDK не повторяет — это ошибка попытки.
+ */
+export const GEN_SDK_MAX_RETRIES = 4;
 /**
  * Запасная модель при отказе (refusal) — на стороне API, по рекомендации skill claude-api для Opus 5.5
  * («default» выбирает модель по категории отказа).
@@ -22,7 +38,7 @@ export const GEN_MAX_TOKENS = 16_000;
 export const GEN_BETAS = ["server-side-fallback-2026-07-01"] as const;
 
 /** Параметры запроса (beta: запасная модель при отказе). */
-export type GenParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+export type GenParams = Anthropic.Beta.Messages.MessageCreateParams;
 
 /** Постоянный системный промпт — с кэшем (повторные запросы читают его из кэша). */
 const cachedSystem = (text: string): GenParams["system"] => [
@@ -174,20 +190,8 @@ export const CRITIC_SCHEMA = {
   },
 } as const;
 
-/** Чернетка для критика: та же постановка, расчёты программы (дорога, закат), прошлые ошибки, JSON чернетки. */
-export function criticPrompt(
-  b: Brief,
-  set: CandidateSet,
-  draft: GenScenario,
-  facts: readonly string[],
-  programErrors: readonly string[] = [],
-): string {
-  return `${userPrompt(b, set)}\n${criticTail(set, draft, facts, programErrors)}`;
-}
-
 /** Изменяемая часть запроса критика: расчёты программы, ошибки прошлой правки, JSON чернетки. */
 export function criticTail(
-  _set: CandidateSet,
   draft: GenScenario,
   facts: readonly string[],
   programErrors: readonly string[] = [],
@@ -226,7 +230,7 @@ export function criticParams(
         role: "user",
         content: [
           { type: "text", text: userPrompt(b, set), cache_control: { type: "ephemeral" } },
-          { type: "text", text: criticTail(set, draft, facts, programErrors) },
+          { type: "text", text: criticTail(draft, facts, programErrors) },
         ],
       },
     ],
