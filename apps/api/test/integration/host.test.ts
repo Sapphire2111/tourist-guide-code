@@ -432,6 +432,18 @@ describe.skipIf(!dockerAvailable)(`Заявки гостиницы и плани
       written: 0,
       existing: 1,
     });
+    // Ошибка одного сценария (CHECK на название) не откатывает соседний: у каждого своя транзакция.
+    const isolated = await writeDrafts(
+      appDb,
+      base.regions.a,
+      [
+        { ...draft, code: "ai-test-bad-title", title: { uk: " " } },
+        { ...draft, code: "ai-test-after-bad" },
+      ],
+      { publish: false },
+    );
+    expect(isolated).toMatchObject({ written: 1, existing: 0 });
+    expect(isolated.failed.map((f) => f.code)).toEqual(["ai-test-bad-title"]);
     const summer = await planner.scenarios(base.regions.a, { season: "summer" });
     expect(summer.items.find((x) => x.code === draft.code)).toMatchObject({
       seasons: ["summer"],
