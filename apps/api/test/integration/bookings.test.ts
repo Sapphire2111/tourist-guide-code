@@ -734,7 +734,7 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
     // Отдельный ресурс: брони сдвигаются к «сейчас» и не должны пересекаться с бронями других тестов.
     const own = await bookings.createResource(
       OWNER,
-      { placeId, name: { uk: "Чан для нагадувань" }, leadTimeMin: 0 },
+      { placeId, name: { uk: "Чан для нагадувань" }, leadTimeMin: 0, capacityPeople: 4 },
       meta(OWNER),
     );
     await bookings.putAvailability(
