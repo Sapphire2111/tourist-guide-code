@@ -1,10 +1,10 @@
 // Главная в стиле «Сучасна Косівщина»: места региона (выбранных локаций), быстрый поиск сезона.
 // Только реальные данные мест (GET /places/search); сезонные слоганы — общий текст спецификации.
-import { Link, useT } from "@tg/ui";
+import { Button, Link, useT } from "@tg/ui";
 import { useEffect, useState } from "react";
 import { useGuide, type Async } from "../guide/context.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary } from "../guide/types.js";
-import { useLocationCaption, useLocations } from "../guide/LocationProvider.js";
+import { searchAround, useLocationCaption, useLocations } from "../guide/LocationProvider.js";
 import { PlaceSummaryCard } from "../guide/parts.js";
 import { ICONS } from "./Ornament.js";
 import { SEASON_CONFIG } from "./season.js";
@@ -48,7 +48,7 @@ export function SeasonTags() {
 export function HomePlaces() {
   const { t } = useT();
   const { api, regionId } = useGuide();
-  const { selected } = useLocations();
+  const { selected, gps, setSheetOpen } = useLocations();
   const caption = useLocationCaption();
   const [places, setPlaces] = useState<Async<PlaceSummary[]>>({ status: "loading" });
   useEffect(() => {
@@ -56,27 +56,26 @@ export function HomePlaces() {
     let alive = true;
     // Смена локаций: прежняя лента остаётся до ответа (без «Завантажуємо…» и прыжка вёрстки).
     setPlaces((p) => (p.status === "ready" ? p : { status: "loading" }));
-    api
-      .search({
-        ...(selected.length ? { localityIds: selected } : {}),
-        excludeSections: OWN_MAP_SECTIONS,
-        limit: HOME_PLACES,
-      })
-      .then(
-        (data) => alive && setPlaces({ status: "ready", data }),
-        (error: unknown) => alive && setPlaces({ status: "error", error }),
-      );
+    const params = {
+      ...(selected.length ? { localityIds: selected } : {}),
+      excludeSections: OWN_MAP_SECTIONS,
+      limit: HOME_PLACES,
+    };
+    (gps ? searchAround(api.search, params, gps) : api.search(params)).then(
+      (data) => alive && setPlaces({ status: "ready", data }),
+      (error: unknown) => alive && setPlaces({ status: "error", error }),
+    );
     return () => {
       alive = false;
     };
-  }, [api, regionId, selected]);
+  }, [api, regionId, selected, gps]);
   if (!regionId) return null;
   // Сбой ленты не мешает главной: разделы ниже работают, лента просто не показывается.
   if (places.status === "error") return null;
   return (
     <section aria-labelledby="home-places-title" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div className="kosiv-section-head">
-        <h2 id="home-places-title">{t("miniapp.home.popular")}</h2>
+        <h2 id="home-places-title">{gps ? t("miniapp.home.nearYou") : t("miniapp.home.popular")}</h2>
         <Link to={searchPath()} className="kosiv-section-link">
           {t("miniapp.home.allPlaces")}
           {ICONS.arrow}
@@ -94,6 +93,11 @@ export function HomePlaces() {
       ) : places.data.length === 0 ? (
         <p className="kosiv-card kosiv-empty" data-testid="home-places-empty">
           {t("miniapp.home.popularEmpty")}
+          {gps && (
+            <Button onClick={() => setSheetOpen(true)} data-testid="home-change-location">
+              {t("miniapp.location.change")}
+            </Button>
+          )}
         </p>
       ) : (
         <ul className="kosiv-rail" data-testid="home-places">

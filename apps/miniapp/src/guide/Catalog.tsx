@@ -6,8 +6,9 @@ import { Button, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
-import { useLocationCaption, useLocations } from "./LocationProvider.js";
+import { searchAround, useLocationCaption, useLocations } from "./LocationProvider.js";
 import { MapSlot } from "./MapSlot.js";
+import { DEVICE_MAX_ZOOM } from "./Nearby.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import type { CatalogSection, Category } from "./types.js";
 
@@ -61,7 +62,7 @@ function CategoryPlaces({
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
-  const { selected: localityIds } = useLocations();
+  const { selected: localityIds, gps, setSheetOpen } = useLocations();
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
   const [categoryId, setCategoryId] = useState(rootId);
@@ -72,7 +73,7 @@ function CategoryPlaces({
   const [view, setView] = useState<"list" | "map">(mapFirst ? "map" : "list");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
-  const point = base?.point ?? null;
+  const point = gps ?? base?.point ?? null;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
   const [submitId, setSubmitId] = useState(0);
@@ -82,17 +83,23 @@ function CategoryPlaces({
       // Базовая точка ещё грузится — ждём её (пришла — эффект перезапустится с точкой), но не дольше
       // BASE_WAIT_MS: завис запрос точки — ищем без неё.
       (base?.pending ? new Promise((r) => setTimeout(r, BASE_WAIT_MS)) : Promise.resolve())
-        .then(() =>
-          api.search({
+        .then(async () => {
+          const params = {
             categoryId,
             q: q || undefined,
-            point,
             ...(byLocation ? { localityIds } : {}),
             ...(mapFirst ? { max: STAY_MAP_MAX, signal } : {}),
-          }),
-        )
-        .then((list) => ({ list, submitId })),
-    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds],
+          };
+          if (!gps) return { list: await api.search({ ...params, point }), regionWide: false };
+          const near = await searchAround(api.search, params, gps);
+          // Текстовый запрос не нашёл ничего рядом (до 10 км) — ищем по региону, с пометкой.
+          if (q && near.length === 0)
+            return { list: await api.search({ ...params, point: gps }), regionWide: true };
+          return { list: near, regionWide: false };
+        })
+        .then(({ list, regionWide }) => ({ list, regionWide, submitId })),
+
+    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -170,12 +177,22 @@ function CategoryPlaces({
           ? t("miniapp.catalog.results", { count: places.data.list.length })
           : ""}
       </p>
+      {places.status === "ready" && places.data.regionWide && (
+        <p className="kosiv-muted" data-testid="catalog-region-wide">
+          {t("miniapp.catalog.regionWide")}
+        </p>
+      )}
       <AsyncView state={places} retry={retry}>
         {({ list }) =>
           list.length === 0 ? (
             <div className="kosiv-card kosiv-empty">
               {ICONS.search}
               <p data-testid="catalog-empty">{t("miniapp.catalog.empty")}</p>
+              {gps && (
+                <Button onClick={() => setSheetOpen(true)} data-testid="catalog-change-location">
+                  {t("miniapp.location.change")}
+                </Button>
+              )}
               {(q || categoryId !== rootId) && (
                 <Button
                   onClick={() => {
@@ -190,7 +207,15 @@ function CategoryPlaces({
             </div>
           ) : (
             <Stack>
-              {view === "map" && <MapSlot places={list} center={point} centerLabel={base?.name} />}
+              {view === "map" && (
+                <MapSlot
+                  places={list}
+                  center={point}
+                  centerLabel={gps ? t("miniapp.map.me") : base?.name}
+                  // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
+                  maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
+                />
+              )}
               <PlaceList places={list} />
             </Stack>
           )

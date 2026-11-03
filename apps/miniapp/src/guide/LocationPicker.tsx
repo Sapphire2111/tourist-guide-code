@@ -2,7 +2,7 @@
 // Выбор применяется сразу; лист закрывают «Готово», Escape, тап по фону и «Назад» Telegram.
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { interceptBack } from "../telegram.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
@@ -10,16 +10,15 @@ import "./location.css";
 
 export function LocationChip() {
   const { t } = useT();
-  const { options } = useLocations();
+  const { options, gps, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
-  const [open, setOpen] = useState(false);
-  // Стабильная ссылка: иначе эффект листа перезапускался бы на каждый рендер и уводил фокус.
-  const close = useCallback(() => setOpen(false), []);
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
     names.length === 0
-      ? t("miniapp.location.all")
+      ? gps
+        ? t("miniapp.location.mine")
+        : t("miniapp.location.all")
       : names.length === 1
         ? names[0]!
         : t("miniapp.location.more", { name: names[0]!, count: names.length - 1 });
@@ -38,18 +37,30 @@ export function LocationChip() {
         <span className="loc-chip-text">{label}</span>
         <span aria-hidden="true">▾</span>
       </button>
-      {open && <LocationSheet onClose={close} />}
     </>
   );
 }
 
+/** Единственный лист «Локація»: открывается из чипа и подсказок «Змінити локацію»; закрывается при смене маршрута. */
+export function LocationSheetHost({ path }: { path?: string }) {
+  const { sheetOpen, setSheetOpen } = useLocations();
+  const close = useCallback(() => setSheetOpen(false), [setSheetOpen]);
+  useEffect(() => {
+    setSheetOpen(false);
+  }, [path, setSheetOpen]);
+  return sheetOpen ? <LocationSheet onClose={close} /> : null;
+}
+
 function LocationSheet({ onClose }: { onClose: () => void }) {
   const { t, locale } = useT();
-  const { options, selected, setSelected } = useLocations();
+  const { options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps } = useLocations();
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    sheetRef.current?.querySelector<HTMLElement>("input")?.focus();
+    const sheet = sheetRef.current;
+    (
+      sheet?.querySelector<HTMLElement>("input:checked") ?? sheet?.querySelector<HTMLElement>("input")
+    )?.focus();
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const releaseBack = interceptBack(onClose);
@@ -98,7 +109,27 @@ function LocationSheet({ onClose }: { onClose: () => void }) {
         <ul className="loc-list">
           <li>
             <label className="loc-option">
-              <input type="checkbox" checked={selected.length === 0} onChange={() => setSelected([])} />
+              <input type="checkbox" checked={gps !== null || gpsBusy} onChange={selectGps} />
+              <span>{t("miniapp.location.mine")}</span>
+            </label>
+            {gpsBusy && (
+              <p role="status" className="loc-hint">
+                {t("miniapp.location.locating")}
+              </p>
+            )}
+            {gpsFailed && (
+              <p role="alert" className="loc-hint" data-testid="location-gps-failed">
+                {t(gpsFailed === "outside" ? "miniapp.location.outside" : "miniapp.location.gpsFailed")}
+              </p>
+            )}
+          </li>
+          <li>
+            <label className="loc-option">
+              <input
+                type="checkbox"
+                checked={selected.length === 0 && gps === null && !gpsBusy}
+                onChange={() => setSelected([])}
+              />
               <span>{t("miniapp.location.all")}</span>
             </label>
           </li>

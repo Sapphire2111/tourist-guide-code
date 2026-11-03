@@ -1,5 +1,6 @@
 // Геолокация туриста: LocationManager Telegram (Bot API 8.0+), иначе navigator.geolocation браузера.
-// Запрашивается только по нажатию («Що поруч зі мною зараз», «Поділитися геолокацією»), не при открытии экрана.
+// Запрашивается только по нажатию («Що поруч зі мною зараз», «Поділитися геолокацією», пункт «Моє місцезнаходження»),
+// не при открытии экрана. Исключение — requestLocationIfGranted: точка берётся без вопроса, только если доступ уже выдан.
 import type { TelegramWebApp } from "../telegram.js";
 
 /** accuracy: радиус погрешности устройства, м (если платформа сообщила). */
@@ -87,4 +88,39 @@ export function routeUrl(to: LatLng, from?: LatLng | null): string {
   // route=<откуда>;<куда>; пустое «откуда» — пользователь выберет старт на сайте/в приложении.
   const src = from ? `${from.lat}%2C${from.lng}` : "";
   return `https://www.openstreetmap.org/directions?route=${src}%3B${dst}`;
+}
+
+/** Доступ к геолокации уже выдан (без диалога разрешения): Telegram LocationManager или Permissions API браузера. */
+async function isAccessGranted(webApp?: TelegramWebApp): Promise<boolean> {
+  const lm = webApp?.LocationManager;
+  if (lm?.init && (!webApp?.isVersionAtLeast || webApp.isVersionAtLeast("8.0"))) {
+    const inited = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 3_000);
+      try {
+        if (lm.isInited) {
+          clearTimeout(timer);
+          resolve(true);
+        } else
+          lm.init?.call(lm, () => {
+            clearTimeout(timer);
+            resolve(true);
+          });
+      } catch {
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
+    return inited && lm.isLocationAvailable === true && lm.isAccessGranted === true;
+  }
+  try {
+    const state = await navigator.permissions?.query({ name: "geolocation" });
+    return state?.state === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/** Точка устройства только если доступ уже выдан; иначе null без запроса разрешения (не на старте приложения). */
+export async function requestLocationIfGranted(webApp?: TelegramWebApp): Promise<LatLng | null> {
+  return (await isAccessGranted(webApp)) ? requestLocation(webApp) : null;
 }

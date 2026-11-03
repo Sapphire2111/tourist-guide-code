@@ -3,8 +3,19 @@
 // позиции туриста. Выбор запоминается на устройстве по региону; пусто — «Усі локації» (весь регион).
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useRef,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useMaybeGuide } from "./context.js";
+import { distanceMeters, requestLocation, requestLocationIfGranted, type LatLng } from "./geo.js";
+import type { GuideApi, PlaceSummary, SearchParams } from "./types.js";
 import type { LocalityOption } from "./types.js";
 
 export const LOCATION_STORAGE_KEY = "tg.localities";
@@ -17,16 +28,72 @@ export type LocationState = {
   /** Действующий выбор (id); пусто — весь регион. */
   selected: readonly string[];
   setSelected: (ids: readonly string[]) => void;
+  /** Режим «Моє місцезнаходження»: точка устройства; null — режим выключен (выбор пунктов или весь регион). */
+  gps: LatLng | null;
+  /** Идёт определение точки (выбор пункта «Моє місцезнаходження»). */
+  gpsBusy: boolean;
+  /** Явный выбор не удался: нет точки/отказ или точка вне региона; выбор откачен на «Усі локації». */
+  gpsFailed: "denied" | "outside" | null;
+  selectGps: () => void;
+  /** Лист «Локація» открыт (из чипа или подсказки «Змінити локацію»). */
+  sheetOpen: boolean;
+  setSheetOpen: (open: boolean) => void;
 };
+
+/** Радиус выдачи вокруг точки устройства, м; найдено меньше GPS_MIN_PLACES — расширяется до GPS_RADIUS_WIDE. */
+export const GPS_RADIUS = 3_000;
+export const GPS_RADIUS_WIDE = 10_000;
+export const GPS_MIN_PLACES = 5;
+/** Авто-режим включается, только если точка не дальше стольких метров от ближайшего пункта региона. */
+export const REGION_REACH_M = 15_000;
+/** Сообщение об отказе/выходе за регион гаснет само, мс. */
+const FAILED_MS = 6_000;
+
+/** Поиск вокруг точки устройства: радиус GPS_RADIUS, мало результатов — GPS_RADIUS_WIDE. */
+export async function searchAround(
+  search: GuideApi["search"],
+  params: SearchParams,
+  gps: LatLng,
+): Promise<PlaceSummary[]> {
+  const first = await search({ ...params, point: gps, radius: GPS_RADIUS });
+  if (first.length >= GPS_MIN_PLACES) return first;
+  const wide = await search({ ...params, point: gps, radius: GPS_RADIUS_WIDE });
+  return wide.length >= first.length ? wide : first;
+}
+
+/** Точка в регионе: рядом с каким-либо пунктом; координат пунктов нет — проверить нечем (null). */
+function inRegion(point: LatLng, options: readonly LocalityOption[]): boolean | null {
+  const centers = options.flatMap((o) => (o.location ? [o.location] : []));
+  if (centers.length === 0) return null;
+  return centers.some((c) => distanceMeters(point, c) <= REGION_REACH_M);
+}
 
 const EMPTY: readonly string[] = [];
 const LocationContext = createContext<LocationState>({
   options: null,
   selected: EMPTY,
   setSelected: () => undefined,
+  gps: null,
+  gpsBusy: false,
+  gpsFailed: null,
+  selectGps: () => undefined,
+  sheetOpen: false,
+  setSheetOpen: () => undefined,
 });
 
-type Stored = { regionId: string; ids: string[] };
+/** mode "all" — турист сам выбрал «Усі локації»: GPS по умолчанию не включается. */
+type Stored = { regionId: string; ids: string[]; mode?: "all" };
+
+function readMode(regionId: string | null): boolean {
+  if (!regionId) return false;
+  try {
+    const raw = window.localStorage.getItem(LOCATION_STORAGE_KEY);
+    const v = raw ? (JSON.parse(raw) as Partial<Stored>) : null;
+    return v?.regionId === regionId && v.mode === "all";
+  } catch {
+    return false;
+  }
+}
 
 function readStored(regionId: string | null): string[] {
   if (!regionId) return [];
@@ -41,9 +108,11 @@ function readStored(regionId: string | null): string[] {
   }
 }
 
-function store(regionId: string | null, ids: readonly string[]): void {
+function store(regionId: string | null, ids: readonly string[], explicitAll = false): void {
   try {
-    if (!regionId || ids.length === 0) window.localStorage.removeItem(LOCATION_STORAGE_KEY);
+    if (!regionId || (ids.length === 0 && !explicitAll)) window.localStorage.removeItem(LOCATION_STORAGE_KEY);
+    else if (ids.length === 0)
+      window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId, ids, mode: "all" }));
     else window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId, ids }));
   } catch {
     // Не сохранилось — выбор действует до закрытия.
@@ -56,9 +125,12 @@ function store(regionId: string | null, ids: readonly string[]): void {
  */
 export function LocationProvider({
   venueEntry = false,
+  entryKey,
   children,
 }: {
   venueEntry?: boolean;
+  /** Меняется при каждом входе по QR (в т.ч. скан внутри приложения): GPS-режим сбрасывается. */
+  entryKey?: string;
   children?: ReactNode;
 }) {
   const guide = useMaybeGuide();
@@ -66,6 +138,12 @@ export function LocationProvider({
   const regionId = guide?.regionId ?? null;
   const [ids, setIds] = useState<readonly string[]>(() => readStored(regionId));
   const [picked, setPicked] = useState(false);
+  const webApp = guide?.webApp;
+  const [explicitAll, setExplicitAll] = useState(() => readMode(regionId));
+  const [point, setPoint] = useState<LatLng | null>(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [gpsFailed, setGpsFailed] = useState<"denied" | "outside" | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [list, setList] = useState<
     { status: "loading" | "error" } | { status: "ready"; data: LocalityOption[] }
   >({
@@ -83,6 +161,7 @@ export function LocationProvider({
 
   useEffect(() => {
     setIds(readStored(regionId));
+    setExplicitAll(readMode(regionId));
     if (!api || !regionId) {
       setList({ status: "error" });
       return;
@@ -103,17 +182,69 @@ export function LocationProvider({
     if (venueEntry && !picked) store(regionId, []);
   }, [venueEntry, picked, regionId]);
 
+  // Номер попытки определения точки: устаревший ответ (новый скан QR, явный выбор) не применяется.
+  const attempt = useRef(0);
+
+  // Вход по QR заведения (в т.ч. скан внутри приложения): точка заведения главнее GPS.
+  useEffect(() => {
+    if (!venueEntry) return;
+    attempt.current++;
+    setPicked(false);
+    setPoint(null);
+    setGpsFailed(null);
+    setGpsBusy(false);
+  }, [venueEntry, entryKey]);
+
+  // Закрыли лист — сообщение об отказе больше не нужно.
+  useEffect(() => {
+    if (!sheetOpen) setGpsFailed(null);
+  }, [sheetOpen]);
+
+  // Сообщение гаснет само.
+  useEffect(() => {
+    if (!gpsFailed) return;
+    const timer = setTimeout(() => setGpsFailed(null), FAILED_MS);
+    return () => clearTimeout(timer);
+  }, [gpsFailed]);
+
   const setSelected = useCallback(
     (next: readonly string[]) => {
       const clean = [...new Set(next)].slice(0, LOCATION_MAX);
-      store(regionId, clean);
+      // Пустой выбор — явное «Усі локації»: GPS по умолчанию больше не включается.
+      store(regionId, clean, true);
       setIds(clean);
+      setExplicitAll(clean.length === 0);
+      setPoint(null);
+      setGpsFailed(null);
       setPicked(true);
     },
     [regionId],
   );
 
+  const optionsRef = useRef<LocalityOption[] | null>(null);
+  const selectGps = useCallback(() => {
+    store(regionId, []);
+    setIds([]);
+    setExplicitAll(false);
+    setPicked(true);
+    setGpsFailed(null);
+    setGpsBusy(true);
+    const mine = ++attempt.current;
+    void requestLocation(webApp).then((p) => {
+      if (mine !== attempt.current) return;
+      setGpsBusy(false);
+      const inside = p && optionsRef.current ? inRegion(p, optionsRef.current) : null;
+      if (p && inside !== false) setPoint(p);
+      else {
+        // Отказ, нет точки или точка вне региона: откат на «Усі локації» (в хранилище не пишем — не явный выбор).
+        setPoint(null);
+        setGpsFailed(p ? "outside" : "denied");
+      }
+    });
+  }, [regionId, webApp]);
+
   const options = list.status === "ready" ? list.data : null;
+  optionsRef.current = options;
   // Пока список грузится — сохранённый выбор (первый запрос сразу с фильтром); список недоступен — без фильтра
   // (турист не увидел бы, что выдача ограничена); пункты, которых больше нет, отбрасываются.
   // Выбирать не из чего (меньше двух пунктов, кнопки нет) — сохранённый выбор не применяется.
@@ -121,7 +252,28 @@ export function LocationProvider({
   const key =
     list.status === "error" ? "" : raw.filter((id) => !options || options.some((o) => o.id === id)).join(",");
   const selected = useMemo(() => (key ? key.split(",") : EMPTY), [key]);
-  const value = useMemo(() => ({ options, selected, setSelected }), [options, selected, setSelected]);
+  // По умолчанию (ничего не выбрано, не «Усі локації» явно, не вход по QR, есть из чего выбирать) — вокруг точки
+  // устройства, но только если доступ уже выдан (без запроса на старте) и точка в регионе; иначе весь регион, молча.
+  const canAuto =
+    !(venueEntry && !picked) && !explicitAll && selected.length === 0 && !!options && options.length >= 2;
+  useEffect(() => {
+    // Одна попытка за раз: пока идёт явный выбор, авто-проверка не стартует.
+    if (!canAuto || !options || gpsBusy) return;
+    const mine = ++attempt.current;
+    void requestLocationIfGranted(webApp).then((p) => {
+      if (mine === attempt.current && p && inRegion(p, options) === true) setPoint(p);
+    });
+    // Один запрос на смену условий; options нужен только для проверки региона.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAuto, webApp]);
+  const gps =
+    selected.length === 0 && !explicitAll && !(venueEntry && !picked) && options && options.length >= 2
+      ? point
+      : null;
+  const value = useMemo(
+    () => ({ options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen, setSheetOpen }),
+    [options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen],
+  );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }
 
@@ -141,5 +293,7 @@ export function useLocationNames(): string[] {
 export function useLocationCaption(): string | null {
   const { t } = useT();
   const names = useLocationNames();
+  const { gps } = useLocations();
+  if (gps) return t("miniapp.location.caption", { names: t("miniapp.location.mine") });
   return names.length ? t("miniapp.location.caption", { names: names.join(", ") }) : null;
 }

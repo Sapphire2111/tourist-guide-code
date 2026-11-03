@@ -33,7 +33,7 @@ import { fetchContext, getAnonymousId, type Me, type StartupState } from "./sess
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
 import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
 import { resolveScan, type ScanOutcome } from "./scan.js";
-import { LocationChip } from "./guide/LocationPicker.js";
+import { LocationChip, LocationSheetHost } from "./guide/LocationPicker.js";
 import { LocationProvider } from "./guide/LocationProvider.js";
 import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
@@ -725,6 +725,7 @@ function Shell({
         {routes}
       </div>
       <BottomNav />
+      <LocationSheetHost path={path} />
     </>
   );
 }
@@ -854,7 +855,7 @@ export function App({
               <StartupStatus state={state} />
             ) : (
               <GuideProvider value={guide}>
-                <LocationProvider venueEntry={venue !== null}>
+                <LocationProvider venueEntry={venue !== null} entryKey={context?.entryContextId ?? undefined}>
                   <HostProvider value={host}>
                     <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                       <BookingsProvider value={bookings}>

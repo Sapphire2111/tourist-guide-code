@@ -166,6 +166,8 @@ export type LocalityOption = {
   name: LocalizedText;
   /** Опубликованных мест; 0 — в выборе не показывается. */
   placeCount: number;
+  /** Центр пункта; null/нет — координат нет. */
+  location?: LatLng | null;
 };
 
 /** Ошибка «не найдено» (404) — отличается от сбоя сети/сервера. */
