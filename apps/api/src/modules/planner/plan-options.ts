@@ -20,6 +20,8 @@ export type CatalogPlace = {
   id: string;
   /** Код подкатегории (cafes, museums, nature…). */
   category: string;
+  /** Коды активных доп. категорий (place_extra_categories): место подбирается и по ним, как в поиске гида. */
+  extraCategories?: readonly string[];
   /** Все языковые варианты названия — для признаков по названию (водоспад, бар). */
   names: readonly string[];
   location: LonLat;
@@ -163,11 +165,22 @@ export function travelMinutes(meters: number, travel: Travel): number {
   return Math.max(1, Math.round((road / 1000 / kmh) * 60));
 }
 
+/** Основная и доп. категории места. */
+export function categoriesOf(p: Pick<CatalogPlace, "category" | "extraCategories">): string[] {
+  return [p.category, ...(p.extraCategories ?? [])];
+}
+
+/** Категория, по которой место подходит части дня (основная в приоритете); иначе — основная. */
+function slotCategory(p: CatalogPlace, slot: PlanSlot): string {
+  return categoriesOf(p).find((c) => SLOT_CATEGORIES[slot].includes(c)) ?? p.category;
+}
+
 function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
-  if (slot !== "rain") return SLOT_CATEGORIES[slot].includes(p.category);
+  const cats = categoriesOf(p);
+  if (slot !== "rain") return cats.some((c) => SLOT_CATEGORIES[slot].includes(c));
   if (p.tags.includes("rainy-day")) return true;
-  if (p.category === "stores") return p.names.some((n) => MALL_RE.test(n));
-  return SLOT_CATEGORIES.rain.includes(p.category);
+  if (cats.some((c) => c !== "stores" && SLOT_CATEGORIES.rain.includes(c))) return true;
+  return cats.includes("stores") && p.names.some((n) => MALL_RE.test(n));
 }
 
 /** Место с признаками, посчитанными один раз (вид, «не для детей»). */
@@ -209,7 +222,8 @@ export function slotOptions(
   const pick = (candidates: Scored[], limit: number): Scored[] => {
     const byCat = new Map<string, Scored[]>();
     for (const s of candidates) {
-      const cat = order.includes(s.p.category) ? s.p.category : "_other";
+      const c0 = slotCategory(s.p, slot);
+      const cat = order.includes(c0) ? c0 : "_other";
       const list = byCat.get(cat);
       if (list) list.push(s);
       else byCat.set(cat, [s]);
@@ -253,7 +267,7 @@ export function slotOptions(
   return chosen.map(({ s, travel }) => ({
     placeId: s.p.id,
     kind: s.p.kind,
-    reason: reasonOf(slot, s.p.category),
+    reason: reasonOf(slot, slotCategory(s.p, slot)),
     distanceMeters: s.d,
     travel,
     travelMinutes:

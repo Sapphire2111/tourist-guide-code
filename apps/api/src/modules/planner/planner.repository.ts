@@ -37,6 +37,8 @@ export type CatalogPlaceRow = {
   location: LonLat;
   recommended: boolean;
   tags: string[];
+  /** Коды активных доп. категорий места (place_extra_categories, 0020) — подбор по ним, как в поиске гида. */
+  extra_category_codes: string[];
 };
 
 export type PlanTripWrite = {
@@ -142,6 +144,15 @@ export class PlannerRepository {
       ])
       .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
       .select(sql<string[]>`array_remove(array_agg(tags.code ORDER BY tags.code), NULL)`.as("tags"))
+      .select((eb) =>
+        sql<string[]>`ARRAY(${eb
+          .selectFrom("place_extra_categories as x")
+          .innerJoin("categories as xc", "xc.id", "x.category_id")
+          .select("xc.code")
+          .whereRef("x.place_id", "=", "places.id")
+          .where("xc.active", "=", true)
+          .orderBy("xc.code")})`.as("extra_category_codes"),
+      )
       .where("places.status", "=", "published")
       .where("places.location", "is not", null)
       .where("categories.active", "=", true)

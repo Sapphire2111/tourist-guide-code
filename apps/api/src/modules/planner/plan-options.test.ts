@@ -149,6 +149,13 @@ describe("slotOptions", () => {
     expect(out.every((o) => o.reason === "indoor")).toBe(true);
   });
 
+  it("доп. категория: место подбирается по ней, причина — по подходящей категории", () => {
+    const places = [place(1, "nature", 100, { extraCategories: ["restaurants"] }), place(2, "nature", 100)];
+    const out = slotOptions("evening", BASE, places, car, new Set());
+    expect(out.map((o) => o.placeId)).toEqual([P(1)]);
+    expect(out[0]!.reason).toBe("dinner");
+  });
+
   it("без точки отсчёта — без расстояния", () => {
     const [o] = slotOptions("morning", null, [place(1, "cafes", 100)], noCar, new Set());
     // Без авто и без точки — не утверждаем ни «пішки», ни «потрібен транспорт».
