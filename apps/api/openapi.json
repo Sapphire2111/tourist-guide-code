@@ -12427,7 +12427,7 @@
           },
           "tagIds": { "description": "id тегов", "type": "array", "items": { "type": "string" } },
           "extraCategoryIds": {
-            "description": "id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже",
+            "description": "id дополнительных категорий (0020): место видно и в этих разделах; ставит импорт Google или админка (manual)",
             "type": "array",
             "items": { "type": "string" }
           },
@@ -12509,6 +12509,12 @@
             "type": "array",
             "items": { "type": "string" }
           },
+          "extraCategoryIds": {
+            "maxItems": 5,
+            "description": "Дополнительные категории: подкатегории активных разделов, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "categoryId": { "type": "string", "format": "uuid" },
           "name": { "$ref": "#/components/schemas/ShortTextDto" }
         },
@@ -12556,6 +12562,12 @@
           "verifiedAt": { "type": "string", "format": "date-time", "nullable": true },
           "tagIds": {
             "description": "Полный набор тегов (заменяет текущий)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "extraCategoryIds": {
+            "maxItems": 5,
+            "description": "Дополнительные категории: подкатегории активных разделов, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает)",
             "type": "array",
             "items": { "type": "string" }
           }
@@ -15070,6 +15082,12 @@
           },
           "tagIds": {
             "description": "Полный набор тегов (заменяет текущий)",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "extraCategoryIds": {
+            "maxItems": 5,
+            "description": "Дополнительные категории: подкатегории активных разделов, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает)",
             "type": "array",
             "items": { "type": "string" }
           }

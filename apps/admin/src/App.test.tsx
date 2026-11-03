@@ -329,6 +329,7 @@ describe("места", () => {
       categoryId: "c",
       localityId: "",
       tagIds: ["t1"],
+      extraCategoryIds: ["c", "x1"],
     });
     expect(body).toEqual({
       name: { uk: "Кав'ярня" },
@@ -341,6 +342,7 @@ describe("места", () => {
       categoryId: "c",
       localityId: null,
       tagIds: ["t1"],
+      extraCategoryIds: ["x1"],
     });
   });
 });

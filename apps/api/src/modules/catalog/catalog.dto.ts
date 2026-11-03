@@ -459,7 +459,7 @@ export class PlaceDto {
   @ApiProperty({
     type: [String],
     description:
-      "id дополнительных категорий (0020): место видно и в этих разделах; пока ставит импорт Google, правка — позже",
+      "id дополнительных категорий (0020): место видно и в этих разделах; ставит импорт Google или админка (manual)",
   })
   extraCategoryIds!: string[];
   @ApiProperty({
@@ -591,6 +591,18 @@ export class UpdatePlaceDto {
   @ArrayMaxSize(50)
   @IsUUID("all", { each: true })
   tagIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: 5,
+    description:
+      "Дополнительные категории: подкатегории активных разделов, не основная, до 5. Заменяет список целиком (строки становятся ручными — импорт их не трогает)",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsUUID("all", { each: true })
+  extraCategoryIds?: string[];
 }
 
 export class CreatePlaceDto extends OmitType(UpdatePlaceDto, ["categoryId", "name"] as const) {
@@ -617,6 +629,7 @@ export const placeInput = (b: UpdatePlaceDto) => ({
   telegram: b.telegram,
   verifiedAt: b.verifiedAt,
   tagIds: b.tagIds?.map((id) => id.toLowerCase()),
+  extraCategoryIds: b.extraCategoryIds?.map((id) => id.toLowerCase()),
 });
 
 export class TransitionDto {
