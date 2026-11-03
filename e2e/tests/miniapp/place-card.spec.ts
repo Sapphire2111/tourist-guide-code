@@ -145,5 +145,9 @@ test.describe("богатая картка місця", () => {
     await expectNoSeriousA11yViolations(page);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+    // Крестик просмотра не закрыт полосой меню: закрывается обычным кликом.
+    await page.getByRole("button", { name: "Відкрити фото 1 з 2" }).click();
+    await page.getByRole("button", { name: "Закрити фото" }).click();
+    await expect(dialog).toBeHidden();
   });
 });

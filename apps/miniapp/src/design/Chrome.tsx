@@ -1,7 +1,8 @@
-// Оболочка «Сучасна Косівщина»: заставка старта, липкая шапка с волной, переключатель сезона под настройками.
-import { useEffect, useState } from "react";
+// Оболочка «Сучасна Косівщина»: заставка старта, кнопка меню (настройки и профиль) и переключатель сезона.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useT } from "@tg/ui";
-import { ICONS, KosivWave, VaseIcon } from "./Ornament.js";
+import { interceptBack } from "../telegram.js";
+import { ICONS, VaseIcon } from "./Ornament.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
 
@@ -40,65 +41,131 @@ export function Splash() {
   );
 }
 
+const MENU_ICON = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+);
+
+const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])";
+
 /**
- * Липкая шапка: оберег и название (на главной — заголовок экрана h1, на остальных — ссылка на главную),
- * настройки (сезон оформления), профиль, «Косівська хвиля».
+ * Тонкая липкая полоса с одной маленькой кнопкой «Меню» (справа). Кнопка открывает лист с настройками (сезон
+ * оформления) и профилем — одинаково на всех экранах. Лист: role=dialog, фокус внутрь и возврат на кнопку,
+ * Tab не выходит за лист, закрытие по Escape, тапу вне листа, кнопке «Закрити» и при смене экрана.
+ * На главной — скрытый для глаз h1 с названием приложения (заголовок экрана для скринридеров).
  */
 export function AppTop({ path, profile }: { path: string; profile: boolean }) {
   const { t } = useT();
   const home = path === "/";
-  // Выбор сезона оформления — под шестерёнкой (не занимает главную).
-  const [settings, setSettings] = useState(false);
-  // Панель закрывается при переходе на другой экран и по Escape.
-  useEffect(() => setSettings(false), [path]);
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => {
+    setOpen(false);
+    button.current?.focus();
+  }, []);
+  useEffect(() => setOpen(false), [path]);
   useEffect(() => {
-    if (!settings) return;
+    if (!open) return;
+    sheet.current?.querySelector<HTMLElement>("button, a[href]")?.focus();
+    // Фон не прокручивается, «Назад» Telegram закрывает лист (как просмотр фото).
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const releaseBack = interceptBack(close);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSettings(false);
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
+      if (e.key !== "Tab" || !sheet.current) return;
+      const items = [...sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (items.length === 0) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [settings]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      releaseBack();
+    };
+  }, [open, close]);
   return (
     <div className="kosiv-top" data-testid="app-top">
-      <header className="kosiv-header">
-        {home ? (
-          <h1 className="kosiv-brand">
-            <VaseIcon />
-            <span>{t("app.name")}</span>
-          </h1>
-        ) : (
-          <Link to="/" className="kosiv-brand" aria-label={t("miniapp.header.toHome")}>
-            <VaseIcon />
-            <span>{t("app.name")}</span>
-          </Link>
-        )}
-        <button
-          type="button"
-          className="kosiv-icon-btn"
-          aria-label={t("miniapp.settings.open")}
-          aria-expanded={settings}
-          aria-controls="app-settings"
-          data-testid="settings-btn"
-          onClick={() => setSettings((v) => !v)}
+      {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
+      <button
+        ref={button}
+        type="button"
+        className="kosiv-menu-btn"
+        aria-label={t("miniapp.menu.open")}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-testid="menu-btn"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {MENU_ICON}
+      </button>
+      {open && (
+        <div
+          className="kosiv-sheet-backdrop"
+          data-testid="menu-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) close();
+          }}
         >
-          {ICONS.settings}
-        </button>
-        {profile && (
-          <Link
-            to="/profile"
-            className="kosiv-icon-btn"
-            aria-label={t("miniapp.nav.profile")}
-            aria-current={path === "/profile" ? "page" : undefined}
+          <div
+            ref={sheet}
+            id="app-settings"
+            className="kosiv-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("miniapp.menu.title")}
+            data-testid="app-settings"
           >
-            {ICONS.user}
-          </Link>
-        )}
-      </header>
-      <div id="app-settings" className="kosiv-settings" data-testid="app-settings" hidden={!settings}>
-        <SeasonSwitcher onPicked={() => setSettings(false)} />
-      </div>
-      <KosivWave />
+            <div className="kosiv-sheet-head">
+              <p className="kosiv-sheet-title">{t("miniapp.menu.title")}</p>
+              <button
+                type="button"
+                className="kosiv-icon-btn"
+                aria-label={t("miniapp.menu.close")}
+                onClick={close}
+              >
+                ✕
+              </button>
+            </div>
+            <SeasonSwitcher onPicked={close} />
+            {profile && (
+              <Link
+                to="/profile"
+                className="kosiv-sheet-link"
+                aria-current={path === "/profile" ? "page" : undefined}
+              >
+                <span aria-hidden="true">{ICONS.user}</span>
+                {t("miniapp.nav.profile")}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
