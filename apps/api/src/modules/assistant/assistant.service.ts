@@ -141,14 +141,16 @@ export function shorten(text: string, max = DESCRIPTION_MAX): string {
   return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:\s]+$/, "")}…`;
 }
 
-/** Описание места для ответа: ИИ-текст карточки → Вікіпедія (со ссылкой) → описание Google; нет — null. */
+/**
+ * Описание места для ответа: ИИ-текст карточки (со ссылкой на статью, если она источник фактов) → описание Google;
+ * нет — null. Текст статьи туристу не показывается: CC BY-SA, только пересказ и ссылка.
+ */
 export function describe(e: Enrichment | undefined): {
   text: string | null;
   source: DescriptionSource | null;
   url: string | null;
 } {
-  if (e?.ai) return { text: shorten(e.ai), source: "ai", url: null };
-  if (e?.wiki?.extract) return { text: shorten(e.wiki.extract), source: "wikipedia", url: e.wiki.url };
+  if (e?.ai) return { text: shorten(e.ai), source: "ai", url: e.wiki?.url ?? null };
   if (e?.google?.summary) return { text: shorten(e.google.summary), source: "google", url: null };
   return { text: null, source: null, url: null };
 }

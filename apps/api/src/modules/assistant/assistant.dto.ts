@@ -300,7 +300,7 @@ export class AssistantPlaceDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: "Описание из обогащения (ИИ-текст, Вікіпедія, Google)",
+    description: "Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся",
   })
   description!: string | null;
   @ApiProperty({ enum: DESCRIPTION_SOURCES, enumName: "AssistantDescriptionSource", nullable: true })
@@ -308,7 +308,7 @@ export class AssistantPlaceDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: "Статья Вікіпедії (для wikipedia — ссылка обязательна)",
+    description: "Статья Вікіпедії — источник фактов текста, ссылка показывается вместе с ним",
   })
   descriptionUrl!: string | null;
 }

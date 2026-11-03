@@ -152,7 +152,7 @@ describe("богатая картка місця", () => {
     expect(screen.getByTestId("place-photos").querySelectorAll("img")).toHaveLength(1);
   });
 
-  it("Вікіпедія: опис, ссылка на статью, автор и лицензия фото Commons", async () => {
+  it("Вікіпедія: ссылка на статью, автор и лицензия фото Commons; текста статьи нет (CC BY-SA)", async () => {
     await renderCard({
       ...base,
       ...rich,
@@ -160,8 +160,6 @@ describe("богатая картка місця", () => {
       wikipedia: {
         title: "Пробій (водоспад)",
         url: "https://uk.m.wikipedia.org/wiki/Пробій",
-        extract: "Пробій — водоспад на річці Прут.",
-        truncated: true,
         image: {
           url: "https://upload.wikimedia.org/x.jpg",
           author: "MSha",
@@ -171,13 +169,21 @@ describe("богатая картка місця", () => {
       },
     });
     const wiki = screen.getByTestId("place-wikipedia");
-    expect(wiki.textContent).toContain("Пробій — водоспад на річці Прут.");
     expect(within(wiki).getByRole("link", { name: "Читати у Вікіпедії" }).getAttribute("href")).toBe(
       "https://uk.m.wikipedia.org/wiki/Пробій",
     );
     expect(within(wiki).getByRole("link", { name: /MSha · CC BY-SA 3.0 · Wikimedia Commons/ })).toBeDefined();
     expect(wiki.textContent).toContain("Джерело: Вікіпедія");
-    expect(screen.getByTestId("place-wiki-truncated").textContent).toBe("(скорочено)");
+    expect(screen.queryByTestId("place-wiki-truncated")).toBeNull();
+  });
+
+  it("статья есть, пересказа ещё нет — автоописание остаётся: карточка не пустая", async () => {
+    await renderCard({
+      ...base,
+      aiSummary: null,
+      wikipedia: { title: "Пробій", url: "https://uk.m.wikipedia.org/wiki/Пробій", image: null },
+    });
+    expect(screen.getByText("Ресторан у Яремчі. Джерело: Google Maps.")).toBeDefined();
   });
 
   it("нет данных Google/Вікіпедії/ШІ — блоков нет, только описание и график (ничего не выдумываем)", async () => {
@@ -296,6 +302,46 @@ describe("обложка у нас (Google/Wikimedia)", () => {
     expect(within(gallery).getByRole("link", { name: "Олена" })).toBeDefined();
   });
 
+  it("cardOf: текст статьи от старого api в карточку не попадает", () => {
+    const card = cardOf({
+      ...dto,
+      wikipedia: {
+        lang: "uk",
+        title: "Пробій",
+        url: "https://uk.m.wikipedia.org/wiki/Пробій",
+        extract: "Пробій — водоспад на річці Прут.",
+        truncated: true,
+        image: null,
+      },
+    } as unknown as CardDto);
+    expect(card.wikipedia).toEqual({
+      title: "Пробій",
+      url: "https://uk.m.wikipedia.org/wiki/Пробій",
+      image: null,
+    });
+  });
+
+  it("галерея: обложка Wikimedia — автор, лицензия и ссылка на файл", async () => {
+    const sourceUrl = "https://commons.wikimedia.org/wiki/File:X.jpg";
+    await renderCard({
+      ...base,
+      googlePhotos: [],
+      cover: {
+        url: cover.url,
+        alt: null,
+        credit: {
+          authors: [{ name: "MSha", uri: sourceUrl, photoUri: null }],
+          license: "CC BY-SA 3.0",
+          sourceUrl,
+          source: "wikimedia" as const,
+        },
+      },
+    });
+    const gallery = screen.getByTestId("place-photos");
+    expect(within(gallery).getByRole("link", { name: "MSha" })).toBeDefined();
+    expect(within(gallery).getByRole("link", { name: "CC BY-SA 3.0" }).getAttribute("href")).toBe(sourceUrl);
+  });
+
   it("нет обложки и фото — без галереи", async () => {
     await renderCard({ ...base, cover: null, googlePhotos: [] });
     expect(screen.queryByTestId("place-photos")).toBeNull();
@@ -344,6 +390,24 @@ describe("обложка в списках", () => {
     cleanup();
     render(<CoverCredit credit={{ ...google, authors: [] }} />);
     expect(screen.getByTestId("cover-credit").textContent).toBe("Дані: Google Maps");
+  });
+
+  it("подпись обложки Wikimedia в списке — автор, лицензия и ссылка на страницу файла", () => {
+    const sourceUrl = "https://commons.wikimedia.org/wiki/File:X.jpg";
+    render(
+      <CoverCredit
+        credit={{
+          authors: [{ name: "MSha", uri: sourceUrl, photoUri: null }],
+          license: "CC BY-SA 3.0",
+          sourceUrl,
+          source: "wikimedia",
+        }}
+      />,
+    );
+    const link = within(screen.getByTestId("cover-credit")).getByRole("link");
+    expect(link.getAttribute("href")).toBe(sourceUrl);
+    expect(link.textContent).toBe("Фото: MSha · CC BY-SA 3.0 · Wikimedia Commons");
+    cleanup();
   });
 
   it("файл обложки не загрузился — подложка вместо битой картинки", () => {

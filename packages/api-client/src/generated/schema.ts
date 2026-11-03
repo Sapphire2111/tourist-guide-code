@@ -3291,10 +3291,6 @@ export interface components {
       title: string;
       /** @description Статья */
       url: string;
-      /** @description Начало статьи (до ~700 символов) */
-      extract: string;
-      /** @description extract обрезан — пометка «скорочено» */
-      truncated: boolean;
       image: components["schemas"]["WikipediaImageDto"] | null;
     };
     PlaceCardDto: {
@@ -3493,10 +3489,10 @@ export interface components {
       priceLevel: number | null;
       /** @description По данным Google: подходит для детей или есть дитяче меню */
       kidsFriendly: boolean;
-      /** @description Описание из обогащения (ИИ-текст, Вікіпедія, Google) */
+      /** @description Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся */
       description: string | null;
       descriptionSource: components["schemas"]["AssistantDescriptionSource"] | null;
-      /** @description Статья Вікіпедії (для wikipedia — ссылка обязательна) */
+      /** @description Статья Вікіпедії — источник фактов текста, ссылка показывается вместе с ним */
       descriptionUrl: string | null;
     };
     AssistantRouteDto: {

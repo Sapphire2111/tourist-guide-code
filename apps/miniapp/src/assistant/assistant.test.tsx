@@ -254,7 +254,7 @@ describe("Assistant: диалог", () => {
               priceLevel: null,
               kidsFriendly: false,
               description: "Музей у Яремчі.",
-              descriptionSource: "wikipedia",
+              descriptionSource: "ai",
               descriptionUrl: "https://uk.wikipedia.org/wiki/M",
             },
             {

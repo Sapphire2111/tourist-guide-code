@@ -470,6 +470,13 @@ html[data-season] :focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Ссылка на файл Commons — поверх растянутой ссылки названия (.kosiv-place-title::after). */
+.kosiv-place-credit {
+  z-index: 1;
+}
+.kosiv-place-credit a {
+  color: inherit;
+}
 .kosiv-place-body {
   display: flex;
   flex-direction: column;

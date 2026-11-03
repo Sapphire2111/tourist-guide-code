@@ -285,7 +285,8 @@ export class GuideService {
             }))
           : [],
       googleMapsUri: g?.mapsUri ?? null,
-      wikipedia: w ? { ...w, truncated: w.truncated ?? false } : null,
+      // Текст статьи (extract) — только факты для ИИ, туристу не отдаётся: CC BY-SA, дословно не копировать.
+      wikipedia: w ? { lang: w.lang, title: w.title, url: w.url, image: w.image } : null,
     };
   }
 

@@ -140,7 +140,12 @@ export function CoverCredit({
         : t("miniapp.place.googleCoverNoAuthor");
   return (
     <span className={className} data-testid="cover-credit">
-      {text}
+      {/* Commons: подпись ведёт на страницу файла (автор, лицензия и её текст). */}
+      {credit.source === "wikimedia" && credit.sourceUrl ? (
+        <ExtLink href={credit.sourceUrl}>{text}</ExtLink>
+      ) : (
+        text
+      )}
     </span>
   );
 }
