@@ -358,8 +358,21 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
   });
 
   it("«Доступно зараз»: реальный свободный слот или ручной статус с неистёкшим TTL; иначе — нет", async () => {
+    // Свой ресурс 24/7 без броней: у общего ресурса ближайшие слоты (в горизонте 2 ч) могли занять прошлые тесты —
+    // freeSlots берёт «завтра» по UTC, а это ближайшие часы по Києву, если тест запущен вечером.
+    const fresh = await bookings.createResource(
+      OWNER,
+      { placeId, name: { uk: "Чан 24/7" }, capacityPeople: 4, slotDurationMin: 60, leadTimeMin: 0 },
+      meta(OWNER),
+    );
+    await bookings.putAvailability(
+      OWNER,
+      fresh.id,
+      { rules: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "00:00", closesAt: "24:00" })) },
+      meta(OWNER),
+    );
     const list = await bookings.listResources(regionId, placeId);
-    expect(list.items.find((r) => r.id === resourceId)!.availability).toMatchObject({
+    expect(list.items.find((r) => r.id === fresh.id)!.availability).toMatchObject({
       availableNow: true,
       source: "slot",
     });
