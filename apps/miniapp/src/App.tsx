@@ -13,6 +13,9 @@ import {
   useRoute,
   useT,
 } from "@tg/ui";
+import { Assistant } from "./assistant/Assistant.js";
+import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
+import { AssistantBox } from "./assistant/AssistantBox.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -26,7 +29,7 @@ import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
-import { GuideProvider, RequireRegion, type GuideEnv } from "./guide/context.js";
+import { GuideProvider, RequireRegion, useGuide, type GuideEnv } from "./guide/context.js";
 import { Favorites } from "./guide/Favorites.js";
 import { createGuideApi } from "./guide/guide-api.js";
 import { Help } from "./guide/Help.js";
@@ -73,6 +76,8 @@ export type AppProps = {
   hostApi?: HostApi;
   /** API кабинета партнёра (блок 6; тесты подменяют); по умолчанию — поверх api. */
   partnerApi?: PartnerApi;
+  /** API ассистента (тесты подменяют); по умолчанию — поверх api. */
+  assistantApi?: AssistantApi;
 };
 
 type Session = Extract<StartupState, { status: "ready" }>;
@@ -191,7 +196,33 @@ function Welcome({ user, session, retryContext }: Pick<RoutesProps, "user" | "se
   );
 }
 
-function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesProps) {
+/** API ассистента: из пропсов (тесты) или поверх api с регионом гида. */
+function useAssistantApi(props: RoutesProps): AssistantApi {
+  const { regionId } = useGuide();
+  const { api, assistantApi } = props;
+  return useMemo(() => assistantApi ?? createAssistantApi(api, regionId), [assistantApi, api, regionId]);
+}
+
+/**
+ * «Що шукаєте?» на главной (флаг module.assistant): только с регионом и сессией (каждый запрос стоит денег, api —
+ * только с входом через Telegram). Реплика ведёт на экран ассистента.
+ */
+function HomeAssistant(props: RoutesProps) {
+  const [, navigate] = useRoute();
+  const { regionId } = useGuide();
+  const api = useAssistantApi(props);
+  if (!regionId || !props.session) return null;
+  return (
+    <Feature flag="module.assistant">
+      <div className="kosiv-card kosiv-panel">
+        <AssistantBox api={api} onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
+      </div>
+    </Feature>
+  );
+}
+
+function Home(props: RoutesProps) {
+  const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
   const partnerOrgs = usePartnerOrgs();
@@ -209,6 +240,7 @@ function Home({ api, role, user, webApp, session, onMe, retryContext }: RoutesPr
           {t("miniapp.staff.open")}
         </Link>
       )}
+      <HomeAssistant {...props} />
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
       <HomePlaces />
@@ -352,6 +384,8 @@ function Routes(props: RoutesProps) {
   useInviteRedirect(session?.invite, partnerCabinet);
   // Заявки отеля и «Мій план» (блок 5) при выключенном флаге — как несуществующий путь.
   const hostRequests = useFeatureFlag("module.host_requests");
+  const assistantOn = useFeatureFlag("module.assistant");
+  const assistantApi = useAssistantApi(props);
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
   // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
   const refreshMe = Boolean(session) && hostRequests && (path === "/" || path === "/staff");
@@ -385,6 +419,16 @@ function Routes(props: RoutesProps) {
       <Screen webApp={webApp}>
         <RequireRegion>
           <PlaceSearch key={q} initialQuery={q.slice(0, 100)} />
+        </RequireRegion>
+      </Screen>
+    );
+  }
+  if (path === "/assistant" && assistantOn && session) {
+    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q") ?? "";
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Assistant api={assistantApi} initialQuery={q.slice(0, 300)} />
         </RequireRegion>
       </Screen>
     );

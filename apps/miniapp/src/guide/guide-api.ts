@@ -172,6 +172,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       return data.items.map((c) => ({
         id: c.id,
         parentId: c.parentId,
+        code: c.code,
         name: c.name,
         homeSection: c.homeSection,
       }));

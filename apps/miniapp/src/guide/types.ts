@@ -11,6 +11,8 @@ export type CatalogSection = (typeof CATALOG_SECTIONS)[number];
 export type Category = {
   id: string;
   parentId: string | null;
+  /** Код категории каталога (ассистент получает коды); нет — старый api или тест. */
+  code?: string;
   name: LocalizedText;
   homeSection: HomeSection | null;
 };
