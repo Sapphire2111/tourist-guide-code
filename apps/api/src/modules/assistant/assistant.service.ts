@@ -61,8 +61,9 @@ const CANDIDATES_PER_CATEGORY = 30;
 const KEYWORD_CANDIDATES = 60;
 /** Кандидатов плана на раздел каталога. */
 const PLAN_CANDIDATES_PER_SECTION = 60;
-/** Меньше стольких рядом — поиск по ключевым словам расширяется (если радиус не назвал турист). */
-const WIDEN_BELOW = 3;
+/** Меньше стольких рядом — поиск по ключевым словам расширяется на регион (если радиус не назвал турист): ближние
+ * всё равно первыми (штраф за расстояние в keywordRank). */
+const WIDEN_BELOW = 5;
 const DESCRIPTION_MAX = 320;
 const NOTE_DESCRIPTION_MAX = 220;
 const TIMEZONE_DEFAULT = "Europe/Kyiv";

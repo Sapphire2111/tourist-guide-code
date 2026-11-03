@@ -169,6 +169,9 @@ describe("помощники", () => {
     const s = weekly(6, "10:00", "18:00");
     expect(openDuring(s, SAT, 11 * 60, 12 * 60)).toBe(true);
     expect(openDuring(s, SAT, 17 * 60, 19 * 60)).toBe(false);
+    // Закрывается за 10 минут до конца визита — не подходит.
+    expect(openDuring(s, SAT, 16 * 60 + 40, 18 * 60 + 10)).toBe(false);
+    expect(openDuring(s, SAT, 16 * 60 + 30, 18 * 60)).toBe(true);
     expect(openDuring(s, SUN, 11 * 60, 12 * 60)).toBe(false);
     expect(openDuring(null, SAT, 0, 60)).toBeNull();
     expect(openDuring(weekly(6, "18:00", "02:00"), SAT, 20 * 60, 23 * 60)).toBe(true);

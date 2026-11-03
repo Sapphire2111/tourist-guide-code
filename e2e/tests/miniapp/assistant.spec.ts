@@ -92,6 +92,32 @@ test("экскурсия: остановки по порядку, маршрут
   await expect(page.getByTestId("assistant-reply").last()).toContainText("Уточніть, будь ласка");
 });
 
+test("«суші»: блюдо в сводке, по 10 мест — «Показати ще»", async ({ page }) => {
+  await installAssistantMock(page);
+  await page.goto("/#/assistant?q=" + encodeURIComponent("Де поїсти суші"));
+  await expect(page.getByTestId("assistant-status")).toHaveText("Знайдено в каталозі: 12");
+  await expect(page.getByTestId("assistant-reply")).toHaveText("Шукаю: «суші», Кав'ярні");
+  await expect(page.getByTestId("assistant-place")).toHaveCount(10);
+  await page.getByTestId("assistant-more").click();
+  await expect(page.getByTestId("assistant-place")).toHaveCount(12);
+  await expect(page.getByTestId("assistant-more")).toHaveCount(0);
+});
+
+test("план відпочинку: частини дня, час, пояснення, маршрут на карті; a11y", async ({ page }) => {
+  await installAssistantMock(page);
+  await page.goto("/#/assistant?q=" + encodeURIComponent("Склади план на день"));
+  await expect(page.getByRole("heading", { name: "План відпочинку" })).toBeVisible();
+  await expect(page.getByTestId("assistant-plan-part")).toHaveCount(2);
+  const stops = page.getByTestId("assistant-plan-stop");
+  await expect(stops).toHaveCount(3);
+  await expect(stops.first()).toContainText("09:30 · Огляд");
+  await expect(stops.first()).toContainText("Водоспад Пробій");
+  await expect(page.getByTestId("assistant-plan-note")).toHaveText("Почніть день біля водоспаду.");
+  await expect(stops.nth(2)).toContainText("≈ 5 хв пішки");
+  await expect(page.getByTestId("places-map").locator("path.leaflet-interactive").first()).toBeVisible();
+  await expectNoSeriousA11yViolations(page);
+});
+
 test.describe("голос", () => {
   test("микрофон: запись → POST /assistant/transcribe (audio/webm) → реплика ассистенту", async ({
     page,

@@ -15,7 +15,8 @@ export const PLAN_TRAVELS: readonly PlanTravel[] = ["walk", "car"];
 
 /** Категории каталога по роли в плане (коды подкатегорий). */
 const SEE = ["sights", "nature", "museums"] as const;
-const FUN = ["active", "entertainment", "kids", "excursions", "adult-fun", "ski-resorts"] as const;
+// «Екскурсії» — турфирмы (записаться заранее), не пункт плана на час; в план не берём.
+const FUN = ["active", "entertainment", "kids", "adult-fun", "ski-resorts"] as const;
 const LUNCH = ["restaurants", "kolyby", "cafes"] as const;
 const DINNER = ["restaurants", "kolyby"] as const;
 const RELAX = ["chany", "spa"] as const;
@@ -35,7 +36,6 @@ export const DURATION_OF: Readonly<Record<string, number>> = {
   sights: 45,
   nature: 90,
   museums: 60,
-  excursions: 120,
   active: 120,
   entertainment: 90,
   kids: 90,
@@ -150,8 +150,8 @@ const prevDate = (date: string) => {
 };
 
 /**
- * Открыто ли место весь визит (на входе и за 15 мин до ухода): true/false; график неизвестен — null.
- * Через полночь — по правилам openState.
+ * Открыто ли место весь визит (на входе и в последнюю минуту — уйти до закрытия): true/false; график неизвестен —
+ * null. Через полночь — по правилам openState.
  */
 export function openDuring(
   s: ScheduleRows | null,
@@ -169,7 +169,7 @@ export function openDuring(
     }).openNow;
   const start = at(from);
   if (start === null) return null;
-  return start && at(Math.max(from, to - 15)) === true;
+  return start && at(Math.max(from, to - 1)) === true;
 }
 
 /** Часы работы на дату: исключение даты или недельный график («09:00–18:00, 19:00–23:00»); нет — null. */
@@ -199,6 +199,7 @@ export function quality(
   if (c.recommended) q += 0.5;
   if (c.wanted) q += 2;
   if (o.withKids && c.kidsFriendly) q += 0.8;
+  if (o.withKids && c.category === "kids") q += 1;
   if (ROLE_OF[c.category] === "eat" && c.priceLevel !== null) {
     if (o.priceMax !== null && c.priceLevel > o.priceMax) q -= 2;
     if (o.priceMin !== null && c.priceLevel < o.priceMin) q -= 1;

@@ -8,7 +8,9 @@ import { LOCATION_STORAGE_KEY, LocationProvider } from "../guide/LocationProvide
 import { setMapLoaderForTests } from "../guide/MapSlot.js";
 import type { PlacesMapProps } from "../guide/PlacesMap.js";
 import type { GuideApi, PlaceSummary } from "../guide/types.js";
+import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
 import { ApiCallError } from "../host/types.js";
+import { FeatureFlagsProvider } from "@tg/ui";
 import { Assistant, DIALOG_KEY } from "./Assistant.js";
 import {
   createAssistantApi,
@@ -91,6 +93,7 @@ const result = (over: Partial<AssistantResult> = {}): AssistantResult => ({
     },
   ],
   route: null,
+  plan: null,
   notes: [],
   ...over,
 });
@@ -433,6 +436,7 @@ describe("createAssistantApi", () => {
       },
     ],
     route: null,
+    plan: null,
     notes: ["no_origin"],
   };
 
@@ -485,5 +489,223 @@ describe("createAssistantApi", () => {
     const err = await failing.ask({ text: "x", history: [], previous: null }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiCallError);
     expect((err as ApiCallError).messageKey).toBe("errors.assistant.unavailable");
+  });
+
+  it("план: пункт с индексом вне items отбрасывается; ответ без плана — null", async () => {
+    const stop = (item: number) => ({
+      item,
+      role: "see" as const,
+      start: "09:30",
+      durationMin: 60,
+      travel: null,
+      travelMinutes: null,
+      travelMeters: null,
+      hours: null,
+      note: null,
+    });
+    const withPlan = {
+      ...dto,
+      plan: {
+        lengthMeters: 0,
+        days: [{ dayNo: 1, date: "2026-11-07", parts: [{ part: "morning", stops: [stop(0), stop(5)] }] }],
+      },
+    };
+    const fetch = vi.fn(async (_req: Request) => Response.json(withPlan));
+    const api = createAssistantApi(createApiClient({ baseUrl: "http://api.test", fetch }), REGION);
+    const res = await api.ask({ text: "план", history: [], previous: null });
+    expect(res.plan!.days[0]!.parts[0]!.stops.map((s) => s.item)).toEqual([0]);
+  });
+});
+
+describe("Assistant: больше мест и план", () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      place: place(i + 1),
+      priceLevel: null,
+      kidsFriendly: false,
+      description: null,
+      descriptionSource: null,
+      descriptionUrl: null,
+    }));
+
+  it("«Показати ще»: по 10 мест, кнопка пропадает, когда показаны все", async () => {
+    const api = fakeAssistant({ ask: async () => result({ items: many(25) }) });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="суші" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByTestId("assistant-status").textContent).toBe("Знайдено в каталозі: 25");
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(10);
+    // На карте — все найденные.
+    expect(screen.getByTestId("map").getAttribute("data-n")).toBe("25");
+    fireEvent.click(screen.getByTestId("assistant-more"));
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(20);
+    fireEvent.click(screen.getByTestId("assistant-more"));
+    expect(screen.getAllByTestId("assistant-place")).toHaveLength(25);
+    expect(screen.queryByTestId("assistant-more")).toBeNull();
+  });
+
+  it("ключевое слово — в сводке «что ищем»", async () => {
+    const api = fakeAssistant({
+      ask: async () => result({ intent: intent({ keywords: ["суші", "sushi"] }) }),
+    });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="суші" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByTestId("assistant-reply").textContent).toBe("Шукаю: «суші», Кафе");
+  });
+
+  const planResult = () =>
+    result({
+      intent: intent({ kind: "plan", categories: [], days: 2, withKids: true }),
+      items: many(5),
+      plan: {
+        lengthMeters: 3200,
+        days: [
+          {
+            dayNo: 1,
+            date: "2026-11-07",
+            parts: [
+              {
+                part: "morning",
+                stops: [
+                  {
+                    item: 0,
+                    role: "see",
+                    start: "09:38",
+                    durationMin: 90,
+                    travel: "walk",
+                    travelMinutes: 8,
+                    travelMeters: 500,
+                    hours: "09:00–18:00",
+                    note: "Почніть день біля водоспаду.",
+                  },
+                ],
+              },
+              {
+                part: "afternoon",
+                stops: [
+                  {
+                    item: 1,
+                    role: "eat",
+                    start: "13:00",
+                    durationMin: 75,
+                    travel: "car",
+                    travelMinutes: 10,
+                    travelMeters: 2700,
+                    hours: null,
+                    note: null,
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            dayNo: 2,
+            date: "2026-11-08",
+            parts: [
+              {
+                part: "evening",
+                stops: [2, 3, 4].map((item) => ({
+                  item,
+                  role: "relax" as const,
+                  start: "19:00",
+                  durationMin: 120,
+                  travel: null,
+                  travelMinutes: null,
+                  travelMeters: null,
+                  hours: null,
+                  note: null,
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+  it("план: дни вкладками, части дня, время, роль, переезд, часы, пояснение; карта — места дня с маршрутом", async () => {
+    const api = fakeAssistant({ ask: async () => planResult() });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="план на 2 дні з дітьми" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByTestId("assistant-reply").textContent).toBe("Шукаю: план відпочинку, з дітьми");
+    const days = screen.getAllByTestId("assistant-plan-day");
+    expect(days).toHaveLength(2);
+    expect(days[0]!.getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen.getAllByTestId("assistant-plan-part").map((p) => p.querySelector("h3")!.textContent),
+    ).toEqual(["Ранок", "День"]);
+    const stops = screen.getAllByTestId("assistant-plan-stop");
+    expect(stops[0]!.textContent).toContain("09:38 · Огляд · ≈ 1 год 30 хв");
+    expect(stops[0]!.textContent).toContain("≈ 8 хв пішки");
+    expect(stops[0]!.textContent).toContain("Працює: 09:00–18:00");
+    expect(stops[1]!.textContent).toContain("≈ 10 хв на авто");
+    expect(screen.getByTestId("assistant-plan-note").textContent).toBe("Почніть день біля водоспаду.");
+    // Пометки «ШІ» нет (SHOW_AI_LABELS = false).
+    expect(document.body.textContent).not.toContain("ШІ");
+    expect(screen.getByTestId("assistant-plan-length").textContent).toContain("3,2 км");
+    const map = screen.getByTestId("map");
+    expect([map.getAttribute("data-route"), map.getAttribute("data-n")]).toEqual(["true", "2"]);
+    // Без «Мій план» (нет HostProvider и флага) — кнопки нет.
+    expect(screen.queryByTestId("assistant-plan-add")).toBeNull();
+
+    fireEvent.click(days[1]!);
+    expect(screen.getAllByTestId("assistant-plan-stop")).toHaveLength(3);
+    expect(screen.getByTestId("map").getAttribute("data-n")).toBe("3");
+    expect(screen.getByTestId("assistant-plan-part").querySelector("h3")!.textContent).toBe("Вечір");
+  });
+
+  it("«Додати в Мій план»: новый план на дни ассистента, места — галочками по частям дня, затем экран плана", async () => {
+    const api = fakeAssistant({ ask: async () => planResult() });
+    const createPlan = vi.fn(async () => ({ id: "plan-1" }) as never);
+    const updatePlan = vi.fn(async () => ({ id: "plan-1" }) as never);
+    const host: HostEnv = {
+      api: { ...noopHostApi(), createPlan, updatePlan },
+      hotelPlaceId: null,
+      entryContextId: null,
+      staff: "no",
+      timeZone: null,
+    };
+    render(
+      <FeatureFlagsProvider flags={{ "module.host_requests": true }}>
+        <HostProvider value={host}>
+          <GuideProvider value={env()}>
+            <Assistant api={api} initialQuery="план" />
+          </GuideProvider>
+        </HostProvider>
+      </FeatureFlagsProvider>,
+    );
+    await flush();
+    await flush();
+    fireEvent.click(screen.getByTestId("assistant-plan-add"));
+    await flush();
+    await flush();
+    expect(createPlan).toHaveBeenCalledWith({
+      adults: 2,
+      children: 1,
+      withCar: true,
+      days: 2,
+      startDate: "2026-11-07",
+    });
+    expect(updatePlan.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
+      { add: { day: 1, slot: "morning", placeId: place(1).id } },
+      { add: { day: 1, slot: "afternoon", placeId: place(2).id } },
+      { add: { day: 2, slot: "evening", placeId: place(3).id } },
+      { add: { day: 2, slot: "evening", placeId: place(4).id } },
+      { add: { day: 2, slot: "evening", placeId: place(5).id } },
+    ]);
+    expect(window.location.hash).toBe("#/plan/saved/plan-1");
   });
 });

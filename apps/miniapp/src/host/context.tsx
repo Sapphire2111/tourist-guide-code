@@ -28,6 +28,11 @@ export function useHost(): HostEnv {
   return env;
 }
 
+/** Окружение заведения, если подключено (экраны вне «Мій план» — например, ассистент); иначе null. */
+export function useOptionalHost(): HostEnv | null {
+  return useContext(HostContext);
+}
+
 export function noopHostApi(): HostApi {
   const fail = () => Promise.reject(new Error("no api"));
   return {

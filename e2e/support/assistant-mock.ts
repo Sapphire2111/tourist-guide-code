@@ -40,6 +40,7 @@ const intent = (over: Record<string, unknown> = {}) => ({
   kind: "places",
   categories: ["cafes"],
   nameQuery: null,
+  keywords: [] as string[],
   radiusMeters: null,
   priceMin: null,
   priceMax: null,
@@ -47,7 +48,28 @@ const intent = (over: Record<string, unknown> = {}) => ({
   openNow: false,
   clarify: false,
   suggestions: ["cheaper", "kids"],
+  days: null as number | null,
+  dayParts: [] as string[],
+  start: null as string | null,
   ...over,
+});
+
+const stop = (
+  index: number,
+  role: string,
+  start: string,
+  durationMin: number,
+  note: string | null = null,
+) => ({
+  item: index,
+  role,
+  start,
+  durationMin,
+  travel: index === 0 ? null : "walk",
+  travelMinutes: index === 0 ? null : 5,
+  travelMeters: index === 0 ? null : 300,
+  hours: null,
+  note,
 });
 
 const CAFE_A = summary("00000000-0000-4000-8000-000000000202", "Кав'ярня «Смерека»", CAFES, 48.4512, 24.5612);
@@ -63,11 +85,56 @@ export type AssistantMockState = {
 
 function answer(text: string) {
   const t = text.toLowerCase();
+  if (t.includes("план"))
+    return {
+      intent: intent({ kind: "plan", categories: [], days: 1, suggestions: ["kids"] }),
+      items: [item(MUSEUM_B), item(MUSEUM_A), item(CAFE_A, { priceLevel: 2 })],
+      route: null,
+      plan: {
+        lengthMeters: 600,
+        days: [
+          {
+            dayNo: 1,
+            date: "2026-11-07",
+            parts: [
+              {
+                part: "morning",
+                stops: [
+                  stop(0, "see", "09:30", 90, "Почніть день біля водоспаду."),
+                  stop(1, "see", "11:05", 60),
+                ],
+              },
+              { part: "afternoon", stops: [stop(2, "eat", "13:00", 75)] },
+            ],
+          },
+        ],
+      },
+      notes: [],
+    };
+  if (t.includes("суші"))
+    return {
+      intent: intent({ categories: ["cafes"], keywords: ["суші", "sushi"] }),
+      items: Array.from({ length: 12 }, (_, i) =>
+        item(
+          summary(
+            `00000000-0000-4000-8000-0000000003${String(i).padStart(2, "0")}`,
+            `Суші-бар ${i + 1}`,
+            CAFES,
+            48.45 + i / 1000,
+            24.56,
+          ),
+        ),
+      ),
+      route: null,
+      plan: null,
+      notes: [],
+    };
   if (t.includes("готель"))
     return {
       intent: intent({ categories: ["hotels"], radiusMeters: 1000, suggestions: ["cheaper"] }),
       items: [item(HOTEL, { priceLevel: 2 })],
       route: null,
+      plan: null,
       notes: [],
     };
   if (t.includes("екскурс"))
@@ -75,6 +142,7 @@ function answer(text: string) {
       intent: intent({ kind: "tour", categories: ["museums"], suggestions: ["kids"] }),
       items: [item(MUSEUM_A, { description: "Музей у Яремчі." }), item(MUSEUM_B)],
       route: { lengthMeters: 320 },
+      plan: null,
       notes: [],
     };
   if (t.includes("дешевше"))
@@ -82,6 +150,7 @@ function answer(text: string) {
       intent: intent({ priceMax: 1, suggestions: ["kids"] }),
       items: [item(CAFE_B, { priceLevel: 1, kidsFriendly: true })],
       route: null,
+      plan: null,
       notes: [],
     };
   if (t.includes("кав"))
@@ -92,12 +161,14 @@ function answer(text: string) {
         item(CAFE_B, { priceLevel: 1, kidsFriendly: true }),
       ],
       route: null,
+      plan: null,
       notes: [],
     };
   return {
     intent: intent({ categories: [], clarify: true, suggestions: [] }),
     items: [],
     route: null,
+    plan: null,
     notes: [],
   };
 }
