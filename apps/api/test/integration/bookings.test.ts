@@ -762,16 +762,27 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
          WHERE id = $1`,
         [id, minutes],
       );
-    await move(soon.id, 100);
-    await move(day.id, 1200);
-    await move(gone.id, 300);
-    // Партнёру: неподтверждённая, срок ответа через 10 мин (поставлена час назад).
+    // Партнёру: неподтверждённая, срок ответа через 10 мин (поставлена час назад). Создаётся до сдвигов: сдвинутые
+    // брони могли бы занять её слот.
     const pending = await bookings.create(nextTourist(), input(s4!));
+    // Сначала все четыре — на 60 дней вперёд (взаимное расположение сохраняется), чтобы сдвиги ниже не задели исходные.
+    await sql(
+      `UPDATE bookings SET starts_at = starts_at + interval '60 days', ends_at = ends_at + interval '60 days',
+         occupied_from = occupied_from + interval '60 days', occupied_until = occupied_until + interval '60 days'
+       WHERE id = ANY($1)`,
+      [[soon.id, day.id, gone.id, pending.id]],
+    );
     await sql(
       `UPDATE bookings SET partner_response_due_at = now() + interval '10 minutes',
-         created_at = now() - interval '1 hour' WHERE id = $1`,
+         created_at = now() - interval '1 hour', starts_at = now() + interval '5 hours',
+         ends_at = now() + interval '6 hours', occupied_from = now() + interval '5 hours',
+         occupied_until = now() + interval '6 hours' WHERE id = $1`,
       [pending.id],
     );
+    // Сдвиги по одному: сначала освобождаются исходные слоты, сдвинутые интервалы не пересекаются (100, 300, 1200 мин).
+    await move(soon.id, 100);
+    await move(gone.id, 300);
+    await move(day.id, 1200);
     const run = async () =>
       (await appClient.query(`SELECT bookings_send_reminders(ARRAY[1440, 120], 15, 100) AS n`)).rows[0]
         .n as number;
