@@ -143,3 +143,49 @@ describe("горные места: погода (isMountainHike) и сезон (
     expect(winter(p("sights", "Стежка Довбуша"))).toBe(true);
   });
 });
+
+describe("горные места: доп. категории из импорта (places-import/mapping.ts) и экскурсии", () => {
+  const active = (category: string, name: string, tags: string[] = []) => ({
+    category,
+    names: [name],
+    extraCategories: ["active"],
+    tags,
+  });
+
+  it("лыжное и прокат с доп. категорией active — не поход, зимой видны", () => {
+    for (const x of [
+      active("ski-lifts", "Витяг на гору Буковель", ["winter"]),
+      active("ski-resorts", "Гірськолижний курорт Гора Х", ["winter"]),
+      active("gear-rental", "Спорядження Говерла"),
+      active("entertainment", "Атракціони Гора"),
+    ]) {
+      expect(isSeasonalHike(x), x.names[0]).toBe(false);
+      expect(placeFitsSeason(x, "winter"), x.names[0]).toBe(true);
+    }
+  });
+
+  it("«Церква на горі» с доп. active — зимой видна; вершина и поход с основной категорией — скрыты", () => {
+    expect(placeFitsSeason(active("sights", "Церква на горі"), "winter")).toBe(true);
+    expect(placeFitsSeason(active("nature", "Гора Хом'як"), "winter")).toBe(false);
+    expect(placeFitsSeason({ ...p("active", "Похід на Говерлу"), tags: [] }, "winter")).toBe(false);
+  });
+
+  it("экскурсии в горы — для погоды горные, даже со стоп-словом тура или квадро; зимой видны", () => {
+    for (const x of [
+      p("excursions", "Джип-тур на полонину Перці"),
+      p("excursions", "Тур на полонину"),
+      p("excursions", "Квадро тури на перевал"),
+    ]) {
+      expect(isMountainHike(x), x.names[0]).toBe(true);
+      expect(placeFitsSeason({ ...x, tags: [] }, "winter"), x.names[0]).toBe(true);
+    }
+  });
+
+  it("без ложных срабатываний: экскурсия без горы, вид на гору, стоп-слова в других категориях", () => {
+    expect(isMountainHike(p("excursions", "Екскурсія Яремче"))).toBe(false);
+    expect(isMountainHike(p("excursions", "Вид на полонину"))).toBe(false);
+    expect(isMountainHike(p("sights", "Готель Говерла"))).toBe(false);
+    expect(isMountainHike(p("nature", "Прокат на полонині"))).toBe(false);
+    expect(isMountainHike(p("sights", "Музей на горі"))).toBe(false);
+  });
+});

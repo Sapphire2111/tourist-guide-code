@@ -252,27 +252,28 @@ const summitRoute = (p: MountainPlace) => landmarkOf(p)?.kind === "hike" || tour
 
 /**
  * Горное место для ПОГОДЫ (в грозу, сильный ветер, снегопад, гололёд не предлагаем и предупреждаем): маршрут или
- * экскурсия на вершину; природа/пам'ятки/экскурсии с горным названием без стоп-слов маршрута (готель, музей, кафе…);
- * активности в горах с горным названием — всегда, даже джип-/квадро-тур и прокат («Джип-тур на Говерлу»: в грозу на
- * полонину не едут). «Вид на…» (оглядовий майданчик) — не горное.
+ * экскурсия на вершину; природа/пам'ятки с горным названием без стоп-слов маршрута (готель, музей, кафе…); активности
+ * и экскурсии в горах с горным названием — всегда, даже джип-/квадро-тур и прокат («Джип-тур на Говерлу», «Тур на
+ * полонину»: в грозу на полонину не едут). «Вид на…» (оглядовий майданчик) — не горное.
  */
 export function isMountainHike(p: MountainPlace): boolean {
   if (summitRoute(p)) return true;
   const cats = catsOf(p);
   if (!cats.some((c) => WEATHER_MOUNTAIN_CATEGORIES.has(c))) return false;
   if (p.names.some((n) => VIEW_RE.test(n))) return false;
-  const activity = cats.includes("active");
+  const activity = cats.includes("active") || cats.includes("excursions");
   if (!activity && p.names.some((n) => NOT_ROUTE_RE.test(n))) return false;
   return p.names.some((n) => MOUNTAIN_RE.test(n));
 }
 
 /**
  * Горный поход для СЕЗОНА (зимой не предлагаем): маршрут или экскурсия на вершину, либо природа/активность с горным
- * названием без стоп-слов маршрута — джип-тур, прокат и «Церква на горі» зимой видны.
+ * названием без стоп-слов маршрута — джип-тур, прокат и «Церква на горі» зимой видны. Только основная категория:
+ * импорт добавляет active всем подъёмникам, курортам и прокатам (mapping.ts), а «Витяг на гору» — не поход.
  */
 export function isSeasonalHike(p: MountainPlace): boolean {
   if (summitRoute(p)) return true;
-  if (!catsOf(p).some((c) => SEASON_ROUTE_CATEGORIES.has(c))) return false;
+  if (!SEASON_ROUTE_CATEGORIES.has(p.category)) return false;
   if (p.names.some((n) => NOT_ROUTE_RE.test(n) || VIEW_RE.test(n))) return false;
   return p.names.some((n) => MOUNTAIN_RE.test(n));
 }
