@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { landmarkOf, tourLandmarkOf, visitEstimate, visitMinutes } from "./visit-duration.js";
+import { isMountainHike, landmarkOf, tourLandmarkOf, visitEstimate, visitMinutes } from "./visit-duration.js";
+import { placeFitsSeason } from "./season.js";
 
 const p = (category: string, ...names: string[]) => ({ category, names });
 
@@ -74,5 +75,43 @@ describe("visitEstimate — реалистичная длительность", 
     expect(visitMinutes(p("chany", "Чани у Петра"))).toBe(120);
     expect(visitMinutes(p("restaurants", "Ресторан"))).toBe(75);
     expect(visitMinutes(p("unknown", "Щось"))).toBe(60);
+  });
+});
+
+describe("isMountainHike — одно определение для сезона и погоды", () => {
+  const tags = { tags: [] as string[] };
+  it("Пікуй, Синяк, Hoverla, «Похід на Говерлу», полонина, турфирма на вершину — горный; зимой не предлагаются", () => {
+    for (const x of [
+      p("nature", "Пікуй"),
+      p("nature", "гора Синяк"),
+      p("nature", "Hoverla peak"),
+      p("active", "Похід на Говерлу"),
+      p("sights", "Полонина Перці"),
+      p("excursions", "ЕКСКУРСІЇ ТА ТРАНСФЕРИ ЩОДНЯ НА ГОРУ ГОВЕРЛА"),
+    ]) {
+      expect(isMountainHike(x), x.names[0]).toBe(true);
+      expect(placeFitsSeason({ ...x, ...tags }, "winter"), x.names[0]).toBe(false);
+      expect(placeFitsSeason({ ...x, ...tags }, "summer"), x.names[0]).toBe(true);
+    }
+  });
+
+  it("Прокат Говерла, Готель Говерла, кафе, музей, вид на гору, водоспад — не горный и зимой видны", () => {
+    for (const x of [
+      p("active", "Прокат Говерла"),
+      p("hotels", "Готель Говерла"),
+      p("sights", "Готель Говерла"),
+      p("cafes", "Кафе Гора"),
+      p("museums", "Музей Говерли"),
+      p("active", "Вид на Говерлу та Петром"),
+      p("nature", "Водоспад Пробій"),
+      p("nature", "Горіховий гай"),
+      p("active", "Джип-тур на Синяк"),
+    ]) {
+      expect(isMountainHike(x), x.names[0]).toBe(false);
+      expect(placeFitsSeason({ ...x, ...tags }, "winter"), x.names[0]).toBe(true);
+    }
+    // Стежка Довбуша — горная для погоды, но маршрут уместен и зимой.
+    expect(isMountainHike(p("sights", "Стежка Довбуша"))).toBe(true);
+    expect(placeFitsSeason({ ...p("sights", "Стежка Довбуша"), ...tags }, "winter")).toBe(true);
   });
 });

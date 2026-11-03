@@ -6,6 +6,10 @@
 import type { LonLat, PlanSlot, ScenarioSeason } from "../../db/index.js";
 import { sphericalMeters } from "./plan-rules.js";
 import { placeFitsSeason } from "./season.js";
+import { isMountainHike } from "./visit-duration.js";
+
+/** Горный поход — одно определение для сезона и погоды (visit-duration.ts). */
+export { isMountainHike };
 
 export const PLAN_DAYS_MAX = 14;
 export const OPTIONS_PER_SLOT = 5;
@@ -105,16 +109,6 @@ const BAR_RE = word(
 );
 /** Ночная жизнь — не для детей в любой категории. */
 const NIGHTLIFE_RE = /нічн\p{L}*\s+клуб|night\s*club|кальян|hookah|стрип|strip/iu;
-/**
- * Поход в горы / на вершину (по названию из Google): гора, вершина, полонина, хребет, перевал, известные вершины
- * Карпат, peak/summit/trail. Погода: в грозу, сильный ветер, снегопад, гололёд такие места не предлагаем.
- */
-const MOUNTAIN_RE = word(
-  "гор[аиуі]|вершин\\p{L}*|полонин\\p{L}*|хреб\\p{L}*|перевал\\p{L}*|говерл\\p{L}*|хом['’]?як\\p{L}*|" +
-    "петрос\\p{L}*|піп\\s+іван\\p{L}*|чорногор\\p{L}*|peak|summit|mountain|mount|ridge|trail|hiking|" +
-    "стежк\\p{L}*|похід\\p{L}*",
-);
-const MOUNTAIN_CATEGORIES = new Set(["nature", "active", "excursions", "sights"]);
 /** ТРЦ/ТЦ — под крышей; прочие магазины в «якщо дощ» не предлагаем. */
 const MALL_RE = word("трц|тц|mall|торгов\\p{L}*\\s+центр");
 
@@ -123,11 +117,6 @@ export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKin
     return "waterfall";
   if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n))) return "bar";
   return p.category;
-}
-
-/** Горный поход: природа/активный отдых/экскурсии/пам'ятки с горным названием. */
-export function isMountainHike(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
-  return categoriesOf(p).some((c) => MOUNTAIN_CATEGORIES.has(c)) && p.names.some((n) => MOUNTAIN_RE.test(n));
 }
 
 /** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */

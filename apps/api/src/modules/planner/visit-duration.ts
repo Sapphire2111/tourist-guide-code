@@ -224,6 +224,33 @@ export function landmarkOf(p: NamedPlace): Landmark | null {
   return LANDMARKS.find((l) => p.names.some((n) => l.re.test(n) && (!l.also || l.also.test(n)))) ?? null;
 }
 
+const L_ = "\\p{L}";
+/**
+ * Горное название (Google): гора, вершина, полонина, хребет, перевал, известные вершины Карпат, peak/summit/trail,
+ * стежка, похід. «Горіховий» — не «гора» (границы слова).
+ */
+const MOUNTAIN_RE = new RegExp(
+  `(^|[^${L_}])(гор[аиуі]|вершин${L_}*|полонин${L_}*|хреб${L_}*|перевал${L_}*|говерл${L_}*|хом['’ʼ]?як${L_}*|` +
+    `петрос${L_}*|піп\\s+іван${L_}*|чорногор${L_}*|пікуй${L_}*|синяк${L_}*|близниц${L_}*|peak|summit|mountain|mount|` +
+    `ridge|trail|hiking|стежк${L_}*|похід${L_}*)([^${L_}]|$)`,
+  "iu",
+);
+const MOUNTAIN_CATEGORIES: ReadonlySet<string> = new Set(["nature", "active", "excursions", "sights"]);
+
+/**
+ * Горный поход — ОДНО определение для сезона (зимой не предлагаем) и погоды (в грозу, ветер, снегопад не предлагаем,
+ * предупреждаем): известный маршрут на вершину (landmarkOf, kind hike), экскурсия на вершину (турфирма с вершиной
+ * в названии) или место природы/активностей/пам'яток с горным названием — без стоп-слов маршрута (прокат, тур, джип,
+ * готель, музей, кафе…) и без «вид на…» (оглядовий майданчик).
+ */
+export function isMountainHike(p: NamedPlace & { extraCategories?: readonly string[] | undefined }): boolean {
+  if (landmarkOf(p)?.kind === "hike" || tourLandmarkOf(p)) return true;
+  const cats = [p.category, ...(p.extraCategories ?? [])];
+  if (!cats.some((c) => MOUNTAIN_CATEGORIES.has(c))) return false;
+  if (p.names.some((n) => NOT_ROUTE_RE.test(n) || VIEW_RE.test(n))) return false;
+  return p.names.some((n) => MOUNTAIN_RE.test(n));
+}
+
 /**
  * Маршрут экскурсии по названию турфирмы/гида («на Говерлу, Петрос, Піп Іван, Хом'як»): самый короткий из названных —
  * турист выбирает вершину с гидом, а день должен вместить хотя бы её.
