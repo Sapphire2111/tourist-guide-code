@@ -81,7 +81,7 @@ describe("точечный импорт: выбор результатов", () 
   };
 
   it("категория из запроса, вне пунктов — без пункта; первый подходящий", () => {
-    const [p, ...rest] = pickResults(q, [gp("a"), gp("b")], names, new Set());
+    const [p, ...rest] = pickResults(q, [gp("a"), gp("b")], names, new Map()).map((r) => r.place);
     expect(rest).toEqual([]);
     expect(p).toMatchObject({
       googlePlaceId: "a",
@@ -106,9 +106,9 @@ describe("точечный импорт: выбор результатов", () 
       { ...q, category: "museums", types: ["museum"], take: 2, locality: "kosiv" },
       res,
       names,
-      new Set(["dup"]),
+      new Map(),
     );
-    expect(picked.map((p) => [p.googlePlaceId, p.categoryCode, p.localityCode])).toEqual([
+    expect(picked.map(({ place: p }) => [p.googlePlaceId, p.categoryCode, p.localityCode])).toEqual([
       ["m1", "museums", "kosiv"],
       ["m2", "museums", "kosiv"],
     ]);
@@ -119,9 +119,27 @@ describe("точечный импорт: выбор результатов", () 
       q,
       [gp("x", { primaryType: undefined, types: ["establishment"] })],
       names,
-      new Set(),
+      new Map(),
     );
-    expect(picked.map((p) => p.categoryCode)).toEqual(["nature"]);
+    expect(picked.map((r) => r.place.categoryCode)).toEqual(["nature"]);
+  });
+
+  it("подходящий результат уже взят другим запросом — засчитан этому, следующий результат не берётся", () => {
+    const peak = gp("peak");
+    const hotel = gp("hotel", {
+      primaryType: "hotel",
+      types: ["hotel", "lodging"],
+      displayName: { text: "Готель Говерла" },
+    });
+    const [first] = pickResults(q, [peak, hotel], names, new Map());
+    expect(first).toMatchObject({ reused: false, place: { googlePlaceId: "peak" } });
+    const second = pickResults(
+      { ...q, query: "Говерла гора" },
+      [peak, hotel],
+      names,
+      new Map([["peak", first!.place]]),
+    );
+    expect(second.map((r) => [r.place.googlePlaceId, r.reused])).toEqual([["peak", true]]);
   });
 });
 
@@ -136,30 +154,34 @@ describe("точечный импорт: выгрузка", () => {
     const fetch = vi.fn(async (_url: string, init: RequestInit) => {
       const b = JSON.parse(String(init.body)) as { textQuery: string };
       if (b.textQuery === "пусто") return ok({});
+      if (b.textQuery === "збій") return new Response("boom", { status: 500 });
       return ok({ places: [gp("same")] });
     });
     const client = new GooglePlacesClient({
       apiKey: "k",
       cacheDir: dir,
-      maxRequests: 3,
+      maxRequests: 4,
       fetch: fetch as typeof globalThis.fetch,
     });
     const queries: TargetedQuery[] = [
       { query: "Говерла", category: "nature" },
       { query: "Говерла гора", category: "nature" },
       { query: "пусто", category: "nature" },
-      { query: "четвертий", category: "nature" },
+      { query: "збій", category: "nature" },
+      { query: "п'ятий", category: "nature" },
     ];
     const r = await collectTargeted(client, queries, names);
     expect(r.places.map((p) => p.googlePlaceId)).toEqual(["same"]);
     expect(r.outcomes.map((o) => o.missing ?? "ok")).toEqual([
       "ok",
-      expect.stringMatching(/ни один не подошёл/),
+      "ok",
       "Google ничего не нашёл",
+      expect.stringMatching(/^ошибка Google/),
       "лимит запросов",
     ]);
+    expect(r.outcomes[1]!.found).toEqual([expect.objectContaining({ googlePlaceId: "same", reused: true })]);
     expect(r).toMatchObject({ queriesDone: 3, limitReached: true });
-    expect(client.requests.search).toBe(3);
+    expect(client.requests.search).toBe(4);
 
     const again = new GooglePlacesClient({
       apiKey: undefined,

@@ -119,7 +119,8 @@ export type TargetedOutcome = {
   query: string;
   category: string;
   /** Взятые места: название и id Google. */
-  found: { name: string; googlePlaceId: string; locality: string }[];
+  /** reused — то же место уже взято другим запросом (записывается один раз, с категорией первого). */
+  found: { name: string; googlePlaceId: string; locality: string; reused?: boolean }[];
   /** Почему ничего не взято (пусто у Google, всё отфильтровано, лимит). */
   missing?: string;
 };
@@ -134,19 +135,23 @@ export type TargetedResult = {
 /** Все пункты, известные точечному импорту (пилот + дополнительные). */
 export const ALL_LOCALITIES: readonly ImportLocality[] = [...IMPORT_LOCALITIES, ...TARGETED_LOCALITIES];
 
-/** Выбор и маппинг результатов одного запроса (без сети). */
+/**
+ * Выбор и маппинг результатов одного запроса (без сети). Подходящий результат, уже взятый другим запросом (`taken`),
+ * засчитывается этому запросу (reused) и занимает место в take — следующий результат выдачи вместо него не берётся:
+ * иначе под категорию запроса попал бы посторонний объект («Говерла гора» → готель).
+ */
 export function pickResults(
   q: TargetedQuery,
   results: readonly GooglePlace[],
   categoryNames: Readonly<Record<string, string>>,
-  taken: ReadonlySet<string>,
-): MappedPlace[] {
+  taken: ReadonlyMap<string, MappedPlace>,
+): { place: MappedPlace; reused: boolean }[] {
   const near = q.near ?? DEFAULT_NEAR;
   const radius = q.radiusM ?? DEFAULT_RADIUS_M;
-  const out: MappedPlace[] = [];
+  const out: { place: MappedPlace; reused: boolean }[] = [];
   for (const p of results) {
     if (out.length >= (q.take ?? 1)) break;
-    if (!GOOGLE_PLACE_ID.test(p.id ?? "") || taken.has(p.id)) continue;
+    if (!GOOGLE_PLACE_ID.test(p.id ?? "")) continue;
     if (p.businessStatus === "CLOSED_PERMANENTLY") continue;
     const lat = p.location?.latitude;
     const lon = p.location?.longitude;
@@ -155,6 +160,11 @@ export function pickResults(
       continue;
     const name = p.displayName?.text?.trim();
     if (!name) continue;
+    const prev = taken.get(p.id);
+    if (prev) {
+      out.push({ place: prev, reused: true });
+      continue;
+    }
     const locality = q.locality
       ? ALL_LOCALITIES.find((l) => l.code === q.locality)
       : nearestLocality({ lon, lat }, ALL_LOCALITIES);
@@ -166,7 +176,7 @@ export function pickResults(
       radiusM: 1,
     };
     const m = mapPlace(p, [own], categoryNames, q.category);
-    if (m.ok) out.push(m.place);
+    if (m.ok) out.push({ place: m.place, reused: false });
   }
   return out;
 }
@@ -179,7 +189,7 @@ export async function collectTargeted(
   log: (s: string) => void = () => {},
 ): Promise<TargetedResult> {
   const places: MappedPlace[] = [];
-  const taken = new Set<string>();
+  const taken = new Map<string, MappedPlace>();
   const outcomes: TargetedOutcome[] = [];
   let queriesDone = 0;
   let limitReached = false;
@@ -205,30 +215,47 @@ export async function collectTargeted(
     try {
       res = await client.searchText(request);
     } catch (err) {
-      if (!(err instanceof RequestLimitError || err instanceof GoogleRateLimitedError)) throw err;
-      log(err.message);
-      limitReached = true;
-      outcomes.push({ query: q.query, category: q.category, found: [], missing: "лимит запросов" });
+      if (err instanceof RequestLimitError || err instanceof GoogleRateLimitedError) {
+        log(err.message);
+        limitReached = true;
+        outcomes.push({ query: q.query, category: q.category, found: [], missing: "лимит запросов" });
+        continue;
+      }
+      // Ошибка одного запроса (HTTP Google, сеть, таймаут) не прерывает прогон: запрос отмечен, идём дальше.
+      const message = err instanceof Error ? err.message : String(err);
+      log(`«${q.query}»: ошибка Google — ${message}`);
+      outcomes.push({
+        query: q.query,
+        category: q.category,
+        found: [],
+        missing: `ошибка Google: ${message}`,
+      });
       continue;
     }
     queriesDone++;
     const picked = pickResults(q, res.places ?? [], categoryNames, taken);
-    for (const p of picked) {
-      taken.add(p.googlePlaceId);
-      places.push(p);
+    for (const { place, reused } of picked) {
+      if (reused) continue;
+      taken.set(place.googlePlaceId, place);
+      places.push(place);
     }
     const outcome: TargetedOutcome = {
       query: q.query,
       category: q.category,
-      found: picked.map((p) => ({ name: p.name, googlePlaceId: p.googlePlaceId, locality: p.localityCode })),
+      found: picked.map(({ place: p, reused }) => ({
+        name: p.name,
+        googlePlaceId: p.googlePlaceId,
+        locality: p.localityCode,
+        ...(reused ? { reused: true } : {}),
+      })),
     };
     if (!picked.length)
       outcome.missing = res.places?.length
-        ? `Google вернул ${res.places.length}, ни один не подошёл (область/типы/закрыто/дубль)`
+        ? `Google вернул ${res.places.length}, ни один не подошёл (область/типы/закрыто)`
         : "Google ничего не нашёл";
     outcomes.push(outcome);
     log(
-      `«${q.query}» → ${q.category}: ${picked.length ? picked.map((p) => p.name).join("; ") : outcome.missing}`,
+      `«${q.query}» → ${q.category}: ${picked.length ? picked.map((p) => p.place.name + (p.reused ? " (уже взято другим запросом)" : "")).join("; ") : outcome.missing}`,
     );
   }
   return { places, outcomes, queriesDone, limitReached };

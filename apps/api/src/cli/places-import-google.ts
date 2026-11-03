@@ -164,12 +164,18 @@ async function runTargeted(
     const db = createDatabase({ connectionString: url, maxConnections: 1 });
     try {
       // Без closedIds/rejectedIds/seenIds: точечный прогон не снимает с публикации и не архивирует другие места.
-      const written = await writePlaces(db, args.region, places, new Date(), { localities: ALL_LOCALITIES });
+      const written = await writePlaces(db, args.region, places, new Date(), {
+        localities: ALL_LOCALITIES,
+        pinCategory: true,
+      });
       report.write = written;
       console.log(
         `Запись в регион ${args.region}: новых мест ${written.inserted}, обновлено (уже были по google place id) ` +
           `${written.updated}, новых населённых пунктов ${written.localitiesCreated}, новых категорий ${written.categoriesCreated}.`,
       );
+      // Реальный статус: место уже было и его скрыла/архивировала админка или прошлый прогон — «обновлено» мало.
+      for (const n of written.notPublished)
+        console.log(`  не опубликовано: ${n.name} (${n.googlePlaceId}) — статус ${n.status}`);
       if (storage) {
         const ids = await googlePlaceIds(db, written.regionId);
         const photos = await importPhotos(db, client, storage, written.regionId, places, ids, console.log);

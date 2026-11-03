@@ -17,6 +17,7 @@ export const LOCALITY_ALIASES: Readonly<Record<string, readonly string[]>> = {
   ],
   yablunytsia: ["Яблуниця", "Яблуниці", "Yablunytsia", "Yablunytsya"],
   vorokhta: ["Ворохта", "Ворохті", "Ворохту", "Vorokhta"],
+  kosiv: ["Косів", "Косові", "Косова", "Kosiv"],
 };
 
 export function localityAliases(code: string): string[] {
