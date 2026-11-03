@@ -129,7 +129,12 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
 
   return (
     // Переход из ответа в экран приложения (карточка места) — запись истории с меткой: «Назад» вернёт сюда.
-    <div className="assistant-screen" onClickCapture={markLinkFromAssistant}>
+    <div
+      className="assistant-screen"
+      onClickCapture={(e) =>
+        markLinkFromAssistant(e, () => setUi({ scrollY: Math.max(0, Math.round(window.scrollY)) }))
+      }
+    >
       <Stack>
         <h1>{t("miniapp.assistant.title")}</h1>
         <p className="kosiv-muted">{t("miniapp.assistant.hint")}</p>
@@ -238,11 +243,13 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
 }
 
 /** Ссылка #/… внутри ответа (обычный клик) — переход pushState с меткой «из ассистента». */
-function markLinkFromAssistant(e: MouseEvent<HTMLDivElement>) {
+function markLinkFromAssistant(e: MouseEvent<HTMLDivElement>, beforeLeave: () => void) {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
   if (!(a instanceof HTMLAnchorElement) || a.target === "_blank") return;
   e.preventDefault();
+  // Прокрутка — сейчас, до смены экрана (сохранение по прокрутке отложено и может не успеть).
+  beforeLeave();
   pushFromAssistant(a.getAttribute("href")!);
 }
 
@@ -259,9 +266,14 @@ function useScrollMemory(ready: boolean, restoreTo: number, setUi: (patch: { scr
     const go = () => window.scrollTo({ top: restoreTo, behavior: "instant" as ScrollBehavior });
     const raf = window.requestAnimationFrame(go);
     const late = window.setTimeout(go, 350);
+    // Медленное устройство: ещё раз, если турист сам ещё не прокрутил (страница всё ещё вверху).
+    const later = window.setTimeout(() => {
+      if (window.scrollY < restoreTo / 2) go();
+    }, 900);
     return () => {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(late);
+      window.clearTimeout(later);
     };
   }, [ready, restoreTo]);
   useEffect(() => {
