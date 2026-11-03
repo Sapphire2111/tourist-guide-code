@@ -15,10 +15,16 @@ function fakeGoogleMaps() {
     constructor(div: HTMLElement) {
       this.node = document.createElement("div");
       this.node.className = "gm-fake-map";
-      this.node.style.cssText = "position:relative;width:100%;height:100%;background:#e5e3df;overflow:hidden";
+      this.node.style.cssText =
+        "position:relative;box-sizing:border-box;width:100%;height:100%;background:#e5e3df;overflow:hidden;padding:24px 0 0 24px";
       div.appendChild(this.node);
     }
-    fitBounds() {}
+    // Отступы fitBounds (число или {top,right,bottom,left}) настоящая карта оставляет свободными от маркеров:
+    // фейк без проекции раскладывает маркеры потоком, поэтому отступ сверху/слева применяется как padding узла.
+    fitBounds(_b: unknown, padding?: number | { top?: number; left?: number }) {
+      const p = typeof padding === "number" ? { top: padding, left: padding } : padding;
+      this.node.style.padding = `${p?.top ?? 0}px 0 0 ${p?.left ?? 0}px`;
+    }
     setCenter(c: unknown) {
       this.center = c;
     }
@@ -60,7 +66,7 @@ function fakeGoogleMaps() {
     private _content: HTMLElement | null = null;
     constructor(o: { map?: unknown; content?: HTMLElement; title?: string; gmpClickable?: boolean }) {
       this.node.className = "gm-fake-marker";
-      this.node.style.cssText = "display:inline-block;margin:24px 0 0 24px";
+      this.node.style.cssText = "display:inline-block";
       // Как у настоящего: нажимаемый маркер — кнопка с подписью title, остальные — просто title.
       if (o.gmpClickable) {
         this.node.setAttribute("role", "button");

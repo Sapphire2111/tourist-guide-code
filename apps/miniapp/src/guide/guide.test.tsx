@@ -361,7 +361,7 @@ describe("«Що поруч»: ползунок радиуса и категор
 });
 
 describe("«Що поруч»: строка статуса", () => {
-  it("modern: счётчик «Знайдено: N»; при 50 местах — пометка об ограничении", async () => {
+  it("modern: счётчик «Найближчі місця (N)»; при 50 местах — пометка об ограничении", async () => {
     const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
     const search = vi.fn(async () => many);
     const { env } = setup({ api: fakeApi({ search }) });
@@ -371,7 +371,7 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("Знайдено: 50");
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчі місця (50) — від 120 м");
     expect(screen.getByText("Найближчих місць: 50.")).toBeDefined();
     cleanup();
     const { env: env2 } = setup();
@@ -381,7 +381,7 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("Знайдено: 2");
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчі місця (2) — від 120 м");
     expect(screen.queryByText(/Найближчих місць/)).toBeNull();
   });
 });

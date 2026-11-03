@@ -4,9 +4,10 @@ import type { MessageKey } from "@tg/i18n";
 import { Link, useT } from "@tg/ui";
 import { interceptBack } from "../telegram.js";
 import { ICONS, VaseIcon } from "./Ornament.js";
-import { useDesign } from "./DesignProvider.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
+import { useTheme } from "./ThemeProvider.js";
+import { THEME_NAMES, THEMES } from "./theme.js";
 
 /** Через сколько мс заставки показать «сервер прокидається» (холодный старт api на Render free — 30–60 с). */
 export const SPLASH_SLOW_MS = 6000;
@@ -103,7 +104,6 @@ const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [ta
 export function AppTop({ path, profile, scan }: { path: string; profile: boolean; scan?: ScanControl }) {
   const { t } = useT();
   const home = path === "/";
-  const { design } = useDesign();
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -147,12 +147,10 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
   }, [open, close]);
   return (
     <div className="kosiv-top" data-testid="app-top">
-      {design === "modern" && (
-        <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
-          {ICONS.help}
-          <span>{t("miniapp.modern.help")}</span>
-        </Link>
-      )}
+      <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
+        {ICONS.help}
+        <span>{t("miniapp.modern.help")}</span>
+      </Link>
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
       {scan && (
         <p
@@ -215,12 +213,11 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
               </button>
             </div>
             <SeasonSwitcher onPicked={close} />
-            {design === "modern" && (
-              <Link to="/favorites" className="kosiv-sheet-link">
-                {ICONS.heart}
-                {t("miniapp.nav.favorites")}
-              </Link>
-            )}
+            <ThemeSwitcher onPicked={close} />
+            <Link to="/favorites" className="kosiv-sheet-link">
+              {ICONS.heart}
+              {t("miniapp.nav.favorites")}
+            </Link>
             {scan && (
               <button
                 type="button"
@@ -276,6 +273,35 @@ export function SeasonSwitcher({ onPicked }: { onPicked?: () => void } = {}) {
         >
           <span aria-hidden="true">{SEASON_CONFIG[s].icon}</span>
           {t(SEASON_CONFIG[s].name)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Переключатель темы: «День» | «Ніч». */
+export function ThemeSwitcher({ onPicked }: { onPicked?: () => void } = {}) {
+  const { t } = useT();
+  const { theme, setTheme } = useTheme();
+  return (
+    <div
+      className="kosiv-themes"
+      role="group"
+      aria-label={t("miniapp.theme.switcher")}
+      data-testid="theme-switcher"
+    >
+      {THEMES.map((v) => (
+        <button
+          key={v}
+          type="button"
+          className="kosiv-theme"
+          aria-pressed={v === theme}
+          onClick={() => {
+            setTheme(v);
+            onPicked?.();
+          }}
+        >
+          {t(THEME_NAMES[v])}
         </button>
       ))}
     </div>

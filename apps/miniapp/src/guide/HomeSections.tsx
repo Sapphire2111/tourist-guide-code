@@ -1,10 +1,8 @@
 // C02: кнопки разделов главной (HOME_SECTIONS) + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
 import { Link, useT } from "@tg/ui";
-import type { MessageKey } from "@tg/i18n";
 import { ICONS } from "../design/Ornament.js";
-import { useDesign } from "../design/DesignProvider.js";
 import { useGuide } from "./context.js";
-import { HOME_SECTIONS, type HomeSection } from "./types.js";
+import type { HomeSection } from "./types.js";
 
 export function sectionPath(section: HomeSection): string {
   if (section === "about") return "/about";
@@ -14,43 +12,6 @@ export function sectionPath(section: HomeSection): string {
 }
 
 export function HomeSections({ hasVenue }: { hasVenue: boolean }) {
-  const { t } = useT();
-  const { design } = useDesign();
-  if (design === "modern") return <ModernSections hasVenue={hasVenue} />;
-  const sections = HOME_SECTIONS.filter((s) => s !== "about" || hasVenue);
-  return (
-    <nav aria-labelledby="sections-title" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <h2 id="sections-title" style={{ margin: 0 }}>
-        {t("miniapp.home.sections")}
-      </h2>
-      <Link to="/nearby/me" className="kosiv-cta" data-testid="near-me">
-        {ICONS.locate}
-        <span>{t("miniapp.home.nearMe")}</span>
-      </Link>
-      <ul className="kosiv-sections" data-testid="home-sections">
-        {sections.map((s) => (
-          <li key={s}>
-            <Link
-              to={sectionPath(s)}
-              className="kosiv-card kosiv-tile"
-              data-tone={s === "help" ? "alert" : undefined}
-            >
-              <span className="kosiv-tile-icon">{ICONS[s]}</span>
-              <span>{t(`miniapp.section.${s}` as MessageKey)}</span>
-              {s === "stay" && (
-                <small className="kosiv-tile-hint" data-testid="tile-hint-stay">
-                  {t("miniapp.section.stayHint")}
-                </small>
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
-
-function ModernSections({ hasVenue }: { hasVenue: boolean }) {
   const { t } = useT();
   const { base } = useGuide();
   const intentions = [
@@ -136,6 +97,9 @@ function ModernSections({ hasVenue }: { hasVenue: boolean }) {
           <Link key={section} to={sectionPath(section)}>
             {ICONS[section]}
             <span>{section === "help" ? t("miniapp.modern.help") : t(`miniapp.section.${section}`)}</span>
+            {section === "stay" && (
+              <small data-testid="tile-hint-stay">{t("miniapp.section.stayHint")}</small>
+            )}
           </Link>
         ))}
       </nav>

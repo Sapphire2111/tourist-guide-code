@@ -1,4 +1,3 @@
-import { DesignProvider, useDesign } from "./design/DesignProvider.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient } from "@tg/api-client";
 import {
@@ -40,6 +39,7 @@ import { LocationChip, LocationSheetHost } from "./guide/LocationPicker.js";
 import { LocationProvider } from "./guide/LocationProvider.js";
 import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
+import { ThemeProvider } from "./design/ThemeProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
 import { Catalog, PlaceSearch } from "./guide/Catalog.js";
 import { GuideProvider, RequireRegion, useGuide, type GuideEnv } from "./guide/context.js";
@@ -299,7 +299,6 @@ function HomeWeather(props: RoutesProps) {
 }
 
 function Home(props: RoutesProps) {
-  const { design } = useDesign();
   const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
@@ -321,10 +320,9 @@ function Home(props: RoutesProps) {
           {t("miniapp.staff.open")}
         </Link>
       )}
-      {design === "original" && <HomeAssistant {...props} />}
       {/* Сразу меню разделов; лента мест и быстрый поиск — ниже. */}
       <HomeSections hasVenue={venueOf(session) !== null} />
-      {design === "modern" && <HomeAssistant {...props} />}
+      <HomeAssistant {...props} />
       <HomePlaces />
       <SeasonTags />
       <div className="kosiv-meta-block">
@@ -878,7 +876,7 @@ export function App({
     <I18nProvider locale={effectiveLocale}>
       <FeatureFlagsProvider flags={flags}>
         <ThemeStyle />
-        <DesignProvider>
+        <ThemeProvider>
           <SeasonProvider webApp={webApp}>
             <main className="kosiv-shell" lang={effectiveLocale}>
               {state.status === "loading" || state.status === "error" ? (
@@ -915,7 +913,7 @@ export function App({
               )}
             </main>
           </SeasonProvider>
-        </DesignProvider>
+        </ThemeProvider>
       </FeatureFlagsProvider>
     </I18nProvider>
   );

@@ -17,6 +17,8 @@ test.describe("QR отеля demoHotel01", () => {
   test("«Про заклад» без ручного выбора, контекст запрошен один раз; a11y", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("venue-summary")).toHaveText("Ви відкрили гід: Тестовий готель");
+    // Карточка отеля на главной: название видно (venue-summary скрыт, его текст проверяется выше).
+    await expect(page.locator(".modern-host").getByText("Тестовий готель")).toBeVisible();
     await page.getByRole("link", { name: "Про заклад" }).click();
     const venue = page.getByTestId("venue");
     await expect(venue.getByRole("heading", { name: "Тестовий готель" })).toBeVisible();

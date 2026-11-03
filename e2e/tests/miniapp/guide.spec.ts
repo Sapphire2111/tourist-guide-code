@@ -32,7 +32,7 @@ test.describe("QR отеля demoHotel01", () => {
     ]);
     await expect(page.getByRole("link", { name: /Про заклад/ })).toHaveAttribute("href", "#/about");
     const more = page.getByRole("navigation", { name: "Ще для вашої подорожі" }).getByRole("link");
-    await expect(more).toHaveText(["Авто", "Де купити", "Допомога", "Де жити", "Гірські лижі", "Сервіси"]);
+    await expect(more).toHaveText(["Авто", "Де купити", "Допомога", /^Де жити/, "Гірські лижі", "Сервіси"]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });
     await expect(nav.getByRole("link", { name: "Головна" })).toHaveAttribute("aria-current", "page");
     // Стили на месте (защита от случайного удаления правил kosiv.css): нижняя навигация, карточки намерений.
