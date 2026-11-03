@@ -2,10 +2,30 @@
 // видит API «уже на странице» (map-config.ts: mapsApiOnPage) и не грузит настоящий. Маркеры, подписи, круги и линии —
 // обычные DOM-узлы внутри узла карты: тесты нажимают маркеры и проверяют подписи и маршрут.
 // Кластеры здесь не рисуются (фейк без проекции): в тестах мест меньше порога PlacesMap.CLUSTER_MIN.
+// Режим сверки дизайна (window.__gmFakeScatter, design-shots.spec.ts): условная подложка-топография, логотип и условия Google,
+// кнопки масштаба и маркеры на местах, как на эталоне; настоящие тайлы и подписи карты так не проверить.
 import type { Page } from "@playwright/test";
 
 function fakeGoogleMaps() {
   type Host = { node: HTMLElement };
+  const scatter = () => (window as unknown as { __gmFakeScatter?: boolean }).__gmFakeScatter === true;
+  // Доли области карты: первая — база, дальше места по удалённости (координаты прототипа x/360, y/360).
+  const SLOTS: [number, number][] = [
+    [50, 53],
+    [60, 54],
+    [32, 46],
+    [75, 40],
+    [26, 71],
+    [79, 68],
+    [18, 31],
+  ];
+  const TOPO = (night: boolean) => {
+    const c = night
+      ? ["#0E231B", "#143327", "#2B5B46", "#1E5B6E", "#2D4A3E", "#233D32"]
+      : ["#E3EFEA", "#C9E2D8", "#9BBDB0", "#7BC4D4", "#FFFFFF", "#F7FAF8"];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid slice"><rect width="360" height="360" fill="${c[0]}"/><path d="M0 0L140 0Q110 90 40 140L0 120ZM220 0L360 0L360 190Q260 160 240 80ZM0 240Q90 220 150 290L130 360L0 360ZM240 220Q300 200 360 250L360 360L210 360Z" fill="${c[1]}"/><g fill="none" stroke="${c[2]}" stroke-dasharray="3 3" opacity=".65"><circle cx="310" cy="60" r="55"/><circle cx="310" cy="60" r="85"/><circle cx="40" cy="310" r="65"/></g><path d="M35 0C95 85 130 140 165 195C200 250 265 295 330 360" fill="none" stroke="${c[3]}" stroke-width="14" opacity=".75"/><path d="M0 185Q110 170 180 190T360 175" fill="none" stroke="${c[4]}" stroke-width="8"/><path d="M180 190L215 110M120 180L95 265M245 185L285 255" fill="none" stroke="${c[5]}" stroke-width="4"/><circle cx="180" cy="190" r="145" fill="none" stroke="#E06D2B" stroke-width="1.5" stroke-dasharray="4 4"/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") center/cover`;
+  };
   const hostOf = (m: unknown): HTMLElement | null => (m as Host | null)?.node ?? null;
 
   class FakeMap {
@@ -18,12 +38,30 @@ function fakeGoogleMaps() {
       this.node.style.cssText =
         "position:relative;box-sizing:border-box;width:100%;height:100%;background:#e5e3df;overflow:hidden;padding:24px 0 0 24px";
       div.appendChild(this.node);
+      if (scatter()) {
+        const night = document.documentElement.dataset.theme === "night";
+        this.node.style.background = TOPO(night);
+        this.node.style.padding = "0";
+        const chrome = (css: string, text: string) => {
+          const n = document.createElement("div");
+          n.dataset.fake = "chrome";
+          n.style.cssText = `position:absolute;font:11px Arial,sans-serif;color:#333;${css}`;
+          n.textContent = text;
+          this.node.appendChild(n);
+        };
+        chrome("left:6px;bottom:4px;font:bold 15px Arial;color:#5f6368", "Google");
+        chrome("right:0;bottom:0;background:rgb(255 255 255 / 70%);padding:1px 5px", "Умови");
+        chrome(
+          "right:10px;top:50%;transform:translateY(-50%);width:40px;height:81px;background:#fff;border-radius:2px;font-size:20px;text-align:center;line-height:40px;box-shadow:0 1px 4px rgb(0 0 0 / 30%)",
+          "+ −",
+        );
+      }
     }
     // Отступы fitBounds (число или {top,right,bottom,left}) настоящая карта оставляет свободными от маркеров:
     // фейк без проекции раскладывает маркеры потоком, поэтому отступ сверху/слева применяется как padding узла.
     fitBounds(_b: unknown, padding?: number | { top?: number; left?: number }) {
       const p = typeof padding === "number" ? { top: padding, left: padding } : padding;
-      this.node.style.padding = `${p?.top ?? 0}px 0 0 ${p?.left ?? 0}px`;
+      if (!scatter()) this.node.style.padding = `${p?.top ?? 0}px 0 0 ${p?.left ?? 0}px`;
     }
     setCenter(c: unknown) {
       this.center = c;
@@ -40,6 +78,7 @@ function fakeGoogleMaps() {
     addListener() {
       return { remove() {} };
     }
+    setOptions() {}
     getMapCapabilities() {
       return { isAdvancedMarkersAvailable: true };
     }
@@ -90,6 +129,10 @@ function fakeGoogleMaps() {
     set map(m: unknown) {
       this._map = m;
       const host = hostOf(m);
+      if (host && scatter()) {
+        const [x, y] = SLOTS[host.querySelectorAll(".gm-fake-marker").length % SLOTS.length]!;
+        this.node.style.cssText = `position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-100%)`;
+      }
       if (host) host.appendChild(this.node);
       else this.node.remove();
     }
@@ -129,7 +172,7 @@ function fakeGoogleMaps() {
 
   const event = { addListenerOnce: () => ({ remove() {} }), trigger() {}, removeListener() {} };
   const libs: Record<string, unknown> = {
-    core: { LatLngBounds, event },
+    core: { LatLngBounds, event, ControlPosition: { RIGHT_CENTER: 8, RIGHT_BOTTOM: 12 } },
     maps: {
       Map: FakeMap,
       InfoWindow,

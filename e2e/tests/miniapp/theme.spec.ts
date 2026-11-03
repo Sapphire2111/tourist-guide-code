@@ -114,7 +114,7 @@ test("«Ніч»: контраст на главной, «Що поруч», с�
   await page.goto("/#/nearby");
   await expect(page.getByTestId("places-map")).toBeVisible();
   await expectNoSeriousA11yViolations(page);
-  await page.getByRole("button", { name: "Список", exact: true }).click();
+  await page.getByRole("button", { name: "Список ↓" }).click();
   await expect(page.getByTestId("place-item").first()).toBeVisible();
   await expectNoSeriousA11yViolations(page);
   await page.goto("/#/favorites");

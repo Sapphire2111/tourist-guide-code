@@ -25,10 +25,10 @@ test.describe("QR отеля demoHotel01", () => {
     // modern: четыре намерения в основном блоке, остальные разделы — в «Ще для вашої подорожі», «Про заклад» — карточка заведения.
     const intentions = page.getByTestId("home-sections").getByRole("link");
     await expect(intentions).toHaveText([
-      "Смачно поїсти",
-      "Відкрити місця поруч",
-      "Відпочити й відновитись",
-      "Знайти розваги",
+      "Де поїсти",
+      "Що поруч",
+      "Відпочити та зігрітися",
+      "Розваги та враження",
     ]);
     await expect(page.getByRole("link", { name: /Про заклад/ })).toHaveAttribute("href", "#/about");
     const more = page.getByRole("navigation", { name: "Ще для вашої подорожі" }).getByRole("link");
@@ -51,7 +51,7 @@ test.describe("QR отеля demoHotel01", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Смачно поїсти" }).click();
+    await page.getByRole("link", { name: "Де поїсти" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Де поїсти" })).toBeVisible();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const ad = page.getByTestId("place-item").filter({ hasText: "Піцерія «Реклама»" });
@@ -64,6 +64,8 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("place-item")).toHaveCount(1);
     await page.getByRole("button", { name: "Карта" }).click();
     await expect(page.getByTestId("places-map").locator(".gm-fake-map")).toBeAttached();
+    // Легенда — у карты каталога; в «Що поруч» значок раздела на капсуле маркера.
+    await expect(page.getByTestId("map-legend")).toContainText("Де поїсти");
     await expectNoSeriousA11yViolations(page);
 
     await page.getByRole("searchbox").fill("немає такого");
@@ -106,7 +108,7 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(sheet).toHaveCount(0);
     await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
 
-    await page.getByRole("link", { name: "Смачно поїсти" }).click();
+    await page.getByRole("link", { name: "Де поїсти" }).click();
     await expect(page.getByTestId("location-caption")).toHaveText("Локація: Татарів");
     await expect(page.getByTestId("place-item")).toHaveCount(1);
     await expect(page.getByTestId("place-item")).toContainText("Піцерія «Реклама»");
@@ -245,7 +247,7 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("«Що поруч» без геолокации: от базовой точки отеля, радиус; a11y", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Відкрити місця поруч" }).click();
+    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
     await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч: Тестовий готель");
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const state = apiMockState.get(page)!;
@@ -254,16 +256,14 @@ test.describe("QR отеля demoHotel01", () => {
     const card = page.getByTestId("place-item").first();
     await expect(card).toHaveCSS("border-top-style", "solid");
     expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
-    // В modern радиус свёрнут под «summary».
-    await page.locator("summary").click();
-    const slider = page.getByRole("slider", { name: "Радіус" });
-    await slider.fill("10000");
-    await expect(page.getByTestId("radius-value")).toHaveText("10 км");
+    const radius = page.getByRole("group", { name: "Радіус" });
+    await radius.getByRole("button", { name: "10 км" }).click();
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
     await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
     expect(state.searches.at(-1)).toMatchObject({ limit: "50" });
     await expect(page.getByTestId("places-map")).toBeVisible();
-    // Маркеры по разделам, легенда, подпись по нажатию: название + категория.
-    await expect(page.getByTestId("map-legend")).toContainText("Де поїсти");
+    // Легенды здесь нет; маркеры по разделам, подпись по нажатию: название + категория.
+    await expect(page.getByTestId("map-legend")).toHaveCount(0);
     await page.getByTestId("places-map").locator('.kosiv-pin[data-group="eat"]').first().click();
     await expect(page.locator(".kosiv-map-popup")).toBeVisible();
     await expectNoSeriousA11yViolations(page);
@@ -273,6 +273,7 @@ test.describe("QR отеля demoHotel01", () => {
     await context.clearPermissions();
     await page.goto("/");
     await page.getByTestId("near-me").click();
+    await expect(page.getByTestId("nearby-locate")).toBeVisible();
     await expect(page.getByTestId("geo-off")).toHaveText(
       "Геолокацію вимкнено. Показуємо місця поруч: Тестовий готель.",
     );
@@ -333,7 +334,7 @@ test.describe("тёмная тема Telegram", () => {
     await page.goto("/");
     await expect(page.getByTestId("home-sections")).toBeVisible();
     await expectNoSeriousA11yViolations(page);
-    await page.getByRole("link", { name: "Смачно поїсти" }).click();
+    await page.getByRole("link", { name: "Де поїсти" }).click();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     await expectNoSeriousA11yViolations(page);
     await page.goto("/#/help");
@@ -364,7 +365,7 @@ test.describe("сборка без ключа Google Maps", () => {
       if (/maps\.googleapis\.com/.test(r.url())) maps.push(r.url());
     });
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Відкрити місця поруч" }).click();
+    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     await expect(page.getByTestId("map-unavailable")).toHaveText("Карта недоступна. Нижче — список.");
     await expect(page.getByTestId("places-map")).toHaveCount(0);

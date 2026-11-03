@@ -32,12 +32,11 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
     .click();
   await expect(page.getByTestId("nearby-caption")).toContainText("Тестовий готель");
   await expect(page.getByTestId("places-map")).toBeVisible();
-  await page.locator("summary").click();
-  await expect(page.getByRole("slider")).toBeVisible();
-  await page.getByRole("slider").fill("1000");
-  await expect(page.getByTestId("radius-value")).toContainText("1");
-  await page.getByRole("slider").fill("500");
-  await page.locator("summary").click();
+  const radius = page.getByRole("group", { name: "Радіус" });
+  await radius.getByRole("button", { name: "1 км" }).click();
+  await expect(radius.getByRole("button", { name: "1 км" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
+  await radius.getByRole("button", { name: "500 м" }).click();
   const search = page.getByRole("searchbox", { name: "Знайти місце" });
   await page
     .getByRole("group", { name: "Категорії місць поруч" })
@@ -45,8 +44,12 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
     .click();
   await search.fill("Смерека");
   await expect(page.getByTestId("place-item")).toHaveCount(1);
-  await page.getByRole("button", { name: "Список", exact: true }).click();
-  await expect(page.getByTestId("places-map")).toHaveCount(0);
+  // «Список ↓»: карта 465 → 310 px, лист в зоне видимости; фильтры и запрос сохраняются.
+  const frame = page.locator(".modern-map-stage");
+  expect((await frame.boundingBox())!.height).toBe(465);
+  await page.getByRole("button", { name: "Список ↓" }).click();
+  await expect(frame).toHaveCSS("height", "310px");
+  await expect(page.getByTestId("nearby-status")).toBeInViewport();
   await expect(
     page
       .getByRole("group", { name: "Категорії місць поруч" })
@@ -65,7 +68,8 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
   await search.fill("немає такого місця");
   await expect(page.getByTestId("nearby-empty")).toBeVisible();
   await page.getByRole("button", { name: "Скинути фільтри" }).click();
-  await page.getByRole("button", { name: "Карта", exact: true }).click();
+  await page.getByRole("button", { name: "Розгорнути" }).click();
+  await expect(frame).toHaveCSS("height", "465px");
   await expect(page.getByTestId("places-map")).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("implemented-modern-nearby-map.png"),
@@ -78,18 +82,31 @@ test("modern narrow screen retains working list", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expectNoSeriousA11yViolations(page);
-  await page.getByRole("link", { name: "Відкрити місця поруч" }).click();
+  await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
   await expect(page.getByTestId("place-item").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // На 320 px панель поверх карты — два ряда без наезда, цели радиуса и категорий не меньше 44 px.
+  const search = await page.locator(".modern-search").boundingBox();
+  const radius = await page.locator(".modern-radius").boundingBox();
+  const chips = await page.locator(".modern-filters button").first().boundingBox();
+  expect(search!.y).toBe(radius!.y);
+  expect(radius!.x).toBeGreaterThanOrEqual(search!.x + search!.width);
+  expect(chips!.y).toBeGreaterThanOrEqual(search!.y + search!.height);
+  // Расширение цели — псевдоэлемент: точка выше видимой пилюли всё ещё попадает в неё.
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent, {
+    x: chips!.x + chips!.width / 2,
+    y: chips!.y - 3,
+  });
+  expect(hit).toContain("Усі поруч");
 });
 test.describe("without map provider", () => {
   test.use({ googleMaps: false });
   test("list remains available", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Відкрити місця поруч" }).click();
+    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
     await expect(page.getByTestId("map-unavailable")).toBeVisible();
     await expect(page.getByTestId("place-item").first()).toBeVisible();
-    await page.getByRole("button", { name: "Список", exact: true }).click();
+    await page.getByRole("button", { name: "Список ↓" }).click();
     await expect(page.getByTestId("place-item").first()).toBeVisible();
   });
 });

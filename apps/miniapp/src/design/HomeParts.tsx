@@ -23,13 +23,8 @@ export function SeasonTags() {
   const { t } = useT();
   const { season } = useSeason();
   return (
-    <section
-      aria-labelledby="season-tags-title"
-      style={{ display: "flex", flexDirection: "column", gap: 10 }}
-    >
-      <h2 id="season-tags-title" style={{ margin: 0 }}>
-        {t("miniapp.home.tags")}
-      </h2>
+    <section aria-labelledby="season-tags-title" className="modern-season">
+      <h2 id="season-tags-title">{t("miniapp.home.tags")}</h2>
       <ul className="kosiv-tags" data-testid="season-tags">
         {SEASON_CONFIG[season].tags.map((tag) => (
           <li key={tag.label}>

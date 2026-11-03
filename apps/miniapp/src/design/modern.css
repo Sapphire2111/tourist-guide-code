@@ -1,54 +1,119 @@
-/* Оформлення «Живий Горизонт Чорногори та Мольфарська Ватра» (Concept A + B).
-   Використовує реальні дані застосунку, високий контраст WCAG 2.1 AA і велике вікно карти в «Поруч». */
+/* Оформлення «Живий Горизонт Чорногори + Мольфарська Ватра» (ТЗ DESIGN_VISUAL_V2_SPEC: «День» = mix, «Ніч» = night).
+   Текст на помаранчевому — #c2521a (білий 4,66:1), а не #e06d2b (3,3:1): вимога WCAG AA важливіша за точний відтінок;
+   #e06d2b/#f26419 лишаються там, де під ними немає тексту (світіння, обводки, градієнт значка).
+   Сплошний background-color — завжди під градієнтами (axe рахує контраст по ньому). */
 html[data-design="modern"] {
-  --font-heading: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
-  --shadow-card: 0 12px 30px -10px rgb(15 34 26 / 14%), 0 2px 6px rgb(15 34 26 / 6%);
-  --app-bg: #eae4d7;
-  --app-surface: #faf7f0;
-  --app-surface-2: #e2dac9;
-  --app-border: #cdc2ad;
-  --app-text: #12241b;
-  --app-muted: #45544a;
+  --font-heading: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --shadow-card: 0 10px 24px -14px rgb(16 42 30 / 22%);
+  --nav-height: 50px;
+  --app-bg: #f4efe6;
+  --app-surface: #ffffff;
+  --app-surface-2: #eee7d9;
+  --app-border: #e2d9c5;
+  --app-text: #1c2822;
+  --app-muted: #55605a;
   --app-accent: #9e3616;
   --app-accent-ink: #8a2c0f;
   --app-accent-2: #14593d;
+  --app-accent-2-ink: #14593d;
   --app-pill-bg: #f9e4d2;
-  --color-bg: #eae4d7;
-  --color-surface: #e2dac9;
-  --color-text: #12241b;
-  --color-muted: #45544a;
+  --color-bg: #f4efe6;
+  --color-surface: #eee7d9;
+  --color-text: #1c2822;
+  --color-muted: #55605a;
   --color-button: #9e3616;
   --color-button-text: #ffffff;
   --color-link: #8a2c0f;
+  /* Темний верх екрана та фон листа; «Ніч» перекриває. */
+  --top-bg: #0e271d;
+  --top-mid: #1b4030;
+  --top-end: #f4efe6;
+  --top-text: #ffffff;
+  --top-muted: #a8c7bb;
+  --glass-bg: rgb(255 255 255 / 90%);
+  --glass-border: #ffffff;
+  --glass-text: #16382b;
+  --glass-muted: #36574a;
+  --sheet-bg: #fbf8f1;
+  --sheet-border: #e2d9c5;
+  --fire: #c2521a;
+  --hero-far: #7fa99b;
+  --hero-far-o: 0.45;
+  --hero-mid: #3b6e5c;
+  --hero-mid-o: 0.78;
+  --hero-near: #1e4635;
+  --hero-trees: #122b20;
+  --hero-lit: #fffdf9;
+  --hero-lit-o: 0.42;
+  --hero-mist: #ffffff;
+  --hero-mist-o: 0.3;
+  --hero-edge-o: 0;
+  --hero-stars-o: 0;
+  --art-far: #1e4e3a;
+  --art-mist: #ffffff;
+  --art-mist-o: 0.25;
 }
 
 html[data-design="modern"] body {
   background-color: var(--app-bg);
-  background-image:
-    radial-gradient(circle at 86% 2%, rgb(245 158 11 / 16%), transparent 38%),
-    radial-gradient(circle at 12% 14%, rgb(20 89 61 / 14%), transparent 44%),
-    linear-gradient(180deg, #e2dbc9 0%, #eae4d7 280px, #eae4d7 100%);
+}
+/* Фон «Поруч» і головної: темний смарагд угорі плавно переходить у крафт; без сегмента-смуги під шапкою. */
+html[data-screen="nearby"] body {
+  background-image: linear-gradient(
+    180deg,
+    var(--top-bg) 0,
+    var(--top-bg) 124px,
+    var(--top-mid) 45vh,
+    var(--top-end) 90vh
+  );
+  background-repeat: no-repeat;
+}
+html[data-screen="home"] body {
+  background-image: linear-gradient(
+    180deg,
+    var(--top-bg) 0,
+    var(--top-bg) 150px,
+    var(--top-mid) 400px,
+    var(--top-end) 820px
+  );
+  background-repeat: no-repeat;
 }
 
+/* Верхня смуга: компактна й зливається з темним верхом. Без transform і backdrop-filter (ТЗ §6.4). */
 html[data-design="modern"] .kosiv-top {
   gap: 6px;
-  padding-bottom: 8px;
   padding-top: calc(
     var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
-      var(--tg-content-safe-area-inset-top, 0px) + 8px
+      var(--tg-content-safe-area-inset-top, 0px) + 4px
   );
-  background-color: var(--app-surface);
-  border-bottom: 1.5px solid var(--app-border);
-  box-shadow: 0 4px 16px -8px rgb(15 34 26 / 12%);
+  padding-bottom: 4px;
+  padding-left: 10px;
+  padding-right: 10px;
+  background-color: var(--top-bg);
+  color: var(--top-text);
+}
+html[data-screen="inner"] .kosiv-top {
+  padding-bottom: 8px;
+  border-radius: 0 0 22px 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 90' preserveAspectRatio='none'%3E%3Cpath d='M0 75L55 28l60 30 80-44 75 41 65-31 65 28v38H0z' fill='%231e4e3a' opacity='.45'/%3E%3Cpath d='M0 82l85-37 80 25 90-34 90 32 55-20v42H0z' fill='%23123124' opacity='.55'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
 }
 html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
   width: 44px;
   min-width: 44px;
   height: 44px;
   border-radius: 14px;
-  background-color: #12281f;
+  background-color: #1d3b2e;
   color: #fde68a;
-  border: 1px solid #295240;
+  border: 1px solid #3a6450;
+}
+html[data-design="modern"] .kosiv-top :focus-visible,
+html[data-design="modern"] .modern-nearby-head :focus-visible {
+  outline-color: #fde68a;
+}
+html[data-design="modern"] .kosiv-top-note {
+  color: #fde68a;
 }
 
 .modern-help {
@@ -59,9 +124,10 @@ html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
   min-height: 44px;
   min-width: 44px;
   padding: 0 11px;
+  margin-right: auto;
   border-radius: 14px;
   background-color: #9e2a1c;
-  border: 1px solid #7d1f14;
+  border: 1px solid #c8553f;
   color: #fff8f0;
   font-size: 12px;
   font-weight: 700;
@@ -73,199 +139,359 @@ html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
 }
 
 html[data-design="modern"] .kosiv-content {
-  gap: 16px;
+  gap: 14px;
+  padding-top: 12px;
+  padding-bottom: calc(
+    var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--nav-height) + 16px
+  );
 }
 html[data-design="modern"] .kosiv-content h1 {
-  font-size: clamp(25px, 6.8vw, 33px);
-  line-height: 1.14;
-  letter-spacing: -0.035em;
-  font-weight: 800;
+  font-size: clamp(27px, 7.4vw, 34px);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  font-weight: 700;
 }
 html[data-design="modern"] .kosiv-content h2 {
-  font-size: 20px;
-  line-height: 1.24;
-  letter-spacing: -0.025em;
-  font-weight: 750;
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 700;
 }
 
+/* Привітання та «Локація» на головній лежать на темному верху. */
+html[data-screen="home"] .kosiv-content {
+  padding-top: 2px;
+  gap: 10px;
+}
 html[data-design="modern"] .kosiv-welcome {
   gap: 3px;
 }
-html[data-design="modern"] .kosiv-welcome-hello {
-  font-size: 13px;
+html[data-screen="home"] .kosiv-welcome {
+  background-color: var(--top-bg);
+  color: var(--top-text);
+}
+html[data-screen="home"] .kosiv-welcome:not(:has(> *:not([data-testid="venue-summary"]))) {
+  display: none;
+}
+html[data-screen="home"] .kosiv-welcome-hello {
+  font-size: 13.5px;
   font-weight: 700;
-  color: var(--app-muted);
+  font-family: var(--font-body);
+  color: var(--top-text);
 }
-html[data-design="modern"] .kosiv-welcome-sub {
+html[data-screen="home"] .kosiv-welcome-sub,
+html[data-screen="home"] .kosiv-welcome .kosiv-muted {
   font-size: 13px;
+  color: var(--top-muted);
 }
-
-/* Плашка локації та погоди на головній: темний карпатський смарагд і бурштин */
+html[data-screen="home"] .kosiv-welcome a {
+  color: #fde68a;
+}
+html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
+  display: none;
+}
 html[data-design="modern"] .loc-chip,
 html[data-design="modern"] .wx-chip {
-  background-color: #132a20;
-  color: #fff8f0;
-  border: 1px solid #2b5442;
-  border-radius: 16px;
-  box-shadow: 0 6px 18px -6px rgb(15 34 26 / 24%);
+  min-height: 40px;
+  background-color: #1d3b2e;
+  color: #ffffff;
+  border: 1px solid #3a6450;
+  border-radius: 14px;
 }
 html[data-design="modern"] .loc-chip svg {
-  color: #fbbf24;
-}
-
-/* Поле ШІ-асистента з акцентом живої ватри */
-html[data-design="modern"] .assistant-pill {
-  background-color: var(--app-surface);
-  border: 1.5px solid #c9b89e;
-  border-radius: 22px;
-  box-shadow: 0 12px 28px -12px rgb(158 54 22 / 20%);
-}
-html[data-design="modern"] .assistant-pill:focus-within {
-  border-color: var(--app-accent);
-  box-shadow: 0 0 0 3px rgb(158 54 22 / 18%);
+  color: #f6ae2d;
 }
 
 .modern-home {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-/* Герой-панорама «Живий Горизонт Чорногори та Мольфарська Ватра» */
-.modern-intro {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+/* Hero: панорама на весь блок, поверх неї — заголовок, скляне поле ассистента, теги, картка закладу. */
+.modern-hero {
   position: relative;
   overflow: hidden;
-  padding: 22px 18px;
-  border-radius: 26px;
-  background-color: #0e241b;
-  background-image:
-    radial-gradient(circle at 84% 24%, rgb(245 158 11 / 28%), transparent 46%),
-    linear-gradient(155deg, #0b1d15 0%, #163628 56%, #2c2119 100%);
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px 12px;
+  border-radius: 28px;
   border: 1.5px solid #2d5644;
-  box-shadow: 0 18px 40px -12px rgb(11 29 21 / 38%);
-  color: #fff8f0;
+  background-color: #0b1d16;
+  background-image:
+    radial-gradient(circle at 50% 82%, rgb(242 100 25 / 28%), transparent 58%),
+    linear-gradient(180deg, #0b1d16 0%, #16382b 56%, #274235 100%);
+  box-shadow: 0 18px 40px -14px rgb(11 29 21 / 50%);
+  color: #ffffff;
 }
-.modern-intro > div {
-  flex: 1;
-  min-width: 0;
-  z-index: 1;
+.modern-hero-art,
+.modern-hero-rose {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
 }
-html[data-design="modern"] .modern-intro h2 {
-  max-width: 330px;
-  font-size: clamp(24px, 6.8vw, 32px);
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-  margin: 0 0 8px;
-  color: #fff8f0;
+.modern-hero-art {
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
-.modern-intro p {
-  color: #e5dec9;
-  font-size: 13.5px;
-  line-height: 1.5;
-  max-width: 290px;
+.modern-hero-rose {
+  top: 10px;
+  right: 10px;
+  width: 58px;
+  height: 58px;
+}
+.modern-hero-far {
+  fill: var(--hero-far);
+  opacity: var(--hero-far-o);
+}
+.modern-hero-edge {
+  stroke: #f6ae2d;
+  stroke-width: 1;
+  opacity: var(--hero-edge-o);
+}
+.modern-hero-lit {
+  fill: var(--hero-lit);
+  opacity: var(--hero-lit-o);
+}
+.modern-hero-mid {
+  fill: var(--hero-mid);
+  opacity: var(--hero-mid-o);
+}
+.modern-hero-near {
+  fill: var(--hero-near);
+}
+.modern-hero-trees {
+  fill: var(--hero-trees);
+}
+.modern-hero-stars {
+  fill: #f6ae2d;
+  stroke: #f6ae2d;
+  stroke-width: 0.7;
+  opacity: var(--hero-stars-o);
+}
+.modern-hero-mist {
+  fill: var(--hero-mist);
+  opacity: var(--hero-mist-o);
+  animation: modern-mist 8s ease-in-out infinite;
+}
+.modern-hero-mist-slow {
+  animation-duration: 12s;
+}
+.modern-nearby-art ellipse {
+  animation: modern-mist 8s ease-in-out infinite;
+}
+@keyframes modern-mist {
+  50% {
+    transform: translateX(12px);
+  }
+}
+.modern-hero-head {
+  padding: 0 62px 92px 4px;
+}
+html[data-design="modern"] .modern-hero h2#sections-title {
+  margin: 0 0 4px;
+  font-size: clamp(27px, 7.6vw, 32px);
+  line-height: 1.08;
+  color: #ffffff;
+  text-shadow: 0 2px 10px rgb(12 32 24 / 65%);
+}
+.modern-hero-head p {
   margin: 0;
+  color: #e5efe9;
+  font-size: 13px;
+  line-height: 1.35;
+  text-shadow: 0 1px 6px rgb(12 32 24 / 75%);
 }
-.modern-mountains {
-  width: 34%;
-  max-width: 148px;
-  flex-shrink: 0;
-  color: #f59e0b;
+.modern-hero-glass {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border-radius: 24px;
+  background-color: rgb(255 255 255 / 86%);
+  border: 1px solid #ffffff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 24px rgb(9 25 19 / 28%);
+  color: var(--glass-text);
+}
+html[data-design="modern"] .assistant-pill {
+  min-height: 48px;
+  padding: 2px 3px 2px 12px;
+  border-radius: 18px;
+  background-color: rgb(22 56 43 / 7%);
+  border: 1px solid rgb(22 56 43 / 16%);
+  box-shadow: none;
+}
+html[data-design="modern"] .kosiv-content .assistant-pill input {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--glass-text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+html[data-design="modern"] .kosiv-content .assistant-pill input::placeholder {
+  color: var(--glass-muted);
+}
+html[data-design="modern"] .assistant-pill-icon {
+  color: #b83d18;
+}
+html[data-design="modern"] .assistant-pill:focus-within {
+  border-color: #b83d18;
+  outline-color: #b83d18;
+}
+html[data-design="modern"] .assistant-action {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background-color: var(--fire);
+  color: #ffffff;
+}
+.modern-hero-glass [data-testid="assistant-box"] {
+  gap: 0;
+}
+.modern-hero-glass .assistant-status:empty {
+  display: none;
+}
+/* Приклади й сезонні теги — по одному прокручуваному рядку у склі. */
+.modern-hero-glass .assistant-examples,
+.modern-season .kosiv-tags {
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  margin: 2px -10px -2px;
+  padding: 4px 10px;
+  scrollbar-width: none;
+}
+.modern-season .kosiv-tags::-webkit-scrollbar {
+  display: none;
+}
+.modern-hero-glass .kosiv-tag {
+  flex: none;
+  position: relative;
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 0;
+  border-radius: 9999px;
+  background-color: #e4e9e3;
+  color: var(--glass-text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.modern-season > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-/* Картка готелю / базової точки QR */
+/* Скляна картка закладу (QR) поверх лісу. */
 .modern-host {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 15px 16px;
-  background-color: #142b21;
-  background-image: linear-gradient(135deg, #12281f 0%, #243326 100%);
-  border: 1.5px solid #315c48;
-  border-radius: 22px;
-  color: #fff8f0;
+  gap: 10px;
+  padding: 9px 12px;
+  background-color: rgb(255 255 255 / 86%);
+  border: 1px solid #ffffff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  color: var(--glass-text);
   text-decoration: none;
-  box-shadow: 0 12px 28px -10px rgb(15 34 26 / 28%);
+  box-shadow: 0 8px 20px rgb(9 25 19 / 24%);
 }
 .modern-host-icon {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 46px;
-  border-radius: 14px;
-  background-color: #2b4d3c;
-  color: #fcd34d;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background-color: #f9e4d2;
+  color: #9e3616;
   flex-shrink: 0;
+}
+.modern-host-icon svg {
+  width: 20px;
+  height: 20px;
 }
 .modern-host > span:nth-child(2) {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
 }
 .modern-host strong {
-  font-size: 15px;
-  color: #fff8f0;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--glass-text);
   overflow-wrap: anywhere;
 }
 .modern-host small {
   font-size: 11.5px;
-  color: #cfe0d7;
+  color: var(--glass-muted);
 }
 .modern-host-link {
   margin-left: auto;
+  flex-shrink: 0;
   display: flex;
-  gap: 5px;
+  gap: 3px;
   align-items: center;
   font-size: 12px;
   font-weight: 700;
-  color: #fde68a;
+  color: #9e3616;
 }
 
-/* Bento-сітка головних намірів у стилі Мольфарської Ватри та Чорногори */
+/* Bento 2×2 */
 .modern-intentions {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 .modern-intention {
   height: 100%;
-  min-height: 148px;
+  min-height: 118px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
   align-items: flex-start;
   position: relative;
   overflow: hidden;
-  padding: 18px 16px;
+  padding: 14px;
   border-radius: 24px;
   background-color: #1f241f;
   background-image:
-    radial-gradient(circle at 90% 15%, rgb(234 88 12 / 26%), transparent 54%),
+    radial-gradient(circle at 90% 15%, rgb(246 174 45 / 28%), transparent 54%),
     linear-gradient(160deg, #1d2922 0%, #2e2119 100%);
   color: #fff8f0;
   text-decoration: none;
   border: 1.5px solid #593e2e;
-  box-shadow: 0 12px 26px -10px rgb(18 36 27 / 24%);
+  box-shadow: 0 12px 26px -12px rgb(18 36 27 / 40%);
   transition:
     transform 0.16s ease,
-    border-color 0.16s ease,
-    box-shadow 0.16s ease;
+    border-color 0.16s ease;
 }
 .modern-intention[data-kind="nearby"] {
   background-color: #0f291e;
   background-image:
-    radial-gradient(circle at 88% 18%, rgb(16 185 129 / 24%), transparent 54%),
+    radial-gradient(circle at 88% 18%, rgb(45 212 191 / 26%), transparent 54%),
     linear-gradient(160deg, #0d251b 0%, #183f2e 100%);
   border-color: #2e634c;
-  color: #fff8f0;
 }
 .modern-intention[data-kind="relax"] {
   background-color: #fdf3e7;
@@ -283,13 +509,14 @@ html[data-design="modern"] .modern-intro h2 {
   width: 36px;
   height: 36px;
   padding: 7px;
+  box-sizing: border-box;
   border-radius: 13px;
   background-color: #3d281d;
   color: #fdba74;
 }
 .modern-intention[data-kind="nearby"] > svg:first-child {
   background-color: #1b4332;
-  color: #6ee7b7;
+  color: #5eead4;
 }
 .modern-intention[data-kind="relax"] > svg:first-child {
   background-color: #9e3616;
@@ -302,62 +529,59 @@ html[data-design="modern"] .modern-intro h2 {
 .modern-intention > svg:last-child {
   position: absolute;
   right: 14px;
-  top: 18px;
+  top: 16px;
   opacity: 0.72;
 }
 .modern-intention span {
-  max-width: 180px;
-  font-size: clamp(15.5px, 4.5vw, 19px);
-  line-height: 1.22;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-family: var(--font-heading);
+  font-size: clamp(19px, 5.4vw, 22px);
+  line-height: 1.12;
+  font-weight: 700;
+  -webkit-text-stroke: 0.25px currentcolor;
 }
 .modern-intention:hover {
   border-color: #f59e0b;
   transform: translateY(-2px);
-  box-shadow: 0 16px 30px -10px rgb(15 34 26 / 30%);
 }
 
-/* Велика кнопка геолокації «Що поруч зі мною зараз» (Полум'я Ватри) */
+/* Кнопка «Що поруч зі мною зараз»: полум'я ватри. */
 .modern-location-action {
-  min-height: 54px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px;
-  border-radius: 22px;
+  padding: 10px 16px;
+  border-radius: 20px;
   background-color: #9e3616;
   background-image: linear-gradient(135deg, #b33c18 0%, #872b0f 100%);
   border: 1.5px solid #d97706;
-  color: #fff8f0;
+  color: #ffffff;
   font-size: 14.5px;
   font-weight: 750;
   text-decoration: none;
-  box-shadow: 0 12px 28px -10px rgb(158 54 22 / 40%);
+  box-shadow: 0 12px 28px -12px rgb(158 54 22 / 50%);
 }
-.modern-location-action > svg:first-child {
+.modern-location-action > svg {
   color: #fde68a;
   flex-shrink: 0;
 }
 .modern-location-action > svg:last-child {
   margin-left: auto;
-  color: #fde68a;
-  flex-shrink: 0;
 }
 
-/* Додаткові розділи (плитки сервісів) */
+/* Додаткові розділи */
 .modern-utilities {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .modern-utilities a {
-  min-height: 78px;
+  min-height: 74px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
   padding: 10px 6px;
   border: 1.5px solid var(--app-border);
   border-radius: 18px;
@@ -367,7 +591,7 @@ html[data-design="modern"] .modern-intro h2 {
   font-size: 12px;
   font-weight: 700;
   background-color: var(--app-surface);
-  box-shadow: 0 6px 16px -8px rgb(15 34 26 / 12%);
+  box-shadow: var(--shadow-card);
 }
 .modern-utilities small {
   color: var(--app-muted);
@@ -382,274 +606,252 @@ html[data-design="modern"] .modern-intro h2 {
 }
 
 /* Картки місць у списках */
-html[data-design="modern"] .kosiv-place {
-  border-width: 1.5px;
-  border-color: var(--app-border);
-  background-color: var(--app-surface);
+html[data-design="modern"] .kosiv-card {
+  border-color: #e5dec9;
+  border-radius: 20px;
   box-shadow: var(--shadow-card);
-  border-radius: 22px;
+}
+html[data-design="modern"] .kosiv-place {
+  border-width: 1px;
   overflow: hidden;
 }
 html[data-design="modern"] .kosiv-place-title {
-  font-family: var(--font-body);
-  font-size: 17px;
-  font-weight: 750;
-  letter-spacing: -0.02em;
+  font-size: 19px;
+  line-height: 1.15;
+  -webkit-text-stroke: 0.2px currentcolor;
 }
-/* Виразний бейдж відстані в картці місця */
-html[data-design="modern"] .kosiv-place-head > .kosiv-chip {
-  background-color: #14593d;
-  color: #ffffff;
-  border: 1px solid #0e422d;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
+html[data-design="modern"] .kosiv-tag,
+html[data-design="modern"] .kosiv-toggle {
+  border-color: var(--app-border);
 }
 
-/* Нижня навігація: темний смарагдовий просторовий док із золотим вогнем ватри */
+/* Нижній док: темний смарагд, активна вкладка — золото; значок і підпис в один рядок, як на еталоні. */
 html[data-design="modern"] .kosiv-nav {
-  background-color: #0f261d;
+  padding-top: 3px;
+  background-color: #16382b;
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-radius: 24px 24px 0 0;
-  box-shadow: 0 -8px 30px rgb(9 25 19 / 28%);
-  border-top: 1.5px solid #295240;
+  box-shadow: 0 -4px 18px rgb(9 25 19 / 18%);
+  border-top: 1px solid #2f5b48;
 }
 html[data-design="modern"] .kosiv-nav-item {
-  font-size: 11px;
-  font-weight: 650;
-  color: #dce7e1;
+  flex-direction: row;
+  gap: 2px;
+  min-height: 44px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e3ece7;
+}
+html[data-design="modern"] .kosiv-nav-icon {
+  width: 18px;
+  height: 18px;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] {
-  color: #fde68a;
+  color: #f6ae2d;
+  font-weight: 800;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] .kosiv-nav-icon {
-  background-color: #f59e0b;
-  color: #10221a;
-  border-radius: 14px;
+  background: transparent;
 }
 
 /* ==========================================================================
-   Розділ «Що поруч» — Велике вікно карти + список від ближчого до дальшого
+   «Що поруч» (§4): шапка на горах, велике вікно карти, лист зі списком
    ========================================================================== */
+html[data-screen="nearby"] .kosiv-content {
+  padding: 0 0 0;
+  gap: 0;
+}
 .modern-nearby {
   --app-accent: #14593d;
   --app-accent-ink: #114b33;
   --app-pill-bg: #e3f1eb;
   --color-button: #14593d;
   --color-link: #114b33;
+  display: flex;
+  flex-direction: column;
 }
-.modern-nearby > .tg-stack {
-  gap: 10px !important;
+/* Загрузка, помилка й порожній стан лежать на темному верху — картка з власним фоном. */
+.modern-nearby > p,
+.modern-nearby > .kosiv-card {
+  margin: 8px 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background-color: var(--app-surface);
+  color: var(--app-text);
 }
 
-/* Компактна карпатська шапка «Поруч» із хребтами, туманом, радіусом і геолокацією */
+/* Ярус 1: шапка прямо на фоні сторінки */
 .modern-nearby-head {
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 14px 12px;
-  border-radius: 24px;
-  background-color: #10261e;
-  background-image:
-    radial-gradient(circle at 86% 18%, rgb(242 100 25 / 28%), transparent 46%),
-    linear-gradient(155deg, #0d2119 0%, #16382b 58%, #244a38 100%);
-  border: 1.5px solid #295240;
-  color: #fff8f0;
-  box-shadow: 0 14px 32px -12px rgb(9 25 19 / 36%);
+  gap: 6px;
+  padding: 2px 10px 8px 14px;
+  background-color: var(--top-bg);
+  color: var(--top-text);
 }
 .modern-nearby-art {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   width: 100%;
-  height: 68px;
+  height: 100%;
   pointer-events: none;
+}
+.modern-nearby-art path:first-child {
+  fill: var(--art-far);
+  opacity: 0.45;
+}
+.modern-nearby-art path:nth-child(2) {
+  fill: #123124;
+  opacity: 0.55;
+}
+.modern-nearby-art ellipse {
+  fill: var(--art-mist);
+  opacity: var(--art-mist-o);
 }
 .modern-nearby-titles {
   position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-.modern-nearby-heading {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.modern-nearby-heading > h1 {
-  margin: 0;
-  font-family: "Cormorant Garamond", Georgia, serif;
-  font-size: clamp(20px, 5.5vw, 24px) !important;
-  line-height: 1.1;
-  letter-spacing: 0;
-  font-weight: 700;
-  color: #ffffff;
-}
-.modern-nearby-size {
-  flex-shrink: 0;
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  border: 1px solid rgb(255 255 255 / 22%);
-  background-color: #1d3b2e;
-  color: #ffffff;
-  font: 700 12px/1.2 var(--font-body);
-  cursor: pointer;
-}
-.modern-nearby [data-testid="nearby-caption"] {
-  margin: 0;
-  color: #fde68a;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
+  gap: 8px;
 }
 .modern-nearby-badge {
   width: 32px;
   height: 32px;
+  box-sizing: border-box;
   border-radius: 12px;
-  background-color: #2a3a2a;
+  background-color: #3a3a1f;
   border: 1px solid rgb(246 174 45 / 40%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #f6ae2d;
+  font-size: 15px;
+  line-height: 1;
   flex-shrink: 0;
 }
-.modern-nearby-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-.modern-nearby .kosiv-range {
-  flex: 1 1 0;
+.modern-nearby-heading {
+  flex: 1;
   min-width: 0;
-  padding: 8px 12px;
-  background-color: #173629;
-  border: 1px solid #315e4a;
-  border-radius: 14px;
-  color: #fff8f0;
 }
-.modern-nearby .kosiv-range summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 26px;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff8f0;
-  cursor: pointer;
-}
-.modern-nearby .kosiv-range summary span {
-  padding: 2px 9px;
-  border-radius: 9999px;
-  background-color: #f59e0b;
-  color: #10221a;
-  font-weight: 800;
-}
-.modern-nearby .kosiv-range summary span::after {
-  content: "⌄" / "";
-  padding-left: 6px;
-}
-/* Підпис і значення вже в summary — другий рядок лишаємо тільки скрінрідеру */
-.modern-nearby .kosiv-range-head {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.modern-nearby .kosiv-range[open] summary {
-  margin-bottom: 10px;
-}
-html[data-design="modern"] .modern-nearby .modern-locate {
-  flex: 1 1 0;
-  min-width: 0;
-  background: #9e3616 !important;
+html[data-design="modern"] .modern-nearby-heading > h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.08;
+  letter-spacing: 0;
   color: #ffffff;
-  border: 1px solid #d97706;
-  border-radius: 14px !important;
-  font-size: 12.5px;
-  font-weight: 700;
+}
+.modern-nearby [data-testid="nearby-caption"] {
+  margin: 0 0 1px;
+  color: var(--top-muted);
+  font-size: 12px;
   line-height: 1.2;
-  min-height: 44px;
-  padding: 6px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.modern-nearby-results {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.modern-nearby [data-testid="nearby-caption"] b {
+  color: #f6ae2d;
+  font-weight: 700;
 }
-
-/* Піни-капсули з відстанню («120 м», «240 м») на карті в стилі Мольфарської Ватри.
-   Колір групи (--pin-color) — у значку й обводці, фон білий: текст #12211a на білому має контраст >12:1. */
-html[data-design="modern"] .kosiv-pin[data-distance] {
+.modern-locate,
+.modern-nearby-size {
+  position: relative;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  width: auto;
-  height: auto;
-  min-height: 30px;
-  padding: 4px 10px 4px 7px;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.modern-locate {
+  width: 44px;
+  padding: 0;
+  background-color: #b83d18;
+  border: 1px solid rgb(246 174 45 / 55%);
+  color: #fde68a;
+}
+.modern-locate svg {
+  width: 20px;
+  height: 20px;
+}
+.modern-locate[aria-busy="true"] {
+  cursor: progress;
+}
+.modern-locate[aria-busy="true"] svg {
+  animation: modern-spin 1.4s linear infinite;
+}
+@keyframes modern-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.modern-nearby-size {
   gap: 4px;
-  border-radius: 9999px;
-  background: #ffffff;
-  color: #12211a;
-  border: 2px solid var(--pin-color, #d4dfd8);
-  font: 800 11px/1 var(--font-body);
-  box-shadow: 0 8px 18px rgb(0 0 0 / 18%);
-}
-html[data-design="modern"] .kosiv-pin[data-distance] svg {
-  stroke: var(--pin-color, #12211a);
-  flex-shrink: 0;
-}
-html[data-design="modern"] .kosiv-pin[data-distance]::after {
-  content: attr(data-distance);
+  padding: 4px 9px;
+  background-color: #2b4539;
+  background-color: rgb(255 255 255 / 15%);
+  border: 1px solid rgb(255 255 255 / 22%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  font: 700 12px/1.15 var(--font-body);
   white-space: nowrap;
 }
-/* Найближче: помаранчевий фон з білим текстом (#b83d18 → #9e3616, контраст ≥5,9:1), група — кільцем навколо. */
-html[data-design="modern"] .kosiv-pin[data-closest="true"] {
-  background: linear-gradient(135deg, #b83d18 0%, #9e3616 100%);
-  color: #ffffff;
-  border-color: #ffffff;
-  transform: translateY(50%) scale(1.06);
-  box-shadow:
-    0 0 0 3px var(--pin-color, #b83d18),
-    0 10px 24px rgb(242 100 25 / 45%);
-}
-html[data-design="modern"] .kosiv-pin[data-closest="true"] svg {
-  stroke: #ffffff;
+.modern-nearby-note {
+  position: relative;
+  margin: 0;
+  color: #fde68a;
+  font-size: 12.5px;
+  line-height: 1.3;
 }
 
-/* Велике вікно карти майже на весь екран + плаваючі скляні капсули зверху */
+/* Ярус 2: вікно карти 465/310 px: рамка 2 px, радіус 28 */
 .modern-map-stage {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
-  border-radius: 28px;
-  background-color: #e4ede8;
-  background-image: linear-gradient(180deg, #dce8e1 0%, #eef4f0 100%);
-  border: 2px solid #ffffff;
-  box-shadow: 0 22px 48px -12px rgb(15 34 26 / 28%);
-}
-.modern-map-overlay {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  margin: 0 10px;
+  padding: 8px;
+  overflow: hidden;
+  /* Низ 16, а не 28: кут 28 px зрізав би логотип і «Умови» Google, які притиснуті до нижніх кутів карти. */
+  border-radius: 28px 28px 16px 16px;
+  background-color: #e3efea;
+  border: 2px solid rgb(255 255 255 / 90%);
+  box-shadow: 0 10px 28px rgb(16 42 30 / 18%);
 }
 .modern-map-stage:has([data-testid="places-map"]) {
   padding: 0;
-  overflow: hidden;
+}
+.modern-map-panel {
+  position: relative;
+}
+html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
+  height: 461px !important;
+  border-radius: 0 !important;
+}
+.modern-nearby[data-map-mode="split"] .modern-map-panel [data-testid="places-map"] {
+  height: 306px !important;
+}
+.modern-map-panel > p {
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background-color: var(--app-surface);
+  color: var(--app-text);
+}
+
+/* Панель поверх карти — рівно два ряди */
+.modern-map-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .modern-map-stage:has([data-testid="places-map"]) .modern-map-overlay {
   position: absolute;
@@ -659,165 +861,242 @@ html[data-design="modern"] .kosiv-pin[data-closest="true"] svg {
   z-index: 5;
   pointer-events: none;
 }
-.modern-map-stage:has([data-testid="places-map"]) .modern-toolbar,
-.modern-map-stage:has([data-testid="places-map"]) .modern-filters {
+.modern-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   pointer-events: auto;
 }
-
-.modern-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
+.modern-search,
+.modern-radius {
+  box-sizing: border-box;
+  height: 44px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 14px rgb(15 34 26 / 14%);
 }
 .modern-search {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border: 1px solid #d5e0da;
-  border-radius: 16px;
-  background-color: #ffffff;
-  color: #14593d;
-  min-width: 0;
-  box-shadow: 0 8px 24px rgb(15 34 26 / 12%);
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--glass-text);
 }
-html[data-design="modern"] .modern-search input {
-  border: 0;
-  background: transparent;
-  padding: 10px 8px;
-  min-width: 0;
+.modern-search svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+html[data-design="modern"] .kosiv-content .modern-search input[type="search"] {
+  flex: 1;
   width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
-  font-size: 13.5px;
-  color: #12211a;
+  font-size: 13px;
+  color: var(--glass-text);
+  text-overflow: ellipsis;
 }
-.modern-view-switch {
+html[data-design="modern"] .kosiv-content .modern-search input::placeholder {
+  color: var(--glass-muted);
+  opacity: 1;
+}
+.modern-radius {
+  position: relative;
+  flex: 0 1 auto;
+  max-width: 48%;
   display: flex;
-  border: 1px solid #d5e0da;
+  gap: 2px;
   padding: 3px;
-  gap: 3px;
-  border-radius: 16px;
-  background-color: #ffffff;
-  box-shadow: 0 8px 24px rgb(15 34 26 / 12%);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.modern-view-switch button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 44px;
-  padding: 0 11px;
-  font: 700 12.5px var(--font-body);
+.modern-radius::-webkit-scrollbar,
+.modern-filters::-webkit-scrollbar {
+  display: none;
+}
+.modern-radius button {
+  flex: none;
+  position: relative;
+  min-height: 36px;
+  padding: 0 9px;
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: #12211a;
+  color: var(--glass-text);
+  font: 800 12.5px/1 var(--font-body);
+  white-space: nowrap;
   cursor: pointer;
 }
-.modern-view-switch button svg {
-  width: 16px;
-  height: 16px;
-}
-.modern-view-switch button[aria-pressed="true"] {
-  background-color: #14593d;
+.modern-radius button[aria-pressed="true"] {
+  background-color: var(--fire);
   color: #ffffff;
 }
-
+/* Цілі дотику 44 px при візуальній висоті як на еталоні: невидиме розширення кнопки. */
+.modern-radius button::after,
+.modern-filters button::after,
+.modern-hero-glass .kosiv-tag::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
 .modern-filters {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 2px 1px 4px;
-  scrollbar-width: thin;
+  margin: -4px -10px;
+  padding: 4px 10px;
+  scrollbar-width: none;
+  pointer-events: none;
 }
 .modern-filters button {
+  flex: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
-  gap: 6px;
-  min-height: 44px;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 11px;
   border-radius: 9999px;
-  border: 1px solid #d5e0da;
-  padding: 6px 13px;
-  background-color: #ffffff;
-  color: #12211a;
-  font: 700 12.5px var(--font-body);
+  border: 1px solid var(--glass-border);
+  background-color: rgb(255 255 255 / 88%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--glass-text);
+  font: 700 12px/1 var(--font-body);
+  white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgb(15 34 26 / 8%);
-}
-.modern-filters button svg {
-  width: 16px;
-  height: 16px;
+  pointer-events: auto;
+  box-shadow: 0 3px 8px rgb(15 34 26 / 14%);
 }
 .modern-filters button[aria-pressed="true"] {
   color: #ffffff;
-  background-color: #14593d;
-  border-color: #0e422d;
-  box-shadow: 0 6px 16px rgb(20 89 61 / 28%);
+  background-color: #16382b;
+  border-color: rgb(246 174 45 / 50%);
 }
 
-/* Велике вікно карти майже на весь екран при відкритті «Поруч» */
-.modern-map-panel {
+/* Маркери-капсули: значок категорії + точна відстань */
+html[data-design="modern"] .kosiv-pin[data-distance] {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 10px;
+  gap: 4px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 95%);
+  color: #16382b;
+  border: 1px solid rgb(22 56 43 / 25%);
+  font: 800 12px/1 var(--font-body);
+  box-shadow: 0 4px 10px rgb(15 34 26 / 20%);
+}
+html[data-design="modern"] .kosiv-pin[data-distance]::after {
+  content: attr(data-distance);
+  white-space: nowrap;
+}
+html[data-design="modern"] .kosiv-pin[data-closest="true"] {
+  background-color: #b83d18;
+  background-image: linear-gradient(135deg, #c2521a, #b83d18);
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  transform: translateY(50%) scale(1.08);
+  box-shadow: 0 0 16px rgb(242 100 25 / 75%);
+  z-index: 2;
+}
+/* Базова точка та «Ви тут»: темна точка, пульс вогню, коротка підпис. */
+.modern-map-stage .kosiv-pin-base {
   position: relative;
+  background: #16382b;
+  border-color: #ffffff;
+  overflow: visible;
+}
+.modern-map-stage .kosiv-pin-base::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  z-index: -1;
+  border-radius: 9999px;
+  background: #e06d2b;
+  opacity: 0.35;
+  animation: kosiv-me-pulse 2.4s ease-out infinite;
+}
+.modern-map-stage .kosiv-pin-base[data-label]::after,
+.modern-map-stage .kosiv-me[data-label]::after {
+  content: attr(data-label);
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  translate: -50% 0;
+  max-width: 130px;
   overflow: hidden;
-  border-radius: 26px;
-  background-color: #dce8e1;
-}
-html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
-  height: 465px !important;
-  border-radius: 26px !important;
-}
-html[data-design="modern"] .modern-map-panel .kosiv-map-legend {
-  padding: 8px 12px;
-  margin: 0;
-  background-color: #ffffff;
-  color: #12211a;
-  border-top: 1px solid #e0e8e3;
-}
-.modern-map-panel > p {
-  padding: 18px;
-  margin: 0;
-  background-color: var(--app-surface);
-  color: var(--app-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #16382b;
+  color: #ffffff;
+  font: 700 11px/1.35 var(--font-body);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
 }
 
-/* Нижня плаваюча міні-картка найближчого місця (#1) прямо поверх вікна карти */
+/* Плашка найближчого: на всю ширину. Над логотипом і умовами Google (знизу ~30 px), тому bottom 30, а не 10. */
 .modern-map-spot {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  min-height: 56px;
-  box-sizing: border-box;
-  margin: 8px;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
   border-radius: 20px;
-  background-color: #ffffff;
-  border: 1px solid #dce6e0;
-  box-shadow: 0 14px 32px rgb(15 34 26 / 20%);
-  color: #12211a;
-  text-decoration: none;
+  background-color: rgb(255 255 255 / 92%);
+  border: 1px solid #ffffff;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 10px 24px rgb(15 34 26 / 22%);
+  color: #16382b;
 }
-/* Над логотипом і умовами Google (знизу, ~34 px) і кнопками масштабу (праворуч, ~64 px); легенда — під картою, не під карткою. */
 .kosiv-map-frame > .modern-map-spot {
   position: absolute;
   left: 10px;
-  right: 64px;
-  bottom: 34px;
+  right: 10px;
+  bottom: 30px;
   margin: 0;
   z-index: 4;
 }
+.modern-map-spot-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
 .modern-map-spot-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background-color: #b83d18;
-  background-image: linear-gradient(135deg, #f26419 0%, #d97706 100%);
-  color: #ffffff;
+  background-image: linear-gradient(135deg, #f26419, #d98a2b);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 19px;
+  line-height: 1;
   flex-shrink: 0;
-  box-shadow: 0 6px 14px rgb(242 100 25 / 32%);
+  box-shadow: 0 4px 10px rgb(242 100 25 / 32%);
 }
 .modern-map-spot-body {
   min-width: 0;
@@ -828,184 +1107,289 @@ html[data-design="modern"] .modern-map-panel .kosiv-map-legend {
   gap: 2px;
 }
 .modern-map-spot-dist {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background-color: #fce8dc;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background-color: #f9e2d5;
   color: #9e3616;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 800;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
 .modern-map-spot-title {
-  font-size: 14px;
-  font-weight: 800;
-  color: #12211a;
+  max-width: 100%;
+  font-family: var(--font-heading);
+  font-size: 16.5px;
+  font-weight: 700;
+  -webkit-text-stroke: 0.25px currentcolor;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+}
+.modern-map-spot-route {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background-color: var(--fire);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 4px 10px rgb(158 54 22 / 30%);
+}
+html[data-design="modern"] a.modern-map-spot-route {
+  color: #ffffff;
 }
 
-/* Шторка-список під картою: місця впорядковані від ближчого до дальшого (#1, #2, #3...) */
+/* Ярус 3: лист — одразу під картою, на всю ширину */
 .modern-results-sheet {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 22px 14px 18px;
-  border-radius: 28px;
-  background-color: #fbf8f1;
-  border: 1.5px solid var(--app-border);
-  box-shadow: 0 -8px 30px -12px rgb(15 34 26 / 18%);
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 14px
+    calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--nav-height) + 20px);
+  border-radius: 28px 28px 0 0;
+  background-color: var(--sheet-bg);
+  border-top: 2px solid var(--sheet-border);
+  scroll-margin-top: 60px;
   counter-reset: nearby-rank;
 }
 .modern-results-sheet::before {
   content: "";
-  width: 42px;
-  height: 5px;
+  width: 40px;
+  height: 4px;
   border-radius: 9999px;
   background-color: #c8beaa;
   align-self: center;
-  margin-top: -8px;
-  margin-bottom: 2px;
 }
-.modern-nearby[data-map-mode="split"] .modern-map-panel [data-testid="places-map"] {
-  height: 310px !important;
+.modern-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modern-results-head > div {
+  min-width: 0;
+}
+.modern-results-sheet p {
+  margin: 0;
 }
 .modern-results-kicker {
-  margin: 0 0 -8px;
   color: #b83d18;
   font-size: 11.5px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  line-height: 1.3;
   text-transform: uppercase;
 }
 .modern-results-count {
-  font-family: "Cormorant Garamond", Georgia, serif;
-  margin: 0;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  -webkit-text-stroke: 0.25px currentcolor;
+  line-height: 1.12;
   color: var(--app-text);
 }
-.modern-origin {
-  margin: -4px 0 0;
+.modern-results-radius {
+  flex-shrink: 0;
+  max-width: 76px;
   color: var(--app-muted);
-  font-size: 12.5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-/* Нумерація карток за відстанню (від найближчого до найдальшого) */
+/* Картки списку: номер за близькістю, бейдж відстані вгорі праворуч, знизу статус і «Маршрут» */
 .modern-results-sheet .kosiv-place {
-  position: relative;
   counter-increment: nearby-rank;
+  grid-template-columns: 46px minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 12px 14px;
   background-color: #ffffff;
+  border: 1px solid #e5dec9;
+  border-radius: 20px;
 }
-.modern-results-sheet .kosiv-place:first-child {
-  border-color: #f26419;
-  border-width: 2px;
-  background-color: #fffdf9;
-  background-image: linear-gradient(160deg, #ffffff 0%, #fff6ec 100%);
-  box-shadow: 0 12px 28px -8px rgb(242 100 25 / 18%);
+.modern-results-sheet .kosiv-place:has(.kosiv-place-media img) {
+  grid-template-columns: 84px minmax(0, 1fr);
 }
-.modern-results-sheet .kosiv-place:first-child .kosiv-place-head > .kosiv-chip {
-  background-color: #b83d18;
-  border-color: #9e3616;
+.modern-results-sheet .kosiv-place-media {
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  min-height: 46px;
+  align-self: start;
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 14px;
+  padding-top: 5px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  background: #f9e2d5;
+  color: #9e3616;
+}
+.modern-results-sheet .kosiv-place-media svg {
+  width: 20px;
+  height: 20px;
+}
+.modern-results-sheet .kosiv-place-media:has(img) {
+  min-height: 84px;
+}
+.modern-results-sheet .kosiv-place-media::before {
+  content: "#" counter(nearby-rank);
+  order: 2;
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.modern-results-sheet .kosiv-place-media:has(img)::before {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: #16382b;
   color: #ffffff;
 }
-.modern-results-sheet .kosiv-place-title::before {
-  content: "#" counter(nearby-rank) " ";
-  color: #9e3616;
+.modern-results-sheet .kosiv-place-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 0;
+  min-width: 0;
+}
+.modern-results-sheet .kosiv-place-cat,
+.modern-results-sheet .kosiv-place-title,
+.modern-results-sheet .kosiv-place-addr {
+  grid-column: 1 / -1;
+  padding-right: 64px;
+}
+.modern-results-sheet .kosiv-place-title {
+  order: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.modern-results-sheet .kosiv-place-cat {
+  order: 0;
+  min-height: 0;
+  color: #b83d18;
+  font-size: 12px;
+  font-weight: 700;
+}
+.modern-results-sheet .kosiv-place-addr {
+  order: 2;
+  padding-right: 0;
+}
+.modern-results-sheet .kosiv-place-meta {
+  order: 3;
+  align-self: end;
+  margin-top: 6px;
+}
+.modern-results-sheet .modern-route {
+  order: 4;
+  align-self: end;
+}
+/* Бейдж відстані (без data-testid; статуси мають свій) — головний орієнтир, угорі праворуч. */
+.modern-results-sheet .kosiv-place-meta > .kosiv-chip:not([data-testid]) {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  max-width: 96px;
+  padding: 4px 10px;
+  background-color: #14593d;
+  color: #ffffff;
+  font-size: 12.5px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+/* #1: рамка ватри, теплий фон, бейдж і значок вогню. */
+html[data-design="modern"] .modern-results-sheet .kosiv-place:first-child {
+  border: 2px solid #f26419;
+  background-color: #fffaf3;
+  box-shadow: 0 12px 26px -12px rgb(242 100 25 / 34%);
+}
+.modern-results-sheet .kosiv-place:first-child .kosiv-place-meta > .kosiv-chip:not([data-testid]) {
+  background-color: var(--fire);
+}
+.modern-results-sheet .kosiv-place:first-child .kosiv-place-media {
+  background-color: #b83d18;
+  background-image: linear-gradient(135deg, #c2521a, #b86a1c);
+  color: #ffffff;
+}
+.modern-route {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background-color: #16382b;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  position: relative;
+  z-index: 1;
+}
+html[data-design="modern"] a.modern-route {
+  color: #ffffff;
+}
 
 .modern-empty {
-  padding: 24px 18px;
+  padding: 20px 16px;
   border-radius: 20px;
   background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.modern-route {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 44px;
-  align-self: flex-start;
-  padding: 8px 15px;
-  margin-top: 6px;
-  border-radius: 13px;
-  background-color: #14593d;
-  color: #ffffff;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 700;
-  position: relative;
-  z-index: 1;
-}
-
-html[data-design="modern"] .kosiv-content .modern-search input[type="search"] {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 12px;
-}
-html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
-  display: none;
+  gap: 14px;
 }
 
 /* ==========================================================================
-   Стилізація «Мій план» та «Картка місця» через CSS (без змін у TSX)
+   Решта екранів (MyPlan, PlaceCard, Каталог…): через CSS, той самий фон і картки
    ========================================================================== */
 html[data-design="modern"] [data-testid="plan-custom"],
 html[data-design="modern"] [data-testid="scenario-item"],
-html[data-design="modern"] [data-testid="saved-plan"] {
-  background-color: var(--app-surface) !important;
-  border: 1.5px solid var(--app-border) !important;
-  border-radius: 22px !important;
+html[data-design="modern"] [data-testid="saved-plan"],
+html[data-design="modern"] .plan-slot,
+html[data-design="modern"] .pc-section {
+  background-color: var(--app-surface);
+  border: 1px solid #e5dec9;
+  border-radius: 20px;
   box-shadow: var(--shadow-card);
 }
+/* !important: у картки MyPlan вбудований стиль (JSX не міняємо, ТЗ §6.3). */
 html[data-design="modern"] [data-testid="plan-custom"] {
-  background-color: #13281f !important;
-  background-image: linear-gradient(145deg, #10241b 0%, #24382c 100%) !important;
+  background-color: #16382b !important;
+  background-image: linear-gradient(145deg, #0e271d 0%, #1b4030 100%);
   border-color: #2e5945 !important;
-  color: #fff8f0 !important;
+  color: #ffffff;
 }
 html[data-design="modern"] [data-testid="plan-custom"] a {
-  color: #fde68a !important;
+  color: #fde68a;
 }
 html[data-design="modern"] [data-testid="plan-custom"] .kosiv-muted {
-  color: #d6e4dc !important;
+  color: #d6e4dc;
 }
-html[data-design="modern"] .plan-slot {
-  border-radius: 22px;
-  background-color: var(--app-surface);
-  border: 1.5px solid var(--app-border);
-  box-shadow: var(--shadow-card);
-}
-html[data-design="modern"] .plan-choice {
-  border-radius: 18px;
+html[data-design="modern"] .plan-choice,
+html[data-design="modern"] .plan-toggle {
+  border-radius: 16px;
   border-color: var(--app-border);
 }
 html[data-design="modern"] .plan-toggle {
-  border-radius: 18px;
-  border-color: var(--app-border);
   background-color: var(--app-surface);
 }
+/* Галерея нижче верхньої смуги, а не під нею (у базовому стилі від’ємний відступ зверху). */
 html[data-design="modern"] .pc-gallery {
-  border-radius: 24px;
-  box-shadow: 0 14px 32px -12px rgb(20 36 28 / 22%);
-}
-html[data-design="modern"] .pc-section {
-  border-radius: 22px;
-  background-color: var(--app-surface);
-  border: 1.5px solid var(--app-border);
-  box-shadow: var(--shadow-card);
+  margin-top: 0;
 }
 html[data-design="modern"] .pc-action {
   border-radius: 16px;
@@ -1015,11 +1399,16 @@ html[data-design="modern"] .pc-action {
   .modern-help span {
     display: none;
   }
-  .modern-host-link {
-    font-size: 11px;
+}
+@media (max-width: 350px) {
+  html[data-design="modern"] .modern-nearby-heading > h1 {
+    font-size: 18px;
   }
-  .modern-toolbar {
-    grid-template-columns: 1fr;
+  .modern-nearby-size > span {
+    display: none;
+  }
+  .modern-map-spot-route {
+    padding: 0 8px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1029,26 +1418,32 @@ html[data-design="modern"] .pc-action {
   .modern-intention:hover {
     transform: none;
   }
+  .modern-hero-mist,
+  .modern-nearby-art ellipse,
+  .modern-locate[aria-busy="true"] svg,
+  .modern-map-stage .kosiv-pin-base::before {
+    animation: none;
+  }
 }
 
 /* ==========================================================================
-   Тема «Ніч» (html[data-theme="night"]): палітра режиму night прототипа nearby_concept_ab_preview.html.
-   Перекриває сезонні --app-* (специфічність вища за [data-season]): сезон у «Ніч» лишає лише значок і підписи.
+   Тема «Ніч»: палітра режиму night прототипа nearby_concept_ab_preview.html і Концепту Б.
+   Перекриває сезонні --app-* (специфічність вища за [data-season]).
    ========================================================================== */
 html[data-theme="night"] {
   color-scheme: dark;
   --app-bg: #091913;
-  --app-surface: #0f241c;
-  --app-surface-2: #153025;
+  --app-surface: #153025;
+  --app-surface-2: #1d3b2e;
   --app-text: #f5efe6;
   --app-muted: #a3c2b6;
-  --app-border: #2a4a3c;
+  --app-border: #2f5040;
   --app-pill-bg: #1d3b2e;
   --app-accent: #b83d18;
   --app-accent-2: #e06d2b;
   --app-accent-ink: #f6ae2d;
   --app-accent-2-ink: #f4a261;
-  --shadow-card: 0 12px 30px -10px rgb(0 0 0 / 50%), 0 2px 6px rgb(0 0 0 / 30%);
+  --shadow-card: 0 12px 30px -14px rgb(0 0 0 / 60%);
   --color-bg: #091913;
   --color-surface: #153025;
   --color-text: #f5efe6;
@@ -1057,19 +1452,95 @@ html[data-theme="night"] {
   --color-button: #b83d18;
   --color-button-text: #ffffff;
   --color-link: #f6ae2d;
+  --top-bg: #091913;
+  --top-mid: #091913;
+  --top-end: #091913;
+  --top-muted: #a8c7bb;
+  --glass-bg: rgb(11 29 22 / 85%);
+  --glass-border: rgb(255 255 255 / 20%);
+  --glass-text: #f5efe6;
+  --glass-muted: #a8c7bb;
+  --sheet-bg: #0f241c;
+  --sheet-border: rgb(246 174 45 / 30%);
+  --fire: #c2521a;
+  --hero-far: #133326;
+  --hero-far-o: 0.85;
+  --hero-mid: #0f2a20;
+  --hero-mid-o: 0.9;
+  --hero-near: #0b1f17;
+  --hero-trees: #071510;
+  --hero-lit: #f6ae2d;
+  --hero-lit-o: 0.12;
+  --hero-mist: #f6ae2d;
+  --hero-mist-o: 0.08;
+  --hero-edge-o: 0.4;
+  --hero-stars-o: 0.55;
+  --art-mist: #f6ae2d;
+  --art-mist-o: 0.08;
 }
 html[data-theme="night"] body {
   background-color: #091913;
-  background-image:
-    radial-gradient(circle at 86% 2%, rgb(245 158 11 / 10%), transparent 38%),
-    linear-gradient(180deg, #0e271d 0%, #091913 320px, #091913 100%);
 }
-html[data-theme="night"][data-design="modern"] .kosiv-top {
-  box-shadow: 0 4px 16px -8px rgb(0 0 0 / 50%);
+html[data-theme="night"][data-screen="nearby"] body {
+  background-color: #0f241c;
+  background-image: linear-gradient(180deg, #091913 0, #091913 90vh);
+  background-size: 100% 90vh;
+}
+html[data-theme="night"][data-screen="home"] body {
+  background-image:
+    radial-gradient(circle at 50% 460px, rgb(242 100 25 / 10%), transparent 460px),
+    linear-gradient(180deg, #091913 0, #091913 150px, #0f291e 460px, #091913 900px);
+}
+html[data-theme="night"][data-screen="inner"] .kosiv-top {
+  border-bottom: 1px solid rgb(246 174 45 / 25%);
+}
+html[data-theme="night"] .modern-hero {
+  border-color: rgb(246 174 45 / 30%);
+  background-color: #071510;
+  background-image:
+    radial-gradient(circle at 50% 72%, rgb(242 100 25 / 42%), rgb(246 174 45 / 10%) 40%, transparent 62%),
+    linear-gradient(180deg, #071510 0%, #0f291e 58%, #1d1612 100%);
+}
+html[data-theme="night"] .modern-hero-glass,
+html[data-theme="night"] .modern-host {
+  background-color: rgb(19 42 32 / 90%);
+  border-color: rgb(246 174 45 / 35%);
+  box-shadow: 0 8px 30px rgb(242 100 25 / 18%);
+  color: #f5efe6;
+}
+html[data-theme="night"] .modern-hero-glass .kosiv-tag {
+  background-color: #2a4136;
+  color: #f5efe6;
 }
 html[data-theme="night"][data-design="modern"] .assistant-pill {
-  border-color: #3b5b4c;
-  box-shadow: 0 12px 28px -12px rgb(0 0 0 / 50%);
+  background-color: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 18%);
+}
+html[data-theme="night"][data-design="modern"] .assistant-pill-icon {
+  color: #f6ae2d;
+}
+html[data-theme="night"] .modern-host-icon {
+  background-color: #3a2418;
+  color: #f6ae2d;
+}
+html[data-theme="night"] .modern-host strong {
+  color: #f5efe6;
+}
+html[data-theme="night"] .modern-host small,
+html[data-theme="night"] .modern-host-link {
+  color: #f6ae2d;
+}
+html[data-theme="night"] .modern-intention {
+  background-color: #132a20;
+  background-image:
+    radial-gradient(circle at 90% 15%, rgb(246 174 45 / 16%), transparent 54%),
+    linear-gradient(160deg, #132a20 0%, #1d2019 100%);
+  border-color: rgb(246 174 45 / 30%);
+}
+html[data-theme="night"] .modern-intention[data-kind="nearby"] {
+  background-color: #1e2a1e;
+  background-image: linear-gradient(135deg, #4a2a16 0%, #132a20 100%);
+  border-color: rgb(242 100 25 / 50%);
 }
 html[data-theme="night"] .modern-intention[data-kind="relax"] {
   background-color: #3a2418;
@@ -1086,6 +1557,17 @@ html[data-theme="night"] .modern-intention[data-kind="fun"] {
 html[data-theme="night"] .modern-utilities svg {
   color: #6ee7b7;
 }
+html[data-theme="night"] .modern-utilities a {
+  background-color: #132a20;
+  border-color: rgb(255 255 255 / 12%);
+}
+html[data-theme="night"][data-design="modern"] .kosiv-nav {
+  background-color: #0b1d16;
+  border-top-color: rgb(246 174 45 / 30%);
+}
+html[data-theme="night"][data-design="modern"] .kosiv-card {
+  border-color: rgb(246 174 45 / 25%);
+}
 html[data-theme="night"] .modern-nearby {
   --app-accent: #b83d18;
   --app-accent-ink: #f6ae2d;
@@ -1093,100 +1575,87 @@ html[data-theme="night"] .modern-nearby {
   --color-button: #b83d18;
   --color-link: #f6ae2d;
 }
+html[data-theme="night"] .modern-nearby-badge {
+  background-color: #33291a;
+}
 html[data-theme="night"] .modern-map-stage {
-  background-color: #0b1d16;
-  background-image: none;
+  background-color: #0e231b;
   border-color: rgb(246 174 45 / 35%);
   box-shadow: 0 8px 30px rgb(0 0 0 / 60%);
 }
-html[data-theme="night"] .modern-search,
-html[data-theme="night"] .modern-view-switch {
-  background-color: #0b1d16;
-  border-color: rgb(255 255 255 / 20%);
-  color: #f6ae2d;
+html[data-theme="night"] .modern-radius button {
+  color: #a8c7bb;
 }
-html[data-theme="night"][data-design="modern"] .modern-search input {
-  color: #f5efe6;
-}
-html[data-theme="night"] .modern-search input::placeholder {
-  color: #a3c2b6;
-  opacity: 1;
-}
-html[data-theme="night"] .modern-view-switch button {
-  color: #d7e6df;
-}
-html[data-theme="night"] .modern-view-switch button[aria-pressed="true"] {
-  background-color: #b83d18;
+html[data-theme="night"] .modern-radius button[aria-pressed="true"] {
   color: #ffffff;
 }
 html[data-theme="night"] .modern-filters button {
-  background-color: #0b1d16;
-  border-color: rgb(255 255 255 / 20%);
+  background-color: rgb(11 29 22 / 80%);
+  border-color: rgb(255 255 255 / 15%);
   color: #f5efe6;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
 }
 html[data-theme="night"] .modern-filters button[aria-pressed="true"] {
-  background-color: #1e4e3a;
-  border-color: #f6ae2d;
+  background-color: #16382b;
+  border-color: rgb(246 174 45 / 50%);
   color: #ffffff;
 }
-html[data-theme="night"] .modern-map-panel {
-  background-color: #0e231b;
+html[data-theme="night"][data-design="modern"] .kosiv-pin[data-distance] {
+  background: rgb(19 42 32 / 95%);
+  color: #f6ae2d;
+  border-color: rgb(246 174 45 / 50%);
 }
-html[data-theme="night"][data-design="modern"] .modern-map-panel .kosiv-map-legend {
-  background-color: #0f241c;
-  color: #f5efe6;
-  border-top-color: #2a4a3c;
+html[data-theme="night"][data-design="modern"] .kosiv-pin[data-closest="true"] {
+  background-color: #b83d18;
+  background-image: linear-gradient(135deg, #c2521a, #b83d18);
+  color: #ffffff;
+  border-color: #ffffff;
 }
 html[data-theme="night"] .modern-map-spot {
-  background-color: #0b1d16;
+  background-color: rgb(11 29 22 / 90%);
   border-color: rgb(246 174 45 / 40%);
-  color: #ffffff;
-}
-html[data-theme="night"] .modern-map-spot-title {
   color: #ffffff;
 }
 html[data-theme="night"] .modern-map-spot-dist {
   background-color: #3a2418;
-  color: #fdba74;
-}
-html[data-theme="night"][data-design="modern"] .kosiv-pin[data-distance] {
-  background: #132a20;
-  color: #f6ae2d;
-  border-color: rgb(246 174 45 / 50%);
-}
-html[data-theme="night"][data-design="modern"] .kosiv-pin[data-distance] svg {
-  stroke: #f6ae2d;
-}
-html[data-theme="night"][data-design="modern"] .kosiv-pin[data-closest="true"] {
-  background: linear-gradient(135deg, #b83d18 0%, #9e3616 100%);
-  color: #ffffff;
-  border-color: #ffffff;
-}
-html[data-theme="night"][data-design="modern"] .kosiv-pin[data-closest="true"] svg {
-  stroke: #ffffff;
-}
-html[data-theme="night"] .modern-results-sheet {
-  background-color: #0f241c;
-  border-color: rgb(246 174 45 / 30%);
-  box-shadow: 0 -8px 30px -12px rgb(0 0 0 / 60%);
+  color: #f4a261;
 }
 html[data-theme="night"] .modern-results-sheet::before {
-  background-color: #3a5a4b;
+  background-color: #4a6a5b;
 }
-html[data-theme="night"] .modern-results-kicker {
+html[data-theme="night"] .modern-results-kicker,
+html[data-theme="night"] .modern-results-sheet .kosiv-place-cat {
   color: #f4a261;
 }
 html[data-theme="night"] .modern-results-sheet .kosiv-place {
   background-color: #153025;
   border-color: rgb(246 174 45 / 25%);
 }
-html[data-theme="night"] .modern-results-sheet .kosiv-place:first-child {
+html[data-theme="night"][data-design="modern"] .modern-results-sheet .kosiv-place:first-child {
   background-color: #1d2e22;
-  background-image: none;
   border-color: #f26419;
-  box-shadow: 0 12px 28px -8px rgb(242 100 25 / 25%);
+  box-shadow: 0 12px 28px -12px rgb(242 100 25 / 30%);
 }
-html[data-theme="night"] .modern-results-sheet .kosiv-place-title::before {
+html[data-theme="night"] .modern-results-sheet .kosiv-place-media {
+  background-color: #33291a;
+  background-image: none;
   color: #f4a261;
+}
+html[data-theme="night"] .modern-results-sheet .kosiv-place:first-child .kosiv-place-media {
+  background-color: #b83d18;
+  background-image: linear-gradient(135deg, #c2521a, #b86a1c);
+  color: #ffffff;
+}
+html[data-theme="night"] .modern-results-sheet .kosiv-place-meta > .kosiv-chip:not([data-testid]) {
+  background-color: #1e4e3a;
+}
+html[data-theme="night"]
+  .modern-results-sheet
+  .kosiv-place:first-child
+  .kosiv-place-meta
+  > .kosiv-chip:not([data-testid]) {
+  background-color: var(--fire);
+}
+html[data-theme="night"] .modern-route {
+  background-color: #16382b;
+  border: 1px solid rgb(246 174 45 / 35%);
 }

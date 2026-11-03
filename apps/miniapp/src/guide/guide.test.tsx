@@ -9,7 +9,7 @@ import { createGuideApi } from "./guide-api.js";
 import { Catalog, STAY_MAP_MAX } from "./Catalog.js";
 import { Help } from "./Help.js";
 import { HomeSections } from "./HomeSections.js";
-import { Nearby } from "./Nearby.js";
+import { Nearby, snapRadius } from "./Nearby.js";
 import { PlaceCard } from "./PlaceCard.js";
 import {
   NotFoundError,
@@ -107,10 +107,10 @@ describe("главная C02", () => {
     const { rerender } = render(view(true));
     expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(4);
     const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
-    expect(href(/Смачно поїсти/)).toBe("#/section/eat");
-    expect(href(/Відкрити місця поруч/)).toBe("#/nearby");
-    expect(href(/Відпочити/)).toBe("#/section/relax");
-    expect(href(/Знайти розваги/)).toBe("#/section/fun");
+    expect(href("Де поїсти")).toBe("#/section/eat");
+    expect(href("Що поруч")).toBe("#/nearby");
+    expect(href("Відпочити та зігрітися")).toBe("#/section/relax");
+    expect(href("Розваги та враження")).toBe("#/section/fun");
     const more = within(screen.getByRole("navigation", { name: "Ще для вашої подорожі" }));
     expect(more.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
       "#/section/transfer",
@@ -328,8 +328,8 @@ describe("«Що поруч» C05", () => {
   });
 });
 
-describe("«Що поруч»: ползунок радиуса и категория места", () => {
-  it("ползунок 500 м – 10 км, подпись значения; запрос — после паузы, один на перетаскивание", async () => {
+describe("«Що поруч»: пилюли радиуса и категория места", () => {
+  it("пилюли 300 м – 10 км, подпись значения; запрос — после паузы, один на серию нажатий", async () => {
     const { env } = setup();
     render(
       <GuideProvider value={env}>
@@ -337,17 +337,25 @@ describe("«Що поруч»: ползунок радиуса и категор
       </GuideProvider>,
     );
     await flush();
-    const slider = screen.getByRole("slider", { name: "Радіус" });
-    expect(slider.getAttribute("min")).toBe("500");
-    expect(slider.getAttribute("max")).toBe("10000");
-    expect(screen.getByTestId("radius-value").textContent).toBe("500 м");
+    const pills = within(screen.getByRole("group", { name: "Радіус" }));
+    expect(pills.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "300 м",
+      "500 м",
+      "1 км",
+      "3 км",
+      "5 км",
+      "10 км",
+    ]);
+    expect(pills.getByRole("button", { name: "500 м" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 500 м");
     // Категория места из справочника под названием.
     expect(screen.getAllByTestId("place-category")[0]!.textContent).toBe("Кав'ярні");
     const calls = vi.mocked(env.api.search).mock.calls.length;
-    fireEvent.change(slider, { target: { value: "1500" } });
-    fireEvent.change(slider, { target: { value: "10000" } });
-    expect(screen.getByTestId("radius-value").textContent).toBe("10 км");
-    expect(slider.getAttribute("aria-valuetext")).toBe("10 км");
+    fireEvent.click(pills.getByRole("button", { name: "3 км" }));
+    fireEvent.click(pills.getByRole("button", { name: "10 км" }));
+    expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 10 км");
+    expect(pills.getByRole("button", { name: "10 км" }).getAttribute("aria-pressed")).toBe("true");
+    expect(pills.getByRole("button", { name: "500 м" }).getAttribute("aria-pressed")).toBe("false");
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
     await act(async () => new Promise((r) => setTimeout(r, 400)));
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
@@ -357,6 +365,83 @@ describe("«Що поруч»: ползунок радиуса и категор
       excludeSections: ["stay"],
       limit: 50,
     });
+  });
+});
+
+describe("«Що поруч»: шапка и плашка ближайшего", () => {
+  it("значение вне шага — ближайшая пилюля", () => {
+    expect(snapRadius(300)).toBe(300);
+    expect(snapRadius(1500)).toBe(1000);
+    expect(snapRadius(2500)).toBe(3000);
+    expect(snapRadius(50)).toBe(300);
+    expect(snapRadius(20_000)).toBe(10_000);
+  });
+
+  it("«Список ↓» уменьшает карту и прокручивает к листу, «Розгорнути» — обратно наверх", async () => {
+    const scrollIntoView = vi.fn();
+    const scrollTo = vi.fn();
+    vi.stubGlobal("scrollTo", scrollTo);
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { env } = setup();
+    const { container } = render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    const root = container.querySelector(".modern-nearby")!;
+    expect(root.getAttribute("data-map-mode")).toBe("full");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Список ↓" }));
+    expect(root.getAttribute("data-map-mode")).toBe("split");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Розгорнути" }));
+    expect(root.getAttribute("data-map-mode")).toBe("full");
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("геолокация — кнопка-значок с подписью: занята на время запроса, скрыта при полученной точке", async () => {
+    let answer: ((p: unknown) => void) | undefined;
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (ok: (p: unknown) => void) => {
+          answer = ok;
+        },
+      },
+    });
+    const { env } = setup();
+    render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Що поруч зі мною зараз" }));
+    const busy = screen.getByRole("button", { name: "Визначаємо геолокацію…" }) as HTMLButtonElement;
+    expect(busy.disabled).toBe(true);
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    await act(async () => answer?.({ coords: { latitude: 48.1, longitude: 24.1 } }));
+    await flush();
+    expect(screen.queryByTestId("nearby-locate")).toBeNull();
+  });
+
+  it("плашка: ссылка на место и отдельная ссылка маршрута, без вложенности", async () => {
+    const { env } = setup();
+    const { container } = render(
+      <GuideProvider value={env}>
+        <Nearby useMyLocation={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    const spot = container.querySelector(".modern-map-spot");
+    if (!spot) return expect.unreachable("плашка не показана");
+    const links = within(spot as HTMLElement).getAllByRole("link");
+    expect(links).toHaveLength(2);
+    expect(links[0]!.getAttribute("href")).toMatch(/^#\/place\//);
+    expect(links[1]!.getAttribute("aria-label")).toMatch(/^Маршрут: /);
+    expect(links[0]!.querySelector("a")).toBeNull();
+    expect(links[1]!.closest(".modern-map-spot-main")).toBeNull();
   });
 });
 

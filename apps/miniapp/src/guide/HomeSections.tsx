@@ -1,5 +1,8 @@
-// C02: кнопки разделов главной (HOME_SECTIONS) + «Що поруч зі мною зараз». «Про заклад» — только при QR заведения (C-13).
+// C02: Hero с панорамой (заголовок, поле ассистента, сезонные теги, карточка заведения поверх гор), Bento из 4 разделов,
+// «Що поруч зі мною зараз» и служебные разделы. «Про заклад» — только при QR заведения (C-13).
+import type { ReactNode } from "react";
 import { Link, useT } from "@tg/ui";
+import { HeroPanorama } from "../design/HeroPanorama.js";
 import { ICONS } from "../design/Ornament.js";
 import { useGuide } from "./context.js";
 import type { HomeSection } from "./types.js";
@@ -11,7 +14,7 @@ export function sectionPath(section: HomeSection): string {
   return `/section/${section}`;
 }
 
-export function HomeSections({ hasVenue }: { hasVenue: boolean }) {
+export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: ReactNode }) {
   const { t } = useT();
   const { base } = useGuide();
   const intentions = [
@@ -22,58 +25,27 @@ export function HomeSections({ hasVenue }: { hasVenue: boolean }) {
   ] as const;
   return (
     <section className="modern-home" aria-labelledby="sections-title">
-      <div className="modern-intro">
-        <div>
+      <div className="modern-hero" data-testid="modern-hero">
+        <HeroPanorama />
+        <div className="modern-hero-head">
           <h2 id="sections-title">{t("miniapp.modern.title")}</h2>
           <p>{t("miniapp.modern.subtitle")}</p>
         </div>
-        <svg className="modern-mountains" viewBox="0 0 180 120" fill="none" aria-hidden="true">
-          <circle cx="132" cy="26" r="18" fill="#F59E0B" opacity=".18" />
-          <path
-            d="M132 10v32M116 26h32M121 15l22 22M143 15l-22 22"
-            stroke="#FBBF24"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <circle cx="132" cy="26" r="4.5" fill="#FDE68A" />
-          <path d="M4 96 48 34l34 40 28-30 66 52H4Z" fill="currentColor" opacity=".18" />
-          <path
-            d="M4 96 48 34l34 40 28-30 66 52"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path d="M32 56 48 34l16 21-10-5-6 8-6-7-10 5Z" fill="#FFF8F0" opacity=".26" />
-          <path
-            d="M14 104c28-6 56-6 84 0s52 6 76-2"
-            stroke="#FCD34D"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            opacity=".55"
-          />
-          <path
-            d="m96 102 12-23h-7l13-22 13 22h-7l12 23M114 102v9M136 107l9-18h-5l10-17 10 17h-5l9 18"
-            stroke="#6EE7B7"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {hero && <div className="modern-hero-glass">{hero}</div>}
+        {hasVenue && (
+          <Link to="/about" className="modern-host">
+            <span className="modern-host-icon">{ICONS.stay}</span>
+            <span>
+              <small>{t("miniapp.modern.hotelNote")}</small>
+              <strong>{base?.name ?? t("miniapp.modern.hotel")}</strong>
+            </span>
+            <span className="modern-host-link">
+              {t("miniapp.modern.hotel")}
+              {ICONS.arrow}
+            </span>
+          </Link>
+        )}
       </div>
-      {hasVenue && (
-        <Link to="/about" className="modern-host">
-          <span className="modern-host-icon">{ICONS.stay}</span>
-          <span>
-            <small>{t("miniapp.modern.hotelNote")}</small>
-            <strong>{base?.name ?? t("miniapp.modern.hotel")}</strong>
-          </span>
-          <span className="modern-host-link">
-            {t("miniapp.modern.hotel")}
-            {ICONS.arrow}
-          </span>
-        </Link>
-      )}
       <nav aria-labelledby="sections-title">
         <ul className="modern-intentions" data-testid="home-sections">
           {intentions.map(({ section, key }) => (

@@ -864,22 +864,6 @@ html[data-season] :focus-visible {
   font-weight: 600;
   color: var(--app-accent-ink);
 }
-.kosiv-range {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.kosiv-range-head {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.kosiv-range input[type="range"] {
-  width: 100%;
-  min-height: 32px;
-  accent-color: var(--app-accent-ink);
-}
-
 /* Значок «Ви тут» на карте: круг в цветах сезона с пульсирующим ореолом; погрешность: полупрозрачный круг. */
 .kosiv-me {
   position: relative;

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useRoute, useT } from "@tg/ui";
+import { SECTION_EMOJI } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
 import type { LatLng } from "./geo.js";
@@ -39,6 +40,10 @@ export type PlacesMapProps = {
   closestId?: string;
   /** Плавающий элемент поверх нижней части карты («Поруч»): его размеры, как и верхней панели [data-map-inset], учитываются в fitBounds. */
   overlay?: ReactNode;
+  /** Короткая подпись базовой точки на карте («Поруч»: название; подпись значка для читалки — centerLabel). */
+  centerTag?: string;
+  /** false — без легенды под картой («Поруч»: значок категории уже на капсуле маркера). */
+  legend?: boolean;
 };
 
 /** Группа маркера: раздел главной категории места или «Інше». */
@@ -99,8 +104,16 @@ export function pinNode(
     pin.textContent = String(stop);
     return pin;
   }
-  if (distance) pin.dataset.distance = distance;
-  if (closest) pin.dataset.closest = "true";
+  if (distance) {
+    // Капсула с расстоянием («Поруч»): значок раздела и метраж (текст — data-distance, modern.css).
+    pin.dataset.distance = distance;
+    if (closest) pin.dataset.closest = "true";
+    const emoji = document.createElement("span");
+    emoji.setAttribute("aria-hidden", "true");
+    emoji.textContent = SECTION_EMOJI[group] ?? SECTION_EMOJI.other!;
+    pin.appendChild(emoji);
+    return pin;
+  }
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
@@ -169,6 +182,8 @@ export default function PlacesMap({
   me,
   closestId,
   overlay,
+  centerTag,
+  legend = true,
 }: PlacesMapProps) {
   const { t, locale } = useT();
   const [, navigate] = useRoute();
@@ -204,6 +219,7 @@ export default function PlacesMap({
     };
   }, []);
 
+  const floating = Boolean(overlay);
   // Карта из пула — одна на экран; при уходе возвращается в пул (новой платной загрузки не будет).
   const libs = state.status === "ready" ? state.libs : null;
   useEffect(() => {
@@ -224,6 +240,14 @@ export default function PlacesMap({
     };
   }, [libs]);
 
+  // Карточка поверх низа карты закрыла бы кнопки масштаба (по умолчанию справа внизу) — на этом экране они посередине справа.
+  useEffect(() => {
+    if (!libs || !map || !floating) return;
+    const m = map.map;
+    m.setOptions({ zoomControlOptions: { position: libs.core.ControlPosition.RIGHT_CENTER } });
+    return () => m.setOptions({ zoomControlOptions: { position: libs.core.ControlPosition.RIGHT_BOTTOM } });
+  }, [libs, map, floating]);
+
   // Маркеры, круг, линия и границы — только при смене мест, базы, радиуса или режима маршрута.
   useEffect(() => {
     if (!libs || !map) return;
@@ -240,6 +264,7 @@ export default function PlacesMap({
       // Не нажимается: подпись — на значке (role=img), а не title маркера (aria-label без роли — нарушение a11y).
       base.setAttribute("role", "img");
       base.setAttribute("aria-label", centerLabel ?? tRef.current("miniapp.map.base"));
+      if (centerTag) base.dataset.label = centerTag;
       const baseMarker = new libs.marker.AdvancedMarkerElement({
         map: m,
         position: center,
@@ -254,10 +279,10 @@ export default function PlacesMap({
               map: m,
               center,
               radius,
-              strokeColor: "#1d4ed8",
-              strokeWeight: 1,
-              fillColor: "#1d4ed8",
-              fillOpacity: 0.05,
+              strokeColor: floating ? "#E06D2B" : "#1d4ed8",
+              strokeWeight: floating ? 1.5 : 1,
+              fillColor: floating ? "#E06D2B" : "#1d4ed8",
+              fillOpacity: floating ? 0.08 : 0.05,
               clickable: false,
             }),
           ),
@@ -358,7 +383,20 @@ export default function PlacesMap({
       }
     });
     // Тексты подписей, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
-  }, [libs, map, places, center, centerLabel, centerMarker, radius, maxZoom, route, closestId]);
+  }, [
+    libs,
+    map,
+    places,
+    center,
+    centerLabel,
+    centerTag,
+    centerMarker,
+    radius,
+    maxZoom,
+    route,
+    closestId,
+    floating,
+  ]);
 
   // Значок «Ви тут»: перестраивается только он и круг точности (карта, маркеры мест и границы не трогаются).
   const meLat = me?.lat;
@@ -391,6 +429,7 @@ export default function PlacesMap({
     node.setAttribute("role", "img");
     node.setAttribute("aria-label", meLabel);
     node.dataset.testid = "map-me";
+    node.dataset.label = meLabel;
     const pulse = document.createElement("span");
     pulse.className = "kosiv-me-pulse";
     const dot = document.createElement("span");
@@ -438,7 +477,7 @@ export default function PlacesMap({
         />
         {overlay}
       </div>
-      {(groups.length > 0 || (center && centerMarker)) && (
+      {legend && (groups.length > 0 || (center && centerMarker)) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">
           {center && centerMarker && (
             <li>
