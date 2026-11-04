@@ -55,6 +55,8 @@ export type KeywordQuery = {
   /** Минимальный вес: без категорий одни упоминания в отзывах (отель, где «замовляли суші») не считаются. */
   minScore: number;
   limit: number;
+  /** Порядок кандидатов до LIMIT: score — самые релевантные (по умолчанию), distance — ближайшие из прошедших minScore. */
+  order?: "score" | "distance";
 };
 
 /** Обогащение мест для ассистента: цена, удобства, описания — в контексте региона (RLS), одним запросом. */
@@ -230,15 +232,15 @@ export class AssistantRepository {
         )
         // OFFSET 0 — барьер оптимизатора: подзапрос не встраивается, вес не пересчитывается в WHERE и ORDER BY.
         .offset(0);
-      const found = await db
+      let ranked = db
         .selectFrom(scored.as("s"))
         .select(["s.id", "s.score"])
-        .where("s.score", ">=", q.minScore)
-        .orderBy("s.score", "desc")
-        .orderBy("s.distance")
-        .orderBy("s.id")
-        .limit(q.limit)
-        .execute();
+        .where("s.score", ">=", q.minScore);
+      ranked =
+        q.order === "distance" && origin
+          ? ranked.orderBy("s.distance").orderBy("s.score", "desc")
+          : ranked.orderBy("s.score", "desc").orderBy("s.distance");
+      const found = await ranked.orderBy("s.id").limit(q.limit).execute();
       return found.map((r) => ({ id: r.id, score: Number(r.score) }));
     });
   }

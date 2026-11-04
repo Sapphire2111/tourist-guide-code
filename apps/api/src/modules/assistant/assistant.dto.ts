@@ -32,6 +32,8 @@ import {
   PLAN_SCOPES,
   PLAN_STARTS,
   PLAN_TRANSPORTS,
+  ASSISTANT_SORTS,
+  type AssistantSort,
   type PlanTransport,
   type AssistantKind,
   type AssistantQuestion,
@@ -238,6 +240,16 @@ export class AssistantIntentDto {
   @IsOptional()
   @IsIn(PLAN_TRANSPORTS)
   transport?: PlanTransport | null;
+
+  @ApiPropertyOptional({
+    enum: ASSISTANT_SORTS,
+    enumName: "AssistantSort",
+    nullable: true,
+    description: "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу",
+  })
+  @IsOptional()
+  @IsIn(ASSISTANT_SORTS)
+  sort?: AssistantSort | null;
 }
 
 export class AssistantQueryDto extends OriginQueryDto {
@@ -297,6 +309,14 @@ export class AssistantPlaceDto {
   priceLevel!: number | null;
   @ApiProperty({ type: Boolean, description: "По данным Google: подходит для детей или есть дитяче меню" })
   kidsFriendly!: boolean;
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: "Рейтинг Google 1–5 (сортировка «За рейтингом»)",
+  })
+  rating?: number | null;
+  @ApiPropertyOptional({ type: "integer", nullable: true, description: "Число отзывов Google" })
+  ratingCount?: number | null;
   @ApiProperty({
     type: String,
     nullable: true,

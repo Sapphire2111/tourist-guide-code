@@ -3644,6 +3644,11 @@ export interface components {
      * @enum {string}
      */
     AssistantPlanTransport: "car" | "foot";
+    /**
+     * @description Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу
+     * @enum {string}
+     */
+    AssistantSort: "rating";
     AssistantIntentDto: {
       /** @description places — места, tour — маршрут */
       kind: components["schemas"]["AssistantKind"];
@@ -3677,6 +3682,8 @@ export interface components {
       scopeLocalityIds?: string[];
       /** @description План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо */
       transport?: components["schemas"]["AssistantPlanTransport"] | null;
+      /** @description Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу */
+      sort?: components["schemas"]["AssistantSort"] | null;
     };
     AssistantQueryDto: {
       /**
@@ -3713,6 +3720,10 @@ export interface components {
       priceLevel: number | null;
       /** @description По данным Google: подходит для детей или есть дитяче меню */
       kidsFriendly: boolean;
+      /** @description Рейтинг Google 1–5 (сортировка «За рейтингом») */
+      rating?: number | null;
+      /** @description Число отзывов Google */
+      ratingCount?: number | null;
       /** @description Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся */
       description: string | null;
       descriptionSource: components["schemas"]["AssistantDescriptionSource"] | null;
@@ -5664,6 +5675,21 @@ export interface components {
       /** @description TTL ручного статуса, мин (D-78 А: короткий); по умолчанию 60. Для unknown не нужен (игнорируется) */
       ttlMinutes?: number;
     };
+    PlaceReviewRatingDto: {
+      /** Format: uuid */
+      placeId: string;
+      /** @description Опубликованных проверенных отзывов */
+      reviewCount: number;
+      /** @description Меньше 3 отзывов — «Мало відгуків» вместо цифры (score = null) */
+      fewReviews: boolean;
+      /** @description Рейтинг 1–5 (D-37 В: сглаживание к среднему категории и вес давности), до десятых */
+      score: number | null;
+      minReviews: number;
+      /** @description Версия формулы рейтинга */
+      formulaVersion: number;
+      /** Format: date-time */
+      computedAt: string;
+    };
     /** @enum {string} */
     ReviewVerificationLevel: "verified_booking";
     ReviewResponseDto: {
@@ -5697,11 +5723,11 @@ export interface components {
       response: components["schemas"]["ReviewResponseDto"] | null;
     };
     PlaceReviewsDto: {
-      rating: components["schemas"]["PlaceRatingDto"];
+      rating: components["schemas"]["PlaceReviewRatingDto"];
       items: components["schemas"]["PublicReviewDto"][];
     };
     PlaceRatingListDto: {
-      items: components["schemas"]["PlaceRatingDto"][];
+      items: components["schemas"]["PlaceReviewRatingDto"][];
     };
     /**
      * @description active — можно написать отзыв; consumed — отзыв написан (повторный POST /reviews — новая версия); expired — окно 30 дн. после брони прошло; revoked — бронь отменена/возвращена

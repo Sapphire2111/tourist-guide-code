@@ -16,6 +16,7 @@ export function PartnerDashboard() {
   useEffect(() => () => setNotice(null), [setNotice]);
   const hostRequests = useFeatureFlag("module.host_requests");
   const bookings = useFeatureFlag("module.bookings");
+  const reviews = useFeatureFlag("module.reviews");
   const orgLabel = useId();
   const placeLabel = useId();
   useRefreshMe();
@@ -114,6 +115,12 @@ export function PartnerDashboard() {
                     {bookings && (
                       <Link to={`/partner/place/${place.id}/resources`}>
                         {t("miniapp.pbooking.resourcesLink")}
+                      </Link>
+                    )}
+                    {/* review.respond есть у ORG_OWNER и ORG_MANAGER (rbac/roles.ts); у кассира/сотрудника — нет. */}
+                    {reviews && org.role !== "ORG_STAFF" && (
+                      <Link to={`/partner/place/${place.id}/reviews`} data-testid="partner-reviews-link">
+                        {t("miniapp.partner.reviews.link")}
                       </Link>
                     )}
                     {org.abilities.serviceRequests && hostRequests && place.openServiceRequests !== null && (

@@ -17,6 +17,9 @@ import type { Booking, Resource, Slot, StatusChange } from "./bookings-api.js";
 import { useBookings } from "./context.js";
 import { addDays, bookingZone, dayLabel, localDate, localTime, normalizePhone, whenLabel } from "./format.js";
 import { Reason, StatusBadge, useBookingErrorText, useIdempotencyKey } from "./parts.js";
+import { useMyEligibility } from "../reviews/context.js";
+import { BookingReview } from "../reviews/BookingReview.js";
+import type { ReviewEligibility } from "../reviews/reviews-api.js";
 
 /** Bot API 6.9+: запрос номера пользователя; номер — в responseUnsafe.contact (новые клиенты). */
 type ContactResponse = { status?: string; responseUnsafe?: { contact?: { phone_number?: string } } };
@@ -594,6 +597,8 @@ export function MyBookings() {
     [api, regionId, signedIn],
   );
   const [updated, setUpdated] = useState<Record<string, Booking>>({});
+  // Права на отзыв (блок 10, флаг module.reviews): вход «Залишити відгук» у завершённых броней.
+  const eligibility = useMyEligibility(regionId, signedIn);
   return (
     <Stack>
       <h1>{t("miniapp.booking.mine")}</h1>
@@ -612,6 +617,7 @@ export function MyBookings() {
                   <MyBookingItem
                     key={b.id}
                     booking={b}
+                    eligibility={eligibility}
                     onChange={(next) => setUpdated((u) => ({ ...u, [next.id]: next }))}
                   />
                 ))}
@@ -624,7 +630,15 @@ export function MyBookings() {
   );
 }
 
-function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (b: Booking) => void }) {
+function MyBookingItem({
+  booking: b,
+  eligibility,
+  onChange,
+}: {
+  booking: Booking;
+  eligibility: ReviewEligibility[] | undefined;
+  onChange: (b: Booking) => void;
+}) {
   const { t, locale } = useT();
   const { api, timeZone: envZone } = useBookings();
   // Время брони — в поясе места (сервер), а не текущего контекста входа.
@@ -725,6 +739,7 @@ function MyBookingItem({ booking: b, onChange }: { booking: Booking; onChange: (
         </>
       )}
       <Live message={message} testId="my-booking-message" />
+      <BookingReview bookingId={b.id} completed={b.status === "completed"} eligibility={eligibility} />
       <Link to={`/place/${b.placeId}`}>{t("miniapp.booking.openPlace")}</Link>
     </li>
   );

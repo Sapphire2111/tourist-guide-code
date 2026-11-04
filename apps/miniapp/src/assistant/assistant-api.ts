@@ -18,6 +18,9 @@ export type AssistantItem = {
   description: string | null;
   descriptionSource: "ai" | "wikipedia" | "google" | null;
   descriptionUrl: string | null;
+  /** Рейтинг Google — для переключателя «Рейтинг» (старые ответы — без него). */
+  rating?: number | null;
+  ratingCount?: number | null;
 };
 
 export type AssistantPlan = ApiSchemas["AssistantPlanDto"];

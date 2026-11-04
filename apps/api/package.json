@@ -23,6 +23,7 @@
     "admin:create": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/admin-create.js",
     "places:import-google": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-import-google.js",
     "places:enrich": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-enrich.js",
+    "places:curate": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-curate.js",
     "scenarios:generate": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/scenarios-generate.js"
   },
   "dependencies": {
