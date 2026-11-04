@@ -157,6 +157,15 @@ describe("GET /places/search", () => {
     });
   });
 
+  it("радиус 15 км и лимит 300 доходят до сервиса без клэмпа (карта «Що поруч» на всём круге)", async () => {
+    const { http, service } = await start();
+    await http().get(`/places/search?regionId=${REGION}&lat=48&lng=24&radius=15000&limit=300`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ radius: 15_000, limit: 300 }),
+    );
+  });
+
   it("exclude_section: список через запятую и повтором; пустое — как без него; чужое значение и лишние — 400", async () => {
     const { http, service } = await start();
     await http().get(`/places/search?regionId=${REGION}&exclude_section=stay,help`).expect(200);
@@ -226,7 +235,7 @@ describe("GET /places/search", () => {
       "lat=1&lng=1&radius=5",
       "lat=1&lng=1&radius=20001",
       "limit=0",
-      "limit=51",
+      "limit=301",
       "offset=-1",
       "offset=1001",
       "q=a",

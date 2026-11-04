@@ -7,9 +7,19 @@ import { ModernNearbyResults } from "./Nearby.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
 
 const seen: PlaceSummary[][] = [];
+const mapProps: { radius?: number; radiusCenter?: unknown }[] = [];
 vi.mock("./MapSlot.js", () => ({
-  MapSlot: ({ places }: { places: PlaceSummary[] }) => {
+  MapSlot: ({
+    places,
+    radius,
+    radiusCenter,
+  }: {
+    places: PlaceSummary[];
+    radius?: number;
+    radiusCenter?: unknown;
+  }) => {
     seen.push(places);
+    mapProps.push({ radius, radiusCenter });
     return <div data-testid="fake-map" />;
   },
   preloadMap: () => Promise.resolve(),
@@ -18,6 +28,7 @@ vi.mock("./MapSlot.js", () => ({
 afterEach(() => {
   cleanup();
   seen.length = 0;
+  mapProps.length = 0;
 });
 
 const place = (id: string, name: string): PlaceSummary => ({
@@ -179,5 +190,57 @@ describe("ModernNearbyResults", () => {
       expect.stringContaining("Середня колиба"),
       expect.stringContaining("Далека полонина"),
     ]);
+  });
+});
+
+describe("ModernNearbyResults: круг радиуса на карте", () => {
+  const env = {
+    api: { categories: vi.fn(async () => []) } as unknown as GuideApi,
+    analytics: { track: vi.fn(), flush: vi.fn(), dispose: vi.fn() },
+    base: null,
+    regionId: "r",
+    signedIn: true,
+  } as unknown as GuideEnv;
+
+  it("по геолокации (без базы) — радиус и центр круга = «Ви тут»", async () => {
+    const me = { lat: 48.1, lng: 24.1 };
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={[]} radius={15_000} base={null} me={me} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(mapProps.at(-1)).toEqual({ radius: 15_000, radiusCenter: me });
+  });
+
+  it("от базы — круг вокруг базы", async () => {
+    const base = { lat: 48.3, lng: 24.3 };
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={[]} radius={10_000} base={base} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(mapProps.at(-1)).toEqual({ radius: 10_000, radiusCenter: base });
+  });
+
+  it("список — по 50 карточек, «Показати ще» добавляет 50; карта получает все места", async () => {
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      ...place(`p${i}`, `Місце ${i}`),
+      distanceMeters: i,
+    }));
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={many} radius={15_000} base={null} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(seen.at(-1)).toHaveLength(120);
+    expect(screen.getAllByTestId("place-item")).toHaveLength(50);
+    fireEvent.click(screen.getByTestId("nearby-more"));
+    expect(screen.getAllByTestId("place-item")).toHaveLength(100);
+    fireEvent.click(screen.getByTestId("nearby-more"));
+    expect(screen.getAllByTestId("place-item")).toHaveLength(120);
+    expect(screen.queryByTestId("nearby-more")).toBeNull();
   });
 });

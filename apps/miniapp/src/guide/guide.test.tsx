@@ -353,7 +353,7 @@ describe("«Що поруч» C05", () => {
       point: env.base!.point,
       radius: 1000,
       excludeSections: ["stay"],
-      limit: 50,
+      limit: 300,
     });
   });
 
@@ -375,7 +375,7 @@ describe("«Що поруч» C05", () => {
       point: { lat: 48.1, lng: 24.1 },
       radius: 1000,
       excludeSections: ["stay"],
-      limit: 50,
+      limit: 300,
     });
   });
 });
@@ -409,7 +409,7 @@ describe("«Що поруч»: ползунок радиуса и категор
       point: env.base!.point,
       radius: 10000,
       excludeSections: ["stay"],
-      limit: 50,
+      limit: 300,
     });
   });
 });
@@ -466,8 +466,8 @@ describe("«Що поруч»: шапка и плашка ближайшего",
 });
 
 describe("«Що поруч»: строка статуса", () => {
-  it("modern: счётчик «Найближчі місця (N)»; при 50 местах — пометка об ограничении", async () => {
-    const many = Array.from({ length: 50 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
+  it("modern: счётчик «Найближчі місця (N)»; при 300 местах — пометка об ограничении", async () => {
+    const many = Array.from({ length: 300 }, (_, i) => summary({ id: `p${i}`, name: { uk: `Місце ${i}` } }));
     const search = vi.fn(async () => many);
     const { env } = setup({ api: fakeApi({ search }) });
     render(
@@ -476,8 +476,8 @@ describe("«Що поруч»: строка статуса", () => {
       </GuideProvider>,
     );
     await flush();
-    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчі місця (50) — від 120 м");
-    expect(screen.getByText("Найближчих місць: 50.")).toBeDefined();
+    expect(screen.getByTestId("nearby-status").textContent).toBe("Найближчі місця (300) — від 120 м");
+    expect(screen.getByText("Найближчих місць: 300.")).toBeDefined();
     cleanup();
     const { env: env2 } = setup();
     render(

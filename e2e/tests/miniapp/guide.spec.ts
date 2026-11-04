@@ -283,7 +283,7 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("slider", { name: "Радіус пошуку" }).fill("6");
     await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
     await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
-    expect(state.searches.at(-1)).toMatchObject({ limit: "50" });
+    expect(state.searches.at(-1)).toMatchObject({ limit: "300" });
     await expect(page.getByTestId("places-map")).toBeVisible();
     // Легенды здесь нет; маркеры по разделам, подпись по нажатию: название + категория.
     await expect(page.getByTestId("map-legend")).toHaveCount(0);
