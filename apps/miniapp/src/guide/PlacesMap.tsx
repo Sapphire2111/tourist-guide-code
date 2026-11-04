@@ -13,6 +13,7 @@ import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
 import { googleRouteUrl, requestLocation, type LatLng } from "./geo.js";
 import { useLocations } from "./LocationProvider.js";
+import { DEVICE_MAX_ZOOM } from "./Nearby.js";
 import {
   acquireMap,
   loadMapsApi,
@@ -28,7 +29,7 @@ import type { HomeSection, Photo, PlaceSummary } from "./types.js";
 export type PlacesMapProps = {
   places: PlaceSummary[];
   center: LatLng | null;
-  /** Подпись базовой точки. Координаты устройства сюда не передаются (приватность: карта не центрируется на туристе). */
+  /** Подпись базовой точки. Автоматически карта на устройство не центрируется (приватность); только по кнопке «Ви тут». */
   centerLabel?: string;
   /** false — только центрировать карту, без метки/круга/пункта легенды (середина выбранных локаций — не точка). */
   centerMarker?: boolean;
@@ -37,8 +38,12 @@ export type PlacesMapProps = {
   maxZoom?: number;
   /** Маршрут: линия через места в порядке списка, номера остановок на маркерах (ассистент, план дня). */
   route?: boolean;
-  /** Позиция устройства («Ви тут»), если геолокация уже получена. Карту не центрирует и границы не меняет. */
+  /** Позиция устройства («Ви тут»), если геолокация уже получена. Сама карту не центрирует и границы не меняет — только кнопка «Ви тут». */
   me?: LatLng | null;
+  /** Кнопка «Ви тут», когда позиции ещё нет: родитель сам определяет место (список, радиус и подпись переключаются на пользователя). */
+  onLocate?: () => void;
+  /** Родитель определяет место сейчас (кнопка занята). */
+  locating?: boolean;
   /** Место, подсвеченное как ближайшее («Поруч»): только оно получает акцент; в каталоге и маршрутах не задаётся. */
   closestId?: string;
   /** Короткая подпись базовой точки на карте («Поруч»: название; подпись значка для читалки — centerLabel). */
@@ -255,6 +260,39 @@ function accentColor(): string {
   return v || "#2d6a4f";
 }
 
+/** Цвет пунктирного круга радиуса на тёмной карте («Ніч»). */
+const RING_COLOR_NIGHT = "#fde68a";
+const EARTH_R = 6_371_000;
+
+/** Точка на расстоянии dist м от center по азимуту bearing (рад) — сферическая формула. */
+function offsetPoint(center: LatLng, dist: number, bearing: number): LatLng {
+  const rad = Math.PI / 180;
+  const d = dist / EARTH_R;
+  const lat1 = center.lat * rad;
+  const lng1 = center.lng * rad;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(bearing));
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2),
+    );
+  return { lat: lat2 / rad, lng: lng2 / rad };
+}
+
+/** Окружность радиуса radius м вокруг center: RING_POINTS вершин, замкнутая. */
+export const RING_POINTS = 72;
+export function circlePath(center: LatLng, radius: number): LatLng[] {
+  return Array.from({ length: RING_POINTS + 1 }, (_, i) =>
+    offsetPoint(center, radius, ((i % RING_POINTS) / RING_POINTS) * 2 * Math.PI),
+  );
+}
+
+/** Север, восток, юг, запад круга — для fitBounds. */
+function circleExtremes(center: LatLng, radius: number): LatLng[] {
+  return [0, 1, 2, 3].map((k) => offsetPoint(center, radius, (k * Math.PI) / 2));
+}
+
 /** С какого числа маркеров рядом стоящие собираются в кластеры. */
 export const CLUSTER_MIN = 12;
 
@@ -280,6 +318,8 @@ export default function PlacesMap({
   maxZoom = 17,
   route = false,
   me,
+  onLocate,
+  locating: parentLocating = false,
   closestId,
   centerTag,
   legend = true,
@@ -301,8 +341,12 @@ export default function PlacesMap({
   // Кнопка «Ви тут»: позиция, полученная по нажатию (если родитель её не передал), подсказка и состояние поиска.
   const { gps } = useLocations();
   const [located, setLocated] = useState<LatLng | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [hint, setHint] = useState(false);
+  const [ownLocating, setLocating] = useState(false);
+  const locating = ownLocating || parentLocating;
+  /** Подсказка при отказе: "center" — карта показывает точку поиска; "none" — карта не сдвинута. */
+  const [hint, setHint] = useState<"center" | "none" | null>(null);
+  /** Карта этого экрана (пул): после долгого запроса геолокации она могла уйти другому экрану. */
+  const liveMap = useRef<PooledMap | null>(null);
   const [popupOpen, setPopupOpen] = useState(false);
   const shownMe = me ?? located;
   /** Откуда открыто окно маркера: туда возвращается фокус при закрытии. */
@@ -352,6 +396,7 @@ export default function PlacesMap({
     });
     const o = overlays.current;
     setMap(item);
+    liveMap.current = item;
     // Кнопки масштаба лежат выше окна: на узкой карте они прячутся на время, пока окно открыто (panPopupIntoView).
     const closed = info.addListener("close", () => {
       setPopupOpen(false);
@@ -364,6 +409,8 @@ export default function PlacesMap({
         opener.focus({ preventScroll: true });
     });
     return () => {
+      liveMap.current = null;
+      setPopupOpen(false);
       ready.remove();
       closed.remove();
       item.map.setOptions({ zoomControl: true });
@@ -421,20 +468,42 @@ export default function PlacesMap({
       });
       o.other.push(() => (baseMarker.map = null));
       if (radius) {
+        const dayColor = floating ? "#B8430F" : "#1d4ed8";
+        const ringColor = night ? RING_COLOR_NIGHT : dayColor;
+        // Лёгкая заливка — отдельный Circle без обводки; граница — пунктирная линия по точкам окружности
+        // (google.maps.Circle штрихов не умеет): видно, почему за кругом нет мест.
         o.other.push(
           detach(
             new libs.maps.Circle({
               map: m,
               center,
               radius,
-              strokeColor: floating ? "#E06D2B" : "#1d4ed8",
-              strokeWeight: floating ? 1.5 : 1,
-              fillColor: floating ? "#E06D2B" : "#1d4ed8",
-              fillOpacity: floating ? 0.08 : 0.05,
+              strokeOpacity: 0,
+              strokeWeight: 0,
+              fillColor: night ? RING_COLOR_NIGHT : floating ? "#E06D2B" : "#1d4ed8",
+              fillOpacity: night ? 0.06 : floating ? 0.08 : 0.05,
               clickable: false,
             }),
           ),
+          detach(
+            new libs.maps.Polyline({
+              map: m,
+              path: circlePath(center, radius),
+              strokeOpacity: 0,
+              clickable: false,
+              icons: [
+                {
+                  icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: ringColor, scale: 2 },
+                  offset: "0",
+                  repeat: "10px",
+                },
+              ],
+            }),
+          ),
         );
+        // Карта подгоняется так, чтобы круг был виден целиком.
+        for (const p of circleExtremes(center, radius)) bounds.extend(p);
+        points++;
       }
     }
     if (center) {
@@ -637,26 +706,36 @@ export default function PlacesMap({
   useEffect(() => () => window.clearTimeout(hintTimer.current), []);
   const locate = async () => {
     if (!map || locating) return;
-    setLocating(true);
-    setHint(false);
-    let target: LatLng | null = me ?? gps ?? located;
+    // Позиция известна — просто центрируем. Иначе: родитель («Поруч») определяет место сам, либо запрос здесь.
+    // Прежний результат запроса не кэшируется: при каждом нажатии без me/gps позиция запрашивается заново.
+    let target: LatLng | null = me ?? gps;
+    if (!target && onLocate) {
+      onLocate();
+      return;
+    }
+    setHint(null);
     if (!target) {
+      setLocating(true);
       target = await requestLocation(guideRef.current.webApp).catch(() => null);
+      // Пока шёл запрос (до 11 с), экран закрыт или карта ушла в пул другому экрану — ничего не трогаем.
+      setLocating(false);
+      if (liveMap.current !== map) return;
       if (target) setLocated(target);
     }
-    setLocating(false);
     const m = map.map;
     // Карту двигал сам пользователь: автоподгонка (смена размера) его вид не сбрасывает.
     userMoved.current = true;
     const to = target ?? center;
+    // Приближение не ближе предела для устройства (приватность): DEVICE_MAX_ZOOM.
+    const zoom = Math.min(DEVICE_MAX_ZOOM, maxZoom);
     if (to) {
       m.panTo({ lat: to.lat, lng: to.lng });
-      if ((m.getZoom() ?? 0) < Math.min(15, maxZoom)) m.setZoom(Math.min(15, maxZoom));
+      if ((m.getZoom() ?? 0) < zoom) m.setZoom(zoom);
     }
     if (!target) {
-      setHint(true);
+      setHint(to ? "center" : "none");
       window.clearTimeout(hintTimer.current);
-      hintTimer.current = window.setTimeout(() => setHint(false), 5_000);
+      hintTimer.current = window.setTimeout(() => setHint(null), 5_000);
     }
   };
 
@@ -757,11 +836,14 @@ export default function PlacesMap({
             {ICONS.locate}
           </button>
         )}
-        {hint && (
-          <p role="status" className="kosiv-map-locate-hint" data-testid="map-locate-hint">
-            {t("miniapp.map.locateFailed")}
-          </p>
-        )}
+        {/* Постоянная live-область: подсказка появляется внутри неё и объявляется читалками. */}
+        <div role="status" className="kosiv-map-locate-live">
+          {hint && (
+            <p className="kosiv-map-locate-hint" data-testid="map-locate-hint">
+              {t(hint === "center" ? "miniapp.map.locateFailed" : "miniapp.map.locateFailedNoCenter")}
+            </p>
+          )}
+        </div>
       </div>
       {legend && (groups.length > 0 || (center && centerMarker)) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">

@@ -1,5 +1,5 @@
-// Ползунок радиуса поиска (разделы каталога с картой): шаги неравномерные — мелкие вблизи, крупные вдали.
-// Значение всегда видно рядом; для читалок — aria-valuetext («2 км»).
+// Ползунок радиуса поиска (разделы каталога с картой, «Поруч»): шаги неравномерные — мелкие вблизи, крупные вдали.
+// Значение всегда видно рядом; для читалок — aria-valuetext («2 км»). Каталог добавляет последний шаг «Усі місця».
 import { useId } from "react";
 import { useT } from "@tg/ui";
 import { useRadiusLabel } from "./Nearby.js";
@@ -19,22 +19,24 @@ export function stepIndex(m: number): number {
 export function RadiusSlider({
   value,
   onChange,
-  valueText,
+  allowAll = false,
   overlay = false,
 }: {
-  /** Радиус, м; null — не задан (ползунок стоит на максимуме). */
+  /** Радиус, м; null — без ограничения (последний шаг, только с allowAll). */
   value: number | null;
-  onChange: (m: number) => void;
-  /** Текст вместо числа (радиус не задан: «Усі місця»). */
-  valueText?: string;
-  /** Поверх карты («Поруч»): стеклянная капсула. */
+  onChange: (m: number | null) => void;
+  /** Последний шаг «Усі місця» (null) после максимального радиуса. */
+  allowAll?: boolean;
+  /** Поверх карты («Поруч»): стеклянная капсула, видимой подписи нет (для читалок остаётся). */
   overlay?: boolean;
 }) {
   const { t } = useT();
   const id = useId();
   const label = useRadiusLabel();
-  const idx = value === null ? RADIUS_STEPS.length - 1 : stepIndex(value);
-  const text = valueText ?? label(RADIUS_STEPS[idx]!);
+  const last = allowAll ? RADIUS_STEPS.length : RADIUS_STEPS.length - 1;
+  const idx = value === null ? last : stepIndex(value);
+  const text =
+    allowAll && idx === RADIUS_STEPS.length ? t("miniapp.catalog.radiusAll") : label(RADIUS_STEPS[idx]!);
   return (
     <div
       className={overlay ? "kosiv-radius-slider kosiv-radius-overlay" : "kosiv-radius-slider"}
@@ -45,13 +47,16 @@ export function RadiusSlider({
         id={id}
         type="range"
         min={0}
-        max={RADIUS_STEPS.length - 1}
+        max={last}
         step={1}
         value={idx}
         aria-valuetext={text}
-        onChange={(e) => onChange(RADIUS_STEPS[Number(e.target.value)]!)}
+        onChange={(e) => {
+          const i = Number(e.target.value);
+          onChange(i >= RADIUS_STEPS.length ? null : RADIUS_STEPS[i]!);
+        }}
       />
-      <output htmlFor={id} data-testid="radius-slider-value">
+      <output htmlFor={id} aria-live="off" data-testid="radius-slider-value">
         {text}
       </output>
     </div>

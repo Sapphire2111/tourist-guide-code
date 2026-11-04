@@ -169,6 +169,8 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
           baseLabel={caption ?? undefined}
           baseTag={base?.name}
           me={geo.status === "granted" ? geo.point : null}
+          onLocate={locate}
+          locating={locating}
         />
       ) : (
         geo.status !== "locating" &&
@@ -188,6 +190,8 @@ function NearbyPlaces({
   baseLabel,
   baseTag,
   me,
+  onLocate,
+  locating,
 }: {
   point: LatLng;
   radius: number;
@@ -198,6 +202,8 @@ function NearbyPlaces({
   baseLabel?: string;
   baseTag?: string;
   me: LatLng | null;
+  onLocate?: () => void;
+  locating?: boolean;
 }) {
   const { api } = useGuide();
   const [fresh, retry] = useAsync(
@@ -225,6 +231,8 @@ function NearbyPlaces({
           baseLabel={baseLabel}
           baseTag={baseTag}
           me={me}
+          onLocate={onLocate}
+          locating={locating}
           loading={fresh.status === "loading"}
         />
       )}
@@ -243,6 +251,8 @@ export function ModernNearbyResults({
   baseLabel,
   baseTag,
   me,
+  onLocate,
+  locating,
   loading,
 }: {
   list: PlaceSummary[];
@@ -256,6 +266,9 @@ export function ModernNearbyResults({
   baseLabel?: string;
   baseTag?: string;
   me: LatLng | null;
+  /** Кнопка «Ви тут» на карте вызывает определение места экрана (общее с кнопкой шапки). */
+  onLocate?: () => void;
+  locating?: boolean;
   loading: boolean;
 }) {
   const { t } = useT();
@@ -289,7 +302,9 @@ export function ModernNearbyResults({
     <div className="modern-nearby-results">
       <div className="modern-map-stage">
         <div className="modern-map-overlay" data-map-inset="top">
-          {onRadius && <RadiusSlider value={selectedRadius} onChange={onRadius} overlay />}
+          {onRadius && (
+            <RadiusSlider value={selectedRadius} onChange={(m) => m !== null && onRadius(m)} overlay />
+          )}
           <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
             <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
               <span aria-hidden="true">✦</span>
@@ -312,6 +327,8 @@ export function ModernNearbyResults({
             radius={base ? radius : undefined}
             maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
             me={me}
+            onLocate={onLocate}
+            locating={locating}
             closestId={closest?.id}
             legend={false}
             floating

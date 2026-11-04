@@ -765,8 +765,8 @@ html[data-season] .kosiv-place-credit a:focus-visible {
    На сцене «Поруч» масштаб посередине справа — кнопка под ним. Цвета из темы (День/Ніч). */
 .kosiv-map-locate {
   position: absolute;
-  right: 5px;
-  bottom: 98px;
+  right: 8px;
+  bottom: 128px;
   z-index: 3;
   box-sizing: border-box;
   display: inline-flex;
@@ -784,7 +784,7 @@ html[data-season] .kosiv-place-credit a:focus-visible {
 }
 .kosiv-map-locate[data-floating="true"] {
   bottom: auto;
-  top: calc(50% + 46px);
+  top: calc(50% + 58px);
 }
 .kosiv-map-locate svg {
   width: 22px;
@@ -804,6 +804,13 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   .kosiv-map-locate[aria-busy="true"] svg {
     animation: none;
   }
+}
+.kosiv-map-locate-live {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
 }
 .kosiv-map-locate-hint {
   position: absolute;
@@ -848,17 +855,18 @@ html[data-season] .kosiv-place-credit a:focus-visible {
 .kosiv-radius-slider input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: currentColor;
-  opacity: 0.35;
+  background: rgb(128 128 128 / 55%);
+  background: color-mix(in srgb, currentColor 35%, transparent);
 }
 .kosiv-radius-slider input[type="range"]::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: currentColor;
-  opacity: 0.35;
+  background: rgb(128 128 128 / 55%);
+  background: color-mix(in srgb, currentColor 35%, transparent);
 }
 .kosiv-radius-slider input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
+  box-sizing: border-box;
   width: 20px;
   height: 20px;
   margin-top: -8px;
@@ -868,8 +876,9 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
 }
 .kosiv-radius-slider input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 2px solid #ffffff;
   background: var(--app-accent, #2d6a4f);
@@ -887,10 +896,22 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   font-size: 0.75rem;
   font-weight: 700;
 }
+/* Поверх карты видимой подписи нет (дорожка длиннее на 320 px); для читалок подпись остаётся. */
+.kosiv-radius-overlay label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 /* Поверх карты: стеклянная капсула по ширине панели, события — только на ней. */
 .kosiv-radius-overlay {
   box-sizing: border-box;
-  margin: 4px 0 12px;
+  margin: 0 0 11px;
   padding: 0 12px;
   border-radius: 12px;
   border: 1px solid var(--glass-border);

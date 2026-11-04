@@ -106,15 +106,17 @@ function CategoryPlaces({
   const point = gps ?? base?.point ?? null;
   // Радиус: null — как раньше (GPS: 3 км, при малом числе мест расширяется до 10 км; QR-точка: без радиуса).
   // Ползунок есть, когда есть точка и не выбраны локации; выбор запоминается за записью истории.
-  const [radius, setRadius] = useScreenState<number | null>("catalog.radius", null);
+  // "all" — явно «Усі місця» (без радиуса).
+  const [radius, setRadius] = useScreenState<number | "all" | null>("catalog.radius", null);
   const canRadius = !byLocation && point !== null;
-  const [queryRadius, setQueryRadius] = useState<number | null>(radius);
+  const [queryRadius, setQueryRadius] = useState<number | "all" | null>(radius);
   useEffect(() => {
     if (radius === queryRadius) return;
     const timer = window.setTimeout(() => setQueryRadius(radius), RADIUS_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [radius, queryRadius]);
   const activeRadius = canRadius ? queryRadius : null;
+  const radiusNumber = typeof activeRadius === "number" ? activeRadius : null;
   // Центр карты: GPS, иначе выбранные локации (середина их центров), QR — только если ничего не выбрано.
   // Объект стабилен между рендерами (ввод в поиске не должен пересоздавать маркеры карты).
   const qrPoint = base?.point ?? null;
@@ -150,19 +152,34 @@ function CategoryPlaces({
           };
           if (!gps)
             return {
-              list: await api.search({ ...params, point, ...(activeRadius ? { radius: activeRadius } : {}) }),
+              list: await api.search({ ...params, point, ...(radiusNumber ? { radius: radiusNumber } : {}) }),
               regionWide: false,
               partial,
+              used: radiusNumber,
             };
-          const near = activeRadius
-            ? await api.search({ ...params, point: gps, radius: activeRadius })
-            : await searchAround(api.search, params, gps);
+          // Явный радиус отключает расширение до 10 км; «Усі місця» — без радиуса; по умолчанию — 3 км с расширением.
+          const near =
+            activeRadius === null
+              ? await searchAround(api.search, params, gps)
+              : {
+                  list: await api.search({
+                    ...params,
+                    point: gps,
+                    ...(radiusNumber ? { radius: radiusNumber } : {}),
+                  }),
+                  radius: radiusNumber,
+                };
           // Текстовый запрос не нашёл ничего рядом (до 10 км) — ищем по региону, с пометкой.
-          if (q && near.length === 0)
-            return { list: await api.search({ ...params, point: gps }), regionWide: true, partial };
-          return { list: near, regionWide: false, partial };
+          if (q && near.list.length === 0)
+            return {
+              list: await api.search({ ...params, point: gps }),
+              regionWide: true,
+              partial,
+              used: null,
+            };
+          return { list: near.list, regionWide: false, partial, used: near.radius };
         })
-        .then(({ list, regionWide, partial }) => ({ list, regionWide, partial, submitId })),
+        .then(({ list, regionWide, partial, used }) => ({ list, regionWide, partial, used, submitId })),
 
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps, activeRadius],
     {
@@ -237,9 +254,20 @@ function CategoryPlaces({
       </div>
       {canRadius && (
         <RadiusSlider
-          value={radius ?? (gps ? GPS_RADIUS : null)}
-          valueText={radius === null && !gps ? t("miniapp.catalog.radiusAll") : undefined}
-          onChange={setRadius}
+          // По умолчанию с GPS — фактически использованный радиус (3 км или 10 км после расширения).
+          value={
+            radius === null
+              ? gps
+                ? places.status === "ready"
+                  ? (places.data.used ?? GPS_RADIUS)
+                  : GPS_RADIUS
+                : null
+              : radius === "all"
+                ? null
+                : radius
+          }
+          allowAll
+          onChange={(m) => setRadius(m === null ? "all" : m)}
         />
       )}
       {/* Постоянная live-область: читалки объявляют изменение числа результатов. */}
@@ -298,7 +326,7 @@ function CategoryPlaces({
                   centerMarker={!byLocation || !!gps}
                   // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
                   maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
-                  radius={activeRadius ?? undefined}
+                  radius={radiusNumber ?? undefined}
                 />
               )}
               <PlaceList places={list} />
