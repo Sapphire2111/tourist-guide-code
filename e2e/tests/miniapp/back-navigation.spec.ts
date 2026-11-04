@@ -140,8 +140,9 @@ test.describe("в Telegram (QR отеля)", () => {
       .getByRole("navigation", { name: "Основна навігація" })
       .getByRole("link", { name: "Поруч", exact: true })
       .click();
-    const radius = page.getByRole("group", { name: "Радіус" });
-    await radius.getByRole("button", { name: "10 км" }).click();
+    const radius = page.getByRole("slider", { name: "Радіус пошуку" });
+    // Шаг 6 шкалы — 10 км.
+    await radius.fill("6");
     await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
     await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
     await expect(page.getByTestId("nearby-status")).not.toHaveText("Завантажуємо…");
@@ -151,7 +152,7 @@ test.describe("в Telegram (QR отеля)", () => {
     await press(page);
     await expect(page).toHaveURL(/#\/nearby$/);
     await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
-    await expect(radius.getByRole("button", { name: "10 км" })).toHaveAttribute("aria-pressed", "true");
+    await expect(radius).toHaveAttribute("aria-valuetext", "10 км");
     await expect(page.getByTestId("place-list").getByRole("link").first()).toBeVisible();
     expect(state.searches.length).toBe(count);
   });

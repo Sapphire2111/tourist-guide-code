@@ -5,6 +5,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { I18nProvider } from "@tg/ui";
 import { ThemeProvider, useTheme } from "../design/ThemeProvider.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
+import type * as Geo from "./geo.js";
 import type * as GoogleMaps from "./google-maps.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
 
@@ -32,6 +33,10 @@ const calls = vi.hoisted(() => ({
   authFailed: false,
   authListeners: [] as (() => void)[],
   resizes: 0,
+  panned: [] as unknown[],
+  paths: [] as { lat: number; lng: number }[][],
+  lines: [] as { map: unknown }[],
+  zooms: [] as number[],
 }));
 
 vi.mock("@googlemaps/markerclusterer", () => ({
@@ -44,6 +49,19 @@ vi.mock("@googlemaps/markerclusterer", () => ({
     }
     clearMarkers() {}
     setMap() {}
+  },
+}));
+
+const geo = vi.hoisted(() => ({
+  next: null as { lat: number; lng: number } | null,
+  calls: 0,
+  pending: null as Promise<{ lat: number; lng: number } | null> | null,
+}));
+vi.mock("./geo.js", async (orig) => ({
+  ...(await orig<typeof Geo>()),
+  requestLocation: () => {
+    geo.calls++;
+    return geo.pending ?? Promise.resolve(geo.next);
   },
 }));
 
@@ -94,7 +112,12 @@ vi.mock("./google-maps.js", async (orig) => {
           calls.fit++;
         }
         setCenter() {}
-        setZoom() {}
+        panTo(p: unknown) {
+          calls.panned.push(p);
+        }
+        setZoom(z: number) {
+          calls.zooms.push(z);
+        }
         setOptions() {}
         panBy(x: number, y: number) {
           calls.pans.push([x, y]);
@@ -137,8 +160,16 @@ vi.mock("./google-maps.js", async (orig) => {
         }
       },
       Polyline: class extends Overlay {
-        constructor(o: { map?: unknown; icons?: { icon: { strokeColor?: string } }[] }) {
+        constructor(o: {
+          map?: unknown;
+          path?: { lat: number; lng: number }[];
+          icons?: { icon: { strokeColor?: string } }[];
+        }) {
           super(o);
+          if (o.path) {
+            calls.paths.push(o.path);
+            calls.lines.push(this);
+          }
           calls.routeColors.push(o.icons?.[0]?.icon.strokeColor);
           calls.polylines++;
         }
@@ -203,9 +234,18 @@ beforeEach(() => {
     authFailed: false,
     authListeners: [],
     resizes: 0,
+    panned: [],
+    paths: [],
+    lines: [],
+    zooms: [],
   });
+  geo.calls = 0;
+  geo.pending = null;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  geo.next = null;
+});
 
 // Вид карты ставится в следующем кадре (requestAnimationFrame) — ждём его.
 // Первый act — загрузка API и эффекты, второй — кадр, в котором ставится вид.
@@ -244,6 +284,103 @@ function wrap(node: React.ReactNode) {
 }
 
 const onMap = () => calls.markers.filter((m) => m.map);
+
+describe("кнопка «Ви тут»", () => {
+  it("позиция уже известна — карта центрируется на ней без запроса", async () => {
+    const view = render(
+      wrap(<PlacesMap places={[place("a")]} center={null} me={{ lat: 48.4, lng: 24.5 }} />),
+    );
+    await flush();
+    const button = view.getByTestId("map-locate");
+    expect(button.getAttribute("aria-label")).toBe("Показати, де я");
+    await act(async () => button.click());
+    expect(calls.panned).toEqual([{ lat: 48.4, lng: 24.5 }]);
+    expect(view.queryByTestId("map-locate-hint")).toBeNull();
+  });
+
+  it("позиции нет — запрашивает геолокацию, центрирует и ставит значок «Ви тут»", async () => {
+    geo.next = { lat: 48.3, lng: 24.6 };
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={{ lat: 48.45, lng: 24.56 }} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(calls.panned).toEqual([{ lat: 48.3, lng: 24.6 }]);
+    expect(calls.markers.some((m) => m.content?.getAttribute("aria-label") === "Ви тут")).toBe(true);
+  });
+
+  it("отказ — центр точки поиска и подсказка", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={{ lat: 48.45, lng: 24.56 }} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(calls.panned).toEqual([{ lat: 48.45, lng: 24.56 }]);
+    expect(view.getByTestId("map-locate-hint").textContent).toContain("Не вдалося визначити");
+  });
+});
+
+describe("кнопка «Ви тут»: края", () => {
+  it("на карте без center отказ не двигает карту и не обещает точку поиска", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(calls.panned).toEqual([]);
+    const hint = view.getByTestId("map-locate-hint").textContent!;
+    expect(hint).toBe("Не вдалося визначити, де ви.");
+    expect(view.getByRole("status")).toBeDefined();
+  });
+
+  it("позиция не кэшируется: повторное нажатие запрашивает заново; zoom не больше предела устройства", async () => {
+    geo.next = { lat: 48.3, lng: 24.6 };
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} maxZoom={17} />));
+    await flush();
+    const before = calls.zooms.length;
+    await act(async () => view.getByTestId("map-locate").click());
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(geo.calls).toBe(2);
+    expect(Math.max(...calls.zooms.slice(before))).toBe(14);
+  });
+
+  it("размонтирование во время запроса геолокации — карта не двигается", async () => {
+    let done!: (p: { lat: number; lng: number } | null) => void;
+    geo.pending = new Promise((r) => (done = r));
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    view.unmount();
+    await act(async () => done({ lat: 48.3, lng: 24.6 }));
+    expect(calls.panned).toEqual([]);
+  });
+
+  it("onLocate родителя: без позиции вызывается он, собственного запроса нет", async () => {
+    const onLocate = vi.fn();
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} onLocate={onLocate} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(onLocate).toHaveBeenCalledTimes(1);
+    expect(geo.calls).toBe(0);
+  });
+});
+
+describe("пунктирный круг радиуса", () => {
+  const center = { lat: 48.45, lng: 24.56 };
+  it("строится по радиусу вокруг центра, меняется с радиусом и убирается при null", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={center} radius={2000} />));
+    await flush();
+    expect(calls.paths).toHaveLength(1);
+    const ring = calls.paths[0]!;
+    expect(ring.length).toBeGreaterThanOrEqual(64);
+    const dLat = (ring[0]!.lat - center.lat) * 111_195;
+    expect(Math.abs(dLat)).toBeGreaterThan(1990);
+    expect(Math.abs(dLat)).toBeLessThan(2010);
+    view.rerender(wrap(<PlacesMap places={[place("a")]} center={center} radius={5000} />));
+    await flush();
+    expect(calls.paths).toHaveLength(2);
+    expect(Math.abs((calls.paths[1]![0]!.lat - center.lat) * 111_195)).toBeGreaterThan(4990);
+    const lines = () => calls.lines.filter((l) => l.map).length;
+    view.rerender(wrap(<PlacesMap places={[place("a")]} center={center} />));
+    await flush();
+    expect(calls.paths).toHaveLength(2);
+    expect(lines()).toBe(0);
+  });
+});
 
 describe("PlacesMap (Google Maps)", () => {
   it("смена мест и радиуса — без пересоздания карты; сбой /categories — легенда «Інше»", async () => {
@@ -560,10 +697,10 @@ describe("PlacesMap (Google Maps)", () => {
     const center = { lat: 48.45, lng: 24.56 };
     const view = render(wrap(<PlacesMap places={[]} center={center} radius={500} />));
     await flush();
-    expect(calls.circles.at(-1)?.strokeColor).toBe("#1d4ed8");
+    expect(calls.routeColors.at(-1)).toBe("#1d4ed8");
     view.rerender(wrap(<PlacesMap places={[]} center={center} radius={500} floating />));
     await flush();
-    expect(calls.circles.at(-1)?.strokeColor).toBe("#E06D2B");
+    expect(calls.routeColors.at(-1)).toBe("#B8430F");
   });
 
   it("смена высоты окна карты — новый размер карте и повторная подгонка границ", async () => {

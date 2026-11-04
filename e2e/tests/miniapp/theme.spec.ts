@@ -227,7 +227,7 @@ for (const [width, height, mapHeight] of [
   });
 }
 
-test("цели нажатия: чипы категорий, пилюли радиуса и теги героя не меньше 44 px", async ({ page }) => {
+test("цели нажатия: чипы категорий, ползунок радиуса и теги героя не меньше 44 px", async ({ page }) => {
   // Видимый размер не меняется: недостающее даёт ::after (inset < 0).
   const reach = (selector: string) =>
     page.locator(selector).evaluateAll((nodes) =>
@@ -241,7 +241,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
   await page.goto("/#/nearby");
   await expect(page.locator(".modern-filters button").first()).toBeVisible();
   await animationsDone(page);
-  for (const sel of [".modern-filters button", ".modern-radius button"]) {
+  for (const sel of [".modern-filters button", ".kosiv-radius-overlay input"]) {
     const items = await reach(sel);
     expect(items.length).toBeGreaterThan(0);
     for (const i of items) expect(i.total, sel).toBeGreaterThanOrEqual(44);

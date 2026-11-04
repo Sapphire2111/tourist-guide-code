@@ -37,7 +37,7 @@ function HomePlaces() {
       excludeSections: ["stay" as const],
       limit: HOME_PLACES,
     };
-    (gps ? searchAround(api.search, params, gps) : api.search(params)).then(
+    (gps ? searchAround(api.search, params, gps).then((r) => r.list) : api.search(params)).then(
       (data) => alive && setCount(data.length),
     );
     return () => {
