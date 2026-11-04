@@ -52,6 +52,8 @@ export type TelegramWebApp = {
   setBottomBarColor?(color: string): void;
   /** Bot API 8.0+: геолокация устройства с разрешением в Telegram. */
   LocationManager?: TelegramLocationManager;
+  /** Bot API 6.1+: вибро-отклик (щелчок шага ползунка). */
+  HapticFeedback?: { selectionChanged?(): void };
 };
 
 export type TelegramLocationManager = {

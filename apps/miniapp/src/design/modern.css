@@ -1146,7 +1146,7 @@ html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
 }
 .modern-map-stage:has([data-testid="places-map"]) .modern-map-overlay {
   position: absolute;
-  top: 3px;
+  top: 8px;
   left: 10px;
   right: 10px;
   z-index: 5;
@@ -1635,6 +1635,11 @@ html[data-theme="night"] .modern-map-stage {
   background-color: #0e231b;
   border-color: rgb(246 174 45 / 35%);
   box-shadow: 0 8px 30px rgb(0 0 0 / 60%);
+}
+/* Ползунок радиуса ночью: рельс и деления светлые на тёмном стекле; огонь — тот же. */
+html[data-theme="night"] .kosiv-radius-slider {
+  --rs-rail: rgb(255 255 255 / 20%);
+  --rs-tick: rgb(255 255 255 / 45%);
 }
 html[data-theme="night"] .modern-filters button {
   background-color: rgb(11 29 22 / 80%);
