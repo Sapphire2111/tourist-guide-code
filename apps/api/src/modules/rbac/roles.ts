@@ -160,6 +160,9 @@ const ORG_MANAGER_PERMISSIONS: readonly PermissionCode[] = [
   "booking.reject",
   "booking.propose_alternative",
   "booking.admin.read",
+  // Отзывы (блок 10, states-and-rules §6): ответ на отзыв и жалоба — владелец и менеджер; скрыть отзыв партнёр не может.
+  "review.respond",
+  "review.complain",
 ];
 
 /** Владелец (S-05, S-06): всё по своей организации, включая отправку на модерацию и сотрудников. */
@@ -171,6 +174,8 @@ const ORG_OWNER_PERMISSIONS: readonly PermissionCode[] = [
   "staff.role.assign",
   "staff.deactivate",
   "staff.audit.read",
+  // Апелляция на решение по жалобе на отзыв (states-and-rules §6.4) — владелец.
+  "review.appeal",
 ];
 
 /**

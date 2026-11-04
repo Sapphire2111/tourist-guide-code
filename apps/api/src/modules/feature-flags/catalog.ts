@@ -72,7 +72,9 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   // (на окружение или регион), когда готовы экраны C07/C08 и кабинет P04/P05.
   "module.bookings": flag("Бронирования (блок 7)", OFF, ["release.mvp"]),
   "module.qr_transactions": flag("QR-транзакции и взаиморасчёты (блок 9)", ALWAYS, ["finance.engine"]),
-  "module.reviews": flag("Подтверждённые отзывы (блок 10)", ALWAYS, ["release.mvp"]),
+  // Отзывы: серверная часть готова раньше экранов (C13, P07, AD06) — по умолчанию выключен везде; включает админ
+  // платформы на окружение или регион.
+  "module.reviews": flag("Подтверждённые отзывы (блок 10)", OFF, ["release.mvp"]),
   "module.ambassadors": flag("Амбассадоры (блок 11)", ALWAYS, ["release.mvp"]),
   // ИИ-ассистент: внешние платные API (Claude, Google Speech-to-Text) — в prod выключен до отдельного решения.
   "module.assistant": flag("Голосовой/текстовый ассистент на главной (Claude, Speech-to-Text)", ON, [

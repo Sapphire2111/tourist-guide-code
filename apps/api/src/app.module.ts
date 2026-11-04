@@ -23,6 +23,7 @@ import { ProfileModule } from "./modules/profile/index.js";
 import { QrContextModule } from "./modules/qr-context/index.js";
 import { QrPointsModule } from "./modules/qr-points/index.js";
 import { RateLimitModule } from "./modules/rate-limit/index.js";
+import { ReviewsModule } from "./modules/reviews/index.js";
 import { RbacModule, RbacTenantContextSource } from "./modules/rbac/index.js";
 import { RoleAssignmentsModule } from "./modules/role-assignments/index.js";
 import { SystemModule } from "./modules/system/index.js";
@@ -168,6 +169,8 @@ export class AppModule {
         PartnerModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME }),
         // Бронирования (блок 7): за флагом module.bookings (по умолчанию выключен).
         BookingsModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN }),
+        // Подтверждённые отзывы (блок 10): за флагом module.reviews (по умолчанию выключен).
+        ReviewsModule,
         // Фича-флаги (T1-22): без APP_ENV (генерация OpenAPI) — значения prod.
         FeatureFlagsModule.forRoot({ appEnv: env.APP_ENV }),
         // Файлы и изображения (T1-20, ADR-0013): без STORAGE_* (генерация OpenAPI) — local, ресайз inline.

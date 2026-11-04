@@ -93,6 +93,22 @@ describe("бизнес-роли админки", () => {
     expect(roleHasPermission("ORG_MANAGER", "booking.expire")).toBe(false);
   });
 
+  it("отзывы (блок 10): ответ и жалоба — менеджер и владелец, апелляция — владелец; скрытие — только модерация", () => {
+    for (const p of ["review.respond", "review.complain"] as const) {
+      expect(roleHasPermission("ORG_STAFF", p), p).toBe(false);
+      expect(roleHasPermission("ORG_MANAGER", p), p).toBe(true);
+      expect(roleHasPermission("ORG_OWNER", p), p).toBe(true);
+    }
+    expect(roleHasPermission("ORG_MANAGER", "review.appeal")).toBe(false);
+    expect(roleHasPermission("ORG_OWNER", "review.appeal")).toBe(true);
+    for (const r of ["ORG_STAFF", "ORG_MANAGER", "ORG_OWNER"] as const)
+      expect(roleHasPermission(r, "review.moderate"), r).toBe(false);
+    for (const r of ["MODERATOR", "REGION_ADMIN"] as const) {
+      expect(roleHasPermission(r, "review.moderate"), r).toBe(true);
+      expect(roleHasPermission(r, "appeal.decide"), r).toBe(true);
+    }
+  });
+
   it("каждое право бизнес-роли — из каталога", () => {
     for (const r of ["SUPERADMIN", "REGION_ADMIN", "MODERATOR"] as const)
       for (const p of ROLES[r].permissions) expect(PERMISSIONS, `${r}: ${p}`).toContain(p);
