@@ -22,19 +22,20 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     await page.keyboard.press("Escape");
-    // modern: одна сетка из восьми разделов (без «Що поруч» — он в кнопке под Hero и в нижней навигации), «Про заклад» — карточка заведения.
+    // modern (Concept B): 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + горизонтальная карусель из 8 категорий.
     const intentions = page.getByTestId("home-sections").getByRole("link");
-    await expect(intentions).toHaveText([
-      /^Де жити/,
-      "Де поїсти",
-      "Відпочити та зігрітися",
-      "Де купити",
-      "Розваги та враження",
-      "Гірські лижі",
-      "Авто",
-      "Сервіси",
+    await expect(intentions).toHaveCount(8);
+    expect(await intentions.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual([
+      "#/section/relax",
+      "#/section/fun",
+      "#/section/shop",
+      "#/section/transfer",
+      "#/section/stay",
+      "#/section/ski",
+      "#/section/services",
+      "#/section/eat",
     ]);
-    // «Допомога» — кнопка со щитом в верхней полосе, а не плитка.
+    // «Допомога» — кнопка 112 в верхней полосе, а не плитка.
     await expect(intentions.filter({ hasText: "Допомога" })).toHaveCount(0);
     await expect(page.getByTestId("app-top").getByRole("link", { name: "Допомога" })).toHaveAttribute(
       "href",

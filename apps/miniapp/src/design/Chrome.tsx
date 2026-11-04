@@ -1,5 +1,5 @@
 // Оболочка «Сучасна Косівщина»: заставка старта, кнопка меню (настройки и профиль) и переключатель сезона.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { MessageKey } from "@tg/i18n";
 import { Link, useT } from "@tg/ui";
 import { interceptBack } from "../telegram.js";
@@ -57,22 +57,6 @@ export function Splash({ slowAfterMs = SPLASH_SLOW_MS }: { slowAfterMs?: number 
   );
 }
 
-const MENU_ICON = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d="M4 7h16M4 12h16M4 17h16" />
-  </svg>
-);
-
 const SCAN_ICON = (
   <svg
     width="18"
@@ -96,12 +80,21 @@ export type ScanControl = { start: () => void; message: MessageKey | null };
 const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 /**
- * Тонкая липкая полоса с одной маленькой кнопкой «Меню» (справа). Кнопка открывает лист с настройками (сезон
- * оформления) и профилем — одинаково на всех экранах. Лист: role=dialog, фокус внутрь и возврат на кнопку,
- * Tab не выходит за лист, закрытие по Escape, тапу вне листа, кнопке «Закрити» и при смене экрана.
- * На главной — скрытый для глаз h1 с названием приложения (заголовок экрана для скринридеров).
+ * Верхня смуга в стилі Концепту Б «Мольфарська Ватра»:
+ * ліворуч — круглий значок вогника 🔥 (відкриває налаштування) та підпис «Мольфарський Гід / Яремче — Буковель ▾»,
+ * праворуч — капсули «📷 QR» та «🆘 112».
  */
-export function AppTop({ path, profile, scan }: { path: string; profile: boolean; scan?: ScanControl }) {
+export function AppTop({
+  path,
+  profile,
+  scan,
+  location,
+}: {
+  path: string;
+  profile: boolean;
+  scan?: ScanControl;
+  location?: ReactNode;
+}) {
   const { t } = useT();
   const home = path === "/";
   const [open, setOpen] = useState(false);
@@ -147,10 +140,24 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
   }, [open, close]);
   return (
     <div className="kosiv-top" data-testid="app-top">
-      <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
-        {ICONS.help}
-        <span>{t("miniapp.modern.help")}</span>
-      </Link>
+      <button
+        ref={button}
+        type="button"
+        className="kosiv-menu-btn modern-vatra-btn"
+        aria-label={t("miniapp.menu.open")}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-testid="menu-btn"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span aria-hidden="true">🔥</span>
+      </button>
+      <div className="modern-top-brand">
+        <span className="modern-top-kicker" aria-hidden="true">
+          Мольфарський Гід
+        </span>
+        <div className="modern-top-loc">{location}</div>
+      </div>
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
       {scan && (
         <p
@@ -161,29 +168,33 @@ export function AppTop({ path, profile, scan }: { path: string; profile: boolean
           {scan.message ? t(scan.message) : ""}
         </p>
       )}
-      {scan && home && (
-        <button
-          type="button"
-          className="kosiv-menu-btn"
-          aria-label={t("miniapp.scan.open")}
-          data-testid="scan-btn"
-          onClick={scan.start}
-        >
-          {SCAN_ICON}
-        </button>
-      )}
-      <button
-        ref={button}
-        type="button"
-        className="kosiv-menu-btn"
-        aria-label={t("miniapp.menu.open")}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        data-testid="menu-btn"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {MENU_ICON}
-      </button>
+      {home &&
+        (scan ? (
+          <button
+            type="button"
+            className="kosiv-menu-btn modern-qr-pill"
+            aria-label={t("miniapp.scan.open")}
+            data-testid="scan-btn"
+            onClick={scan.start}
+          >
+            <span aria-hidden="true">📷</span>
+            <b aria-hidden="true">QR</b>
+          </button>
+        ) : (
+          <span className="kosiv-menu-btn modern-qr-pill" aria-hidden="true">
+            <span>📷</span>
+            <b>QR</b>
+          </span>
+        ))}
+      <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
+        <span className="modern-sos-icon" aria-hidden="true">
+          🆘
+        </span>
+        <b className="modern-sos-num" aria-hidden="true">
+          112
+        </b>
+        <span className="kosiv-sr-only">{t("miniapp.modern.help")}</span>
+      </Link>
       {open && (
         <div
           className="kosiv-sheet-backdrop"

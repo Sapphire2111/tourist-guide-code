@@ -11,7 +11,7 @@ html[data-design="modern"] {
   --app-surface-2: #eee7d9;
   --app-border: #e2d9c5;
   --app-text: #1c2822;
-  --app-muted: #55605a;
+  --app-muted: #434e48;
   --app-accent: #9e3616;
   --app-accent-ink: #8a2c0f;
   --app-accent-2: #14593d;
@@ -20,7 +20,7 @@ html[data-design="modern"] {
   --color-bg: #f4efe6;
   --color-surface: #eee7d9;
   --color-text: #1c2822;
-  --color-muted: #55605a;
+  --color-muted: #434e48;
   --color-button: #9e3616;
   --color-button-text: #ffffff;
   --color-link: #8a2c0f;
@@ -37,18 +37,19 @@ html[data-design="modern"] {
   --sheet-bg: #fbf8f1;
   --sheet-border: #e2d9c5;
   --fire: #c2521a;
-  --hero-far: #7fa99b;
-  --hero-far-o: 0.45;
-  --hero-mid: #3b6e5c;
-  --hero-mid-o: 0.78;
-  --hero-near: #1e4635;
-  --hero-trees: #122b20;
-  --hero-lit: #fffdf9;
-  --hero-lit-o: 0.42;
+  --hero-far: #6ba392;
+  --hero-far-o: 0.62;
+  --hero-mid: #356957;
+  --hero-mid-o: 0.88;
+  --hero-near: #1b4332;
+  --hero-valley: #102a1f;
+  --hero-trees: #0c2118;
+  --hero-lit: #fff8eb;
+  --hero-lit-o: 0.54;
   --hero-mist: #ffffff;
-  --hero-mist-o: 0.3;
-  --hero-edge-o: 0;
-  --hero-stars-o: 0;
+  --hero-mist-o: 0.58;
+  --hero-edge-o: 0.48;
+  --hero-stars-o: 0.36;
   --art-far: #1e4e3a;
   --art-mist: #ffffff;
   --art-mist-o: 0.25;
@@ -56,8 +57,9 @@ html[data-design="modern"] {
 
 html[data-design="modern"] body {
   background-color: var(--app-bg);
+  transition: none;
 }
-/* Фон «Поруч» і головної: темний смарагд угорі плавно переходить у крафт; без сегмента-смуги під шапкою. */
+/* Фон «Поруч» і головної: темний смарагд угорі; на головній поверх нього лежить повноекранна панорама Карпат. */
 html[data-screen="nearby"] body {
   background-image: linear-gradient(
     180deg,
@@ -69,28 +71,30 @@ html[data-screen="nearby"] body {
   background-repeat: no-repeat;
 }
 html[data-screen="home"] body {
-  background-image: linear-gradient(
-    180deg,
-    var(--top-bg) 0,
-    var(--top-bg) 150px,
-    var(--top-mid) 400px,
-    var(--top-end) 820px
-  );
-  background-repeat: no-repeat;
+  background-color: #071510;
+  background-image:
+    radial-gradient(circle at 50% 420px, rgb(242 100 25 / 12%), transparent 460px),
+    linear-gradient(180deg, #071510 0%, #071510 150px, #0f291e 420px, #091913 900px);
+  background-attachment: fixed;
 }
 
-/* Верхня смуга: компактна й зливається з темним верхом. Без transform і backdrop-filter (ТЗ §6.4). */
+/* Верхня смуга (Concept B): зліва 🔥 + Мольфарський Гід / локація, справа 📷 QR та 🆘 112. Без transform і backdrop-filter (ТЗ §6.4). */
 html[data-design="modern"] .kosiv-top {
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
   padding-top: calc(
     var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
       var(--tg-content-safe-area-inset-top, 0px) + 4px
   );
   padding-bottom: 4px;
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-left: 12px;
+  padding-right: 12px;
   background-color: var(--top-bg);
   color: var(--top-text);
+}
+html[data-screen="home"] .kosiv-top {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgb(7 21 16 / 82%) 0%, transparent 100%);
 }
 html[data-screen="inner"] .kosiv-top {
   padding-bottom: 8px;
@@ -100,42 +104,144 @@ html[data-screen="inner"] .kosiv-top {
   background-repeat: no-repeat;
 }
 html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background-color: #1d3b2e;
-  color: #fde68a;
-  border: 1px solid #3a6450;
+  position: relative;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  margin: 3px 0;
+  padding: 0;
+  border-radius: 9999px;
+  background-color: #261b12;
+  color: #f6ae2d;
+  border: 1px solid rgb(246 174 45 / 45%);
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+html[data-design="modern"] .kosiv-top .kosiv-menu-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 html[data-design="modern"] .kosiv-top > :focus-visible,
+html[data-design="modern"] .kosiv-top > :not(.kosiv-sheet-backdrop) :focus-visible,
 html[data-design="modern"] .modern-nearby-head :focus-visible {
   outline-color: #fde68a;
 }
 html[data-design="modern"] .kosiv-top-note {
   color: #fde68a;
 }
-
-.modern-help {
+.modern-top-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  max-height: 44px;
+  margin-right: auto;
+}
+.modern-top-kicker {
+  font-size: 11px;
+  line-height: 1.15;
+  color: #a8c7bb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.modern-top-loc {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  line-height: 1.2;
+}
+.modern-top-loc:empty::after {
+  content: "Яремче — Буковель ▾";
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f5efe6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip {
+  position: relative;
+  min-height: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: #f5efe6;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  gap: 4px;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip::after {
+  content: "";
+  position: absolute;
+  inset: -11px 0;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip-pin {
+  display: none;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip-caret {
+  font-size: 12px;
+  color: #f6ae2d;
+}
+.modern-qr-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 44px;
-  min-width: 44px;
+  gap: 4px;
+  min-height: 36px;
+  height: 36px;
+  margin: 4px 0;
   padding: 0 11px;
-  margin-right: auto;
-  border-radius: 14px;
-  background-color: #9e2a1c;
-  border: 1px solid #c8553f;
-  color: #fff8f0;
+  border-radius: 9999px;
+  background-color: #1c3128;
+  border: 1px solid rgb(255 255 255 / 18%);
+  color: #f5efe6;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 700;
-  text-decoration: none;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
-.modern-help svg {
-  width: 18px;
-  height: 18px;
+button.modern-qr-pill {
+  cursor: pointer;
+}
+button.modern-qr-pill::after,
+.modern-help::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.modern-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 36px;
+  height: 36px;
+  min-width: 44px;
+  margin: 4px 0;
+  padding: 0 11px;
+  border-radius: 9999px;
+  background-color: #c2521a;
+  border: 1px solid #f26419;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 html[data-design="modern"] .kosiv-content {
@@ -157,20 +263,38 @@ html[data-design="modern"] .kosiv-content h2 {
   font-weight: 700;
 }
 
-/* Привітання та «Локація» на головній лежать на темному верху. */
+/* На головній усі елементи плавно рухаються поверх статичної панорами Карпатських гір. */
 html[data-screen="home"] .kosiv-content {
   padding-top: 2px;
+  padding-bottom: calc(
+    var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--nav-height) + 24px
+  );
   gap: 10px;
 }
+html[data-screen="home"] .kosiv-content > :not(.modern-home),
+.modern-home > :not(.modern-hero),
+.modern-hero > :not(.modern-hero-backdrop) {
+  position: relative;
+  z-index: 1;
+}
 html[data-design="modern"] .kosiv-welcome {
-  gap: 3px;
+  gap: 2px;
 }
 html[data-screen="home"] .kosiv-welcome {
-  background-color: var(--top-bg);
+  background-color: transparent;
   color: var(--top-text);
+  text-shadow: 0 1px 8px rgb(8 22 16 / 75%);
 }
-html[data-screen="home"] .kosiv-welcome:not(:has(> *:not([data-testid="venue-summary"]))) {
-  display: none;
+/* Ховаємо вітальний рядок на головній візуально (як у референсі Concept B), але лишаємо в DOM для тестів, окрім випадку помилки контексту з кнопкою повтору. */
+html[data-screen="home"] .kosiv-welcome:not(:has(button)) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 html[data-screen="home"] .kosiv-welcome-hello {
   font-size: 13.5px;
@@ -180,8 +304,8 @@ html[data-screen="home"] .kosiv-welcome-hello {
 }
 html[data-screen="home"] .kosiv-welcome-sub,
 html[data-screen="home"] .kosiv-welcome .kosiv-muted {
-  font-size: 13px;
-  color: var(--top-muted);
+  font-size: 12.5px;
+  color: #d6e4dc;
 }
 html[data-screen="home"] .kosiv-welcome a {
   color: #fde68a;
@@ -192,139 +316,152 @@ html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
 html[data-design="modern"] .loc-chip,
 html[data-design="modern"] .wx-chip {
   min-height: 40px;
-  background-color: #1d3b2e;
+  background-color: #193629;
   color: #ffffff;
-  border: 1px solid #3a6450;
-  border-radius: 14px;
+  border: 1px solid rgb(246 174 45 / 35%);
+  border-radius: 9999px;
+  box-shadow: 0 6px 16px rgb(7 21 16 / 28%);
 }
 html[data-design="modern"] .loc-chip svg {
   color: #f6ae2d;
+}
+html[data-screen="home"] .home-loc-row:not(:has(.wx-chip)) {
+  display: none;
 }
 
 .modern-home {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-/* Hero: панорама на весь блок, поверх неї — заголовок, скляне поле ассистента, теги, картка закладу. */
-.modern-hero {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 12px 12px;
-  border-radius: 28px;
-  border: 1.5px solid #2d5644;
-  background-color: #0b1d16;
-  background-image:
-    radial-gradient(circle at 50% 82%, rgb(242 100 25 / 28%), transparent 58%),
-    linear-gradient(180deg, #0b1d16 0%, #16382b 56%, #274235 100%);
-  box-shadow: 0 18px 40px -14px rgb(11 29 21 / 50%);
-  color: #ffffff;
-}
-.modern-hero-art,
-.modern-hero-rose {
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-.modern-hero-art {
+/* Повноекранний статичний фон Карпатських гір (Concept B: «Мольфарська Ватра & Нічні Карпати»). */
+.modern-hero-backdrop {
+  position: fixed;
   inset: 0;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background-color: #071510;
+  background-image:
+    radial-gradient(circle at 50% 420px, rgb(242 100 25 / 12%), transparent 460px),
+    linear-gradient(180deg, #071510 0%, #071510 150px, #0f291e 420px, #091913 900px);
 }
-.modern-hero-rose {
-  top: 10px;
-  right: 10px;
-  width: 58px;
-  height: 58px;
-}
-.modern-hero-far {
-  fill: var(--hero-far);
-  opacity: var(--hero-far-o);
-}
-.modern-hero-edge {
-  stroke: #f6ae2d;
-  stroke-width: 1;
-  opacity: var(--hero-edge-o);
-}
-.modern-hero-lit {
-  fill: var(--hero-lit);
-  opacity: var(--hero-lit-o);
-}
-.modern-hero-mid {
-  fill: var(--hero-mid);
-  opacity: var(--hero-mid-o);
-}
-.modern-hero-near {
-  fill: var(--hero-near);
-}
-.modern-hero-trees {
-  fill: var(--hero-trees);
-}
-.modern-hero-stars {
-  fill: #f6ae2d;
-  stroke: #f6ae2d;
-  stroke-width: 0.7;
-  opacity: var(--hero-stars-o);
-}
-.modern-hero-mist {
-  fill: var(--hero-mist);
-  opacity: var(--hero-mist-o);
-  animation: modern-mist 8s ease-in-out infinite;
-}
-.modern-hero-mist-slow {
-  animation-duration: 12s;
+.modern-hero-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 390px;
+  display: block;
 }
 .modern-nearby-art ellipse {
   animation: modern-mist 8s ease-in-out infinite;
 }
 @keyframes modern-mist {
+  0%,
+  100% {
+    transform: translate3d(-16px, 0, 0);
+    opacity: 0.42;
+  }
   50% {
-    transform: translateX(12px);
+    transform: translate3d(24px, -4px, 0);
+    opacity: 0.82;
   }
 }
+
+/* Hero Concept B: бейдж «✨ Жива Ватра Карпат», центрований заголовок і картка голосового пошуку */
+.modern-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #f5efe6;
+}
 .modern-hero-head {
-  padding: 0 62px 92px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 12px 8px 4px;
+}
+.modern-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 12px;
+  border-radius: 9999px;
+  background-color: #2b1f14;
+  border: 1px solid rgb(246 174 45 / 45%);
+  color: #f6ae2d;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 html[data-design="modern"] .modern-hero h2#sections-title {
-  margin: 0 0 4px;
-  font-size: clamp(27px, 7.6vw, 32px);
-  line-height: 1.08;
-  color: #ffffff;
-  text-shadow: 0 2px 10px rgb(12 32 24 / 65%);
-}
-.modern-hero-head p {
   margin: 0;
-  color: #e5efe9;
-  font-size: 13px;
-  line-height: 1.35;
-  text-shadow: 0 1px 6px rgb(12 32 24 / 75%);
+  font-size: clamp(25px, 7vw, 30px);
+  line-height: 1.08;
+  text-align: center;
+  color: #ffffff;
+  text-shadow: 0 2px 14px rgb(7 21 16 / 85%);
 }
 .modern-hero-glass {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px;
+  gap: 8px;
+  padding: 12px 14px;
   border-radius: 24px;
-  background-color: rgb(255 255 255 / 86%);
-  border: 1px solid #ffffff;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 10px 24px rgb(9 25 19 / 28%);
-  color: var(--glass-text);
+  background-color: #132a20;
+  border: 1px solid rgb(246 174 45 / 35%);
+  box-shadow: 0 8px 30px rgb(242 100 25 / 18%);
+  color: #f5efe6;
+}
+.modern-vatra-fallback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modern-vatra-mic {
+  font-size: 20px;
+  line-height: 1;
+}
+.modern-vatra-placeholder {
+  flex: 1;
+  font-size: 13.5px;
+  color: #a8c7bb;
+}
+.modern-vatra-orb {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  background-color: #c2521a;
+  background-image: linear-gradient(45deg, #f26419, #f6ae2d);
+  box-shadow: 0 0 18px rgb(242 100 25 / 60%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
 }
 html[data-design="modern"] .assistant-pill {
-  min-height: 48px;
-  padding: 2px 3px 2px 12px;
+  min-height: 46px;
+  padding: 0;
   border-radius: 18px;
-  background-color: rgb(22 56 43 / 7%);
-  border: 1px solid rgb(22 56 43 / 16%);
+  background-color: transparent;
+  border: 0;
   box-shadow: none;
+  gap: 8px;
 }
 html[data-design="modern"] .kosiv-content .assistant-pill input {
   min-height: 44px;
@@ -332,38 +469,44 @@ html[data-design="modern"] .kosiv-content .assistant-pill input {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--glass-text);
-  font-size: 14px;
+  color: #f5efe6;
+  font-size: 13.5px;
   text-overflow: ellipsis;
 }
 html[data-design="modern"] .kosiv-content .assistant-pill input::placeholder {
-  color: var(--glass-muted);
+  color: #a8c7bb;
 }
 html[data-design="modern"] .assistant-pill-icon {
-  color: #b83d18;
+  color: #f6ae2d;
+  font-size: 20px;
+  line-height: 1;
 }
 html[data-design="modern"] .assistant-pill:focus-within {
-  border-color: #b83d18;
-  outline-color: #b83d18;
+  outline-color: #f6ae2d;
 }
 html[data-design="modern"] .assistant-action {
   width: 44px;
   height: 44px;
-  border-radius: 14px;
-  background-color: var(--fire);
+  border-radius: 9999px;
+  background-color: #c2521a;
+  background-image: linear-gradient(45deg, #f26419, #f6ae2d);
   color: #ffffff;
+  font-size: 19px;
+  box-shadow: 0 0 18px rgb(242 100 25 / 55%);
 }
 .modern-hero-glass [data-testid="assistant-box"] {
   gap: 0;
 }
-/* Приклади й сезонні теги — по одному прокручуваному рядку у склі. */
-.modern-hero-glass .assistant-examples,
+/* Ховаємо дублюючий ряд прикладів у капсулі — залишаємо один ряд сезонних чипів. */
+.modern-hero-glass .assistant-examples {
+  display: none;
+}
 .modern-season .kosiv-tags {
   flex-wrap: nowrap;
   gap: 6px;
   overflow-x: auto;
-  margin: 0 -10px -4px;
-  padding: 6px 10px;
+  margin: 0 -14px -4px;
+  padding: 2px 14px 4px;
   scrollbar-width: none;
 }
 .modern-season .kosiv-tags::-webkit-scrollbar {
@@ -373,13 +516,13 @@ html[data-design="modern"] .assistant-action {
   flex: none;
   position: relative;
   min-height: 32px;
-  padding: 4px 11px;
-  border: 0;
+  padding: 5px 10px;
+  border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 9999px;
-  background-color: #e4e9e3;
-  color: var(--glass-text);
+  background-color: #233b30;
+  color: #f5efe6;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
   box-shadow: none;
 }
@@ -393,194 +536,213 @@ html[data-design="modern"] .assistant-action {
   white-space: nowrap;
 }
 
-/* Скляна картка закладу (QR) поверх лісу. */
+/* Картка готелю (Concept B: «🏡 Ваша оселя сьогодні:» + «Wi-Fi · Чан →»). */
 .modern-host {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 9px 12px;
-  background-color: rgb(255 255 255 / 86%);
-  border: 1px solid #ffffff;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  padding: 11px 14px;
+  background-color: #163226;
+  border: 1px solid rgb(246 174 45 / 28%);
   border-radius: 18px;
-  color: var(--glass-text);
+  color: #f5efe6;
   text-decoration: none;
-  box-shadow: 0 8px 20px rgb(9 25 19 / 24%);
+  box-shadow: 0 8px 22px rgb(7 21 16 / 35%);
 }
-.modern-host-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background-color: #f9e4d2;
-  color: #9e3616;
-  flex-shrink: 0;
-}
-.modern-host-icon svg {
-  width: 20px;
-  height: 20px;
-}
-.modern-host > span:nth-child(2) {
+.modern-host-body,
+.modern-host > span:first-child {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
-.modern-host strong {
-  font-size: 13.5px;
-  font-weight: 800;
-  color: var(--glass-text);
-  overflow-wrap: anywhere;
+html[data-design="modern"] .kosiv-top .modern-qr-pill {
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  margin: 4px 0;
+  padding: 0 11px;
+  border-radius: 9999px;
+  background-color: #1c3128;
+  border: 1px solid rgb(255 255 255 / 18%);
+  color: #f5efe6;
+  font-size: 12px;
+  gap: 4px;
+}
+html[data-design="modern"] .kosiv-top .modern-qr-pill b {
+  color: #f5efe6;
+  font-weight: 700;
+}
+html[data-design="modern"] .kosiv-top .modern-qr-pill::after {
+  inset: -4px 0;
 }
 .modern-host small {
-  font-size: 11.5px;
-  color: var(--glass-muted);
+  font-size: 12px;
+  font-weight: 600;
+  color: #f6ae2d;
+}
+.modern-host strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f5efe6;
+  overflow-wrap: anywhere;
 }
 .modern-host-link {
   margin-left: auto;
   flex-shrink: 0;
-  display: flex;
-  gap: 3px;
+  display: inline-flex;
   align-items: center;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background-color: #264236;
+  color: #f5efe6;
   font-size: 12px;
-  font-weight: 700;
-  color: #9e3616;
+  font-weight: 600;
 }
 
-/* Сетка в 2 колонки, 8 одинаковых плиток */
-.modern-intentions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* 2 великі акцентні картки («Де смачно поїсти» та «Що поруч зараз») */
+.modern-featured-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 108px;
   gap: 10px;
 }
-.modern-intention {
-  height: 100%;
-  min-height: 0;
+.modern-featured-card {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 20px;
+  background-color: #132a20;
+  border: 1px solid rgb(246 174 45 / 30%);
+  color: #f5efe6;
+  text-decoration: none;
+  box-shadow: 0 10px 24px -10px rgb(0 0 0 / 50%);
+}
+.modern-featured-near {
+  background-color: #262219;
+  background-image: linear-gradient(135deg, rgb(242 100 25 / 25%) 0%, #132a20 100%);
+  border-color: rgb(242 100 25 / 50%);
+}
+.modern-featured-top {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
-  align-items: flex-start;
+}
+.modern-featured-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+.modern-featured-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f6ae2d;
+  white-space: nowrap;
+}
+.modern-featured-title {
+  font-family: var(--font-heading);
+  font-size: 19px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: #ffffff;
+}
+.modern-featured-sub {
+  font-size: 12px;
+  line-height: 1.25;
+  color: #a8c7bb;
+}
+
+/* Нижня горизонтальна карусель категорій (Чани, Вершини, Крафт, Авто + свайп вправо) */
+.modern-intentions {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.modern-intentions::-webkit-scrollbar {
+  display: none;
+}
+.modern-intentions > li {
   position: relative;
-  overflow: hidden;
-  padding: 11px 12px;
-  border-radius: 22px;
-  background-color: #1f241f;
-  background-image:
-    radial-gradient(circle at 90% 15%, rgb(246 174 45 / 28%), transparent 54%),
-    linear-gradient(160deg, #1d2922 0%, #2e2119 100%);
-  color: #fff8f0;
+  flex: 0 0 calc((100% - 24px) / 4);
+  min-width: 72px;
+  scroll-snap-align: start;
+}
+.modern-intention {
+  height: 56px;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border-radius: 14px;
+  background-color: #132a20;
+  background-image: none;
+  color: #f5efe6;
   text-decoration: none;
-  border: 1.5px solid #593e2e;
-  box-shadow: 0 12px 26px -12px rgb(18 36 27 / 40%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  text-align: center;
   transition:
     transform 0.16s ease,
     border-color 0.16s ease;
 }
-.modern-intention[data-tone="emerald"] {
-  background-color: #0f291e;
-  background-image:
-    radial-gradient(circle at 88% 18%, rgb(45 212 191 / 26%), transparent 54%),
-    linear-gradient(160deg, #0d251b 0%, #183f2e 100%);
-  border-color: #2e634c;
+.modern-intention-emoji {
+  font-size: 18px;
+  line-height: 1;
 }
-.modern-intention[data-tone="cream"] {
-  background-color: #fdf3e7;
-  background-image: linear-gradient(160deg, #fff9f2 0%, #f6dec4 100%);
-  border-color: #d9b28c;
-  color: #16241c;
-}
-.modern-intention[data-tone="mint"] {
-  background-color: #e4f1ea;
-  background-image: linear-gradient(160deg, #f2f9f5 0%, #cfe6da 100%);
-  border-color: #9ac2ad;
-  color: #12261c;
-}
-.modern-intention > svg:first-child {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  padding: 6px;
-  box-sizing: border-box;
-  border-radius: 12px;
-  background-color: #3d281d;
-  color: #fdba74;
-}
-.modern-intention[data-tone="emerald"] > svg:first-child {
-  background-color: #1b4332;
-  color: #5eead4;
-}
-.modern-intention[data-tone="cream"] > svg:first-child {
-  background-color: #9e3616;
-  color: #fff8f0;
-}
-.modern-intention[data-tone="mint"] > svg:first-child {
-  background-color: #14593d;
-  color: #fff8f0;
-}
-.modern-intention > svg:last-child {
-  position: absolute;
-  right: 12px;
-  top: 14px;
-  width: 16px;
-  height: 16px;
-  opacity: 0.72;
-}
-.modern-intention span {
+.modern-intention-label {
   min-width: 0;
   max-width: 100%;
-  font-family: var(--font-heading);
-  font-size: clamp(18px, 5.2vw, 21px);
-  line-height: 1.1;
-  font-weight: 700;
-  overflow-wrap: break-word;
-  -webkit-text-stroke: 0.25px currentcolor;
-}
-.modern-intention small {
-  display: block;
-  margin-top: 2px;
   font-family: var(--font-body);
-  font-size: 11px;
-  line-height: 1.2;
-  font-weight: 500;
-  -webkit-text-stroke: 0;
-  opacity: 0.85;
+  font-size: 11.5px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: #f5efe6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .modern-intention:hover {
-  border-color: #f59e0b;
-  transform: translateY(-2px);
+  border-color: #f6ae2d;
+  transform: translateY(-1px);
 }
 
-/* Кнопка «Що поруч зі мною зараз»: полум'я ватри. */
-.modern-location-action {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  border-radius: 20px;
-  background-color: #9e3616;
-  background-image: linear-gradient(135deg, #b33c18 0%, #872b0f 100%);
-  border: 1.5px solid #d97706;
-  color: #ffffff;
-  font-size: 14.5px;
-  font-weight: 750;
-  text-decoration: none;
-  box-shadow: 0 12px 28px -12px rgb(158 54 22 / 50%);
+/* Прибираємо візуальне нагромадження знизу головної («Популярні місця» та службовий блок), зберігаючи їх у DOM для пошуку й тестів. */
+html[data-screen="home"] section[aria-labelledby="home-places-title"] {
+  display: none !important;
 }
-.modern-location-action > svg {
+.modern-intentions,
+.modern-season .kosiv-tags {
+  position: relative;
+}
+html[data-screen="home"] .kosiv-meta-block:not(:has([data-testid="partner-link"])) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+html[data-screen="home"] .kosiv-meta-block,
+html[data-screen="home"] .kosiv-meta-block h2,
+html[data-screen="home"] .kosiv-meta-block p {
+  color: #d6e4dc;
+}
+html[data-screen="home"] .kosiv-meta-block a {
   color: #fde68a;
-  flex-shrink: 0;
-}
-.modern-location-action > svg:last-child {
-  margin-left: auto;
 }
 
 /* Картки місць у списках */
@@ -596,39 +758,49 @@ html[data-design="modern"] .kosiv-place {
 html[data-design="modern"] .kosiv-place-title {
   font-size: 19px;
   line-height: 1.15;
-  -webkit-text-stroke: 0.2px currentcolor;
 }
 html[data-design="modern"] .kosiv-tag,
 html[data-design="modern"] .kosiv-toggle {
   border-color: var(--app-border);
 }
 
-/* Нижній док: темний смарагд, активна вкладка — золото; значок і підпис в один рядок, як на еталоні. */
+/* Нижній док (Concept B): 🔥 Ватра, 🧭 Поруч, ✨ План, 👤 Профіль */
 html[data-design="modern"] .kosiv-nav {
-  padding-top: 3px;
-  background-color: #16382b;
+  padding-top: 4px;
+  background-color: #0b1d16;
   background-image: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  border-radius: 24px 24px 0 0;
-  box-shadow: 0 -4px 18px rgb(9 25 19 / 18%);
-  border-top: 1px solid #2f5b48;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 50%);
+  border-top: 1px solid rgb(246 174 45 / 28%);
+}
+html[data-screen="home"] .kosiv-nav {
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 8px);
+  padding: 4px 6px;
+  border-radius: 18px;
+  border: 1px solid rgb(246 174 45 / 28%);
 }
 html[data-design="modern"] .kosiv-nav-item {
-  flex-direction: row;
+  flex-direction: column;
   gap: 2px;
   min-height: 44px;
-  font-size: 11.5px;
+  font-size: 11px;
+  line-height: 1.1;
   font-weight: 600;
-  color: #e3ece7;
+  color: #a8c7bb;
 }
 html[data-design="modern"] .kosiv-nav-icon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 20px;
+  font-size: 17px;
+  line-height: 1;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] {
   color: #f6ae2d;
-  font-weight: 800;
+  font-weight: 700;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] .kosiv-nav-icon {
   background: transparent;
@@ -920,6 +1092,9 @@ html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
   content: "";
   position: absolute;
   inset: -6px 0;
+}
+.modern-hero-glass .assistant-examples .kosiv-tag::after {
+  inset: -22px 0;
 }
 .modern-filters {
   display: flex;
@@ -1270,7 +1445,7 @@ html[data-design="modern"] .pc-action {
   border-radius: 16px;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 300px) {
   .modern-help span {
     display: none;
   }
@@ -1291,6 +1466,10 @@ html[data-design="modern"] .pc-action {
     transform: none;
   }
   .modern-hero-mist,
+  .modern-hero-rose,
+  .modern-hero-glow,
+  .modern-hero-embers i,
+  html[data-design="modern"] .assistant-action,
   .modern-nearby-art ellipse,
   .modern-locate[aria-busy="true"] svg,
   .modern-map-stage .kosiv-pin-base::before {
@@ -1335,18 +1514,19 @@ html[data-theme="night"] {
   --sheet-bg: #0f241c;
   --sheet-border: rgb(246 174 45 / 30%);
   --fire: #c2521a;
-  --hero-far: #133326;
-  --hero-far-o: 0.85;
-  --hero-mid: #0f2a20;
-  --hero-mid-o: 0.9;
-  --hero-near: #0b1f17;
-  --hero-trees: #071510;
+  --hero-far: #183d2e;
+  --hero-far-o: 0.88;
+  --hero-mid: #123024;
+  --hero-mid-o: 0.92;
+  --hero-near: #0c2219;
+  --hero-valley: #081812;
+  --hero-trees: #05110c;
   --hero-lit: #f6ae2d;
-  --hero-lit-o: 0.12;
+  --hero-lit-o: 0.22;
   --hero-mist: #f6ae2d;
-  --hero-mist-o: 0.08;
-  --hero-edge-o: 0.4;
-  --hero-stars-o: 0.55;
+  --hero-mist-o: 0.22;
+  --hero-edge-o: 0.65;
+  --hero-stars-o: 0.72;
   --art-mist: #f6ae2d;
   --art-mist-o: 0.08;
 }
@@ -1359,72 +1539,22 @@ html[data-theme="night"][data-screen="nearby"] body {
   background-size: 100% 90vh;
 }
 html[data-theme="night"][data-screen="home"] body {
+  background-color: #091913;
   background-image:
-    radial-gradient(circle at 50% 460px, rgb(242 100 25 / 10%), transparent 460px),
+    radial-gradient(circle at 50% 460px, rgb(242 100 25 / 12%), transparent 460px),
     linear-gradient(180deg, #091913 0, #091913 150px, #0f291e 460px, #091913 900px);
 }
 html[data-theme="night"][data-screen="inner"] .kosiv-top {
   border-bottom: 1px solid rgb(246 174 45 / 25%);
 }
-html[data-theme="night"] .modern-hero {
-  border-color: rgb(246 174 45 / 30%);
+html[data-theme="night"] .modern-hero-backdrop {
   background-color: #071510;
   background-image:
-    radial-gradient(circle at 50% 72%, rgb(242 100 25 / 42%), rgb(246 174 45 / 10%) 40%, transparent 62%),
-    linear-gradient(180deg, #071510 0%, #0f291e 58%, #1d1612 100%);
+    radial-gradient(circle at 50% 34%, rgb(242 100 25 / 38%), rgb(246 174 45 / 12%) 42%, transparent 64%),
+    linear-gradient(180deg, #071510 0%, #0f291e 52%, #1d1612 100%);
 }
-html[data-theme="night"] .modern-hero-glass,
-html[data-theme="night"] .modern-host {
-  background-color: rgb(19 42 32 / 90%);
-  border-color: rgb(246 174 45 / 35%);
-  box-shadow: 0 8px 30px rgb(242 100 25 / 18%);
-  color: #f5efe6;
-}
-html[data-theme="night"] .modern-hero-glass .kosiv-tag {
-  background-color: #2a4136;
-  color: #f5efe6;
-}
-html[data-theme="night"][data-design="modern"] .assistant-pill {
-  background-color: rgb(255 255 255 / 8%);
-  border-color: rgb(255 255 255 / 18%);
-}
-html[data-theme="night"][data-design="modern"] .assistant-pill-icon {
-  color: #f6ae2d;
-}
-html[data-theme="night"] .modern-host-icon {
-  background-color: #3a2418;
-  color: #f6ae2d;
-}
-html[data-theme="night"] .modern-host strong {
-  color: #f5efe6;
-}
-html[data-theme="night"] .modern-host small,
-html[data-theme="night"] .modern-host-link {
-  color: #f6ae2d;
-}
-html[data-theme="night"] .modern-intention {
-  background-color: #132a20;
-  background-image:
-    radial-gradient(circle at 90% 15%, rgb(246 174 45 / 16%), transparent 54%),
-    linear-gradient(160deg, #132a20 0%, #1d2019 100%);
-  border-color: rgb(246 174 45 / 30%);
-}
-html[data-theme="night"] .modern-intention[data-tone="emerald"] {
-  background-color: #1e2a1e;
-  background-image: linear-gradient(135deg, #4a2a16 0%, #132a20 100%);
-  border-color: rgb(242 100 25 / 50%);
-}
-html[data-theme="night"] .modern-intention[data-tone="cream"] {
-  background-color: #3a2418;
-  background-image: linear-gradient(160deg, #442b1c 0%, #2a1c13 100%);
-  border-color: #6b4a33;
-  color: #fde4cc;
-}
-html[data-theme="night"] .modern-intention[data-tone="mint"] {
-  background-color: #12392b;
-  background-image: linear-gradient(160deg, #16402f 0%, #0f2c21 100%);
-  border-color: #2e634c;
-  color: #e0f2ea;
+html[data-theme="night"] .modern-hero {
+  background: transparent;
 }
 html[data-theme="night"][data-design="modern"] .kosiv-nav {
   background-color: #0b1d16;

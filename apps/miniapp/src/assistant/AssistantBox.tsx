@@ -103,7 +103,7 @@ export function AssistantBox({
           {refine ? t("miniapp.assistant.refine.label") : t("miniapp.assistant.label")}
         </label>
         <span className="assistant-pill-icon" aria-hidden="true">
-          ✦
+          {refine ? "✦" : "🎙️"}
         </span>
         <input
           id={id}
@@ -144,7 +144,7 @@ export function AssistantBox({
               else recorder.start();
             }}
           >
-            {recording ? <StopIcon /> : <MicIcon />}
+            {recording ? <StopIcon /> : refine ? <MicIcon /> : <span aria-hidden="true">🔥</span>}
           </button>
         )}
       </div>

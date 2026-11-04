@@ -1,93 +1,70 @@
-// Панорама героя главной (Концепт А + Б): дальний хребет Чорногоры с освещёнными гранями, полосы тумана, средний
-// хребет Горган, ближний лес смерек, золотая 8-лучевая «Рожа» и (в «Ніч») созвездие-оберег. Цвета — CSS-переменные темы.
-
-/** Смереки ближнего хребта: x, основание y, масштаб. */
-const SPRUCES: readonly (readonly [number, number, number])[] = [
-  [14, 218, 1],
-  [34, 212, 1.3],
-  [58, 206, 0.9],
-  [86, 198, 1.15],
-  [118, 196, 0.85],
-  [262, 214, 0.9],
-  [292, 208, 1.2],
-  [318, 200, 1],
-  [346, 196, 1.35],
-  [374, 194, 1.05],
-  [394, 192, 0.8],
-];
-const SPRUCE =
-  "M0 0 L-8 0 L-3.5 -7 L-6.5 -7 L-2.5 -14 L-4.5 -14 L0 -23 L4.5 -14 L2.5 -14 L6.5 -7 L3.5 -7 L8 0 Z";
-const RAYS = [0, 45, 90, 135, 180, 225, 270, 315];
+// Статичний повноекранний фон «Мольфарська Ватра & Нічні Карпати» (Концепт Б):
+// геометричне сузір'я Гуцульської Зірки в небі, тепле заграва ватри за вершинами Чорногори,
+// смарагдові хребти з тонким золотим контуром і ближній смерековий ліс. Фон зафіксовано (position: fixed),
+// а всі написи й картки плавно рухаються поверх нього під час прокрутки.
 
 export function HeroPanorama() {
   return (
-    <>
+    <div className="modern-hero-backdrop" aria-hidden="true">
       <svg
         className="modern-hero-art"
-        viewBox="0 0 400 320"
+        viewBox="0 0 400 360"
         preserveAspectRatio="none"
         aria-hidden="true"
         focusable="false"
       >
-        <g className="modern-hero-stars">
-          <circle cx="238" cy="92" r="1.5" />
-          <circle cx="262" cy="80" r="2" />
-          <circle cx="286" cy="92" r="1.5" />
-          <circle cx="262" cy="104" r="1.5" />
-          <path d="M238 92 L262 80 L286 92 L262 104 Z" fill="none" />
-          <circle cx="345" cy="70" r="1.4" />
-          <circle cx="20" cy="84" r="1.2" />
+        <defs>
+          <radialGradient id="fireGlow" cx="50%" cy="68%" r="55%">
+            <stop offset="0%" stopColor="#F26419" stopOpacity="0.45" />
+            <stop offset="60%" stopColor="#F6AE2D" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#071510" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        {/* Геометричне сузір'я-оберіг у небі */}
+        <g stroke="#F6AE2D" strokeWidth="0.7" opacity="0.45" fill="#F6AE2D">
+          <circle cx="80" cy="45" r="1.5" />
+          <circle cx="110" cy="30" r="2" />
+          <circle cx="140" cy="45" r="1.5" />
+          <circle cx="110" cy="60" r="1.5" />
+          <line x1="80" y1="45" x2="110" y2="30" />
+          <line x1="110" y1="30" x2="140" y2="45" />
+          <line x1="140" y1="45" x2="110" y2="60" />
+          <line x1="110" y1="60" x2="80" y2="45" />
+          <circle cx="290" cy="38" r="1.8" />
+          <circle cx="325" cy="52" r="1.2" />
+          <circle cx="250" cy="65" r="1.4" />
         </g>
-        <g transform="translate(0 14)">
-          <path
-            className="modern-hero-far"
-            d="M0 150 L55 95 L110 130 L185 58 L255 118 L325 72 L400 125 L400 320 L0 320 Z"
-          />
-          <path
-            className="modern-hero-edge"
-            d="M0 150 L55 95 L110 130 L185 58 L255 118 L325 72 L400 125"
-            fill="none"
-          />
-          <path className="modern-hero-lit" d="M185 58 L215 92 L192 98 L175 78 Z" />
-          <path className="modern-hero-lit" d="M325 72 L350 98 L330 102 L316 86 Z" />
-          <path className="modern-hero-lit" d="M55 95 L72 110 L58 114 L46 104 Z" />
-          <g className="modern-hero-mist">
-            <ellipse cx="140" cy="135" rx="110" ry="16" />
-            <ellipse cx="310" cy="125" rx="95" ry="14" />
-          </g>
-          {/* Ближние планы подняты над прототипом: иначе их целиком закрыла бы стеклянная карточка поля. */}
-          <g transform="translate(0 -14)">
-            <path
-              className="modern-hero-mid"
-              d="M0 175 L75 122 L145 168 L230 105 L310 158 L370 120 L400 145 L400 320 L0 320 Z"
-            />
-          </g>
-          <g transform="translate(0 -40)">
-            <g className="modern-hero-mist modern-hero-mist-slow">
-              <ellipse cx="220" cy="175" rx="135" ry="18" />
-            </g>
-            <path className="modern-hero-near" d="M0 215 Q 90 170, 180 205 T 400 190 L400 360 L0 360 Z" />
-            <g className="modern-hero-trees">
-              {SPRUCES.map(([x, y, s]) => (
-                <path key={x} d={SPRUCE} transform={`translate(${x} ${y}) scale(${s})`} />
-              ))}
-            </g>
-          </g>
-        </g>
+
+        {/* Тепле заграва за горами */}
+        <rect width="400" height="300" fill="url(#fireGlow)" />
+
+        {/* Дальні нічні хребти Чорногори */}
+        <path
+          d="M0 165 L65 105 L130 145 L210 72 L285 135 L345 92 L400 130 L400 360 L0 360 Z"
+          fill="#17402F"
+          opacity="0.95"
+        />
+        {/* Золотий контур хребта від світла ватри */}
+        <path
+          d="M0 165 L65 105 L130 145 L210 72 L285 135 L345 92 L400 130"
+          fill="none"
+          stroke="#F6AE2D"
+          strokeWidth="1.4"
+          opacity="0.75"
+        />
+
+        {/* Ближній смерековий ліс */}
+        <path
+          d="M0 210 L45 165 L95 198 L165 148 L240 195 L315 152 L400 190 L400 360 L0 360 Z"
+          fill="#0B1F17"
+        />
+
+        {/* Статичні золоті іскри ватри над схилами */}
+        <circle cx="134" cy="212" r="2.2" fill="#F6AE2D" opacity="0.7" />
+        <circle cx="202" cy="196" r="2" fill="#F6AE2D" opacity="0.65" />
+        <circle cx="268" cy="224" r="1.6" fill="#F26419" opacity="0.75" />
       </svg>
-      <svg className="modern-hero-rose" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-        <circle cx="50" cy="50" r="30" fill="#F59E0B" fillOpacity="0.16" />
-        <circle cx="50" cy="50" r="18" fill="#EA580C" fillOpacity="0.28" />
-        {RAYS.map((deg) => (
-          <path
-            key={deg}
-            d="M50 4 L56 40 L50 50 L44 40 Z"
-            transform={`rotate(${deg} 50 50)`}
-            fill={deg % 90 === 0 ? "#F6AE2D" : "#FDE68A"}
-          />
-        ))}
-        <circle cx="50" cy="50" r="6" fill="#FDE68A" stroke="#B83D18" strokeWidth="1.5" />
-      </svg>
-    </>
+    </div>
   );
 }

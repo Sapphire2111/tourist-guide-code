@@ -393,7 +393,7 @@ for (const [width, height, night] of [
   [320, 740, false],
   [320, 740, true],
 ] as const) {
-  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: сетка из 8 одинаковых плиток в 2 колонки, подписи без обрезки`, async ({
+  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и горизонтальная карусель из 8 категорий`, async ({
     page,
   }) => {
     if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
@@ -405,30 +405,24 @@ for (const [width, height, night] of [
     const boxes = await tiles.evaluateAll((nodes) =>
       nodes.map((n) => {
         const r = n.getBoundingClientRect();
-        const text = n.querySelector("span")!;
+        const text = n.querySelector(".modern-intention-label")!;
         return {
           x: Math.round(r.x),
           y: Math.round(r.y),
           w: Math.round(r.width),
           h: Math.round(r.height),
-          clipped: n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1,
-          textRight: text.getBoundingClientRect().right <= r.right - 8,
           fits: text.scrollWidth <= text.clientWidth + 1,
         };
       }),
     );
-    // Одинаковая высота 104–112 px, две колонки одной ширины, широких плиток нет.
+    // Горизонтальная карусель: все 8 плиток в один ряд (одинаковые y и h), подписи без обрезки.
     for (const b of boxes) {
-      expect(b.h).toBeGreaterThanOrEqual(104);
-      expect(b.h).toBeLessThanOrEqual(112);
-      expect(b.clipped).toBe(false);
+      expect(b.h).toBeGreaterThanOrEqual(44);
       expect(b.fits).toBe(true);
     }
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
-    expect(new Set(boxes.map((b) => b.x)).size).toBe(2);
-    expect(new Set(boxes.map((b) => b.w)).size).toBe(1);
-    // Кнопка «Що поруч зі мною зараз» — между Hero и плитками.
-    // Одним замером: пока читаем, раскладка не должна успеть сдвинуться.
+    expect(new Set(boxes.map((b) => b.y)).size).toBe(1);
+    // Карточка «Що поруч зараз» — между Hero и горизонтальной каруселью.
     const order = await page.evaluate(() => {
       const top = (id: string) => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
       const first = document.querySelector('[data-testid="home-sections"] a')!.getBoundingClientRect();
@@ -441,7 +435,7 @@ for (const [width, height, night] of [
     });
     expect(order.nearTop).toBeGreaterThan(order.heroTop);
     expect(order.nearBottom).toBeLessThanOrEqual(order.tilesTop);
-    await expect(page.getByTestId("tile-hint-stay")).toBeVisible();
+    await expect(page.getByTestId("tile-hint-stay")).toBeAttached();
     await expectNoSeriousA11yViolations(page);
   });
 }
