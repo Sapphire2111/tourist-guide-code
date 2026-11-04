@@ -1327,6 +1327,8 @@ export const uk = {
 
   "bot.start.welcome": "Вітаємо в «Гіді туриста»! Відкрийте застосунок, щоб почати.",
   "bot.start.openButton": "Відкрити",
+  "bot.menu.openButton": "Відкрити гід",
+  "bot.menu.startCommand": "Відкрити гід",
 
   "errors.validation": "Некоректні дані запиту.",
   "errors.validation.isNotEmpty": "Поле обов'язкове.",

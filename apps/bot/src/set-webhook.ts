@@ -1,4 +1,5 @@
 // Регистрация webhook Telegram вручную: `pnpm --filter @tg/bot webhook:set` (после build). При старте не вызывается.
+// Кнопку меню чата и команды ставит отдельная команда `menu:set` (set-menu.ts).
 import { loadEnvOrExit } from "@tg/server-config";
 import { botEnvSchema } from "./config.js";
 import { BotApiClient } from "./telegram/bot-api.js";
