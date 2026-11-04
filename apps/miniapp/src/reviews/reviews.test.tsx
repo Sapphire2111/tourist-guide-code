@@ -33,6 +33,7 @@ const PLACE = "00000000-0000-4000-8000-000000000201";
 const ELIG = "00000000-0000-4000-8000-000000000501";
 const BOOKING = "00000000-0000-4000-8000-000000000401";
 const REVIEW = "00000000-0000-4000-8000-000000000601";
+const LONG_AGO = new Date(Date.now() - 40 * 86_400_000).toISOString();
 const FUTURE = new Date(Date.now() + 10 * 86_400_000).toISOString();
 const PAST = new Date(Date.now() - 86_400_000).toISOString();
 
@@ -70,9 +71,9 @@ const myReview = (over: Partial<MyReview> = {}): MyReview => ({
   version: 1,
   autoFlags: [],
   hiddenReason: null,
-  publishedAt: "2026-10-01T10:00:00.000Z",
-  createdAt: "2026-10-01T10:00:00.000Z",
-  updatedAt: "2026-10-01T10:00:00.000Z",
+  publishedAt: PAST,
+  createdAt: PAST,
+  updatedAt: PAST,
   response: null,
   appeal: null,
   canAppeal: false,
@@ -139,13 +140,13 @@ function fakeApi(over: Partial<ReviewsApi> = {}): ReviewsApi {
       decidedAt: null,
     })),
     partnerReviews: vi.fn(async () => [partnerReview()]),
-    respond: vi.fn(async (_id, text) => ({
-      id: "r1",
-      text,
-      version: 1,
-      createdAt: PAST,
-      updatedAt: PAST,
-    })),
+    // Сервер отвечает полным PartnerReviewDto (отзыв с сохранённым ответом), а не одним ответом.
+    respond: vi.fn(async (id, text) =>
+      partnerReview({
+        id,
+        response: { id: "r1", text, version: 1, createdAt: PAST, updatedAt: PAST },
+      }),
+    ),
     ...over,
   };
 }
@@ -278,6 +279,18 @@ describe("карточка місця: відгуки гостей", () => {
     await waitFor(() => expect(screen.queryByTestId("review-write")).toBeNull());
   });
 
+  it("окно правки закрыто (createdAt + 30 дн.) — «Змінити свій відгук» не показывается", async () => {
+    renderWith(<PlaceReviews placeId={PLACE} />, {
+      api: fakeApi({
+        eligibility: vi.fn(async () => [
+          eligibility({ status: "consumed", review: myReview({ createdAt: LONG_AGO }) }),
+        ]),
+      }),
+    });
+    await screen.findByTestId("guest-review");
+    await waitFor(() => expect(screen.queryByTestId("review-write")).toBeNull());
+  });
+
   it("право active — ссылка на форму; consumed — «Змінити свій відгук»", async () => {
     renderWith(<PlaceReviews placeId={PLACE} />, {
       api: fakeApi({ eligibility: vi.fn(async () => [eligibility()]) }),
@@ -376,6 +389,32 @@ describe("C13: форма відгуку", () => {
     );
   });
 
+  it("правка: срок — createdAt + окно, а не expiresAt права; закрытое окно — формы нет", async () => {
+    const created = new Date(Date.now() - 5 * 86_400_000).toISOString();
+    open([eligibility({ status: "consumed", review: myReview({ createdAt: created }) })]);
+    await screen.findByTestId("review-form");
+    const deadline = new Date(Date.parse(created) + 30 * 86_400_000).toLocaleDateString("uk");
+    expect(screen.getByTestId("review-form").textContent).toContain(deadline);
+    cleanup();
+    open([eligibility({ status: "consumed", review: myReview({ createdAt: LONG_AGO }) })]);
+    expect((await screen.findByTestId("review-closed")).textContent).toContain("час на правку минув");
+    expect(screen.queryByTestId("review-form")).toBeNull();
+  });
+
+  it("двойная отправка: пока идёт запрос, второй submit игнорируется", async () => {
+    let resolve!: (r: MyReview) => void;
+    const submit = vi.fn(() => new Promise<MyReview>((r) => (resolve = r)));
+    open([eligibility()], fakeApi({ submit }));
+    fireEvent.click(await screen.findByRole("radio", { name: "5 з 5" }));
+    fireEvent.change(screen.getByLabelText("Ваш відгук"), { target: { value: "Текст" } });
+    const form = screen.getByTestId("review-form");
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(submit).toHaveBeenCalledTimes(1);
+    resolve(myReview());
+    await screen.findByText("Дякуємо! Відгук опубліковано.");
+  });
+
   it("свой скрытый отзыв: причина и апелляция", async () => {
     const api = fakeApi();
     open(
@@ -414,6 +453,12 @@ describe("«Мої бронювання»: вхід у відгук", () => {
     expect(link.textContent).toBe("Залишити відгук");
     expect(link.getAttribute("href")).toBe(`#/review/${ELIG}`);
     expect(screen.getByTestId("booking-review").textContent).toContain("Залишити відгук можна до");
+  });
+
+  it("использовано, но окно правки закрыто — статус без ссылки «Змінити»", () => {
+    show(true, [eligibility({ status: "consumed", review: myReview({ createdAt: LONG_AGO }) })]);
+    expect(screen.getByTestId("booking-review-status")).toBeTruthy();
+    expect(screen.queryByTestId("booking-review-link")).toBeNull();
   });
 
   it("не завершена, нет права или модуль не загрузил права — ничего", () => {
@@ -477,6 +522,9 @@ describe("P07: відгуки в кабінеті партнёра", () => {
     await screen.findByText("Відповідь опубліковано.");
     expect(api.respond).toHaveBeenCalledWith(REVIEW, "Дякуємо за відгук");
     expect(screen.getByTestId("review-response").textContent).toContain("Дякуємо за відгук");
+    // В ответ не попадает текст отзыва, а сам отзыв остаётся прежним.
+    expect(screen.getByTestId("review-response").textContent).not.toContain("Довго чекали");
+    expect(screen.getByTestId("partner-review").textContent).toContain("Довго чекали");
     expect(screen.getByTestId("respond-open").textContent).toBe("Змінити відповідь");
   });
 

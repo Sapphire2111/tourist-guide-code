@@ -204,7 +204,12 @@ export async function installReviewsMock(page: Page): Promise<ReviewsMockState> 
         if (/https?:\/\/|t\.me\//i.test(text))
           return error(route, 422, "UNPROCESSABLE", "errors.review.responseRejected", { flags: ["link"] });
         state.responses.push({ id: respond[1]!, text });
-        return json(route, { id: "r2", text, version: 1, createdAt: NOW, updatedAt: NOW });
+        const saved = {
+          ...state.partnerReviews.find((r) => r.id === respond[1]),
+          response: { id: "r2", text, version: 1, createdAt: NOW, updatedAt: NOW },
+        };
+        state.partnerReviews = state.partnerReviews.map((r) => (r.id === respond[1] ? saved : r));
+        return json(route, saved);
       }
       return route.fallback();
     },

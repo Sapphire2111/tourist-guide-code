@@ -32,6 +32,18 @@ export const COMPLAINT_REASONS: readonly ComplaintReason[] = [
 
 /** Границы форм — по review-rules.ts (REVIEW_PARAMS). */
 export const REVIEW_TEXT_MAX = 2000;
+/** Окно правки отзыва после первой отправки, дней (REVIEW_PARAMS.editWindowDays сервера). */
+export const EDIT_WINDOW_DAYS = 30;
+
+/** Момент, до которого отзыв можно править: createdAt + окно (как editAllowed сервера). */
+export function editDeadline(review: { createdAt: string }): number {
+  return Date.parse(review.createdAt) + EDIT_WINDOW_DAYS * 86_400_000;
+}
+
+/** Окно правки своего отзыва ещё открыто. */
+export function canEditReview(review: { createdAt: string }, now = Date.now()): boolean {
+  return now <= editDeadline(review);
+}
 export const RESPONSE_TEXT_MAX = 1000;
 export const COMPLAINT_TEXT_MAX = 1000;
 export const APPEAL_TEXT_MAX = 1000;
@@ -48,7 +60,8 @@ export type ReviewsApi = {
   ): Promise<ReviewComplaint>;
   appeal(regionId: string, reviewId: string, text: string): Promise<ReviewAppeal>;
   partnerReviews(placeId?: string): Promise<PartnerReview[]>;
-  respond(reviewId: string, text: string): Promise<ReviewResponse>;
+  /** Сервер отвечает полным PartnerReviewDto (отзыв с сохранённым ответом). */
+  respond(reviewId: string, text: string): Promise<PartnerReview>;
 };
 
 export function createReviewsApi(api: ApiClient): ReviewsApi {

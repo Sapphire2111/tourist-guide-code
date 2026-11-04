@@ -116,8 +116,8 @@ function PartnerReviewItem({
         <ResponseForm
           review={r}
           onCancel={() => setPanel(null)}
-          onSaved={(response) => {
-            onChange({ ...r, response });
+          onSaved={(saved) => {
+            onChange(saved);
             setPanel(null);
             setMessage(t("miniapp.partner.reviews.responseDone"));
           }}
@@ -199,7 +199,7 @@ function ResponseForm({
   onCancel,
 }: {
   review: PartnerReview;
-  onSaved: (r: NonNullable<PartnerReview["response"]>) => void;
+  onSaved: (r: PartnerReview) => void;
   onCancel: () => void;
 }) {
   const { t } = useT();

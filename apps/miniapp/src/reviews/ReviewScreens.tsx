@@ -11,7 +11,13 @@ import { AsyncView } from "../guide/parts.js";
 import { UnauthorizedError } from "../guide/types.js";
 import { useReviews } from "./context.js";
 import { AppealForm, flagsText, Notice, Stars, useReviewErrorText } from "./parts.js";
-import { REVIEW_TEXT_MAX, type MyReview, type ReviewEligibility } from "./reviews-api.js";
+import {
+  canEditReview,
+  editDeadline,
+  REVIEW_TEXT_MAX,
+  type MyReview,
+  type ReviewEligibility,
+} from "./reviews-api.js";
 import "./reviews.css";
 
 export function ReviewScreen({ eligibilityId }: { eligibilityId: string }) {
@@ -98,16 +104,25 @@ function ReviewForm({ eligibility }: { eligibility: ReviewEligibility }) {
   const [appealOpen, setAppealOpen] = useState(false);
   const place = pickLocalized(eligibility.placeName, locale);
 
+  // Новый отзыв — до eligibility.expiresAt; правка уже написанного — createdAt + окно правки (как editAllowed сервера).
   const expired = Date.parse(eligibility.expiresAt) <= Date.now();
-  const editable = eligibility.status === "active" || (eligibility.status === "consumed" && !expired);
+  const editDone = review !== null && !canEditReview(review);
+  const editable =
+    eligibility.status === "active"
+      ? !expired
+      : eligibility.status === "consumed" && review !== null && !editDone;
+  const deadline = review ? editDeadline(review) : Date.parse(eligibility.expiresAt);
   const closedKey: MessageKey | null =
     eligibility.status === "revoked"
       ? "miniapp.reviews.revoked"
       : eligibility.status === "expired" || (eligibility.status === "active" && expired)
         ? "miniapp.reviews.expired"
-        : null;
+        : eligibility.status === "consumed" && editDone
+          ? "miniapp.reviews.editClosed"
+          : null;
 
   const submit = async () => {
+    if (busy) return;
     if (rating < 1) return setMessage({ text: t("miniapp.reviews.ratingRequired"), alert: true });
     const body = text.trim();
     if (!body) return setMessage({ text: t("miniapp.reviews.textRequired"), alert: true });
@@ -164,7 +179,7 @@ function ReviewForm({ eligibility }: { eligibility: ReviewEligibility }) {
         </section>
       )}
 
-      {closedKey && !review && (
+      {closedKey && (
         <p role="alert" data-testid="review-closed">
           {t(closedKey)}
         </p>
@@ -181,7 +196,7 @@ function ReviewForm({ eligibility }: { eligibility: ReviewEligibility }) {
         >
           <p className="pc-muted rv-meta">
             {t("miniapp.reviews.expiresAt", {
-              date: new Date(eligibility.expiresAt).toLocaleDateString(locale),
+              date: new Date(deadline).toLocaleDateString(locale),
             })}
           </p>
           <RatingInput value={rating} onChange={setRating} />

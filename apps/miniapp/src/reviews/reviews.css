@@ -5,8 +5,10 @@
   color: var(--app-accent-2-ink, currentColor);
   letter-spacing: 1px;
 }
+/* Пустые звёзды и рамка невыбранной оценки — --app-muted (≥ 3:1 к поверхности и в «День», и в «Ніч»), а не --app-border. */
 .rv-stars-off {
-  color: var(--app-border);
+  color: var(--app-muted);
+  opacity: 0.75;
 }
 .rv-summary {
   margin: 0;
@@ -111,10 +113,10 @@
 .rv-star {
   min-width: 44px;
   min-height: 44px;
-  border: 1.5px solid var(--app-border);
+  border: 1.5px solid var(--app-muted);
   border-radius: 12px;
   background: var(--app-surface);
-  color: var(--app-border);
+  color: var(--app-muted);
   font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;

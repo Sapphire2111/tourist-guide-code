@@ -111,6 +111,7 @@ test("партнёр: P07 — ответ (автофильтр отклоняе�
   await item.getByLabel("Відповідь закладу").fill("Перепрошуємо за очікування.");
   await item.getByTestId("response-send").click();
   await expect(item.getByTestId("review-response")).toContainText("Перепрошуємо за очікування.");
+  await expect(item).toContainText("Довго чекали на заселення.");
   expect(mock.responses).toHaveLength(1);
 
   await item.getByTestId("complain-open").click();

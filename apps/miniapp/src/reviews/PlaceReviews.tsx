@@ -8,7 +8,7 @@ import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView } from "../guide/parts.js";
 import { useMyEligibility, useReviewsApi } from "./context.js";
 import { ComplaintForm, RatingSummary, Stars } from "./parts.js";
-import type { PublicReview, ReviewEligibility, ReviewsApi } from "./reviews-api.js";
+import { canEditReview, type PublicReview, type ReviewEligibility, type ReviewsApi } from "./reviews-api.js";
 import "../guide/place-card.css";
 import "./reviews.css";
 
@@ -56,7 +56,7 @@ function Block({ api, regionId, placeId }: { api: ReviewsApi; regionId: string; 
 function WriteEntry({ items }: { items: ReviewEligibility[] }) {
   const { t } = useT();
   const active = items.find((e) => e.status === "active");
-  const consumed = items.find((e) => e.status === "consumed" && e.review);
+  const consumed = items.find((e) => e.status === "consumed" && e.review && canEditReview(e.review));
   const target = active ?? consumed;
   if (!target) return null;
   return (

@@ -117,7 +117,8 @@ export function PartnerDashboard() {
                         {t("miniapp.pbooking.resourcesLink")}
                       </Link>
                     )}
-                    {reviews && (
+                    {/* review.respond есть у ORG_OWNER и ORG_MANAGER (rbac/roles.ts); у кассира/сотрудника — нет. */}
+                    {reviews && org.role !== "ORG_STAFF" && (
                       <Link to={`/partner/place/${place.id}/reviews`} data-testid="partner-reviews-link">
                         {t("miniapp.partner.reviews.link")}
                       </Link>

@@ -3,7 +3,7 @@
 // expired/revoked — пояснение. Нет флага, права или брони не completed — ничего.
 import { Link, useT } from "@tg/ui";
 import type { MessageKey } from "@tg/i18n";
-import type { ReviewEligibility } from "./reviews-api.js";
+import { canEditReview, type ReviewEligibility } from "./reviews-api.js";
 import "./reviews.css";
 
 export function BookingReview({
@@ -32,17 +32,22 @@ export function BookingReview({
         </p>
       </div>
     );
-  if (e.status === "consumed" && e.review)
+  if (e.status === "consumed" && e.review) {
+    // Править можно createdAt + окно правки (как на сервере), а не до expiresAt права.
+    const editable = canEditReview(e.review);
     return (
       <div className="rv-booking-review" data-testid="booking-review">
         <p className="rv-meta" data-testid="booking-review-status">
           {t("miniapp.reviews.mine")}: {t(`miniapp.reviews.status.${e.review.status}` as MessageKey)}
         </p>
-        <Link to={`/review/${e.id}`} data-testid="booking-review-link">
-          {t(e.review.canAppeal || e.review.appeal ? "miniapp.reviews.mine" : "miniapp.reviews.edit")}
-        </Link>
+        {(editable || e.review.canAppeal || e.review.appeal) && (
+          <Link to={`/review/${e.id}`} data-testid="booking-review-link">
+            {t(editable ? "miniapp.reviews.edit" : "miniapp.reviews.mine")}
+          </Link>
+        )}
       </div>
     );
+  }
   const note: MessageKey | null =
     e.status === "revoked"
       ? "miniapp.reviews.revoked"
