@@ -93,6 +93,14 @@ export const TABLE_TENANCY = {
   booking_events: "tenant",
   // Напоминания броней (0023): отметка «уже отправлено» — регион брони.
   booking_reminders: "tenant",
+  // Отзывы (0028, блок 10): право на отзыв, отзыв и версии, ответ партнёра, жалобы, апелляции, кэш рейтинга — регион места.
+  review_eligibilities: "tenant",
+  reviews: "tenant",
+  review_revisions: "tenant",
+  review_responses: "tenant",
+  review_complaints: "tenant",
+  review_appeals: "tenant",
+  place_review_ratings: "tenant",
   // Прогноз погоды (0026): публичные данные по координатам точки — общие.
   weather_forecasts: "global",
 } as const satisfies { readonly [T in keyof Database]: TableTenancy };

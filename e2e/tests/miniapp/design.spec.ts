@@ -34,12 +34,12 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
     .click();
   await expect(page.getByTestId("nearby-caption")).toContainText("Тестовий готель");
   await expect(page.getByTestId("places-map")).toBeVisible();
-  const radius = page.getByRole("group", { name: "Радіус" });
+  const radius = page.getByRole("slider", { name: "Радіус пошуку" });
   // По умолчанию 1 км; поля поиска на экране нет.
-  await expect(radius.getByRole("button", { name: "1 км" })).toHaveAttribute("aria-pressed", "true");
+  await expect(radius).toHaveAttribute("aria-valuetext", "1 км");
   await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
-  await radius.getByRole("button", { name: "500 м" }).click();
-  await expect(radius.getByRole("button", { name: "500 м" })).toHaveAttribute("aria-pressed", "true");
+  await radius.fill("1");
+  await expect(radius).toHaveAttribute("aria-valuetext", "500 м");
   await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 500 м");
   await expect(page.getByRole("searchbox")).toHaveCount(0);
   await page
@@ -95,8 +95,8 @@ test("modern narrow screen retains working list", async ({ page }) => {
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     };
     return {
-      track: box(".modern-radius-track"),
-      radius: box(".modern-radius"),
+      track: box(".kosiv-radius-overlay"),
+      radius: box(".kosiv-radius-overlay input"),
       chips: box(".modern-filters button"),
     };
   });

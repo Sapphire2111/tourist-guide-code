@@ -1265,6 +1265,150 @@ export interface BookingRemindersTable {
   created_at: InsertedAt;
 }
 
+// --- Отзывы (tenant; миграция 0028, блок 10): право на отзыв, отзыв и версии, ответ, жалоба, апелляция, рейтинг ---
+
+/** Статусы права на отзыв (D-82). */
+export const REVIEW_ELIGIBILITY_STATUSES = ["active", "consumed", "expired", "revoked"] as const;
+export type ReviewEligibilityStatus = (typeof REVIEW_ELIGIBILITY_STATUSES)[number];
+/** Уровень подтверждения (ТЗ §9.1); в облегчённой версии — только бронь. */
+export const REVIEW_VERIFICATION_LEVELS = ["verified_booking"] as const;
+export type ReviewVerificationLevel = (typeof REVIEW_VERIFICATION_LEVELS)[number];
+/** Статусы отзыва (states-and-rules §6.2 без submitted и withdrawn). */
+export const REVIEW_STATUSES = ["published", "pending_moderation", "hidden", "rejected"] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+/** Срабатывания автофильтра текста (D-08 В): такой отзыв ждёт модератора. */
+export const REVIEW_AUTO_FLAGS = ["link", "phone", "email", "profanity"] as const;
+export type ReviewAutoFlag = (typeof REVIEW_AUTO_FLAGS)[number];
+export const REVIEW_RESPONSE_STATUSES = ["published", "hidden"] as const;
+export type ReviewResponseStatus = (typeof REVIEW_RESPONSE_STATUSES)[number];
+export const COMPLAINT_KINDS = ["partner", "user"] as const;
+export type ComplaintKind = (typeof COMPLAINT_KINDS)[number];
+/** Причина жалобы (справочник AD06). */
+export const COMPLAINT_REASONS = ["insult", "personal_data", "spam", "blackmail", "fraud", "other"] as const;
+export type ComplaintReason = (typeof COMPLAINT_REASONS)[number];
+export const COMPLAINT_STATUSES = ["open", "upheld", "dismissed"] as const;
+export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
+export const APPEAL_KINDS = ["author", "partner"] as const;
+export type AppealKind = (typeof APPEAL_KINDS)[number];
+export const APPEAL_STATUSES = ["open", "granted", "denied"] as const;
+export type AppealStatus = (typeof APPEAL_STATUSES)[number];
+
+/** Создаёт триггер bookings (0028); api меняет статус (consumed, expired). */
+export interface ReviewEligibilitiesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  user_id: ColumnType<string, string, never>;
+  place_id: ColumnType<string, string, never>;
+  organization_id: ColumnType<string | null, string | null | undefined, never>;
+  level: ColumnType<ReviewVerificationLevel, ReviewVerificationLevel | undefined, never>;
+  source_type: ColumnType<"booking", "booking" | undefined, never>;
+  booking_id: ColumnType<string, string, never>;
+  source_ended_at: ColumnType<Date, Date, never>;
+  status: ColumnType<ReviewEligibilityStatus, ReviewEligibilityStatus | undefined, ReviewEligibilityStatus>;
+  issued_at: ColumnType<Date, Date | undefined, never>;
+  consumed_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  closed_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  revoke_reason: Nullable<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type ReviewEligibility = Selectable<ReviewEligibilitiesTable>;
+
+export interface ReviewsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  organization_id: ColumnType<string | null, string | null | undefined, never>;
+  author_user_id: ColumnType<string, string, never>;
+  eligibility_id: ColumnType<string, string, never>;
+  verification_level: ColumnType<ReviewVerificationLevel, ReviewVerificationLevel, never>;
+  rating: ColumnType<number, number, number>;
+  text: ColumnType<string, string, string>;
+  current_version: ColumnType<number, number | undefined, number>;
+  auto_flags: ColumnType<ReviewAutoFlag[], ReviewAutoFlag[] | undefined, ReviewAutoFlag[]>;
+  status: ColumnType<ReviewStatus, ReviewStatus, ReviewStatus>;
+  published_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  hidden_reason: Nullable<string>;
+  last_decision_by: Nullable<string>;
+  last_decision_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  version: ColumnType<number, never, number>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type Review = Selectable<ReviewsTable>;
+
+/** Только дописывается (у app — SELECT, INSERT). */
+export interface ReviewRevisionsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  review_id: ColumnType<string, string, never>;
+  version_no: ColumnType<number, number, never>;
+  rating: ColumnType<number, number, never>;
+  text: ColumnType<string, string, never>;
+  auto_flags: ColumnType<ReviewAutoFlag[], ReviewAutoFlag[] | undefined, never>;
+  created_at: CreatedAt;
+}
+export type ReviewRevision = Selectable<ReviewRevisionsTable>;
+
+export interface ReviewResponsesTable {
+  id: UuidPk;
+  region_id: RegionId;
+  review_id: ColumnType<string, string, never>;
+  author_user_id: ColumnType<string, string, string>;
+  text: ColumnType<string, string, string>;
+  status: ColumnType<ReviewResponseStatus, ReviewResponseStatus | undefined, ReviewResponseStatus>;
+  version: ColumnType<number, never, number>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type ReviewResponse = Selectable<ReviewResponsesTable>;
+
+export interface ReviewComplaintsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  review_id: ColumnType<string, string, never>;
+  complainant_user_id: ColumnType<string, string, never>;
+  complainant_kind: ColumnType<ComplaintKind, ComplaintKind, never>;
+  reason_code: ColumnType<ComplaintReason, ComplaintReason, never>;
+  text: ColumnType<string | null, string | null | undefined, never>;
+  status: ColumnType<ComplaintStatus, ComplaintStatus | undefined, ComplaintStatus>;
+  decided_by: Nullable<string>;
+  decided_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  created_at: CreatedAt;
+}
+export type ReviewComplaint = Selectable<ReviewComplaintsTable>;
+
+export interface ReviewAppealsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  review_id: ColumnType<string, string, never>;
+  appellant_user_id: ColumnType<string, string, never>;
+  appellant_kind: ColumnType<AppealKind, AppealKind, never>;
+  text: ColumnType<string, string, never>;
+  appealed_decision_by: ColumnType<string, string, never>;
+  appealed_review_status: ColumnType<ReviewStatus, ReviewStatus, never>;
+  status: ColumnType<AppealStatus, AppealStatus | undefined, AppealStatus>;
+  decision_note: Nullable<string>;
+  decided_by: Nullable<string>;
+  decided_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type ReviewAppeal = Selectable<ReviewAppealsTable>;
+
+/** Кэш рейтинга места (D-37 В); numeric — pg отдаёт строкой. */
+export interface PlaceReviewRatingsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  formula_version: ColumnType<number, number, number>;
+  review_count: ColumnType<number, number, number>;
+  average: ColumnType<string | null, number | string | null, number | string | null>;
+  score: ColumnType<string | null, number | string | null, number | string | null>;
+  computed_at: ColumnType<Date, Date | string, Date | string>;
+}
+export type PlaceReviewRating = Selectable<PlaceReviewRatingsTable>;
+
 // --- Богатая картка місця (0018): обогащение Google / Вікіпедія / ИИ (tenant) и кэш адресов фото Google (global) ---
 
 /** Удобство места по данным Google Place Details (только «да»; нет данных или «нет» — не пишется). */
@@ -1506,4 +1650,12 @@ export interface Database {
   booking_reminders: BookingRemindersTable;
   // Погода (0026).
   weather_forecasts: WeatherForecastsTable;
+  // Отзывы (0028, блок 10).
+  review_eligibilities: ReviewEligibilitiesTable;
+  reviews: ReviewsTable;
+  review_revisions: ReviewRevisionsTable;
+  review_responses: ReviewResponsesTable;
+  review_complaints: ReviewComplaintsTable;
+  review_appeals: ReviewAppealsTable;
+  place_review_ratings: PlaceReviewRatingsTable;
 }

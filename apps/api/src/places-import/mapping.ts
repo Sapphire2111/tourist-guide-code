@@ -1,7 +1,7 @@
 // Маппинг ответа Google Places API (New) в место каталога (без БД и сети): типы → наши категории, часы работы →
 // place_schedules, телефон/сайт — в форматы CHECK миграции 0012, выбор населённого пункта по расстоянию.
 import type { LonLat } from "../db/index.js";
-import type { ImportLocality } from "./config.js";
+import { REGION_POSTCODE_PREFIXES, type ImportLocality, type SearchZone } from "./config.js";
 
 /** Поля места, которые запрашивает импорт (FieldMask в google-client.ts). */
 export type GooglePlace = {
@@ -406,8 +406,33 @@ function refineByName(name: string, byType: string | undefined): string | undefi
  */
 const NOT_A_VENUE =
   /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|ворохта|bukovel|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
+/**
+ * Природа з назвою лише населеного пункту («Яремче» з natural_feature/park) — мітка. Без «Буковель»/«Карпати»: так
+ * звуться й гора, й хребет.
+ */
+const NATURE_LABEL =
+  /^((яремче|татарів|микуличин|поляниця|яблуниця|ворохта|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia)[\s,.-]*)+$/i;
 /** Поштомати (без персоналу, их сотни) засоряют карту — берём только відділення й пункти. */
 const PARCEL_LOCKER = /поштомат|parcel ?locker/i;
+/** Індекс Укрпошти в назві («Укрпошта 77344»). */
+const UKRPOSHTA_INDEX = /(укрпошта|ukrposhta)\D{0,20}(\d{5})/i;
+/** Область у назві відділення («… с. Соколівка, Львівська область»): частина назви до «обл.»/«область»/«oblast». */
+const OBLAST = /([^,()]*?)\s*(обл\.|область|обл(?![а-яіїєґ])|oblast)/i;
+/** Наша область у будь-якому написанні: «Івано-Франківська», «Ів.-Франківська», латинська I, «ІФ», «Франківська». */
+const OUR_OBLAST = /франків|frankivsk|ivano|(^|[^а-яіїєґa-z])[іi]ф([^а-яіїєґa-z]|$)/i;
+
+/**
+ * Чуже відділення пошти: поштомат, індекс Укрпошти не нашого регіону (REGION_POSTCODE_PREFIXES) або інша область у
+ * назві Нової пошти. Google ставить таким відділенням точку на однойменній вулиці в нашому пункті (адреса «вулиця
+ * Грушевського, 78А, Пійло», а точка — у Микуличині), тож перевірка радіуса їх не відсіює.
+ */
+export function isForeignPost(name: string): boolean {
+  if (PARCEL_LOCKER.test(name)) return true;
+  const index = UKRPOSHTA_INDEX.exec(name)?.[2];
+  if (index && !REGION_POSTCODE_PREFIXES.some((p) => index.startsWith(p))) return true;
+  const oblast = OBLAST.exec(name);
+  return !!oblast && !OUR_OBLAST.test(oblast[1] ?? "");
+}
 /** Дитячі табори (зміни на тиждень, не розвага для туриста) с типом playground. */
 const CAMP = /табір|camp/i;
 /**
@@ -423,10 +448,12 @@ export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name:
   const byType = categoryByTypes(p);
   // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
   if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(name.trim())) return undefined;
+  // Природа з назвою лише пункту («Яремче» з natural_feature/park) — теж мітка, а не водоспад чи гора.
+  if (byType === "nature" && NATURE_LABEL.test(name.trim())) return undefined;
   const code = refineByName(name, byType);
   // Слабый тип без уточнения по названию: садочок/школа — не заведение для туриста.
   if (code === byType && LABEL_TYPES.has(byType) && NOT_TOURIST_EDU.test(name)) return undefined;
-  if (code === "post" && PARCEL_LOCKER.test(name)) return undefined;
+  if (code === "post" && isForeignPost(name)) return undefined;
   if ((code === "kids" || code === "entertainment") && CAMP.test(name)) return undefined;
   return code;
 }
@@ -573,6 +600,29 @@ export function nearestLocality<L extends ImportLocality>(
   return best?.l;
 }
 
+/**
+ * Пункт места: ближайший пункт, в чей радиус попадает точка; вне всех радиусов — зона поиска (SEARCH_ZONES), куда
+ * попадает точка, и ближайший к точке пункт из пунктов этой зоны (по центру). Вне пунктов и зон — undefined.
+ */
+export function localityOf<L extends ImportLocality>(
+  at: LonLat,
+  localities: readonly L[],
+  zones: readonly SearchZone[] = [],
+): L | undefined {
+  const own = nearestLocality(at, localities);
+  if (own) return own;
+  let best: { l: L; d: number } | undefined;
+  for (const z of zones) {
+    if (haversineMeters(at, z.at) > z.radiusM) continue;
+    for (const l of localities) {
+      if (!z.localities.includes(l.code)) continue;
+      const d = haversineMeters(at, l.at);
+      if (!best || d < best.d) best = { l, d };
+    }
+  }
+  return best?.l;
+}
+
 /** Прямоугольник вокруг круга (locationRestriction Text Search принимает только rectangle); с запасом: 111 км на градус. */
 export function boundingBox(center: LonLat, radiusM: number): { low: LonLat; high: LonLat } {
   const dLat = radiusM / 111_000;
@@ -651,7 +701,9 @@ export type SkipReason =
   | "no_location"
   | "outside_radius"
   | "no_category"
-  | "no_name";
+  | "no_name"
+  /** Правило не проверить: в ответе нет нужного поля (паркинг без числа отзывов при маске pro). */
+  | "unverified";
 
 /** Описание места: краткое описание Google (если есть) или «<тип> у <пункті>.», плюс источник. */
 export function describe(p: GooglePlace, locality: ImportLocality, fallbackType: string): string {
@@ -671,7 +723,17 @@ export function mapPlace(
   categoryNames: Readonly<Record<string, string>> = {},
   /** Категория задана заранее (точечный импорт, targeted.ts) — типы и название Google её не меняют. */
   categoryOverride?: string,
+  opts: {
+    /** Дополнительные зоны поиска: место вне кругов пунктов, но в зоне — к ближайшему пункту зоны (localityOf). */
+    zones?: readonly SearchZone[];
+    /**
+     * Ответ Google с числом отзывов (маска не pro). Нет — паркинг не проверить по PARKING_MIN_REVIEWS: он
+     * пропускается как unverified (не «не наш»: уже импортированный такой паркинг не архивируется).
+     */
+    ratingsKnown?: boolean;
+  } = {},
 ): { ok: true; place: MappedPlace } | { ok: false; reason: SkipReason } {
+  const zones = opts.zones ?? [];
   if (p.businessStatus === "CLOSED_PERMANENTLY") return { ok: false, reason: "closed_permanently" };
   const name = p.displayName?.text?.trim();
   if (typeof p.id !== "string" || !GOOGLE_PLACE_ID.test(p.id)) return { ok: false, reason: "invalid_id" };
@@ -680,10 +742,11 @@ export function mapPlace(
   const lon = p.location?.longitude;
   if (typeof lat !== "number" || typeof lon !== "number") return { ok: false, reason: "no_location" };
   const at = { lon, lat };
-  const locality = nearestLocality(at, localities);
+  const locality = localityOf(at, localities, zones);
   if (!locality) return { ok: false, reason: "outside_radius" };
   const categoryCode = categoryOverride ?? mapCategory(p, name);
   if (!categoryCode) return { ok: false, reason: "no_category" };
+  if (categoryCode === "parking" && opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
   if (categoryCode === "parking" && (p.userRatingCount ?? 0) < PARKING_MIN_REVIEWS)
     return { ok: false, reason: "no_category" };
   return {

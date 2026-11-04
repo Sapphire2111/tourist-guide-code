@@ -279,8 +279,7 @@ test.describe("QR отеля demoHotel01", () => {
     const card = page.getByTestId("place-item").first();
     await expect(card).toHaveCSS("border-top-style", "solid");
     expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
-    const radius = page.getByRole("group", { name: "Радіус" });
-    await radius.getByRole("button", { name: "10 км" }).click();
+    await page.getByRole("slider", { name: "Радіус пошуку" }).fill("6");
     await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
     await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
     expect(state.searches.at(-1)).toMatchObject({ limit: "50" });

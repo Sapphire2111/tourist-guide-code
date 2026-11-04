@@ -5,7 +5,15 @@ import type { Analytics } from "./analytics.js";
 import { Catalog, resolveMapCenter, selectedCenter } from "./Catalog.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import { LOCATION_STORAGE_KEY, LocationProvider } from "./LocationProvider.js";
+import type * as Geo from "./geo.js";
 import type { GuideApi, SearchParams } from "./types.js";
+
+const geoState = vi.hoisted(() => ({ point: null as { lat: number; lng: number } | null }));
+vi.mock("./geo.js", async (orig) => ({
+  ...(await orig<typeof Geo>()),
+  requestLocationIfGranted: async () => geoState.point,
+  requestLocation: async () => geoState.point,
+}));
 
 const centers: unknown[] = [];
 const markers: unknown[] = [];
@@ -19,6 +27,7 @@ vi.mock("./MapSlot.js", () => ({
 
 afterEach(() => {
   cleanup();
+  geoState.point = null;
   centers.length = 0;
   markers.length = 0;
   window.localStorage.clear();
@@ -120,6 +129,80 @@ describe("каталог: центр карты", () => {
     });
     expect(selectedCenter([o("a", 48, 24), o("b", 50, 26)], ["a", "b"])).toEqual({ lat: 49, lng: 25 });
     expect(selectedCenter([{ id: "a", name: { uk: "a" }, placeCount: 1 }], ["a"])).toBeNull();
+  });
+});
+
+describe("каталог: ползунок радиуса", () => {
+  it("значение по умолчанию видно; изменение перезапрашивает места с новым радиусом", async () => {
+    const search = vi.fn(async (_p: SearchParams) => [place]);
+    await mount(search);
+    const slider = screen.getByRole("slider");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Усі місця");
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("Усі місця");
+    expect(search.mock.calls.at(-1)![0].radius).toBeUndefined();
+    // Шаг 3 — 2 км.
+    fireEvent.change(slider, { target: { value: "3" } });
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("2 км");
+    await act(async () => new Promise((r) => setTimeout(r, 450)));
+    await flush();
+    expect(search.mock.calls.at(-1)![0].radius).toBe(2000);
+  });
+
+  it("выбраны локации — ползунка нет", async () => {
+    window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [LOC] }));
+    await mount(vi.fn(async () => [place]));
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+});
+
+describe("каталог: радиус с GPS и возврат к «Усі місця»", () => {
+  const near = { lat: 48.45, lng: 24.55 };
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...place, id: `p${i}` }));
+  // Только запросы от точки устройства (первый запрос идёт от QR, пока точка не определена).
+  const radii = (s: ReturnType<typeof vi.fn>) =>
+    s.mock.calls
+      .map((c) => c[0] as SearchParams)
+      .filter((p) => p.point?.lat === near.lat)
+      .map((p) => p.radius);
+
+  it("GPS, достаточно мест — по умолчанию 3 км", async () => {
+    geoState.point = near;
+    const search = vi.fn(async (_p: SearchParams) => many(6));
+    await mount(search);
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("3 км");
+    expect(radii(search)).toEqual([3000]);
+  });
+
+  it("GPS, мало мест — расширение до 10 км видно на ползунке; явный радиус расширение отключает", async () => {
+    geoState.point = near;
+    const search = vi.fn(async (p: SearchParams) => (p.radius === 10_000 ? many(3) : many(1)));
+    await mount(search);
+    expect(radii(search)).toEqual([3000, 10_000]);
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("10 км");
+    search.mockClear();
+    // Явно 3 км (шаг 4): один запрос, без расширения.
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "4" } });
+    await act(async () => new Promise((r) => setTimeout(r, 450)));
+    await flush();
+    expect(radii(search)).toEqual([3000]);
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("3 км");
+  });
+
+  it("последний шаг «Усі місця» возвращает выдачу без радиуса", async () => {
+    const search = vi.fn(async (_p: SearchParams) => [place]);
+    await mount(search);
+    const slider = screen.getByRole("slider");
+    expect(slider.getAttribute("max")).toBe("9");
+    fireEvent.change(slider, { target: { value: "8" } });
+    await act(async () => new Promise((r) => setTimeout(r, 450)));
+    await flush();
+    expect(search.mock.calls.at(-1)![0].radius).toBe(20_000);
+    expect(slider.getAttribute("aria-valuetext")).toBe("20 км");
+    fireEvent.change(slider, { target: { value: "9" } });
+    await act(async () => new Promise((r) => setTimeout(r, 450)));
+    await flush();
+    expect(search.mock.calls.at(-1)![0].radius).toBeUndefined();
+    expect(slider.getAttribute("aria-valuetext")).toBe("Усі місця");
   });
 });
 

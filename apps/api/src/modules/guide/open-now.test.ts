@@ -108,3 +108,30 @@ describe("openState", () => {
     expect(openState(onlyException, at("2026-11-04", 3, "11:00")).openNow).toBeNull();
   });
 });
+
+describe("openState: круглосуточно", () => {
+  const allDay = (closesAt: string): ScheduleRows => ({
+    weekly: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "00:00", closesAt })),
+    exceptions: [],
+  });
+  it("00:00–23:59 и 00:00–24:00: открыто в любой час, времени закрытия нет", () => {
+    for (const closes of ["23:59", "24:00", "23:59:00"])
+      for (const time of ["00:00", "12:30", "23:59"])
+        expect(openState(allDay(closes), at("2026-06-03", 3, time))).toEqual({
+          openNow: true,
+          openUntil: null,
+        });
+  });
+  it("смешанная неделя: круглосуточный день открыт, обычный по часам, выходной закрыт", () => {
+    const s: ScheduleRows = {
+      weekly: [
+        { dayOfWeek: 3, opensAt: "00:00", closesAt: "23:59" },
+        { dayOfWeek: 4, opensAt: "09:00", closesAt: "18:00" },
+      ],
+      exceptions: [],
+    };
+    expect(openState(s, at("2026-06-03", 3, "03:00")).openNow).toBe(true);
+    expect(openState(s, at("2026-06-04", 4, "03:00")).openNow).toBe(false);
+    expect(openState(s, at("2026-06-05", 5, "12:00")).openNow).toBe(false);
+  });
+});

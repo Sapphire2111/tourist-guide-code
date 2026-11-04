@@ -12206,6 +12206,954 @@
         "tags": ["partner-bookings"]
       }
     },
+    "/reviews": {
+      "get": {
+        "description": "Без аутентификации. rating.fewReviews — меньше minReviews отзывов: показывать «Мало відгуків» вместо цифры (score = null). Рейтинг Google в карточке — отдельное поле, здесь не участвует. 404 — места нет в регионе или оно не опубликовано.",
+        "operationId": "listPlaceReviews",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "placeId",
+            "required": true,
+            "in": "query",
+            "description": "Опубликованное место",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceReviewsDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Отзывы места (C06/C13): только опубликованные проверенные, новые сверху, и рейтинг места",
+        "tags": ["reviews"]
+      },
+      "post": {
+        "description": "Без своего права на отзыв (нет eligibility, чужое) — 403 errors.review.notEligible (ТЗ §16.2); окно прошло — 422 errors.review.eligibilityExpired; бронь отменена — 422 errors.review.eligibilityRevoked. Один отзыв на право: повтор — новая версия (история у модератора, показывается последняя). Ссылки, телефоны, e-mail, мат — status pending_moderation (autoFlags), иначе published сразу. Правка скрытого/отклонённого — снова к модератору. Бонуса за отзыв нет (D-35).",
+        "operationId": "submitReview",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SubmitReviewDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MyReviewDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Отзыв по праву (оценка 1–5 + текст) или новая версия своего отзыва",
+        "tags": ["reviews"]
+      }
+    },
+    "/reviews/ratings": {
+      "get": {
+        "description": "Без аутентификации. Неопубликованные и чужие места пропускаются.",
+        "operationId": "listPlaceRatings",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "placeIds",
+            "required": true,
+            "in": "query",
+            "description": "id мест через запятую (до 50)",
+            "schema": { "example": "0190…,0190…", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceRatingListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Рейтинги мест по отзывам (для списков и карточек): до 50 мест за запрос",
+        "tags": ["reviews"]
+      }
+    },
+    "/reviews/eligibility": {
+      "get": {
+        "description": "active — можно написать отзыв до expiresAt; consumed — отзыв написан (review), повторный POST /reviews с тем же eligibilityId — новая версия; expired; revoked — бронь отменена после завершения.",
+        "operationId": "listMyReviewEligibility",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ReviewEligibilityListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Права на отзыв пользователя (после завершённой брони) с его отзывом, статусом и сроком",
+        "tags": ["reviews"]
+      }
+    },
+    "/reviews/{id}/complaints": {
+      "post": {
+        "description": "Отзыв остаётся опубликованным до решения модератора. Автор на свой отзыв — 403 own_review; отзыв не опубликован — 409 errors.review.notPublished; уже есть открытая жалоба этого пользователя — 409 errors.review.complaintExists.",
+        "operationId": "createReviewComplaint",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateComplaintDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ComplaintDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Жалоба на опубликованный отзыв: партнёр места (review.complain) или пользователь",
+        "tags": ["reviews"]
+      }
+    },
+    "/appeals": {
+      "post": {
+        "description": "Одна апелляция на отзыв (409 errors.review.appealExists); решения модератора, к которому апеллировать, нет или статус не тот — 422 errors.review.appealNotAllowed. Решает другой модератор (POST /admin/reviews/{id}/appeal-decision). 404 — отзыв не найден или пользователь не автор и не владелец.",
+        "operationId": "createReviewAppeal",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAppealDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AppealDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Апелляция: автора — на скрытый/отклонённый отзыв, владельца заведения — на «оставить» по его жалобе",
+        "tags": ["reviews"]
+      }
+    },
+    "/partner/reviews": {
+      "get": {
+        "description": "Право review.respond (ORG_OWNER, ORG_MANAGER) на место или организацию; скрыть отзыв партнёр не может — только ответить и пожаловаться (POST /reviews/{id}/complaints). 403 not_partner — нет мест с правом. 404 — модуль выключен во всех регионах назначений.",
+        "operationId": "listPartnerReviews",
+        "parameters": [
+          {
+            "name": "placeId",
+            "required": false,
+            "in": "query",
+            "description": "Только это место партнёра",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerReviewListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Отзывы о заведениях партнёра (P07): опубликованные и скрытые, с ответом и своими жалобами",
+        "tags": ["partner-reviews"]
+      }
+    },
+    "/partner/reviews/{id}/response": {
+      "put": {
+        "description": "Ссылки, телефоны, e-mail, мат — 422 errors.review.responseRejected (details.flags). Отзыв не опубликован — 409 errors.review.notPublished. 403 — роль без review.respond; 404 — отзыв не своего заведения. AuditLog.",
+        "operationId": "putPartnerReviewResponse",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PutReviewResponseDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PartnerReviewDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Ответ заведения на отзыв: создать или изменить (один на отзыв, публикуется сразу)",
+        "tags": ["partner-reviews"]
+      }
+    },
+    "/admin/reviews": {
+      "get": {
+        "description": "status=queue (по умолчанию) — ждут решения (waitingSince); all или статус — журнал. История версий, жалобы, апелляция и ответ — в элементе. 403 — нет права review.moderate ни в одном регионе (или в regionId).",
+        "operationId": "listAdminReviews",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": false,
+            "in": "query",
+            "description": "Регион (по умолчанию — все регионы модератора)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": { "$ref": "#/components/schemas/AdminReviewFilter" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AdminReviewListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Очередь модерации отзывов (AD06): автофильтр, открытые жалобы и апелляции (старые сверху)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/reviews/{id}/decision": {
+      "post": {
+        "description": "Открытые жалобы закрываются (publish — dismissed, hide — upheld). Решение — AuditLog (review.moderate), пересчёт рейтинга. 403 own_organization — у модератора роль в организации места (BR-12); 409 errors.review.appealPending — открыта апелляция (решается отдельно), errors.review.nothingToDecide, errors.review.invalidDecision (details.currentStatus).",
+        "operationId": "decideAdminReview",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReviewDecisionDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminReviewDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Решение модератора: publish — оставить/одобрить/вернуть, hide — скрыть/отклонить (причина обязательна)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/reviews/{id}/appeal-decision": {
+      "post": {
+        "description": "Решает модератор, не принимавший обжалуемое решение (D-08): иначе 403 same_moderator (errors.review.appealSameModerator). grant: апелляция автора → published, партнёра → hidden. 404 — апелляции нет; 409 errors.review.appealDecided. AuditLog (appeal.decide).",
+        "operationId": "decideReviewAppeal",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AppealDecisionDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminReviewDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Решение по апелляции отзыва: grant — отменить решение, deny — оставить (финально)",
+        "tags": ["admin"]
+      }
+    },
     "/feature-flags": {
       "get": {
         "operationId": "getFeatureFlags",
@@ -18481,6 +19429,455 @@
           }
         },
         "required": ["status"]
+      },
+      "ReviewVerificationLevel": { "type": "string", "enum": ["verified_booking"] },
+      "ReviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "text": { "type": "string" },
+          "version": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "text", "version", "createdAt", "updatedAt"]
+      },
+      "PublicReviewDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "text": { "type": "string", "description": "Текст последней версии" },
+          "version": { "type": "integer", "description": "Номер версии (правка — новая версия)" },
+          "verificationLevel": { "allOf": [{ "$ref": "#/components/schemas/ReviewVerificationLevel" }] },
+          "authorName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя автора (первое слово профиля)"
+          },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "response": {
+            "nullable": true,
+            "description": "Ответ заведения",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewResponseDto" }]
+          }
+        },
+        "required": [
+          "id",
+          "placeId",
+          "rating",
+          "text",
+          "version",
+          "verificationLevel",
+          "authorName",
+          "publishedAt",
+          "updatedAt",
+          "response"
+        ]
+      },
+      "PlaceReviewsDto": {
+        "type": "object",
+        "properties": {
+          "rating": { "$ref": "#/components/schemas/PlaceRatingDto" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicReviewDto" } }
+        },
+        "required": ["rating", "items"]
+      },
+      "PlaceRatingListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PlaceRatingDto" } }
+        },
+        "required": ["items"]
+      },
+      "ReviewEligibilityStatus": {
+        "type": "string",
+        "enum": ["active", "consumed", "expired", "revoked"],
+        "description": "active — можно написать отзыв; consumed — отзыв написан (повторный POST /reviews — новая версия); expired — окно 30 дн. после брони прошло; revoked — бронь отменена/возвращена"
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": ["published", "pending_moderation", "hidden", "rejected"],
+        "description": "published — виден; pending_moderation — сработал автофильтр, ждёт модератора; hidden — скрыт модератором; rejected — отклонён модератором"
+      },
+      "ReviewAutoFlag": { "type": "string", "enum": ["link", "phone", "email", "profanity"] },
+      "AppealKind": { "type": "string", "enum": ["author", "partner"] },
+      "AppealStatus": { "type": "string", "enum": ["open", "granted", "denied"] },
+      "AppealDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "reviewId": { "type": "string", "format": "uuid" },
+          "kind": { "allOf": [{ "$ref": "#/components/schemas/AppealKind" }] },
+          "text": { "type": "string" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/AppealStatus" }] },
+          "decisionNote": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["id", "reviewId", "kind", "text", "status", "decisionNote", "createdAt", "decidedAt"]
+      },
+      "MyReviewDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "status": {
+            "description": "published — виден; pending_moderation — сработал автофильтр, ждёт модератора; hidden — скрыт модератором; rejected — отклонён модератором",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewStatus" }]
+          },
+          "rating": { "type": "integer" },
+          "text": { "type": "string" },
+          "version": { "type": "integer" },
+          "autoFlags": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewAutoFlag" } },
+          "hiddenReason": { "type": "string", "nullable": true, "description": "Причина скрытия/отклонения" },
+          "publishedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "response": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewResponseDto" }]
+          },
+          "appeal": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AppealDto" }]
+          },
+          "canAppeal": {
+            "type": "boolean",
+            "description": "Можно подать апелляцию (hidden/rejected, апелляций ещё не было)"
+          }
+        },
+        "required": [
+          "id",
+          "placeId",
+          "status",
+          "rating",
+          "text",
+          "version",
+          "autoFlags",
+          "hiddenReason",
+          "publishedAt",
+          "createdAt",
+          "updatedAt",
+          "response",
+          "appeal",
+          "canAppeal"
+        ]
+      },
+      "ReviewEligibilityDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "bookingId": { "type": "string", "format": "uuid" },
+          "level": { "allOf": [{ "$ref": "#/components/schemas/ReviewVerificationLevel" }] },
+          "status": {
+            "description": "active — можно написать отзыв; consumed — отзыв написан (повторный POST /reviews — новая версия); expired — окно 30 дн. после брони прошло; revoked — бронь отменена/возвращена",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewEligibilityStatus" }]
+          },
+          "issuedAt": { "type": "string", "format": "date-time" },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "До какого момента можно написать отзыв"
+          },
+          "review": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/MyReviewDto" }]
+          }
+        },
+        "required": [
+          "id",
+          "placeId",
+          "placeName",
+          "bookingId",
+          "level",
+          "status",
+          "issuedAt",
+          "expiresAt",
+          "review"
+        ]
+      },
+      "ReviewEligibilityListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewEligibilityDto" } }
+        },
+        "required": ["items"]
+      },
+      "SubmitReviewDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "eligibilityId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Право на отзыв из GET /reviews/eligibility"
+          },
+          "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        },
+        "required": ["regionId", "eligibilityId", "rating", "text"]
+      },
+      "ComplaintReason": {
+        "type": "string",
+        "enum": ["insult", "personal_data", "spam", "blackmail", "fraud", "other"]
+      },
+      "CreateComplaintDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "reasonCode": { "allOf": [{ "$ref": "#/components/schemas/ComplaintReason" }] },
+          "text": { "type": "string", "maxLength": 1000 }
+        },
+        "required": ["regionId", "reasonCode"]
+      },
+      "ComplaintKind": { "type": "string", "enum": ["partner", "user"] },
+      "ComplaintStatus": { "type": "string", "enum": ["open", "upheld", "dismissed"] },
+      "ComplaintDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "reviewId": { "type": "string", "format": "uuid" },
+          "kind": { "allOf": [{ "$ref": "#/components/schemas/ComplaintKind" }] },
+          "reasonCode": { "allOf": [{ "$ref": "#/components/schemas/ComplaintReason" }] },
+          "text": { "type": "string", "nullable": true },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ComplaintStatus" }] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["id", "reviewId", "kind", "reasonCode", "text", "status", "createdAt", "decidedAt"]
+      },
+      "CreateAppealDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "reviewId": { "type": "string", "format": "uuid" },
+          "text": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "required": ["regionId", "reviewId", "text"]
+      },
+      "PartnerReviewDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ReviewStatus" }] },
+          "rating": { "type": "integer" },
+          "text": { "type": "string" },
+          "version": { "type": "integer" },
+          "authorName": { "type": "string", "nullable": true },
+          "publishedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "response": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewResponseDto" }]
+          },
+          "myComplaints": {
+            "description": "Жалобы этого партнёра на отзыв",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ComplaintDto" }
+          },
+          "appeal": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AppealDto" }]
+          },
+          "canRespond": { "type": "boolean", "description": "Можно ответить (право review.respond)" },
+          "canAppeal": {
+            "type": "boolean",
+            "description": "Можно подать апелляцию: модератор оставил отзыв по жалобе партнёра (право review.appeal)"
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "status",
+          "rating",
+          "text",
+          "version",
+          "authorName",
+          "publishedAt",
+          "createdAt",
+          "updatedAt",
+          "response",
+          "myComplaints",
+          "appeal",
+          "canRespond",
+          "canAppeal"
+        ]
+      },
+      "PartnerReviewListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PartnerReviewDto" } }
+        },
+        "required": ["items"]
+      },
+      "PutReviewResponseDto": {
+        "type": "object",
+        "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+        "required": ["text"]
+      },
+      "AdminReviewFilter": {
+        "type": "string",
+        "enum": ["queue", "all", "published", "pending_moderation", "hidden", "rejected"]
+      },
+      "ReviewRevisionDto": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "integer" },
+          "rating": { "type": "integer" },
+          "text": { "type": "string" },
+          "autoFlags": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewAutoFlag" } },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["version", "rating", "text", "autoFlags", "createdAt"]
+      },
+      "AdminReviewDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "organizationId": { "type": "string", "format": "uuid", "nullable": true },
+          "authorUserId": { "type": "string", "format": "uuid" },
+          "authorName": { "type": "string", "nullable": true },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/ReviewStatus" }] },
+          "rating": { "type": "integer" },
+          "text": { "type": "string" },
+          "version": { "type": "integer" },
+          "autoFlags": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewAutoFlag" } },
+          "hiddenReason": { "type": "string", "nullable": true },
+          "publishedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastDecisionBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Модератор последнего решения"
+          },
+          "lastDecisionAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "revisions": {
+            "description": "История версий (старые сверху)",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ReviewRevisionDto" }
+          },
+          "complaints": { "type": "array", "items": { "$ref": "#/components/schemas/ComplaintDto" } },
+          "appeal": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/AppealDto" }]
+          },
+          "response": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewResponseDto" }]
+          },
+          "ownOrganization": {
+            "type": "boolean",
+            "description": "У модератора роль в организации места (BR-12) — решать нельзя"
+          },
+          "canDecideAppeal": {
+            "type": "boolean",
+            "description": "Открытую апелляцию может решить этот модератор (не он принимал обжалуемое решение)"
+          },
+          "waitingSince": {
+            "type": "string",
+            "format": "date-time",
+            "description": "С какого момента элемент ждёт решения"
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "organizationId",
+          "authorUserId",
+          "authorName",
+          "status",
+          "rating",
+          "text",
+          "version",
+          "autoFlags",
+          "hiddenReason",
+          "publishedAt",
+          "lastDecisionBy",
+          "lastDecisionAt",
+          "createdAt",
+          "updatedAt",
+          "revisions",
+          "complaints",
+          "appeal",
+          "response",
+          "ownOrganization",
+          "canDecideAppeal",
+          "waitingSince"
+        ]
+      },
+      "AdminReviewListDto": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/AdminReviewDto" } }
+        },
+        "required": ["items"]
+      },
+      "ReviewDecision": {
+        "type": "string",
+        "enum": ["publish", "hide"],
+        "description": "publish — оставить / одобрить / вернуть (→ published); hide — скрыть (published → hidden, pending_moderation → rejected)"
+      },
+      "ReviewDecisionDto": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "description": "publish — оставить / одобрить / вернуть (→ published); hide — скрыть (published → hidden, pending_moderation → rejected)",
+            "allOf": [{ "$ref": "#/components/schemas/ReviewDecision" }]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Причина — обязательна для hide (видна автору)"
+          }
+        },
+        "required": ["decision"]
+      },
+      "AppealDecision": { "type": "string", "enum": ["grant", "deny"] },
+      "AppealDecisionDto": {
+        "type": "object",
+        "properties": {
+          "decision": { "allOf": [{ "$ref": "#/components/schemas/AppealDecision" }] },
+          "reason": { "type": "string", "maxLength": 500 }
+        },
+        "required": ["decision"]
       },
       "FeatureFlagKey": {
         "type": "string",

@@ -9,7 +9,7 @@ import { createGuideApi } from "./guide-api.js";
 import { Catalog, STAY_MAP_MAX } from "./Catalog.js";
 import { Help } from "./Help.js";
 import { HomeSections } from "./HomeSections.js";
-import { Nearby, snapRadius } from "./Nearby.js";
+import { Nearby } from "./Nearby.js";
 import { PlaceCard } from "./PlaceCard.js";
 import {
   NotFoundError,
@@ -342,8 +342,8 @@ describe("«Що поруч» C05", () => {
   });
 });
 
-describe("«Що поруч»: пилюли радиуса и категория места", () => {
-  it("пилюли 300 м – 10 км, подпись значения; запрос — после паузы, один на серию нажатий", async () => {
+describe("«Що поруч»: ползунок радиуса и категория места", () => {
+  it("ползунок 0,3–20 км, значение 1 км по умолчанию; запрос — после паузы, один на серию нажатий", async () => {
     const { env } = setup();
     render(
       <GuideProvider value={env}>
@@ -351,26 +351,19 @@ describe("«Що поруч»: пилюли радиуса и категория
       </GuideProvider>,
     );
     await flush();
-    const pills = within(screen.getByRole("group", { name: "Радіус" }));
-    expect(pills.getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "300 м",
-      "500 м",
-      "1 км",
-      "3 км",
-      "5 км",
-      "10 км",
-    ]);
-    // По умолчанию 1 км: пилюля, подпись и запрос согласованы.
-    expect(pills.getByRole("button", { name: "1 км" }).getAttribute("aria-pressed")).toBe("true");
+    const slider = screen.getByRole("slider", { name: "Радіус пошуку" });
+    expect(slider.getAttribute("max")).toBe("8");
+    // По умолчанию 1 км: ползунок, подпись и запрос согласованы.
+    expect(slider.getAttribute("aria-valuetext")).toBe("1 км");
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("1 км");
     expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 1 км");
     // Категория места из справочника под названием.
     expect(screen.getAllByTestId("place-category")[0]!.textContent).toBe("Кав'ярні");
     const calls = vi.mocked(env.api.search).mock.calls.length;
-    fireEvent.click(pills.getByRole("button", { name: "3 км" }));
-    fireEvent.click(pills.getByRole("button", { name: "10 км" }));
+    fireEvent.change(slider, { target: { value: "4" } });
+    fireEvent.change(slider, { target: { value: "6" } });
     expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 10 км");
-    expect(pills.getByRole("button", { name: "10 км" }).getAttribute("aria-pressed")).toBe("true");
-    expect(pills.getByRole("button", { name: "1 км" }).getAttribute("aria-pressed")).toBe("false");
+    expect(slider.getAttribute("aria-valuetext")).toBe("10 км");
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
     await act(async () => new Promise((r) => setTimeout(r, 400)));
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
@@ -384,14 +377,6 @@ describe("«Що поруч»: пилюли радиуса и категория
 });
 
 describe("«Що поруч»: шапка и плашка ближайшего", () => {
-  it("значение вне шага — ближайшая пилюля", () => {
-    expect(snapRadius(300)).toBe(300);
-    expect(snapRadius(1500)).toBe(1000);
-    expect(snapRadius(2500)).toBe(3000);
-    expect(snapRadius(50)).toBe(300);
-    expect(snapRadius(20_000)).toBe(10_000);
-  });
-
   it("«Список ↓» уменьшает карту и прокручивает к листу, «Розгорнути» — обратно наверх", async () => {
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();

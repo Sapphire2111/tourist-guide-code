@@ -3,6 +3,9 @@
 //   pnpm --filter @tg/api places:import-google -- --region test-region [--photos]
 //   … --queries-file landmarks.json | --query "Говерла=nature" — точечный импорт (targeted.ts): один Text Search на
 //   запрос, категория из запроса, без снятия с публикации/архива остальных мест.
+//   … --zones-only — только зоны поиска (SEARCH_ZONES) и только новые места; --search "текст" — свои запросы вместо
+//   IMPORT_QUERIES; --insert-only — существующие места не трогать; --fields enterprise|pro — дешевле SKU Text Search
+//   (без описания / без телефона, часов, рейтинга); --plan — оценка запросов мимо кэша без Google и без записи.
 // Ключ — GOOGLE_MAPS_API_KEY (нужен только для запросов мимо кэша; в вывод не попадает). Запись — под DATABASE_URL
 // (роль приложения, контекст региона: TenantGuardPlugin + RLS), иначе DATABASE_MIGRATION_URL. --dry-run к БД не
 // подключается. --photos — ещё и хранилище медиа из env (STORAGE_DRIVER, STORAGE_LOCAL_DIR, S3_*).
@@ -13,7 +16,7 @@ import { createDatabase } from "../db/index.js";
 import { ImportArgsError, parseImportArgs, photoStorageEnv } from "../places-import/args.js";
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
-import { importPhotos } from "../places-import/photos.js";
+import { importPhotos, photoCandidates } from "../places-import/photos.js";
 import { CATEGORY_NAMES, googlePlaceIds, ImportWriteError, writePlaces } from "../places-import/writer.js";
 import {
   ALL_LOCALITIES,
@@ -36,15 +39,32 @@ try {
     apiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || undefined,
     cacheDir: args.cacheDir,
     maxRequests: args.maxRequests,
+    searchFields: args.fields,
+    planOnly: args.plan,
   });
-  console.log(`Кэш ответов Google: ${args.cacheDir}; лимит запросов: ${args.maxRequests}`);
+  console.log(
+    `Кэш ответов Google: ${args.cacheDir}; лимит запросов: ${args.maxRequests}; поля Text Search: ${args.fields}` +
+      `${args.plan ? "; оценка (--plan): в Google не ходим" : ""}`,
+  );
   if (args.queriesFile || args.queries.length) {
     await runTargeted(args, client, storage);
   } else {
     const { places, stats, closedIds, rejectedIds, seenIds } = await collect(client, {
       categoryNames: CATEGORY_NAMES,
       log: console.log,
+      zonesOnly: args.zonesOnly,
+      ...(args.searches.length ? { queries: args.searches } : {}),
     });
+    // --plan (всегда без записи): ниже — статистика только по ответам из кэша.
+    if (args.plan)
+      console.log(
+        `\nОценка: запросов Text Search мимо кэша (первые страницы) ${client.planned.search}, из кэша ${client.cacheHits}; ` +
+          "вторые-третьи страницы — сверх (до ×3 на запрос).",
+      );
+    console.log(
+      `Из них зоны поиска (SEARCH_ZONES): запросов ${stats.zones.queries}, к Google ${stats.zones.googleRequests}` +
+        `${args.plan ? `, мимо кэша (оценка) ${stats.zones.planned}` : ""}, из кэша ${stats.zones.cacheHits}.`,
+    );
     const report: Record<string, unknown> = { collect: stats };
 
     console.log(
@@ -75,7 +95,8 @@ try {
           closedIds,
           rejectedIds,
           seenIds,
-          complete: !stats.limitReached && stats.pagesFailed === 0,
+          complete: !stats.limitReached && stats.pagesFailed === 0 && !args.searches.length,
+          insertOnly: args.insertOnly,
         });
         report.write = written;
         console.log(
@@ -90,7 +111,15 @@ try {
         );
         if (storage) {
           const ids = await googlePlaceIds(db, written.regionId);
-          const photos = await importPhotos(db, client, storage, written.regionId, places, ids, console.log);
+          const photos = await importPhotos(
+            db,
+            client,
+            storage,
+            written.regionId,
+            photoCandidates(places, written.insertedIds, args.insertOnly),
+            ids,
+            console.log,
+          );
           report.photos = photos;
           console.log(
             `Фото (${storage.driver.driver}): добавлено ${photos.added}, отклонено ${photos.rejected}, ошибок ${photos.failed}` +
@@ -167,6 +196,7 @@ async function runTargeted(
       const written = await writePlaces(db, args.region, places, new Date(), {
         localities: ALL_LOCALITIES,
         pinCategory: true,
+        insertOnly: args.insertOnly,
       });
       report.write = written;
       console.log(
@@ -178,7 +208,15 @@ async function runTargeted(
         console.log(`  не опубликовано: ${n.name} (${n.googlePlaceId}) — статус ${n.status}`);
       if (storage) {
         const ids = await googlePlaceIds(db, written.regionId);
-        const photos = await importPhotos(db, client, storage, written.regionId, places, ids, console.log);
+        const photos = await importPhotos(
+          db,
+          client,
+          storage,
+          written.regionId,
+          photoCandidates(places, written.insertedIds, args.insertOnly),
+          ids,
+          console.log,
+        );
         report.photos = photos;
         console.log(
           `Фото: добавлено ${photos.added}, отклонено ${photos.rejected}, ошибок ${photos.failed}.`,

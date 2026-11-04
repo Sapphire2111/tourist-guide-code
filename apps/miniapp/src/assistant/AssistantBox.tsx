@@ -129,7 +129,7 @@ export function AssistantBox({
           </button>
         ) : (
           // Подпись постоянная (имя кнопки не меняется во время записи — фокус и озвучка не сбиваются); запись —
-          // aria-pressed, кольцо и таймер в поле. Не disabled во время ожидания: фокус остаётся на кнопке.
+          // aria-pressed, волны и таймер в поле. Не disabled во время ожидания: фокус остаётся на кнопке.
           <button
             type="button"
             className="assistant-action"

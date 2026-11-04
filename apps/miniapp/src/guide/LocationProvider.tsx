@@ -49,16 +49,18 @@ export const REGION_REACH_M = 15_000;
 /** Сообщение об отказе/выходе за регион гаснет само, мс. */
 const FAILED_MS = 6_000;
 
-/** Поиск вокруг точки устройства: радиус GPS_RADIUS, мало результатов — GPS_RADIUS_WIDE. */
+/** Поиск вокруг точки устройства: радиус GPS_RADIUS, мало результатов — GPS_RADIUS_WIDE; radius — фактически использованный. */
 export async function searchAround(
   search: GuideApi["search"],
   params: SearchParams,
   gps: LatLng,
-): Promise<PlaceSummary[]> {
+): Promise<{ list: PlaceSummary[]; radius: number }> {
   const first = await search({ ...params, point: gps, radius: GPS_RADIUS });
-  if (first.length >= GPS_MIN_PLACES) return first;
+  if (first.length >= GPS_MIN_PLACES) return { list: first, radius: GPS_RADIUS };
   const wide = await search({ ...params, point: gps, radius: GPS_RADIUS_WIDE });
-  return wide.length >= first.length ? wide : first;
+  return wide.length >= first.length
+    ? { list: wide, radius: GPS_RADIUS_WIDE }
+    : { list: first, radius: GPS_RADIUS };
 }
 
 /** Точка в регионе: рядом с каким-либо пунктом; координат пунктов нет — проверить нечем (null). */
