@@ -11,6 +11,28 @@ const RANK: Record<PeakDifficulty, number> = { easy: 0, moderate: 1, hard: 2, ex
 
 export const isPeakPlace = (p: PlaceSummary): p is PeakPlace => Boolean(p.peak);
 
+/**
+ * Место раздела «Вершини» без данных вершины (нет в peaks.ts): в списке с «складність невідома» — высота, хребет,
+ * маршрут и источники неизвестны (null), slug — id места.
+ */
+export const asPeakPlace = (p: PlaceSummary): PeakPlace =>
+  isPeakPlace(p)
+    ? p
+    : {
+        ...p,
+        peak: {
+          slug: p.id,
+          heightM: null,
+          range: null,
+          difficulty: null,
+          route: null,
+          note: null,
+          warnings: [],
+          sources: [],
+          weatherPoint: null,
+        },
+      };
+
 /** Порядок «від легких до складних»; без данных — в конце. Равные — по высоте (ниже раньше), затем по названию. */
 function byDifficulty(a: PeakPlace, b: PeakPlace): number {
   const ra = a.peak.difficulty ? RANK[a.peak.difficulty] : 9;

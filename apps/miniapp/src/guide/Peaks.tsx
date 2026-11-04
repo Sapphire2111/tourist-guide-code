@@ -16,8 +16,8 @@ import {
   availableFilters,
   filterPeaks,
   heightText,
+  asPeakPlace,
   hoursText,
-  isPeakPlace,
   sortPeaks,
   type PeakFilter,
   type PeakPlace,
@@ -201,7 +201,8 @@ export function Peaks() {
       const cat = categories.find((c) => c.code === PEAKS_CATEGORY);
       if (!cat) return [];
       const list = await api.search({ categoryId: cat.id, point, max: PEAKS_MAX });
-      return list.filter(isPeakPlace);
+      // Место раздела без данных в peaks.ts — тоже в списке, «складність невідома».
+      return list.map(asPeakPlace);
     },
     [api, point?.lat, point?.lng],
     { slot: "peaks.list", key: JSON.stringify(point) },
@@ -267,10 +268,13 @@ function PeakWeather({ point }: { point: { lat: number; lng: number } }) {
 /** Блок вершины в картке місця. */
 export function PeakDetails({
   peak,
+  placeId,
   name,
   placeLocation,
 }: {
   peak: Peak;
+  /** id места (uuid) — для аналитики route_clicked (схема требует uuid, не slug). */
+  placeId: string;
   name: string;
   placeLocation: { lat: number; lng: number } | null;
 }) {
@@ -360,7 +364,7 @@ export function PeakDetails({
             href={routeHref}
             className="kosiv-action"
             testId="peak-route"
-            onOpen={() => analytics.track("route_clicked", { placeId: peak.slug })}
+            onOpen={() => analytics.track("route_clicked", { placeId })}
           >
             {t(start ? "miniapp.peaks.card.routeToStart" : "miniapp.peaks.card.routeToPeak")}
           </ExtLink>

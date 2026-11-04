@@ -561,7 +561,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
         )}
 
-        {place.peak && <PeakDetails peak={place.peak} name={name} placeLocation={place.location} />}
+        {place.peak && (
+          <PeakDetails peak={place.peak} placeId={place.id} name={name} placeLocation={place.location} />
+        )}
 
         {about && (
           <Section

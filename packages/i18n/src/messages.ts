@@ -298,7 +298,7 @@ export const uk = {
     "Гори для походу на день із Яремче, Ворохти й Буковеля. Натисніть вершину — маршрут, складність і погода.",
   "miniapp.peaks.ruleTitle": "Як визначаємо складність",
   "miniapp.peaks.rule":
-    "Легка — набір висоти до 500 м, туди-назад до 10 км і до 4 год; середня — до 900 м, 16 км, 7 год; складна — до 1300 м, 22 км, 10 год; дуже складна — більше. Рахуємо за найбільшою мірою. Без даних про довжину чи час маршруту — «немає даних».",
+    "Легка — набір висоти менше 500 м, туди-назад менше 10 км, до 4 год; середня — менше 900 м, 16 км, до 7 год; складна — менше 1300 м, 22 км, до 10 год; дуже складна — більше. Рахуємо за найбільшою мірою. Без даних про довжину чи час маршруту — «немає даних».",
   "miniapp.peaks.difficulty.easy": "Легка",
   "miniapp.peaks.difficulty.moderate": "Середня",
   "miniapp.peaks.difficulty.hard": "Складна",
@@ -1983,7 +1983,7 @@ export const en: Messages = {
     "Day-hike mountains near Yaremche, Vorokhta and Bukovel. Tap a peak for the route, difficulty and weather.",
   "miniapp.peaks.ruleTitle": "How difficulty is rated",
   "miniapp.peaks.rule":
-    "Easy — up to 500 m gain, 10 km and 4 h round trip; moderate — up to 900 m, 16 km, 7 h; hard — up to 1300 m, 22 km, 10 h; very hard — more. The largest measure counts. Without route length or time — “no data”.",
+    "Easy — under 500 m gain, under 10 km and up to 4 h round trip; moderate — under 900 m, 16 km, up to 7 h; hard — under 1300 m, 22 km, up to 10 h; very hard — more. The largest measure counts. Without route length or time — “no data”.",
   "miniapp.peaks.difficulty.easy": "Easy",
   "miniapp.peaks.difficulty.moderate": "Moderate",
   "miniapp.peaks.difficulty.hard": "Hard",

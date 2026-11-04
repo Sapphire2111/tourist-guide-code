@@ -135,7 +135,7 @@ describe("значок і список", () => {
     expect(screen.queryByTestId("peak-sort-distance")).toBeNull();
   });
 
-  it("екран: категорія peaks за кодом, у списку — лише вершини", async () => {
+  it("екран: категорія peaks за кодом; місце без даних вершини — у списку з «немає даних»", async () => {
     const search = vi.fn(async () => [LIST[0]!, { ...LIST[1]!, peak: null }]);
     const api = {
       categories: vi.fn(async () => [
@@ -151,12 +151,15 @@ describe("значок і список", () => {
     );
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(search).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "pk" }));
-    expect(names()).toEqual(["Говерла"]);
-    expect(screen.getByTestId("peak-rule").textContent).toContain("до 500 м");
+    expect(names()).toEqual(["Говерла", LIST[1]!.id]);
+    const unknown = screen.getAllByTestId("peak-item")[1]!;
+    expect(within(unknown).getByTestId("peak-badge").textContent).toBe("Немає даних");
+    expect(screen.getByTestId("peak-rule").textContent).toContain("менше 500 м");
   });
 });
 
 describe("блок вершини в картці", () => {
+  const PLACE_ID = "0190f5c2-7d3e-7000-8000-000000000042";
   const hoverla = peak({
     slug: "hoverla",
     heightM: 2061,
@@ -184,7 +187,12 @@ describe("блок вершини в картці", () => {
     }));
     render(
       <GuideProvider value={env({ weather: { forecast } as WeatherApi })}>
-        <PeakDetails peak={hoverla} name="Говерла" placeLocation={{ lat: 48.16, lng: 24.5 }} />
+        <PeakDetails
+          peak={hoverla}
+          placeId={PLACE_ID}
+          name="Говерла"
+          placeLocation={{ lat: 48.16, lng: 24.5 }}
+        />
       </GuideProvider>,
     );
     await act(async () => new Promise((r) => setTimeout(r, 0)));
@@ -205,12 +213,30 @@ describe("блок вершини в картці", () => {
     expect(box.queryByTestId("peak-plan")).toBeNull();
   });
 
+  it("«Маршрут» — route_clicked з id місця (uuid), а не slug вершини", () => {
+    const track = vi.fn();
+    const analytics = { track, flush: vi.fn(), dispose: vi.fn() } as unknown as Analytics;
+    render(
+      <GuideProvider value={env({ analytics })}>
+        <PeakDetails
+          peak={peak({ slug: "synyak" })}
+          placeId={PLACE_ID}
+          name="Синяк"
+          placeLocation={{ lat: 48.39, lng: 24.46 }}
+        />
+      </GuideProvider>,
+    );
+    fireEvent.click(screen.getByTestId("peak-route"));
+    expect(track).toHaveBeenCalledWith("route_clicked", { placeId: PLACE_ID });
+  });
+
   it("без маршруту — «немає даних», маршрут до вершини; «Спланувати похід» з ассистентом", () => {
     render(
       <FeatureFlagsProvider flags={{ "module.assistant": true }}>
         <GuideProvider value={env({ signedIn: true })}>
           <PeakDetails
             peak={peak({ heightM: null })}
+            placeId={PLACE_ID}
             name="Синяк"
             placeLocation={{ lat: 48.39, lng: 24.46 }}
           />

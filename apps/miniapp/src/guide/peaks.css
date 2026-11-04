@@ -1,12 +1,13 @@
 /* Раздел «Вершини»: значок сложности как у лыжных трасс — цвет + форма (круг, квадрат, треугольник, два ромба) + текст.
    Темы День/Ніч — токены сезона; кнопки и чипы — не ниже 44 px. */
 
+/* День: каждый цвет — не ниже 4.5:1 на подложке значка (белый 80% поверх светлого фона). */
 :root {
-  --peak-easy: #1f8a4c;
+  --peak-easy: #17703c;
   --peak-moderate: #1d5fbf;
   --peak-hard: #c62828;
   --peak-expert: #111111;
-  --peak-unknown: #7a8580;
+  --peak-unknown: #5c6661;
   --peak-badge-bg: rgb(255 255 255 / 80%);
 }
 html[data-theme="night"] {
@@ -166,5 +167,11 @@ html[data-theme="night"] {
 }
 .peak-link {
   min-height: 44px;
+  align-self: flex-start;
+}
+/* В «Поруч» ссылка лежит в листе результатов (flex-колонка), а правило `.modern-results-sheet .modern-route`
+   (order: 4; align-self: end) — для кнопок маршрута в картках: без сброса ссылка уезжала под список вправо. */
+.modern-results-sheet .modern-route.peak-link {
+  order: 0;
   align-self: flex-start;
 }
