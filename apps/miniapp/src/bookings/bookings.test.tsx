@@ -293,23 +293,23 @@ describe("C06: «Доступно зараз» и «Забронювати» в 
     expect(screen.getByTestId("place-book").getAttribute("href")).toBe(`#/book/${PLACE}`);
   });
 
-  it("нет свободного слота и ручного статуса — «Уточнити доступність», бронь — по кнопке", async () => {
+  it("нет свободного слота и ручного статуса — бейджа доступности нет, бронь — по кнопке", async () => {
     renderWith(<PlaceCard id={PLACE} />);
     expect(await screen.findByTestId("place-book")).toBeTruthy();
-    expect(screen.getByTestId("badge-availability").textContent).toBe("Уточнити доступність");
+    expect(screen.queryByTestId("badge-availability")).toBeNull();
   });
 
   it("флаг выключен — ресурсы не запрашиваются, как раньше", async () => {
     const api = renderWith(<PlaceCard id={PLACE} />, { flag: false });
-    expect(await screen.findByTestId("badge-availability")).toBeTruthy();
-    expect(screen.getByTestId("badge-availability").textContent).toBe("Уточнити доступність");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByTestId("badge-availability")).toBeNull();
     expect(api.resources).not.toHaveBeenCalled();
     expect(screen.queryByTestId("place-book")).toBeNull();
   });
 
   it("без ресурсов — кнопки брони нет", async () => {
     const api = renderWith(<PlaceCard id={PLACE} />, { api: fakeApi({ resources: vi.fn(async () => []) }) });
-    await screen.findByTestId("badge-availability");
+    await screen.findByRole("heading", { level: 1 });
     await act(async () => undefined);
     expect(api.resources).toHaveBeenCalledWith(REGION, PLACE);
     expect(screen.queryByTestId("place-book")).toBeNull();

@@ -34,6 +34,9 @@ html[data-design="modern"] {
   --bar-text: #16382b;
   --bar-muted: #36574a;
   --bar-accent: #9e3616;
+  /* Экстренный красный (кнопка 112): отдельно от акцента темы; белый текст — контраст 4.8:1. */
+  --emergency-bg: #d92d20;
+  --emergency-border: #f97066;
   --bar-focus: #8a2c0f;
   --pill-bg: rgb(255 255 255 / 80%);
   --pill-border: #ffffff;
@@ -59,12 +62,6 @@ html[data-design="modern"] {
   --chip-text: #16382b;
   --host-link-bg: #f9e4d2;
   --host-link-text: #8a2c0f;
-  --near-bg: rgb(22 56 43 / 94%);
-  --near-border: rgb(255 255 255 / 30%);
-  --near-title: #ffffff;
-  --near-muted: #d6e4dc;
-  --near-accent: #fde68a;
-  --near-image: none;
   --tile-bg: rgb(255 255 255 / 88%);
   --tile-border: #ffffff;
   --tile-text: #16382b;
@@ -340,6 +337,21 @@ html[data-design="modern"] .modern-top-loc .loc-chip::after {
   position: absolute;
   inset: -11px 0;
 }
+/* Локация не выбрана: пилюля с меткой и акцентной обводкой (касание 44 px за счёт ::after). */
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"] {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--bar-accent);
+  border-radius: 9999px;
+  --app-accent: var(--bar-accent);
+}
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"]::after {
+  inset: -8px -4px;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"] .loc-chip-pin {
+  display: inline;
+}
 html[data-design="modern"] .modern-top-loc .loc-chip-pin {
   display: none;
 }
@@ -396,8 +408,8 @@ html[data-design="modern"] .kosiv-top .modern-qr-pill::after,
   margin: 4px 0;
   padding: 0 11px;
   border-radius: 9999px;
-  background-color: #c2521a;
-  border: 1px solid #f26419;
+  background-color: var(--emergency-bg);
+  border: 1px solid var(--emergency-border);
   color: #ffffff;
   font-size: 12px;
   font-weight: 700;
@@ -753,13 +765,21 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   --f-sub: var(--card-muted);
   --f-kicker: var(--card-accent);
 }
+/* Главная из двух: та же карточка, что «Де смачно поїсти», главность — акцентная обводка и кружок под компасом. */
 .modern-featured-near {
-  background-color: var(--near-bg);
-  background-image: var(--near-image);
-  border-color: var(--near-border);
-  --f-title: var(--near-title);
-  --f-sub: var(--near-muted);
-  --f-kicker: var(--near-accent);
+  border: 2px solid var(--card-accent);
+  padding: 13px;
+}
+.modern-featured-near .modern-featured-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--card-accent) 18%, transparent);
+  border: 1.5px solid var(--card-accent);
+  font-size: 18px;
 }
 .modern-featured-top {
   display: flex;
@@ -1574,12 +1594,6 @@ html[data-theme="night"] {
   --chip-text: #f5efe6;
   --host-link-bg: #264236;
   --host-link-text: #f5efe6;
-  --near-bg: #262219;
-  --near-border: rgb(242 100 25 / 50%);
-  --near-title: #ffffff;
-  --near-muted: #a8c7bb;
-  --near-accent: #f6ae2d;
-  --near-image: linear-gradient(135deg, rgb(242 100 25 / 25%) 0%, #132a20 100%);
   --tile-bg: rgb(19 42 32 / 92%);
   --tile-border: rgb(255 255 255 / 12%);
   --tile-text: #f5efe6;
@@ -1768,5 +1782,52 @@ body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .mic-
   /* Без движения запись всё равно видна: статичное кольцо. */
   .assistant-pill[data-recording] .mic-waves i:first-child {
     opacity: 0.6;
+  }
+}
+
+/* «День»: горы вместо огня — без мерцания; погода не прижата к кнопкам шапки. */
+html[data-theme="day"] .fire-flame {
+  animation: none;
+}
+html[data-theme="day"][data-screen="home"] .home-top-row {
+  padding-top: 10px;
+}
+
+/* Низкий экран (320×740 и меньше): главная уплотняется, чтобы все три ряда плиток были видны над нижней панелью. */
+@media (max-height: 760px) {
+  .modern-home {
+    gap: 6px;
+  }
+  .modern-hero {
+    gap: 6px;
+  }
+  .modern-hero-head {
+    gap: 4px;
+    padding-bottom: 2px;
+  }
+  .modern-hero-glass {
+    padding: 10px 14px;
+  }
+  .modern-hero-glass .assistant-examples {
+    margin-bottom: 0;
+  }
+  .modern-tiles {
+    --tile-h: 58px;
+  }
+  .modern-featured-grid {
+    gap: 8px;
+  }
+  .modern-featured-card {
+    gap: 4px;
+    padding: 10px 12px;
+  }
+  .modern-featured-near {
+    padding: 9px 11px;
+  }
+  .modern-featured-title {
+    font-size: 17px;
+  }
+  html[data-theme="day"][data-screen="home"] .home-top-row {
+    padding-top: 0;
   }
 }

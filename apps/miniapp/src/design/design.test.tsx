@@ -1,5 +1,5 @@
 import { WINDOW_COLORS } from "./theme.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
@@ -107,13 +107,33 @@ describe("сезон", () => {
       </SeasonProvider>,
     );
     // Цвета окна — по картинке фона и теме, сезон их не меняет: шапка — небо, низ окна и нижняя панель — низ картинки.
-    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.header);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
     expect(screen.getByRole("button", { name: "Осінь" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Зима" }));
     expect(document.documentElement.getAttribute("data-season")).toBe("winter");
-    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
-    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
+    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
+    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
     expect(JSON.parse(localStorage.getItem(SEASON_STORAGE_KEY)!).season).toBe("winter");
+  });
+
+  it("цвета окна Telegram возвращаются после смены темы Telegram и полного экрана", () => {
+    const handlers = new Map<string, () => void>();
+    const webApp = {
+      ready: vi.fn(),
+      expand: vi.fn(),
+      isVersionAtLeast: () => true,
+      setHeaderColor: vi.fn(),
+      setBackgroundColor: vi.fn(),
+      setBottomBarColor: vi.fn(),
+      onEvent: (e: string, cb: () => void) => void handlers.set(e, cb),
+      offEvent: vi.fn(),
+    } satisfies TelegramWebApp;
+    render(<SeasonProvider webApp={webApp} />);
+    const before = webApp.setHeaderColor.mock.calls.length;
+    handlers.get("fullscreenChanged")?.();
+    handlers.get("themeChanged")?.();
+    expect(webApp.setHeaderColor).toHaveBeenCalledTimes(before + 2);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
   });
 
   it("заставка: долгий вход (холодный старт api) — пояснение «сервер прокидається»", async () => {
@@ -202,7 +222,7 @@ describe("локації", () => {
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     const chip = screen.getByTestId("location-chip");
-    expect(chip.textContent).toContain("Усі локації");
+    expect(chip.textContent).toContain("Оберіть локацію");
     fireEvent.click(chip);
     const sheet = screen.getByRole("dialog", { name: "Локація" });
     // Пункт без мест не предлагается.
@@ -538,7 +558,7 @@ describe("локація: моє місцезнаходження", () => {
     expect(chip.textContent).toContain("Моє місцезнаходження");
   });
 
-  it("нет точки — по умолчанию «Усі локації» без сообщений; явный выбор при отказе — сообщение и откат", async () => {
+  it("нет точки — по умолчанию «Оберіть локацію» без сообщений; явный выбор при отказе — сообщение и откат", async () => {
     stubGeolocation(null);
     const search = vi.fn(async (_params: SearchParams) => [place]);
     mount(search);
@@ -546,7 +566,7 @@ describe("локація: моє місцезнаходження", () => {
     await flush();
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     const chip = screen.getByTestId("location-chip");
-    expect(chip.textContent).toContain("Усі локації");
+    expect(chip.textContent).toContain("Оберіть локацію");
     fireEvent.click(chip);
     expect(screen.queryByTestId("location-gps-failed")).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));
@@ -760,5 +780,64 @@ describe("главная без сезонных тегов", () => {
   it("SeasonConfig не содержит быстрых тегов", async () => {
     const { SEASON_CONFIG } = await import("./season.js");
     for (const cfg of Object.values(SEASON_CONFIG)) expect(cfg).not.toHaveProperty("tags");
+  });
+});
+
+describe("локация: выбрана ли туристом", () => {
+  const chipOf = async (venueEntry = false) => {
+    render(
+      <GuideProvider value={env(vi.fn(async () => [place]))}>
+        <LocationProvider venueEntry={venueEntry}>
+          <LocationChip />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    return screen.getByTestId("location-chip");
+  };
+  beforeEach(() => sessionStorage.clear());
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("по умолчанию: призыв «Оберіть локацію», data-unpicked и одна пульсация за сеанс", async () => {
+    stubGeolocation(null);
+    const first = await chipOf();
+    expect(first.getAttribute("data-unpicked")).toBe("true");
+    expect(first.getAttribute("data-pulse")).toBe("true");
+    expect(first.textContent).toContain("Оберіть локацію");
+    cleanup();
+    const second = await chipOf();
+    expect(second.getAttribute("data-unpicked")).toBe("true");
+    expect(second.getAttribute("data-pulse")).toBeNull();
+  });
+
+  it.each([
+    ["пункты", { regionId: "region", ids: [YAREMCHE] }],
+    ["«Усі локації»", { regionId: "region", ids: [], mode: "all" }],
+    ["«Моє місцезнаходження»", { regionId: "region", ids: [], mode: "gps" }],
+  ])("сохранённый выбор (%s) между сеансами — выбрано, без призыва", async (_n, saved) => {
+    stubGeolocation(null);
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(saved));
+    const chip = await chipOf();
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
+    expect(chip.getAttribute("data-pulse")).toBeNull();
+    expect(chip.textContent).not.toContain("Оберіть локацію");
+  });
+
+  it("вход по QR заведения — локацию задаёт заведение: выбрано", async () => {
+    stubGeolocation(null);
+    const chip = await chipOf(true);
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
+    expect(chip.textContent).toContain("Усі локації");
+  });
+
+  it("автоматическая точка устройства — выбрано", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    const chip = await chipOf();
+    await flush();
+    expect(chip.textContent).toContain("Моє місцезнаходження");
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
   });
 });

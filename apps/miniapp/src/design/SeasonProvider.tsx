@@ -29,7 +29,7 @@ function safe(call: () => void): void {
  * Цвета окна Telegram под тему. Фон — Bot API 6.1+; шапка цветом #RRGGBB — 6.9+ (до 6.9 принимает только
  * ключи bg_color/secondary_bg_color и бросает исключение); нижняя панель — 7.10+. Браузер — без вызовов.
  */
-export function syncTelegramColors(webApp: TelegramWebApp | undefined, theme: Theme = "day"): void {
+export function syncTelegramColors(webApp: TelegramWebApp | undefined, theme: Theme = "night"): void {
   if (!webApp) return;
   const at = (v: string) => !webApp.isVersionAtLeast || webApp.isVersionAtLeast(v);
   const { header, bottom } = WINDOW_COLORS[theme];
@@ -46,6 +46,13 @@ export function SeasonProvider({ webApp, children }: { webApp?: TelegramWebApp; 
   }, [season]);
   useEffect(() => {
     syncTelegramColors(webApp, theme);
+    // Клиент Telegram сам перекрашивает окно при смене своей темы и режима (полный экран, возврат в приложение) —
+    // цвета темы приложения возвращаем.
+    if (!webApp?.onEvent) return;
+    const reapply = () => syncTelegramColors(webApp, theme);
+    const events = ["themeChanged", "fullscreenChanged", "activated"];
+    events.forEach((e) => webApp.onEvent?.(e, reapply));
+    return () => events.forEach((e) => webApp.offEvent?.(e, reapply));
   }, [theme, webApp]);
   const setSeason = useCallback((s: Season) => {
     saveSeason(s);

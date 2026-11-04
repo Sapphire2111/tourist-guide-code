@@ -2,23 +2,39 @@
 // Выбор применяется сразу; лист закрывают «Готово», Escape, тап по фону и «Назад» Telegram.
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
 import { useSheet } from "./use-sheet.js";
 import "./location.css";
 
+const PULSE_KEY = "tg.locPulse";
+
+/** Пульсация призыва — один раз за сеанс (sessionStorage), а не при каждом монтировании чипа. */
+function takePulse(): boolean {
+  try {
+    if (window.sessionStorage.getItem(PULSE_KEY)) return false;
+    window.sessionStorage.setItem(PULSE_KEY, "1");
+  } catch {
+    // Хранилище недоступно — пульсация при монтировании.
+  }
+  return true;
+}
+
 export function LocationChip() {
   const { t } = useT();
-  const { options, gps, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
+  const { options, gps, chosen, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
+  const [pulse] = useState(() => !chosen && takePulse());
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
     names.length === 0
       ? gps
         ? t("miniapp.location.mine")
-        : t("miniapp.location.all")
+        : chosen
+          ? t("miniapp.location.all")
+          : t("miniapp.location.choose")
       : names.length === 1
         ? names[0]!
         : t("miniapp.location.more", { name: names[0]!, count: names.length - 1 });
@@ -29,6 +45,8 @@ export function LocationChip() {
         className="loc-chip"
         data-testid="location-chip"
         data-all={names.length === 0 && !gps ? "true" : undefined}
+        data-unpicked={chosen ? undefined : "true"}
+        data-pulse={pulse ? "true" : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t("miniapp.location.title")}: ${label}`}

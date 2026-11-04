@@ -1,4 +1,4 @@
-// Тема оформления: «День» (по умолчанию) и «Ніч». Выбор хранится в localStorage; тему Telegram не наследуем.
+// Тема оформления: «Ніч» (по умолчанию) и «День». Выбор хранится в localStorage; тему Telegram не наследуем.
 // Логика чтения повторена в public/season-boot.js (атрибут data-theme до первого кадра) — менять вместе.
 import type { MessageKey } from "@tg/i18n";
 
@@ -25,14 +25,14 @@ export function isTheme(v: unknown): v is Theme {
   return v === "day" || v === "night";
 }
 
-/** Сохранённая тема; нет значения, оно повреждено или хранилище недоступно — «День». */
+/** Сохранённая тема; нет значения, оно повреждено или хранилище недоступно — «Ніч» (по умолчанию). */
 export function readTheme(): Theme {
   try {
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isTheme(raw) ? raw : "day";
+    return isTheme(raw) ? raw : "night";
   } catch {
-    // Хранилище недоступно (приватный режим, запрет cookies) — «День».
-    return "day";
+    // Хранилище недоступно (приватный режим, запрет cookies) — «Ніч».
+    return "night";
   }
 }
 

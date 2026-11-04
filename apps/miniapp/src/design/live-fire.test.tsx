@@ -6,7 +6,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AssistantBox } from "../assistant/AssistantBox.js";
 import type { AssistantApi } from "../assistant/assistant-api.js";
 import { AppTop, type ScanControl } from "./Chrome.js";
+import { BottomNav } from "../guide/BottomNav.js";
 import { SeasonProvider } from "./SeasonProvider.js";
+import { ThemeProvider } from "./ThemeProvider.js";
 
 let recorderState: "idle" | "starting" | "recording" = "idle";
 vi.mock("../assistant/recorder.js", () => ({
@@ -80,5 +82,36 @@ describe("живой огонёк и волны", () => {
     expect(css).toMatch(/body:has\([^)]*\) \.mic-waves i/);
     const frames = /@keyframes (?:fire-flicker|mic-wave) \{[\s\S]*?\n\}/g;
     for (const f of css.match(frames) ?? []) expect(f).not.toMatch(/\b(top|left|width|height|margin):/);
+  });
+});
+
+describe("символ темы", () => {
+  const withTheme = (theme: "day" | "night") => {
+    document.documentElement.setAttribute("data-theme", theme);
+    return render(
+      <ThemeProvider>
+        <SeasonProvider>
+          <AppTop path="/" profile={false} />
+          <AssistantBox api={api} onSubmit={vi.fn()} />
+          <BottomNav />
+        </SeasonProvider>
+      </ThemeProvider>,
+    );
+  };
+  afterEach(() => document.documentElement.removeAttribute("data-theme"));
+
+  it("«День»: горы в шапке, поле ассистента и вкладке «Головна»; огня нет", () => {
+    withTheme("day");
+    expect(screen.getByTestId("menu-btn").textContent).toBe("⛰️");
+    expect(screen.getByTestId("assistant-mic").textContent).toContain("⛰️");
+    expect(screen.getByTestId("bottom-nav").textContent).toContain("⛰️");
+    expect(document.body.textContent).not.toContain("🔥");
+  });
+
+  it("«Ніч»: огонь в тех же местах", () => {
+    withTheme("night");
+    expect(screen.getByTestId("menu-btn").textContent).toBe("🔥");
+    expect(screen.getByTestId("assistant-mic").textContent).toContain("🔥");
+    expect(screen.getByTestId("bottom-nav").textContent).toContain("🔥");
   });
 });

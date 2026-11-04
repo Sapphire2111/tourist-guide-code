@@ -9,10 +9,22 @@ import { installTelegramWebApp, type TelegramWebAppOptions } from "./telegram-we
 export const test = base.extend<{
   telegram: TelegramWebAppOptions | null;
   googleMaps: boolean;
+  /** Тема до первого выбора: тесты исторически написаны под «День»; null — настоящий умолчательный режим («Ніч»). */
+  defaultTheme: "day" | null;
 }>({
   telegram: [{}, { option: true }],
   googleMaps: [true, { option: true }],
-  page: async ({ page, telegram, googleMaps }, use) => {
+  defaultTheme: ["day", { option: true }],
+  page: async ({ page, telegram, googleMaps, defaultTheme }, use) => {
+    if (defaultTheme) {
+      await page.addInitScript((theme) => {
+        try {
+          if (!localStorage.getItem("tg.theme")) localStorage.setItem("tg.theme", theme);
+        } catch {
+          // Хранилище недоступно — тема по умолчанию.
+        }
+      }, defaultTheme);
+    }
     // Медленный процессор (E2E_CPU_THROTTLE=4): проверка тестов на гонки с анимацией, как на CI.
     const throttle = Number(process.env.E2E_CPU_THROTTLE ?? 0);
     if (throttle > 1) {
