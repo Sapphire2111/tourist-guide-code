@@ -17,11 +17,15 @@ import { OWN_MAP_SECTIONS, type Category, type PlaceSummary, type HomeSection } 
 export const DEFAULT_RADIUS = 1000;
 /** Задержка запроса при смене радиуса, мс. */
 export const RADIUS_DEBOUNCE_MS = 350;
-/** Не больше стольких ближайших мест в радиусе (до 20 км) (сервер сортирует по расстоянию). */
-// 300: на радиусе 10–15 км 50 ближайших мест покрывали лишь ~3–5 км круга; маркеры кластеризуются.
+/**
+ * Не больше стольких ближайших мест в радиусе до 20 км (сервер сортирует по расстоянию). 300 — чтобы на 10–15 км
+ * карта покрывала весь круг (50 ближайших давали лишь ~3–5 км); маркеры кластеризуются.
+ */
 export const NEARBY_LIMIT = 300;
 /** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
 export const DEVICE_MAX_ZOOM = 14;
+/** Карточек списка под картой за раз («Показати ще» — ещё столько же); карта получает все места. */
+export const NEARBY_PAGE = 50;
 
 /** Подпись радиуса: «500 м», «1,5 км», «10 км». */
 export function useRadiusLabel(): (m: number) => string {
@@ -324,6 +328,10 @@ export function ModernNearbyResults({
         ),
     [list, section, categories],
   );
+  // Список под картой — страницами по NEARBY_PAGE (300 карточек сразу — тяжело); сброс при новой выборке/фильтре.
+  const [page, setPage] = useState({ of: visible, n: NEARBY_PAGE });
+  const shownCount = page.of === visible ? page.n : NEARBY_PAGE;
+  const pageOf = useMemo(() => visible.slice(0, shownCount), [visible, shownCount]);
   const closest = visible[0];
   const closestDist = closest ? distanceLabel(closest.distanceMeters) : null;
   return (
@@ -406,7 +414,17 @@ export function ModernNearbyResults({
         </Link>
         {list.length >= NEARBY_LIMIT && <p>{t("miniapp.nearby.limited", { n: NEARBY_LIMIT })}</p>}
         {visible.length ? (
-          <PlaceList places={visible} quickRoute />
+          <>
+            <PlaceList places={pageOf} quickRoute />
+            {visible.length > shownCount && (
+              <Button
+                data-testid="nearby-more"
+                onClick={() => setPage({ of: visible, n: shownCount + NEARBY_PAGE })}
+              >
+                {t("miniapp.nearby.showMore")}
+              </Button>
+            )}
+          </>
         ) : (
           <div className="modern-empty" data-testid="nearby-empty">
             <p>

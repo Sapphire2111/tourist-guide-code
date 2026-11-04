@@ -394,6 +394,15 @@ describe("пунктирный круг радиуса", () => {
     expect(Math.abs(dLat)).toBeLessThan(15_100);
     expect(calls.fit).toBe(1);
   });
+
+  it("геолокация без базы и без мест — круг всё равно вписывается (fitBounds, а не setCenter)", async () => {
+    render(
+      wrap(<PlacesMap places={[]} center={null} radius={10_000} radiusCenter={{ lat: 48.1, lng: 24.1 }} />),
+    );
+    await flush();
+    expect(calls.circles.filter((c) => c.map)).toHaveLength(1);
+    expect(calls.fit).toBe(1);
+  });
 });
 
 describe("PlacesMap (Google Maps)", () => {

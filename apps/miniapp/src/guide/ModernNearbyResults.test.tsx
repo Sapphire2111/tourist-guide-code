@@ -218,4 +218,24 @@ describe("ModernNearbyResults: круг радиуса на карте", () => {
     await flush();
     expect(mapProps.at(-1)).toEqual({ radius: 10_000, radiusCenter: base });
   });
+
+  it("список — по 50 карточек, «Показати ще» добавляет 50; карта получает все места", async () => {
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      ...place(`p${i}`, `Місце ${i}`),
+      distanceMeters: i,
+    }));
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={many} radius={15_000} base={null} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(seen.at(-1)).toHaveLength(120);
+    expect(screen.getAllByTestId("place-item")).toHaveLength(50);
+    fireEvent.click(screen.getByTestId("nearby-more"));
+    expect(screen.getAllByTestId("place-item")).toHaveLength(100);
+    fireEvent.click(screen.getByTestId("nearby-more"));
+    expect(screen.getAllByTestId("place-item")).toHaveLength(120);
+    expect(screen.queryByTestId("nearby-more")).toBeNull();
+  });
 });

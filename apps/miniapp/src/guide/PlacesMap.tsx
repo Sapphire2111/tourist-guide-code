@@ -473,6 +473,7 @@ export default function PlacesMap({
     }
     // Круг — вокруг базы или (без базы) вокруг точки запроса: при геолокации базы нет, а круг нужен.
     const ringCenter = radiusCenter ?? (centerMarker ? center : null);
+    const hasRing = Boolean(radius && ringCenter);
     if (radius && ringCenter) {
       const dayColor = floating ? "#B8430F" : "#1d4ed8";
       const ringColor = night ? RING_COLOR_NIGHT : dayColor;
@@ -625,7 +626,8 @@ export default function PlacesMap({
     // размер (resize), иначе fitBounds посчитает границы по старому (или нулевому) размеру.
     const core = libs.core;
     const view = () => {
-      if (points > 1) {
+      // Круг — всегда целиком (fitBounds по его крайним точкам), даже если кроме него на карте ничего нет.
+      if (points > 1 || (hasRing && points >= 1)) {
         // fitBounds без предела: приближение ограничиваем один раз после подгонки (пользователь может приблизить сам).
         o.listeners.push(
           core.event.addListenerOnce(m, "idle", () => {

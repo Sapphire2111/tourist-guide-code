@@ -106,3 +106,14 @@ describe("заголовки безопасности (T1-24)", () => {
     expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
 });
+
+describe("сжатие ответов", () => {
+  it("JSON больше 1 КБ — content-encoding gzip/br; маленький ответ — без сжатия", async () => {
+    const a = await createApp();
+    const big = await request(a.getHttpServer()).get("/openapi.json").set("Accept-Encoding", "gzip, br");
+    expect(big.status).toBe(200);
+    expect(["gzip", "br"]).toContain(big.headers["content-encoding"]);
+    const small = await request(a.getHttpServer()).get("/health").set("Accept-Encoding", "gzip, br");
+    expect(small.headers["content-encoding"]).toBeUndefined();
+  });
+});

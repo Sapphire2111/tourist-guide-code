@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import { SwaggerModule } from "@nestjs/swagger";
+import compression from "compression";
 import { CORRELATION_ID_HEADER } from "@tg/shared";
 import { MetricsRegistry, type AppEnv, type ErrorTracker } from "@tg/server-config";
 import {
@@ -40,6 +41,8 @@ export function configureApp(
   const express = app.getHttpAdapter().getInstance() as { set(k: string, v: unknown): unknown };
   express.set("x-powered-by", false);
   express.set("trust proxy", opts.trustProxyHops ?? 0);
+  // Сжатие ответов (gzip/br) от 1 КБ: выдача «Що поруч» до 300 мест — десятки КБ JSON. SSE/стримов в api нет.
+  app.use(compression({ threshold: 1024 }));
   app.use(securityHeadersMiddleware(opts.appEnv));
   app.use(correlationIdMiddleware);
   if (opts.appEnv !== "prod" || opts.metricsToken)
