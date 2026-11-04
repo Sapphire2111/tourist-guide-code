@@ -69,6 +69,9 @@ function Icon({ children, size = 24 }: { children: ReactNode; size?: number }) {
   );
 }
 
+/** «Послуги» в широких местах (плитка главной): два значка; в узких (чипы, плашки, маркеры) — SECTION_EMOJI.services. */
+export const SERVICES_EMOJI_WIDE = "📱💇";
+
 /** Значки-эмодзи разделов на «Що поруч» (чипы, плашка, маркеры, как на эталоне); декор: aria-hidden рядом с подписью. */
 export const SECTION_EMOJI: Record<string, string> = {
   stay: "🏡",
@@ -78,7 +81,7 @@ export const SECTION_EMOJI: Record<string, string> = {
   fun: "🎢",
   ski: "⛷️",
   transfer: "🚕",
-  services: "📱💇",
+  services: "📱",
   nearby: "🧭",
   other: "📍",
 };

@@ -3,6 +3,7 @@
 // точкой, вечером — чан или SPA. Учитывает график работы (место должно быть открыто в это время; график неизвестен —
 // допускается с меньшим весом), расстояния (ближайшее хорошее, а не лучшее через всю область), «з дітьми» (без
 // «Для дорослих», детские — выше), цены для еды и сезон (лыжи — только зимой). Чистая логика без Nest и БД.
+import { isAllDay, uk } from "@tg/i18n";
 import type { LonLat } from "../../db/index.js";
 import { openState, type ScheduleRows } from "../guide/index.js";
 import type { DayPart, PlanTransport } from "./intent.js";
@@ -196,6 +197,9 @@ export function openDuring(
   return start && at(Math.max(from, to - 1)) === true;
 }
 
+/** Подпись круглосуточного места: сервер собирает строку на языке по умолчанию (как и пояснения ассистента). */
+const ALL_DAY_HOURS = uk["miniapp.place.allDay"];
+
 /** Часы работы на дату: исключение даты или недельный график («09:00–18:00, 19:00–23:00»); нет — null. */
 export function hoursOn(
   s: ScheduleRows | null,
@@ -208,6 +212,7 @@ export function hoursOn(
       ? []
       : ex
     : s.weekly.filter((w) => w.dayOfWeek === day.dayOfWeek);
+  if (rows.some((r) => r.opensAt && r.closesAt && isAllDay(r.opensAt, r.closesAt))) return ALL_DAY_HOURS;
   const parts = rows.flatMap((r) =>
     r.opensAt && r.closesAt ? [`${r.opensAt.slice(0, 5)}–${r.closesAt.slice(0, 5)}`] : [],
   );

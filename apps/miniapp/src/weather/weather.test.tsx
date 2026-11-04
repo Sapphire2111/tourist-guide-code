@@ -17,7 +17,17 @@ import {
   type WeatherDay,
 } from "./weather-api.js";
 
-afterEach(cleanup);
+// Точка устройства для автоопределения (доступ «уже выдан»); по умолчанию — нет.
+const geo = vi.hoisted(() => ({ granted: null as { lat: number; lng: number } | null }));
+vi.mock("../guide/geo.js", async () => ({
+  ...(await vi.importActual<Record<string, unknown>>("../guide/geo.js")),
+  requestLocationIfGranted: async () => geo.granted,
+}));
+
+afterEach(() => {
+  cleanup();
+  geo.granted = null;
+});
 
 const API = "https://api.example.test";
 
@@ -89,7 +99,9 @@ describe("погода на главной", () => {
     expect(api.forecast).toHaveBeenCalledWith({ lat: 48.45, lng: 24.55 }, expect.anything());
     expect(chip.textContent).toContain("+2°");
     expect(chip.getAttribute("aria-label")).toBe("Погода, Hotel: Хмарно, +2°. Відкрити прогноз");
-    expect(within(chip).getByTestId("weather-place").textContent).toBe("Hotel");
+    // Название места на плашке не показываем (только в aria-label и в листе по нажатию).
+    expect(within(chip).queryByTestId("weather-place")).toBeNull();
+    expect(chip.textContent).not.toContain("Hotel");
     fireEvent.click(chip);
     const sheet = screen.getByRole("dialog", { name: "Погода на 5 днів: Hotel" });
     expect(sheet.getAttribute("aria-modal")).toBe("true");
@@ -147,11 +159,12 @@ describe("погода на главной", () => {
       api: WeatherApi,
       base: { name: string; point: { lat: number; lng: number } } | null,
       webApp?: TelegramWebApp,
+      list = [YAR, TAT],
     ) => (
       <I18nProvider locale="uk">
         <GuideProvider
           value={{
-            api: { ...noopGuideApi(), localities: async () => [YAR, TAT] },
+            api: { ...noopGuideApi(), localities: async () => list },
             analytics: noopAnalytics,
             base,
             regionId: "r",
@@ -171,9 +184,22 @@ describe("погода на главной", () => {
       const api = { forecast: vi.fn(async () => forecast) };
       render(located(api, null));
       const chip = await screen.findByTestId("weather-chip");
-      expect(within(chip).getByTestId("weather-place").textContent).toBe("Яремче");
+      expect(chip.textContent).not.toContain("Яремче");
       expect(chip.getAttribute("aria-label")).toContain("Погода, Яремче:");
       expect(api.forecast).toHaveBeenCalledWith(YAR.location, expect.anything());
+    });
+
+    it("GPS: вместо «Поруч із вами» — название ближайшего пункта региона", async () => {
+      // Рядом с Татаровом (~1 км).
+      geo.granted = { lat: 48.36, lng: 24.58 };
+      const api = { forecast: vi.fn(async () => forecast) };
+      render(located(api, null));
+      const chip = await screen.findByTestId("weather-chip");
+      await vi.waitFor(() => expect(chip.getAttribute("aria-label")).toContain("Погода, Татарів:"));
+      expect(chip.textContent).not.toContain("Татарів");
+      fireEvent.click(chip);
+      expect(screen.getByRole("dialog", { name: "Погода на 5 днів: Татарів" })).toBeTruthy();
+      expect(api.forecast).toHaveBeenLastCalledWith(geo.granted, expect.anything());
     });
 
     it("несколько выбранных: прогноз первого, переключатель городов; другой город запрашивается только при выборе", async () => {
