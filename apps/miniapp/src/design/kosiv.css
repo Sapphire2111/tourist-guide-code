@@ -761,6 +761,93 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   position: relative;
 }
 
+/* «Ви тут»: круглая кнопка 44 px справа, выше кнопок масштаба Google (они внизу справа); логотип Google — слева внизу.
+   На сцене «Поруч» масштаб посередине справа — кнопка под ним. Цвета из темы (День/Ніч). */
+.kosiv-map-locate {
+  position: absolute;
+  right: 5px;
+  bottom: 98px;
+  z-index: 3;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--app-border, rgb(0 0 0 / 25%));
+  background-color: var(--app-surface, #ffffff);
+  color: var(--app-text, #1c2822);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
+  cursor: pointer;
+}
+.kosiv-map-locate[data-floating="true"] {
+  bottom: auto;
+  top: calc(50% + 46px);
+}
+.kosiv-map-locate svg {
+  width: 22px;
+  height: 22px;
+}
+.kosiv-map-locate:focus-visible {
+  outline: 3px solid var(--app-accent, #2d6a4f);
+  outline-offset: 2px;
+}
+.kosiv-map-locate[aria-busy="true"] {
+  cursor: progress;
+}
+.kosiv-map-locate[aria-busy="true"] svg {
+  animation: modern-spin 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kosiv-map-locate[aria-busy="true"] svg {
+    animation: none;
+  }
+}
+.kosiv-map-locate-hint {
+  position: absolute;
+  left: 10px;
+  right: 60px;
+  bottom: 40px;
+  z-index: 3;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background-color: var(--app-surface, #ffffff);
+  color: var(--app-text, #1c2822);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
+  font-size: 0.8125rem;
+}
+
+/* Ползунок радиуса: подпись, шкала, текущее значение. */
+.kosiv-radius-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--app-text);
+}
+.kosiv-radius-slider label {
+  flex: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.kosiv-radius-slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  accent-color: var(--app-accent, #2d6a4f);
+}
+.kosiv-radius-slider output {
+  flex: none;
+  min-width: 4.5em;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
 /* Легенда карты мест: цвет маркера — раздел. */
 .kosiv-map-legend {
   display: flex;

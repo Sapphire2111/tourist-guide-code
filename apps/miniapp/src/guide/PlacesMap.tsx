@@ -7,11 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useRoute, useT } from "@tg/ui";
-import { SECTION_EMOJI } from "../design/Ornament.js";
+import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
 import { useTheme } from "../design/ThemeProvider.js";
 import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
-import { googleRouteUrl, type LatLng } from "./geo.js";
+import { googleRouteUrl, requestLocation, type LatLng } from "./geo.js";
+import { useLocations } from "./LocationProvider.js";
 import {
   acquireMap,
   loadMapsApi,
@@ -297,6 +298,13 @@ export default function PlacesMap({
   const [state, setState] = useState<Libs>({ status: "loading" });
   const [map, setMap] = useState<PooledMap | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
+  // Кнопка «Ви тут»: позиция, полученная по нажатию (если родитель её не передал), подсказка и состояние поиска.
+  const { gps } = useLocations();
+  const [located, setLocated] = useState<LatLng | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [hint, setHint] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const shownMe = me ?? located;
   /** Откуда открыто окно маркера: туда возвращается фокус при закрытии. */
   const openerRef = useRef<HTMLElement | null>(null);
   const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
@@ -339,12 +347,14 @@ export default function PlacesMap({
     const info = new libs.maps.InfoWindow({ headerDisabled: true, disableAutoPan: true });
     infoRef.current = info;
     const ready = info.addListener("domready", () => {
+      setPopupOpen(true);
       requestAnimationFrame(() => panPopupIntoView(item.map, el.current));
     });
     const o = overlays.current;
     setMap(item);
     // Кнопки масштаба лежат выше окна: на узкой карте они прячутся на время, пока окно открыто (panPopupIntoView).
     const closed = info.addListener("close", () => {
+      setPopupOpen(false);
       item.map.setOptions({ zoomControl: true });
       // Фокус был в окне (или пропал вместе с ним) — обратно на маркер; маркер уже снят с карты — некуда, остаётся как есть.
       const opener = openerRef.current;
@@ -621,10 +631,39 @@ export default function PlacesMap({
     };
   }, [libs, map]);
 
+  // «Ви тут»: центр карты — на устройстве. Позиция: переданная родителем, режим «Моє місцезнаходження», иначе запрос
+  // геолокации (как на «Поруч»). Отказ — центр точки поиска и короткая подсказка.
+  const hintTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(hintTimer.current), []);
+  const locate = async () => {
+    if (!map || locating) return;
+    setLocating(true);
+    setHint(false);
+    let target: LatLng | null = me ?? gps ?? located;
+    if (!target) {
+      target = await requestLocation(guideRef.current.webApp).catch(() => null);
+      if (target) setLocated(target);
+    }
+    setLocating(false);
+    const m = map.map;
+    // Карту двигал сам пользователь: автоподгонка (смена размера) его вид не сбрасывает.
+    userMoved.current = true;
+    const to = target ?? center;
+    if (to) {
+      m.panTo({ lat: to.lat, lng: to.lng });
+      if ((m.getZoom() ?? 0) < Math.min(15, maxZoom)) m.setZoom(Math.min(15, maxZoom));
+    }
+    if (!target) {
+      setHint(true);
+      window.clearTimeout(hintTimer.current);
+      hintTimer.current = window.setTimeout(() => setHint(false), 5_000);
+    }
+  };
+
   // Значок «Ви тут»: перестраивается только он и круг точности (карта, маркеры мест и границы не трогаются).
-  const meLat = me?.lat;
-  const meLng = me?.lng;
-  const meAccuracy = me?.accuracy;
+  const meLat = shownMe?.lat;
+  const meLng = shownMe?.lng;
+  const meAccuracy = shownMe?.accuracy;
   const meLabel = t("miniapp.map.me");
   useEffect(() => {
     if (!libs || !map || meLat === undefined || meLng === undefined) return;
@@ -704,6 +743,25 @@ export default function PlacesMap({
             background: night ? MAP_BACKDROP.night : MAP_BACKDROP.day,
           }}
         />
+        {map && !popupOpen && (
+          <button
+            type="button"
+            className="kosiv-map-locate"
+            data-testid="map-locate"
+            data-floating={floating ? "true" : undefined}
+            aria-label={t("miniapp.map.locate")}
+            aria-busy={locating || undefined}
+            disabled={locating}
+            onClick={() => void locate()}
+          >
+            {ICONS.locate}
+          </button>
+        )}
+        {hint && (
+          <p role="status" className="kosiv-map-locate-hint" data-testid="map-locate-hint">
+            {t("miniapp.map.locateFailed")}
+          </p>
+        )}
       </div>
       {legend && (groups.length > 0 || (center && centerMarker)) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">

@@ -5,6 +5,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { I18nProvider } from "@tg/ui";
 import { ThemeProvider, useTheme } from "../design/ThemeProvider.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
+import type * as Geo from "./geo.js";
 import type * as GoogleMaps from "./google-maps.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
 
@@ -32,6 +33,7 @@ const calls = vi.hoisted(() => ({
   authFailed: false,
   authListeners: [] as (() => void)[],
   resizes: 0,
+  panned: [] as unknown[],
 }));
 
 vi.mock("@googlemaps/markerclusterer", () => ({
@@ -45,6 +47,12 @@ vi.mock("@googlemaps/markerclusterer", () => ({
     clearMarkers() {}
     setMap() {}
   },
+}));
+
+const geo = vi.hoisted(() => ({ next: null as { lat: number; lng: number } | null }));
+vi.mock("./geo.js", async (orig) => ({
+  ...(await orig<typeof Geo>()),
+  requestLocation: async () => geo.next,
 }));
 
 vi.mock("./google-maps.js", async (orig) => {
@@ -94,6 +102,9 @@ vi.mock("./google-maps.js", async (orig) => {
           calls.fit++;
         }
         setCenter() {}
+        panTo(p: unknown) {
+          calls.panned.push(p);
+        }
         setZoom() {}
         setOptions() {}
         panBy(x: number, y: number) {
@@ -203,9 +214,13 @@ beforeEach(() => {
     authFailed: false,
     authListeners: [],
     resizes: 0,
+    panned: [],
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  geo.next = null;
+});
 
 // Вид карты ставится в следующем кадре (requestAnimationFrame) — ждём его.
 // Первый act — загрузка API и эффекты, второй — кадр, в котором ставится вид.
@@ -244,6 +259,37 @@ function wrap(node: React.ReactNode) {
 }
 
 const onMap = () => calls.markers.filter((m) => m.map);
+
+describe("кнопка «Ви тут»", () => {
+  it("позиция уже известна — карта центрируется на ней без запроса", async () => {
+    const view = render(
+      wrap(<PlacesMap places={[place("a")]} center={null} me={{ lat: 48.4, lng: 24.5 }} />),
+    );
+    await flush();
+    const button = view.getByTestId("map-locate");
+    expect(button.getAttribute("aria-label")).toBe("Показати, де я");
+    await act(async () => button.click());
+    expect(calls.panned).toEqual([{ lat: 48.4, lng: 24.5 }]);
+    expect(view.queryByTestId("map-locate-hint")).toBeNull();
+  });
+
+  it("позиции нет — запрашивает геолокацию, центрирует и ставит значок «Ви тут»", async () => {
+    geo.next = { lat: 48.3, lng: 24.6 };
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={{ lat: 48.45, lng: 24.56 }} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(calls.panned).toEqual([{ lat: 48.3, lng: 24.6 }]);
+    expect(calls.markers.some((m) => m.content?.getAttribute("aria-label") === "Ви тут")).toBe(true);
+  });
+
+  it("отказ — центр точки поиска и подсказка", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={{ lat: 48.45, lng: 24.56 }} />));
+    await flush();
+    await act(async () => view.getByTestId("map-locate").click());
+    expect(calls.panned).toEqual([{ lat: 48.45, lng: 24.56 }]);
+    expect(view.getByTestId("map-locate-hint").textContent).toContain("Не вдалося визначити");
+  });
+});
 
 describe("PlacesMap (Google Maps)", () => {
   it("смена мест и радиуса — без пересоздания карты; сбой /categories — легенда «Інше»", async () => {

@@ -123,6 +123,29 @@ describe("каталог: центр карты", () => {
   });
 });
 
+describe("каталог: ползунок радиуса", () => {
+  it("значение по умолчанию видно; изменение перезапрашивает места с новым радиусом", async () => {
+    const search = vi.fn(async (_p: SearchParams) => [place]);
+    await mount(search);
+    const slider = screen.getByRole("slider");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Усі місця");
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("Усі місця");
+    expect(search.mock.calls.at(-1)![0].radius).toBeUndefined();
+    // Шаг 3 — 2 км.
+    fireEvent.change(slider, { target: { value: "3" } });
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("2 км");
+    await act(async () => new Promise((r) => setTimeout(r, 450)));
+    await flush();
+    expect(search.mock.calls.at(-1)![0].radius).toBe(2000);
+  });
+
+  it("выбраны локации — ползунка нет", async () => {
+    window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: REGION, ids: [LOC] }));
+    await mount(vi.fn(async () => [place]));
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+});
+
 describe("«Де жити»: неполная выдача", () => {
   it("сбой догрузки — пометка про незагруженные заклади", async () => {
     await mount(
