@@ -57,6 +57,7 @@ html[data-design="modern"] {
 
 html[data-design="modern"] body {
   background-color: var(--app-bg);
+  transition: none;
 }
 /* Фон «Поруч» і головної: темний смарагд угорі; на головній поверх нього лежить повноекранна панорама Карпат. */
 html[data-screen="nearby"] body {
