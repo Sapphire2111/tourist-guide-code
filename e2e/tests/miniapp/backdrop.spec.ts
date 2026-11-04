@@ -18,8 +18,20 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+const FLAGS = ["module.assistant", "module.bookings", "module.host_requests", "module.partner_cabinet"];
 const backdrop = (page: Page) => page.getByTestId("app-backdrop");
 const night = (page: Page) => page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
+/** Оба мока ставят свой список флагов: последний выигрывает, поэтому общий список — поверх них. */
+async function allScreens(page: Page) {
+  await installAssistantMock(page);
+  await installBookingsMock(page);
+  await page.route("**/feature-flags*", (route) =>
+    route.fulfill({
+      headers: { "access-control-allow-origin": "*" },
+      json: { items: FLAGS.map((key) => ({ key, enabled: true })) },
+    }),
+  );
+}
 const go = (page: Page, hash: string) => page.evaluate((h) => void (location.hash = h), hash);
 
 const SCREENS: readonly (readonly [string, RegExp | string])[] = [
@@ -32,7 +44,7 @@ const SCREENS: readonly (readonly [string, RegExp | string])[] = [
   ["#/about", "Правила проживання"],
   [`#/assistant?q=${encodeURIComponent("Де поїсти суші")}`, "Асистент"],
   ["#/bookings", "Мої бронювання"],
-  ["#/nearby", "Що поруч"],
+  ["#/nearby", "Карта та місця за відстанню"],
 ];
 
 /** Пиксели картинки без блоков поверх неё: { sky — верх экрана, rows — яркость столбца x=6 сверху вниз }. */
@@ -61,8 +73,7 @@ async function backdropPixels(page: Page) {
 test("один фон на всех экранах: тот же узел, на весь экран, не пересоздаётся при переходах", async ({
   page,
 }) => {
-  await installAssistantMock(page);
-  await installBookingsMock(page);
+  await allScreens(page);
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
   await expect(backdrop(page)).toHaveCount(1);
@@ -233,8 +244,7 @@ test("темы различаются: небо и низ картинки, ка
 for (const dark of [false, true]) {
   test(`контраст на фоне${dark ? " «Ніч»" : " «День»"}: главная и вложенные экраны`, async ({ page }) => {
     test.slow();
-    await installAssistantMock(page);
-    await installBookingsMock(page);
+    await allScreens(page);
     if (dark) await night(page);
     await page.goto("/");
     await expect(page.getByTestId("home-sections")).toBeVisible();
