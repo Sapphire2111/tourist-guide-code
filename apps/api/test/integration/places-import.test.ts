@@ -594,4 +594,56 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     );
     expect(again.notPublished).toEqual([{ googlePlaceId: "gT2", name: "Ресторан gT2", status: "suspended" }]);
   });
+
+  it("только новые (--zones-only/--insert-only): существующие не обновляются, не скрываются и не архивируются", async () => {
+    const t = new Date();
+    await writePlaces(appDb, "test-region", [place("gIO1")], t);
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gIO1", { categoryCode: "hotels", phone: "+380671112233", address: "інша адреса" }),
+        place("gIO2", { categoryCode: "cafes", localityCode: "tatariv" }),
+      ],
+      t,
+      { insertOnly: true, closedIds: ["gIO1"], rejectedIds: ["gIO1"], seenIds: ["gIO2"], complete: true },
+    );
+    expect(r).toMatchObject({
+      inserted: 1,
+      updated: 0,
+      suspendedClosed: 0,
+      archivedRejected: 0,
+      recategorized: 0,
+      missingFromGoogle: null,
+    });
+    const rows = (
+      await sql(
+        `SELECT p.google_place_id AS id, p.status, p.phone, p.address_i18n->>'uk' AS address, c.code AS category
+         FROM places p JOIN categories c ON c.id = p.category_id
+         WHERE p.google_place_id IN ('gIO1','gIO2') ORDER BY p.google_place_id`,
+      )
+    ).rows;
+    expect(rows).toEqual([
+      {
+        id: "gIO1",
+        status: "published",
+        phone: "+380987930729",
+        address: "вулиця Свободи, 1, Яремче",
+        category: "restaurants",
+      },
+      {
+        id: "gIO2",
+        status: "published",
+        phone: "+380987930729",
+        address: "вулиця Свободи, 1, Яремче",
+        category: "cafes",
+      },
+    ]);
+    const audit = (
+      await sql(
+        "SELECT new_values FROM audit_logs WHERE action = 'place.import' ORDER BY created_at DESC, id DESC LIMIT 1",
+      )
+    ).rows[0];
+    expect(audit.new_values).toMatchObject({ insertOnly: true, inserted: 1, updated: 0 });
+  });
 });

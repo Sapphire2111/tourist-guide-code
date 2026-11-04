@@ -5,13 +5,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseImportArgs, photoStorageEnv } from "./args.js";
 import { collect } from "./collect.js";
-import { IMPORT_LOCALITIES } from "./config.js";
+import { IMPORT_LOCALITIES, SEARCH_ZONES } from "./config.js";
 import {
   GoogleApiError,
   GooglePlacesClient,
   isAllowedPhotoUrl,
   RequestLimitError,
   SEARCH_FIELD_MASK,
+  SEARCH_FIELD_MASKS,
 } from "./google-client.js";
 import type { GooglePlace } from "./mapping.js";
 import { photosToAdd } from "./photos.js";
@@ -45,6 +46,29 @@ describe("аргументы", () => {
     expect(() => parseImportArgs(["--region", "--dry-run"])).toThrow(/нет значения/);
     expect(() => parseImportArgs(["--max-requests", "-1"])).toThrow(/целое/);
     expect(() => parseImportArgs(["--dry-run", "--photos"])).toThrow(/несовместим/);
+    expect(() => parseImportArgs(["--fields", "cheap"])).toThrow(/full, enterprise или pro/);
+    expect(() => parseImportArgs(["--zones-only", "--query", "Говерла=nature"])).toThrow(/несовместимы/);
+  });
+
+  it("--zones-only (только новые места), --search, --fields, --plan (без записи)", () => {
+    expect(parseImportArgs([])).toMatchObject({
+      fields: "full",
+      zonesOnly: false,
+      insertOnly: false,
+      searches: [],
+      plan: false,
+    });
+    expect(
+      parseImportArgs(["--zones-only", "--fields=enterprise", "--search", "Нова пошта відділення", "--plan"]),
+    ).toMatchObject({
+      zonesOnly: true,
+      insertOnly: true,
+      fields: "enterprise",
+      searches: ["Нова пошта відділення"],
+      plan: true,
+      dryRun: true,
+    });
+    expect(parseImportArgs(["--insert-only"]).insertOnly).toBe(true);
   });
 });
 
@@ -124,6 +148,39 @@ describe("клиент Google: кэш, лимит, ключ", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
+  it("--fields: маска SKU в заголовке, свой файл кэша; ответ с полной маской годится и дешёвой", async () => {
+    const fetch = vi.fn(async () => ok({ places: [place("a")] }));
+    const pro = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 9,
+      fetch,
+      searchFields: "pro",
+    });
+    await pro.searchText(body);
+    const mask = (
+      (fetch.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>
+    )["X-Goog-FieldMask"];
+    expect(mask).toBe(SEARCH_FIELD_MASKS.pro);
+    expect(mask).not.toMatch(/editorialSummary|internationalPhoneNumber|regularOpeningHours|rating/);
+    expect(SEARCH_FIELD_MASKS.enterprise).toMatch(/internationalPhoneNumber/);
+    expect(SEARCH_FIELD_MASKS.enterprise).not.toMatch(/editorialSummary/);
+    // Полная маска не берёт ответ pro (нет телефона/часов) — запрос; а enterprise берёт уже полный ответ.
+    const full = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
+    await full.searchText(body);
+    expect(full.requests.search).toBe(1);
+    const ent = new GooglePlacesClient({
+      apiKey: undefined,
+      cacheDir: dir,
+      maxRequests: 0,
+      fetch,
+      searchFields: "enterprise",
+    });
+    await ent.searchText(body);
+    expect(ent.cacheHits).toBe(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("имя фото проверяется до запроса", async () => {
     const c = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch: vi.fn() });
     await expect(c.photoUri("../../x", 800)).rejects.toBeInstanceOf(GoogleApiError);
@@ -201,6 +258,36 @@ describe("выгрузка", () => {
     expect(stats.limitReached).toBe(true);
     expect(stats.queriesDone).toBe(2);
     expect(places).toHaveLength(1);
+  });
+
+  it("--zones-only: запросы только по зонам; место зоны — к ближайшему пункту зоны", async () => {
+    const dora = SEARCH_ZONES.find((z) => z.code === "dora")!;
+    const fetch = vi.fn(async () =>
+      ok({ places: [place("np1", { location: { latitude: 48.48526, longitude: 24.59394 } })] }),
+    );
+    const client = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 50, fetch });
+    const { places, stats } = await collect(client, { zones: [dora], zonesOnly: true, queries: ["q"] });
+    expect(stats.queriesTotal).toBe(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(places.map((p) => [p.googlePlaceId, p.localityCode])).toEqual([["np1", "yaremche"]]);
+    // Без --zones-only — ещё и круги всех пунктов.
+    const all = await collect(client, { zones: [dora], queries: ["q"] });
+    expect(all.stats.queriesTotal).toBe(IMPORT_LOCALITIES.length + 1);
+  });
+
+  it("--plan: запросы мимо кэша только считаются, в Google не ходим", async () => {
+    const fetch = vi.fn();
+    const client = new GooglePlacesClient({
+      apiKey: "k",
+      cacheDir: dir,
+      maxRequests: 50,
+      fetch,
+      planOnly: true,
+    });
+    const { stats } = await collect(client, { zonesOnly: true, queries: ["a", "b"] });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(client.planned.search).toBe(SEARCH_ZONES.length * 2);
+    expect(stats.limitReached).toBe(false);
   });
 });
 

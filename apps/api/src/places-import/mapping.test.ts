@@ -2,13 +2,15 @@
 import { describe, expect, it } from "vitest";
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
-import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES } from "./config.js";
+import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES, SEARCH_ZONES } from "./config.js";
 import {
   boundingBox,
   categoryOfType,
   GOOGLE_TYPE_TO_CATEGORY,
   haversineMeters,
   extraCategories,
+  isForeignPost,
+  localityOf,
   mapCategory,
   mapOpeningHours,
   mapPlace,
@@ -463,5 +465,93 @@ describe("место целиком", () => {
     expect(reason({ ...base, location: undefined })).toBe("no_location");
     expect(reason({ ...base, location: { latitude: 48.92, longitude: 24.71 } })).toBe("outside_radius");
     expect(reason({ ...base, primaryType: undefined, types: ["point_of_interest"] })).toBe("no_category");
+  });
+});
+
+describe("зоны поиска (SEARCH_ZONES) и отнесение к пункту", () => {
+  const code = (at: { lon: number; lat: number }) => localityOf(at, IMPORT_LOCALITIES, SEARCH_ZONES)?.code;
+
+  it("зоны ссылаются на существующие пункты и не дальше 10 км от их центров", () => {
+    const byCode = new Map(IMPORT_LOCALITIES.map((l) => [l.code, l]));
+    expect(new Set(SEARCH_ZONES.map((z) => z.code)).size).toBe(SEARCH_ZONES.length);
+    for (const z of SEARCH_ZONES) {
+      expect(z.localities.length, z.code).toBeGreaterThan(0);
+      for (const c of z.localities) {
+        const l = byCode.get(c);
+        expect(l, `${z.code} → ${c}`).toBeDefined();
+        expect(haversineMeters(z.at, l!.at), `${z.code} → ${c}`).toBeLessThan(10_000);
+      }
+    }
+  });
+
+  it("север Дори (Свободи 22Б, «Нова пошта №1») — вне круга Яремча, но в зоне → Яремче", () => {
+    const np1 = { lon: 24.59394, lat: 48.48526 };
+    expect(nearestLocality(np1, IMPORT_LOCALITIES)).toBeUndefined();
+    expect(code(np1)).toBe("yaremche");
+  });
+
+  it("урочище Женець, полонина Залім, Нарінецький водоспад → Татарів", () => {
+    expect(code({ lon: 24.5515, lat: 48.3694 })).toBe("tatariv"); // урочище Женець (в круге)
+    expect(code({ lon: 24.5147, lat: 48.3859 })).toBe("tatariv"); // полонина Залім (зона)
+    expect(code({ lon: 24.5217, lat: 48.3842 })).toBe("tatariv"); // Нарінецький водоспад (зона)
+  });
+
+  it("коридор между пунктами — к ближайшему по центру пункту зоны; круг пункта главнее зоны", () => {
+    expect(code({ lon: 24.535, lat: 48.33 })).toBe("tatariv"); // Н09 ближе к Татарову
+    expect(code({ lon: 24.512, lat: 48.322 })).toBe("yablunytsia"); // Н09 ближе к Яблуниці
+    expect(code({ lon: 24.578, lat: 48.3205 })).toBe("tatariv"); // Р24 между Татаровом и Ворохтой
+    expect(code({ lon: 24.5547, lat: 48.4505 })).toBe("yaremche");
+  });
+
+  it("вне пунктов и зон — нет; без зон — прежнее правило радиуса", () => {
+    expect(code({ lon: 24.71, lat: 48.92 })).toBeUndefined();
+    expect(localityOf({ lon: 24.59394, lat: 48.48526 }, IMPORT_LOCALITIES)).toBeUndefined();
+  });
+
+  it("mapPlace с зонами: «Нова пошта №1» Свободи 22Б → Яремче, пошта", () => {
+    const np: GooglePlace = {
+      id: "np1",
+      displayName: { text: "Нова пошта №1" },
+      location: { latitude: 48.48526, longitude: 24.59394 },
+      types: ["courier_service", "storage", "post_office"],
+      primaryType: "courier_service",
+    };
+    expect(mapPlace(np, IMPORT_LOCALITIES)).toEqual({ ok: false, reason: "outside_radius" });
+    expect(mapPlace(np, IMPORT_LOCALITIES, {}, undefined, SEARCH_ZONES)).toMatchObject({
+      ok: true,
+      place: { localityCode: "yaremche", categoryCode: "post" },
+    });
+  });
+});
+
+describe("пошта: чужі відділення й поштомати", () => {
+  it("индекс Укрпошти не региона — чужое; 785xx/786xx — наше", () => {
+    expect(isForeignPost("Укрпошта 77344")).toBe(true);
+    expect(isForeignPost("Укрпошта 78341")).toBe(true);
+    expect(isForeignPost("Укрпошта 78590")).toBe(false);
+    expect(isForeignPost("Укрпошта 78600")).toBe(false);
+    expect(isForeignPost("Укрпошта")).toBe(false);
+  });
+
+  it("Нова пошта: другая область — чужое; поштомат — тоже не берём", () => {
+    expect(isForeignPost("Нова Пошта. Пункт №1 (до 30 кг) с. Соколівка, Львівська область")).toBe(true);
+    expect(
+      isForeignPost("Нова Пошта. Вантажне відділення №1 (до 1100 кг) с. Татарів, Івано-Франківська область"),
+    ).toBe(false);
+    expect(isForeignPost("Нова Пошта. Поштомат №5388 (до 20 кг) м. Яремче, Івано-Франківська область")).toBe(
+      true,
+    );
+    expect(isForeignPost("Нова пошта №1")).toBe(false);
+  });
+
+  it("mapCategory: чужое отделение Укрпошти с точкой в Микуличине — без категории", () => {
+    const ukr = { primaryType: "post_office", types: ["post_office", "courier_service"] };
+    expect(mapCategory(ukr, "Укрпошта 77344")).toBeUndefined();
+    expect(mapCategory(ukr, "Укрпошта 78590")).toBe("post");
+  });
+
+  it("природа с названием только пункта («Яремче») — метка, не заведение", () => {
+    expect(mapCategory({ primaryType: "natural_feature" }, "Яремче")).toBeUndefined();
+    expect(mapCategory({ primaryType: "natural_feature" }, "Водоспад Пробій")).toBe("nature");
   });
 });
