@@ -17,7 +17,13 @@ import { ImportArgsError, parseImportArgs, photoStorageEnv } from "../places-imp
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import { importPhotos, photoCandidates } from "../places-import/photos.js";
-import { CATEGORY_NAMES, googlePlaceIds, ImportWriteError, writePlaces } from "../places-import/writer.js";
+import {
+  CATEGORY_NAMES,
+  googlePlaceIds,
+  ImportWriteError,
+  regionGoogleIds,
+  writePlaces,
+} from "../places-import/writer.js";
 import {
   ALL_LOCALITIES,
   collectTargeted,
@@ -49,7 +55,20 @@ try {
   if (args.queriesFile || args.queries.length) {
     await runTargeted(args, client, storage);
   } else {
+    // Места региона (и при --dry-run, если задана БД): при свёртке дублей остаётся опубликованная, затем уже известная
+    // запись — тот же выбор, что при записи.
+    let known: { published: Set<string>; existing: Set<string> } | undefined;
+    const dbUrl = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
+    if (!args.plan && dbUrl) {
+      const db = createDatabase({ connectionString: dbUrl, maxConnections: 1 });
+      try {
+        known = await regionGoogleIds(db, args.region);
+      } finally {
+        await db.destroy();
+      }
+    } else if (!args.plan) console.log("ВНИМАНИЕ: БД не задана — дубли сворачиваются без учёта мест в БД.");
     const { places, stats, closedIds, rejectedIds, seenIds } = await collect(client, {
+      ...(known ? { publishedIds: known.published, existingIds: known.existing } : {}),
       categoryNames: CATEGORY_NAMES,
       log: console.log,
       zonesOnly: args.zonesOnly,
@@ -85,6 +104,11 @@ try {
       `Типы Google без категории: ${JSON.stringify(Object.fromEntries(sortedEntries(stats.unmappedTypes)))}`,
     );
     console.log(`Демо-мест в seed (не трогаются импортом): ${SEED_PLACES.length}.`);
+    if (stats.withoutAddressComponents)
+      console.log(
+        `ВНИМАНИЕ: у ${stats.withoutAddressComponents} мест нет addressComponents (ответы кэша до 04.11.2026) — пункт ` +
+          "по расстоянию до центра. Для пункта по адресу Google — прогон с новым каталогом кэша (--cache).",
+      );
 
     if (!args.dryRun) {
       const url = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
@@ -108,6 +132,10 @@ try {
           `Снято с публикации (закрыты навсегда): ${written.suspendedClosed}; графиков отклонено правилами: ` +
             `${written.schedulesRejected}; переразмечено ${written.recategorized}, в архив (не наши по новым правилам) ` +
             `${written.archivedRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
+        );
+        console.log(
+          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; кандидатов в архив (номера Booking): ` +
+            `${stats.skipped.duplicate}, прочих дублей не записано: ${stats.duplicatesSkipped}.`,
         );
         if (storage) {
           const ids = await googlePlaceIds(db, written.regionId);

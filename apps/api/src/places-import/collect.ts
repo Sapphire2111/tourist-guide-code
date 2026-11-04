@@ -18,6 +18,7 @@ import {
 } from "./google-client.js";
 import {
   boundingBox,
+  dedupePlaces,
   GOOGLE_PLACE_ID,
   mapPlace,
   localityOf,
@@ -53,6 +54,13 @@ export type CollectStats = {
   limitReached: boolean;
   queriesDone: number;
   queriesTotal: number;
+  /**
+   * Мест без addressComponents (ответы из кэша до 04.11.2026): пункт у них — по расстоянию до центра. Ключ кэша — тело
+   * запроса без маски, поэтому старые ответы берутся как есть; свежий пункт по адресу — после сброса кэша.
+   */
+  withoutAddressComponents: number;
+  /** Дубли не номеров Booking (dedupePlaces.skippedIds): не пишутся, но и не архивируются. */
+  duplicatesSkipped: number;
   /** Зоны поиска отдельно (SEARCH_ZONES): запросов, запросов к Google, оценка (--plan), ответов из кэша. */
   zones: { queries: number; googleRequests: number; planned: number; cacheHits: number };
 };
@@ -89,6 +97,10 @@ export async function collect(
     /** Искать только в зонах (круги пунктов не запрашиваются): дозагрузка новых зон. */
     zonesOnly?: boolean;
     queries?: readonly string[];
+    /** google id мест, уже опубликованных в регионе: при свёртке дублей остаётся опубликованная запись. */
+    publishedIds?: ReadonlySet<string>;
+    /** Все google id мест региона (вкл. архив): после опубликованных — уже известная запись, а не новая. */
+    existingIds?: ReadonlySet<string>;
     categoryNames?: Readonly<Record<string, string>>;
     log?: (line: string) => void;
   } = {},
@@ -196,6 +208,7 @@ export async function collect(
       no_category: 0,
       no_name: 0,
       unverified: 0,
+      duplicate: 0,
     },
     byLocality: {},
     byCategory: {},
@@ -207,12 +220,14 @@ export async function collect(
     scheduleDropped: 0,
     pagesFailed,
     withPhotos: 0,
+    withoutAddressComponents: 0,
+    duplicatesSkipped: 0,
     limitReached,
     queriesDone,
     queriesTotal: areas.length * queries.length,
     zones: zoneStats,
   };
-  const places: MappedPlace[] = [];
+  const mapped: MappedPlace[] = [];
   const closedIds: string[] = [];
   const rejectedIds: string[] = [];
   for (const p of raw.values()) {
@@ -243,8 +258,20 @@ export async function collect(
       }
       continue;
     }
-    const m = r.place;
-    places.push(m);
+    mapped.push(r.place);
+  }
+  // Свёртка дублів (записи номерів Booking, однакові назви в 50 м): відкинуті — «не наші», уже імпортовані
+  // запис архівує, якщо адмінка їх не чіпала.
+  // Номера Booking — в архив; прочие дубли только не пишутся (dedupePlaces).
+  const {
+    kept: places,
+    duplicateIds,
+    skippedIds,
+  } = dedupePlaces(mapped, opts.publishedIds, opts.existingIds);
+  stats.skipped.duplicate = duplicateIds.length;
+  stats.duplicatesSkipped = skippedIds.length;
+  rejectedIds.push(...duplicateIds);
+  for (const m of places) {
     inc(stats.byLocality, m.localityCode);
     inc(stats.byCategory, m.categoryCode);
     if (m.phone) stats.withPhone++;
@@ -252,6 +279,7 @@ export async function collect(
     if (m.week) stats.withSchedule++;
     else if (raw.get(m.googlePlaceId)?.regularOpeningHours?.periods?.length) stats.scheduleDropped++;
     if (m.photos.length) stats.withPhotos++;
+    if (!raw.get(m.googlePlaceId)?.addressComponents) stats.withoutAddressComponents++;
   }
   stats.imported = places.length;
   places.sort((a, b) => a.googlePlaceId.localeCompare(b.googlePlaceId));

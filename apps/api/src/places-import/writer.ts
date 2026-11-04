@@ -1,12 +1,21 @@
 // Запись импорта в каталог региона: в tenant-контексте региона (regionContext: TenantGuardPlugin + RLS), как пишет
 // api. Идемпотентно: населённые пункты и дополнительные категории — ON CONFLICT DO NOTHING по коду (правки админки не
 // трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются.
-import { point, regionContext, withTenant, type Db, type LocalizedText } from "../db/index.js";
+import type { ExpressionBuilder, SqlBool } from "kysely";
+import {
+  point,
+  regionContext,
+  withTenant,
+  type Database,
+  type Db,
+  type LocalizedText,
+  type UserPlanItemRecord,
+} from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
 import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES, type ImportLocality } from "./config.js";
-import type { MappedPlace } from "./mapping.js";
+import { tagsForPlace, type MappedPlace } from "./mapping.js";
 
 export class ImportWriteError extends Error {
   override readonly name = "ImportWriteError";
@@ -35,6 +44,8 @@ export type WriteStats = {
   suspendedIds: string[];
   /** Дополнительных категорий от импорта записано (place_extra_categories, source = import). */
   extraCategoriesWritten: number;
+  /** Связей место — тег добавлено (tagsForPlace: категория и удобства Google). */
+  tagsWritten: number;
   /** Места импорта, переразмеченные новыми правилами (категорию ставил импорт, админка не меняла). */
   recategorized: number;
   /** Места импорта, которые по новым правилам не наши (collect.rejectedIds), — в архив, если админка не трогала. */
@@ -74,6 +85,101 @@ export type WriteOptions = {
    */
   pinCategory?: boolean;
 };
+
+type PlacesEb = ExpressionBuilder<Database, "places">;
+/**
+ * Место «трогали»: в журнале есть любое действие над ним, кроме самого импорта (правка и курирование в админке,
+ * ручная чистка place.curate от system, доп. категории, партнёр). У таких мест импорт не меняет категорию, пункт и
+ * статус, не пересобирает доп. категории и теги.
+ */
+const touched = (eb: PlacesEb) =>
+  eb.exists(
+    eb
+      .selectFrom("audit_logs as a")
+      .select(eb.lit(1).as("one"))
+      .where("a.entity_type", "=", "place")
+      .where("a.action", "<>", "place.import")
+      .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
+  );
+/**
+ * Люди меняли статус места: публикация/скрытие/архив в админке или ручная чистка (place.curate) со status в новых
+ * значениях. Только такие действия мешают снять с публикации закрытое навсегда.
+ */
+const statusTouched = (eb: PlacesEb) =>
+  eb.exists(
+    eb
+      .selectFrom("audit_logs as a")
+      .select(eb.lit(1).as("one"))
+      .where("a.entity_type", "=", "place")
+      .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      .where((w) =>
+        w.or([
+          w("a.action", "in", ["place.publish", "place.suspend", "place.archive"]),
+          w.and([
+            w("a.action", "=", "place.curate"),
+            // new_values ? 'status' (jsonb_exists — та же операция функцией).
+            w.fn<SqlBool>("jsonb_exists", [w.ref("a.new_values"), w.cast(w.val("status"), "text")]),
+          ]),
+        ]),
+      ),
+  );
+/**
+ * Теги места правили люди: действия пользователя или правка места/доп. категорий (снятый тег импорт не возвращает).
+ * Ручная чистка от system (place.curate) теги не трогала — такие места теги получают.
+ */
+const tagsTouched = (eb: PlacesEb) =>
+  eb.exists(
+    eb
+      .selectFrom("audit_logs as a")
+      .select(eb.lit(1).as("one"))
+      .where("a.entity_type", "=", "place")
+      .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      .where((w) =>
+        w.or([
+          w("a.actor_type", "=", "user"),
+          w("a.action", "in", ["place.edit", "place.extra_categories.edit"]),
+        ]),
+      ),
+  );
+/** Местом пользуются: избранное, отзывы, сценарии, брони, планы — такое место импорт не архивирует. */
+const inUse = (eb: PlacesEb) =>
+  eb.or([
+    eb.exists(
+      eb.selectFrom("favorites as f").select(eb.lit(1).as("one")).whereRef("f.place_id", "=", "places.id"),
+    ),
+    eb.exists(
+      eb.selectFrom("reviews as rv").select(eb.lit(1).as("one")).whereRef("rv.place_id", "=", "places.id"),
+    ),
+    eb.exists(
+      eb
+        .selectFrom("scenario_items as si")
+        .select(eb.lit(1).as("one"))
+        .whereRef("si.place_id", "=", "places.id"),
+    ),
+    eb.exists(
+      eb.selectFrom("bookings as b").select(eb.lit(1).as("one")).whereRef("b.place_id", "=", "places.id"),
+    ),
+    eb.exists(
+      eb
+        .selectFrom("user_plans as up")
+        .select(eb.lit(1).as("one"))
+        .where((w) =>
+          w.or([
+            w("up.base_place_id", "=", w.ref("places.id")),
+            w(
+              "up.items",
+              "@>",
+              w.fn<UserPlanItemRecord[]>("jsonb_build_array", [
+                w.fn("jsonb_build_object", [
+                  w.cast(w.val("placeId"), "text"),
+                  w.cast(w.ref("places.id"), "text"),
+                ]),
+              ]),
+            ),
+          ]),
+        ),
+    ),
+  ]);
 
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -122,6 +228,7 @@ export async function writePlaces(
       archivedRejected: 0,
       archivedIds: [],
       extraCategoriesWritten: 0,
+      tagsWritten: 0,
       missingFromGoogle: null,
       missingExamples: [],
       notPublished: [],
@@ -201,6 +308,13 @@ export async function writePlaces(
     const categoryId = new Map(
       (await trx.selectFrom("categories").select(["id", "code"]).execute()).map((r) => [r.code, r.id]),
     );
+    // Теги региона (seed): нет тега с кодом — связь не пишется (новых тегов импорт не заводит).
+    const tagId = new Map(
+      (await trx.selectFrom("tags").select(["id", "code"]).where("active", "=", true).execute()).map((r) => [
+        r.code,
+        r.id,
+      ]),
+    );
     for (const p of places)
       if (!categoryId.has(p.categoryCode))
         throw new ImportWriteError(
@@ -220,7 +334,12 @@ export async function writePlaces(
         (
           await trx
             .selectFrom("places")
-            .select(["google_place_id", "category_id", "import_category_id"])
+            .select([
+              "google_place_id",
+              "category_id",
+              "import_category_id",
+              (eb) => touched(eb).as("touched"),
+            ])
             .where(
               "google_place_id",
               "in",
@@ -237,7 +356,8 @@ export async function writePlaces(
       for (const p of batch) {
         const b = before.get(p.googlePlaceId);
         const next = categoryId.get(p.categoryCode);
-        if (b && b.import_category_id === b.category_id && b.category_id !== next) stats.recategorized++;
+        if (b && !b.touched && b.import_category_id === b.category_id && b.category_id !== next)
+          stats.recategorized++;
       }
       const rows = await trx
         .insertInto("places")
@@ -268,8 +388,11 @@ export async function writePlaces(
             : // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
               // uk обновляет Google, переводы админки (en…) остаются.
               oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => {
-                // Категорию ставил импорт и админка её не меняла — переразметка по новым правилам.
-                const untouched = eb("places.import_category_id", "=", eb.ref("places.category_id"));
+                // Категорию ставил импорт, админка её не меняла и место не трогали (touched) — переразметка.
+                const untouched = eb.and([
+                  eb("places.import_category_id", "=", eb.ref("places.category_id")),
+                  eb.not(touched(eb as unknown as PlacesEb)),
+                ]);
                 return {
                   category_id: eb
                     .case()
@@ -290,7 +413,13 @@ export async function writePlaces(
                     eb.ref("excluded.address_i18n"),
                   ),
                   location: eb.ref("excluded.location"),
-                  locality_id: eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")),
+                  // Пункт, поправленный людьми (touched: курирование, правка), импорт не перезаписывает.
+                  locality_id: eb
+                    .case()
+                    .when(touched(eb as unknown as PlacesEb))
+                    .then(eb.ref("places.locality_id"))
+                    .else(eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")))
+                    .end(),
                   phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
                   website: eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")),
                   verified_at: eb.ref("excluded.verified_at"),
@@ -320,7 +449,8 @@ export async function writePlaces(
       // Дополнительные категории импорта пересобираются (новые правила) только у мест, где основную категорию
       // ставил импорт: админка сменила категорию — набор места её, импорт его не трогает. Поставленные админкой
       // (manual) не трогаются — совпадение с ними ON CONFLICT DO NOTHING. Если админка правила доп. категории места
-      // (аудит place.extra_categories.edit, даже когда список очищен) — импорт его набор не пересобирает вовсе.
+      // (аудит place.extra_categories.edit, даже когда список очищен) или место вообще трогали (touched) — импорт его
+      // набор не пересобирает вовсе.
       const ownRows = await trx
         .selectFrom("places")
         .select("google_place_id")
@@ -330,19 +460,7 @@ export async function writePlaces(
           batch.map((p) => placeId.get(p.googlePlaceId)!),
         )
         .whereRef("import_category_id", "=", "category_id")
-        .where((eb) =>
-          eb.not(
-            eb.exists(
-              eb
-                .selectFrom("audit_logs as a")
-                .select(eb.lit(1).as("one"))
-                .where("a.entity_type", "=", "place")
-                .where("a.action", "=", "place.extra_categories.edit")
-                .where("a.actor_type", "=", "user")
-                .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
-            ),
-          ),
-        )
+        .where((eb) => eb.not(touched(eb)))
         .execute();
       const own = new Set(ownRows.map((r) => r.google_place_id!));
       const ownBatch = batch.filter((p) => own.has(p.googlePlaceId));
@@ -373,6 +491,40 @@ export async function writePlaces(
         stats.extraCategoriesWritten += written.length;
       }
 
+      // Теги (tagsForPlace): по категории и удобствам Google (place_enrichments.google.amenities — их пишет
+      // places:enrich). Только добавляются (ON CONFLICT DO NOTHING) и только местам, где люди не правили теги
+      // (tagsTouched — админка могла снять тег): теги админки импорт не меняет.
+      if (tagId.size) {
+        const taggable = await trx
+          .selectFrom("places")
+          .leftJoin("place_enrichments as e", "e.place_id", "places.id")
+          .select(["places.id", "places.google_place_id", "e.google"])
+          .where(
+            "places.id",
+            "in",
+            batch.map((p) => placeId.get(p.googlePlaceId)!),
+          )
+          .whereRef("places.import_category_id", "=", "places.category_id")
+          .where((eb) => eb.not(tagsTouched(eb)))
+          .execute();
+        const byGoogleId = new Map(batch.map((p) => [p.googlePlaceId, p]));
+        const tagRows = taggable.flatMap((r) => {
+          const p = byGoogleId.get(r.google_place_id!)!;
+          return tagsForPlace(p.categoryCode, r.google?.amenities ?? [], p.name)
+            .filter((code) => tagId.has(code))
+            .map((code) => ({ region_id: regionId, place_id: r.id, tag_id: tagId.get(code)! }));
+        });
+        if (tagRows.length) {
+          const written = await trx
+            .insertInto("place_tags")
+            .values(tagRows)
+            .onConflict((oc) => oc.columns(["place_id", "tag_id"]).doNothing())
+            .returning("place_id")
+            .execute();
+          stats.tagsWritten += written.length;
+        }
+      }
+
       // График: заменяется целиком только у мест, где Google отдал непустой график, прошедший правила каталога
       // (scheduleProblems — те же, что у админки). Нет графика или он плохой — существующий не трогается; плохая
       // строка не доходит до INSERT и не откатывает всю транзакцию.
@@ -400,7 +552,8 @@ export async function writePlaces(
       stats.schedulesWritten += schedule.length;
     }
 
-    // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем.
+    // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем,
+    // место, чей статус меняли люди (statusTouched: публикация/скрытие/архив, чистка со status), — тоже.
     const closed = options.insertOnly ? [] : [...new Set(options.closedIds ?? [])];
     for (let from = 0; from < closed.length; from += BATCH) {
       const rows = await trx
@@ -408,6 +561,7 @@ export async function writePlaces(
         .set({ status: "suspended" })
         .where("source", "=", "google")
         .where("status", "=", "published")
+        .where((eb) => eb.not(statusTouched(eb)))
         .where("google_place_id", "in", closed.slice(from, from + BATCH))
         .returning("google_place_id")
         .execute();
@@ -417,7 +571,8 @@ export async function writePlaces(
 
     // Уже импортированные места, которые по новым правилам не наши (метки «только пункт/бренд», поштомати, табори),
     // — в архив; только опубликованные, только если категорию ставил импорт (админка не меняла), у места нет
-    // организации-партнёра и пользователи его не трогали (в журнале аудита нет действий user — как в 0020).
+    // организации-партнёра, его не трогали (touched: любое действие в журнале, кроме импорта, — в т. ч. чистка
+    // place.curate от system) и им не пользуются (inUse: избранное, отзывы, сценарии, брони, планы).
     const rejected = options.insertOnly ? [] : [...new Set(options.rejectedIds ?? [])];
     for (let from = 0; from < rejected.length; from += BATCH) {
       const rows = await trx
@@ -427,18 +582,7 @@ export async function writePlaces(
         .where("status", "=", "published")
         .whereRef("import_category_id", "=", "category_id")
         .where("organization_id", "is", null)
-        .where((eb) =>
-          eb.not(
-            eb.exists(
-              eb
-                .selectFrom("audit_logs as a")
-                .select(eb.lit(1).as("one"))
-                .where("a.entity_type", "=", "place")
-                .where("a.actor_type", "=", "user")
-                .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
-            ),
-          ),
-        )
+        .where((eb) => eb.and([eb.not(touched(eb)), eb.not(inUse(eb))]))
         .where("google_place_id", "in", rejected.slice(from, from + BATCH))
         .returning("google_place_id")
         .execute();
@@ -474,6 +618,7 @@ export async function writePlaces(
         suspendedIds: stats.suspendedIds,
         recategorized: stats.recategorized,
         extraCategoriesWritten: stats.extraCategoriesWritten,
+        tagsWritten: stats.tagsWritten,
         archivedRejected: stats.archivedRejected,
         archivedIds: stats.archivedIds,
         schedulesRejected: stats.schedulesRejected,
@@ -497,5 +642,27 @@ export async function googlePlaceIds(db: Db, regionId: string): Promise<Map<stri
       .where("source", "=", "google")
       .execute();
     return new Map(rows.map((r) => [r.google_place_id!, r.id]));
+  });
+}
+
+/**
+ * google id мест региона: опубликованные и все (вкл. архив, скрытые). При свёртке дублей (dedupePlaces) остаётся
+ * опубликованная запись, затем любая уже известная — архивированный админом дубль не «воскреснет» новым местом.
+ */
+export async function regionGoogleIds(
+  db: Db,
+  regionCode: string,
+): Promise<{ published: Set<string>; existing: Set<string> }> {
+  const regionId = await findRegionId(db, regionCode);
+  return withTenant(db, regionContext(regionId), async (trx) => {
+    const rows = await trx
+      .selectFrom("places")
+      .select(["google_place_id", "status"])
+      .where("source", "=", "google")
+      .execute();
+    return {
+      published: new Set(rows.filter((r) => r.status === "published").map((r) => r.google_place_id!)),
+      existing: new Set(rows.map((r) => r.google_place_id!)),
+    };
   });
 }

@@ -18,6 +18,9 @@ export const SEARCH_FIELD_MASK = [
   "places.displayName",
   "places.formattedAddress",
   "places.shortFormattedAddress",
+  // Населённый пункт из адреса (mapping.googleLocality). SKU Text Search Pro — как адрес и точка: тариф не растёт.
+  // Кэш (ключ — тело запроса, не маска) остаётся действительным; в старых ответах поля нет — пункт по расстоянию.
+  "places.addressComponents",
   "places.location",
   "places.types",
   "places.primaryType",

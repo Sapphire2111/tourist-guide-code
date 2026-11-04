@@ -186,6 +186,8 @@ describe("клиент Google: кэш, лимит, ключ", () => {
     expect(mask).not.toMatch(/editorialSummary|internationalPhoneNumber|regularOpeningHours|rating/);
     expect(SEARCH_FIELD_MASKS.enterprise).toMatch(/internationalPhoneNumber/);
     expect(SEARCH_FIELD_MASKS.enterprise).not.toMatch(/editorialSummary/);
+    // Населённый пункт из адреса — SKU Pro (как адрес): во всех масках.
+    for (const m of Object.values(SEARCH_FIELD_MASKS)) expect(m).toMatch(/places\.addressComponents/);
     // Полная маска не берёт ответ pro (нет телефона/часов) — запрос; а enterprise берёт уже полный ответ.
     const full = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
     await full.searchText(body);
@@ -370,6 +372,61 @@ describe("выгрузка", () => {
     const full = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
     const f = await collect(full, { localities: [IMPORT_LOCALITIES[0]!], queries: ["z"] });
     expect(f.rejectedIds).toEqual(["pk"]);
+  });
+
+  it("записи номерів Booking і однакові назви в 50 м — одне місце; відкинуті — у rejectedIds (архів)", async () => {
+    const at = IMPORT_LOCALITIES[0]!.at;
+    const fetch = vi.fn(async () =>
+      ok({
+        places: [
+          place("main", {
+            displayName: { text: "Садиба Казка" },
+            primaryType: "lodging",
+            userRatingCount: 9,
+          }),
+          place("room1", { displayName: { text: "Садиба Казка - Double Room" }, primaryType: "lodging" }),
+          place("room2", {
+            displayName: { text: "Садиба «Казка» - Two-Bedroom Villa" },
+            primaryType: "lodging",
+            location: { latitude: at.lat + 0.0003, longitude: at.lon },
+          }),
+          place("taxi", { displayName: { text: "Приватне таксі Ворохта" }, primaryType: "lodging" }),
+        ],
+      }),
+    );
+    const client = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
+    const r = await collect(client, { localities: [IMPORT_LOCALITIES[0]!], queries: ["q"] });
+    expect(r.places.map((p) => [p.googlePlaceId, p.categoryCode, p.name])).toEqual([
+      ["main", "sadyby", "Садиба Казка"],
+      ["taxi", "taxi", "Приватне таксі Ворохта"],
+    ]);
+    expect(r.rejectedIds.sort()).toEqual(["room1", "room2"]);
+    expect(r.stats.skipped.duplicate).toBe(2);
+    expect(r.stats.imported).toBe(2);
+    expect(r.stats.byCategory).toEqual({ sadyby: 1, taxi: 1 });
+  });
+
+  it("дубли не номеров Booking — не пишутся и не архивируются; остаётся опубликованная запись", async () => {
+    const fetch = vi.fn(async () =>
+      ok({
+        places: [
+          place("w1", { displayName: { text: "Водоспад Капливець" }, primaryType: "natural_feature" }),
+          place("w2", { displayName: { text: "Водоспад  Капливець" }, primaryType: "natural_feature" }),
+        ],
+      }),
+    );
+    const client = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
+    const opts = { localities: [IMPORT_LOCALITIES[0]!], queries: ["q"] };
+    const first = await collect(client, { ...opts, publishedIds: new Set(["w2"]) });
+    expect(first.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
+    expect(first.rejectedIds).toEqual([]);
+    expect(first.stats.duplicatesSkipped).toBe(1);
+    // Повтор (из кэша) с тем же набором опубликованных — тот же выбор.
+    const again = await collect(client, { ...opts, publishedIds: new Set(["w2"]) });
+    expect(again.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
+    // Не опубліковано нічого, але w2 уже в БД (архів) — лишається w2, архівований дубль не вставляється новим w1.
+    const archived = await collect(client, { ...opts, existingIds: new Set(["w2"]) });
+    expect(archived.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
   });
 });
 
