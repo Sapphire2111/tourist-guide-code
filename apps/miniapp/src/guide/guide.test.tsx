@@ -260,7 +260,7 @@ describe("каталог C04", () => {
 });
 
 describe("картка місця C06", () => {
-  it("бейджи, «Уточнити доступність», маршрут и звонок с событиями", async () => {
+  it("бейджи (без «Уточнити доступність»), маршрут и звонок с событиями", async () => {
     const { env, analytics } = setup();
     render(
       <GuideProvider value={env}>
@@ -270,7 +270,7 @@ describe("картка місця C06", () => {
     await flush();
     expect(screen.getByRole("heading", { level: 1, name: "Кав'ярня «Смерека»" })).toBeDefined();
     expect(analytics.track).toHaveBeenCalledWith("place_viewed", { placeId: P1 });
-    expect(screen.getByTestId("badge-availability").textContent).toBe("Уточнити доступність");
+    expect(screen.queryByTestId("badge-availability")).toBeNull();
     expect(screen.getByTestId("badge-open")).toBeDefined();
     expect(screen.getByRole("img", { name: "Зал кав'ярні" })).toBeDefined();
     const call = screen.getByTestId("place-call");

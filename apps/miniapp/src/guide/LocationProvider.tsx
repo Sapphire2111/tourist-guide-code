@@ -38,6 +38,8 @@ export type LocationState = {
   /** Лист «Локація» открыт (из чипа или подсказки «Змінити локацію»). */
   sheetOpen: boolean;
   setSheetOpen: (open: boolean) => void;
+  /** Турист сам выбрал локацию (пункты, «Усі локації» или «Моє місцезнаходження»); иначе — значение по умолчанию. */
+  chosen: boolean;
 };
 
 /** Радиус выдачи вокруг точки устройства, м; найдено меньше GPS_MIN_PLACES — расширяется до GPS_RADIUS_WIDE. */
@@ -81,6 +83,7 @@ const LocationContext = createContext<LocationState>({
   selectGps: () => undefined,
   sheetOpen: false,
   setSheetOpen: () => undefined,
+  chosen: true,
 });
 
 /** mode "all" — турист сам выбрал «Усі локації»: GPS по умолчанию не включается. */
@@ -272,9 +275,22 @@ export function LocationProvider({
     selected.length === 0 && !explicitAll && !(venueEntry && !picked) && options && options.length >= 2
       ? point
       : null;
+  // Явный выбор: в этом сеансе или сохранённый (пункты / «Усі локації»); вход по QR заведения сбрасывает его.
+  const chosen = picked || (!venueEntry && (ids.length > 0 || explicitAll));
   const value = useMemo(
-    () => ({ options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen, setSheetOpen }),
-    [options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen],
+    () => ({
+      options,
+      selected,
+      setSelected,
+      gps,
+      gpsBusy,
+      gpsFailed,
+      selectGps,
+      sheetOpen,
+      setSheetOpen,
+      chosen,
+    }),
+    [options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps, sheetOpen, chosen],
   );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

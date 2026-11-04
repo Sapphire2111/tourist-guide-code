@@ -185,7 +185,7 @@ test.describe("QR отеля demoHotel01", () => {
   test("картка місця: бейджи, маршрут, звонок, обране; события; a11y", async ({ page }) => {
     await page.goto(`/#/place/${CAFE_PLACE}`);
     await expect(page.getByRole("heading", { level: 1, name: "Кав'ярня «Смерека»" })).toBeVisible();
-    await expect(page.getByTestId("badge-availability")).toHaveText("Уточнити доступність");
+    await expect(page.getByTestId("badge-availability")).toHaveCount(0);
     await expect(page.getByTestId("badge-recommended")).toBeVisible();
     await expect(page.getByTestId("badge-open")).toBeVisible();
     await expect(page.getByRole("img", { name: "Фото: Кав'ярня «Смерека»" })).toBeVisible();

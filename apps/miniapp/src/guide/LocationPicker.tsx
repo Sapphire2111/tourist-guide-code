@@ -10,7 +10,7 @@ import "./location.css";
 
 export function LocationChip() {
   const { t } = useT();
-  const { options, gps, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
+  const { options, gps, chosen, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
@@ -18,7 +18,9 @@ export function LocationChip() {
     names.length === 0
       ? gps
         ? t("miniapp.location.mine")
-        : t("miniapp.location.all")
+        : chosen
+          ? t("miniapp.location.all")
+          : t("miniapp.location.choose")
       : names.length === 1
         ? names[0]!
         : t("miniapp.location.more", { name: names[0]!, count: names.length - 1 });
@@ -29,6 +31,7 @@ export function LocationChip() {
         className="loc-chip"
         data-testid="location-chip"
         data-all={names.length === 0 && !gps ? "true" : undefined}
+        data-unpicked={chosen ? undefined : "true"}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t("miniapp.location.title")}: ${label}`}

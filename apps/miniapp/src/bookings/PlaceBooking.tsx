@@ -8,13 +8,12 @@ import type { Resource } from "./bookings-api.js";
 export function AvailabilityBadge({ resources }: { resources: Resource[] | null }) {
   const { t } = useT();
   const now = resources?.some((r) => r.availability.availableNow) ?? false;
+  // «Уточнити доступність» не показываем: функции доступности пока нет (данные API не трогаем).
   return now ? (
     <Badge testId="badge-availability" tone="accent">
       {t("miniapp.booking.availableNow")}
     </Badge>
-  ) : (
-    <Badge testId="badge-availability">{t("miniapp.place.checkAvailability")}</Badge>
-  );
+  ) : null;
 }
 
 export function BookingEntry({

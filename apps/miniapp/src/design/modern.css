@@ -340,6 +340,21 @@ html[data-design="modern"] .modern-top-loc .loc-chip::after {
   position: absolute;
   inset: -11px 0;
 }
+/* Локация не выбрана: пилюля с меткой и акцентной обводкой (касание 44 px за счёт ::after). */
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"] {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--bar-accent);
+  border-radius: 9999px;
+  --app-accent: var(--bar-accent);
+}
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"]::after {
+  inset: -8px -4px;
+}
+html[data-design="modern"] .modern-top-loc .loc-chip[data-unpicked="true"] .loc-chip-pin {
+  display: inline;
+}
 html[data-design="modern"] .modern-top-loc .loc-chip-pin {
   display: none;
 }

@@ -116,6 +116,26 @@ describe("сезон", () => {
     expect(JSON.parse(localStorage.getItem(SEASON_STORAGE_KEY)!).season).toBe("winter");
   });
 
+  it("цвета окна Telegram возвращаются после смены темы Telegram и полного экрана", () => {
+    const handlers = new Map<string, () => void>();
+    const webApp = {
+      ready: vi.fn(),
+      expand: vi.fn(),
+      isVersionAtLeast: () => true,
+      setHeaderColor: vi.fn(),
+      setBackgroundColor: vi.fn(),
+      setBottomBarColor: vi.fn(),
+      onEvent: (e: string, cb: () => void) => void handlers.set(e, cb),
+      offEvent: vi.fn(),
+    } satisfies TelegramWebApp;
+    render(<SeasonProvider webApp={webApp} />);
+    const before = webApp.setHeaderColor.mock.calls.length;
+    handlers.get("fullscreenChanged")?.();
+    handlers.get("themeChanged")?.();
+    expect(webApp.setHeaderColor).toHaveBeenCalledTimes(before + 2);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.header);
+  });
+
   it("заставка: долгий вход (холодный старт api) — пояснение «сервер прокидається»", async () => {
     render(
       <SeasonProvider>

@@ -46,6 +46,13 @@ export function SeasonProvider({ webApp, children }: { webApp?: TelegramWebApp; 
   }, [season]);
   useEffect(() => {
     syncTelegramColors(webApp, theme);
+    // Клиент Telegram сам перекрашивает окно при смене своей темы и режима (полный экран, возврат в приложение) —
+    // цвета темы приложения возвращаем.
+    if (!webApp?.onEvent) return;
+    const reapply = () => syncTelegramColors(webApp, theme);
+    const events = ["themeChanged", "fullscreenChanged", "activated"];
+    events.forEach((e) => webApp.onEvent?.(e, reapply));
+    return () => events.forEach((e) => webApp.offEvent?.(e, reapply));
   }, [theme, webApp]);
   const setSeason = useCallback((s: Season) => {
     saveSeason(s);
