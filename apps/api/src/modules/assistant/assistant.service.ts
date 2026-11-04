@@ -201,7 +201,8 @@ const BEST_RE = new RegExp(
     String.raw`найвищ\S*\s+рейтинг`,
     String.raw`високи\S*\s+рейтинг`,
     String.raw`высок\S*\s+рейтинг`,
-    `${NOT_LETTER}кращ(?:ий|а|е|і|их)${NOT_LETTER}`,
+    // «краще» без места («мені краще недороге», «що краще») — не порядок.
+    `${NOT_LETTER}кращ(?:ий|а|і|их)${NOT_LETTER}`,
     `${NOT_LETTER}топ${NOT_LETTER}`,
     `${NOT_LETTER}best${NOT_LETTER}`,
     String.raw`(?:top|high|highest|best)[-\s]?rated`,
@@ -209,8 +210,15 @@ const BEST_RE = new RegExp(
   "iu",
 );
 
+/** Уточнение того же поиска: те же категории, ключевые слова, название. */
+function sameSearch(a: AssistantIntent, b: AssistantIntent): boolean {
+  const eq = (x: readonly string[], y: readonly string[]) =>
+    x.length === y.length && [...x].sort().join("|") === [...y].sort().join("|");
+  return eq(a.categories, b.categories) && eq(a.keywords, b.keywords) && a.nameQuery === b.nameQuery;
+}
+
 /** «ближчі», «поруч» — снова от ближайшего (сброс «найкращих» из прошлого запроса). */
-const NEAR_RE = /ближч|ближайш|поруч|рядом|nearest|closer|nearby/iu;
+const NEAR_RE = /ближч|ближе|ближайш|поруч|поблизу|недалеко|рядом|nearest|closer|nearby/iu;
 
 /** Совпадение названия с nameQuery: начало названия — 0, внутри — 1, нет (по адресу, по описанию) — 2. */
 function nameTier(p: PlaceSummaryDto, query: string): number {
@@ -223,7 +231,7 @@ function nameTier(p: PlaceSummaryDto, query: string): number {
 }
 
 /** Апострофы (’ ʼ ` ') — один знак: «Хом'як» = «Хомʼяк». */
-const normName = (s: string) => s.toLocaleLowerCase("uk").replace(/[’ʼ`'‘]/g, "'");
+const normName = (s: string) => s.toLocaleLowerCase("uk").replace(/[’ʼ`'‘]/g, "");
 /** Родовое слово в названии («водоспад Гук», «гора Говерла») — не обязательно: в каталоге «Говерла» без «гора». */
 const GENERIC_STEMS = new Set([
   "водоспад",
@@ -237,6 +245,10 @@ const GENERIC_STEMS = new Set([
   "перевал",
   "полонин",
   "хребет",
+  // «озеро» — окончание «-о» не срезается; русские родовые.
+  "озеро",
+  "водопад",
+  "скал",
 ]);
 /** Служебные слова запроса — не часть названия. */
 const STOP_STEMS = new Set(["біл", "від", "через", "під", "над", "для"]);
@@ -257,7 +269,7 @@ function genericStems(query: string): string[] {
 
 function stemWords(query: string): string[] {
   return normName(query)
-    .split(/[^\p{L}']+/u)
+    .split(/[^\p{L}]+/u)
     .filter(Boolean)
     .map((w) => {
       const stem = w.length >= 4 ? w.replace(ENDING_RE, "") : w;
@@ -267,22 +279,29 @@ function stemWords(query: string): string[] {
 }
 
 /** Название содержит все основы запроса. */
-function nameHasStems(p: PlaceSummaryDto, stems: readonly string[]): boolean {
-  return Object.values(p.name).some(
-    (n) => typeof n === "string" && stems.every((s) => normName(n).includes(s)),
+export function nameHasStems(p: PlaceSummaryDto, stems: readonly string[]): boolean {
+  // Короткая основа («гук», «бук») — только с начала слова: не «Чугуківка», не «Буковель» для «бук» внутри слова.
+  const tests = stems.map((s) =>
+    s.length < 5 ? new RegExp(`${NOT_LETTER}${s}`, "u") : { test: (n: string) => n.includes(s) },
   );
+  return Object.values(p.name).some((n) => {
+    if (typeof n !== "string") return false;
+    const name = normName(n);
+    return tests.every((t) => t.test(name));
+  });
 }
 
 /** По рейтингу Google (больше отзывов — выше при равном), без рейтинга — в конце; иначе — порядок как был. */
 function byRating(
   found: readonly PlaceSummaryDto[],
   enrichment: ReadonlyMap<string, Enrichment>,
+  tier: (p: PlaceSummaryDto) => number = () => 0,
 ): PlaceSummaryDto[] {
   const score = (p: PlaceSummaryDto) => {
     const g = enrichment.get(p.id)?.google;
     return g?.rating == null ? -Infinity : g.rating + 0.01 * Math.log10(1 + (g.ratingCount ?? 0));
   };
-  return [...found].sort((a, b) => score(b) - score(a));
+  return [...found].sort((a, b) => tier(a) - tier(b) || score(b) - score(a));
 }
 
 /** Вес совпадения по связанным понятиям в keywordRank: подъём, а не замена рейтинга (одно упоминание — +0.4). */
@@ -445,9 +464,12 @@ export class AssistantService {
     };
     if (intent.kind === "plan") return this.plan(regionId, userId, intent, catalog, scope);
     // «Найкращі» — по рейтингу; уточнение («а дешевші?») сохраняет порядок прошлого запроса, «ближчі» — сбрасывает.
-    if (wantsBest(q.text)) intent.sort = "rating";
-    else if (NEAR_RE.test(q.text)) intent.sort = null;
-    else if (q.previous?.sort === "rating" && !intent.sort) intent.sort = "rating";
+    // «Поруч/ближче» — главнее «кращ»; прежний порядок переносится только в уточнение того же поиска (те же
+    // категории и слова), новая тема («де аптека») — от ближайшего.
+    if (NEAR_RE.test(q.text)) intent.sort = null;
+    else if (wantsBest(q.text)) intent.sort = "rating";
+    else if (q.previous?.sort === "rating" && sameSearch(q.previous, intent)) intent.sort = "rating";
+    else if (q.previous && !sameSearch(q.previous, intent)) intent.sort = null;
     return this.select(regionId, intent, catalog, scope);
   }
 
@@ -531,8 +553,8 @@ export class AssistantService {
   ): Promise<PlaceSummaryDto[]> {
     const stems = nameStems(query);
     if (!stems.length) return [];
-    // В ILIKE — самая длинная основа без апострофа (его написание в каталоге разное), остальное — проверкой здесь.
-    const probe = stems.flatMap((s) => s.split("'")).sort((a, b) => b.length - a.length)[0]!;
+    // В ILIKE — самая длинная основа (каталог сравнивает названия без апострофов), остальные — проверкой здесь.
+    const probe = [...stems].sort((a, b) => b.length - a.length)[0]!;
     if (probe.length < 3) return [];
     const page = await this.guide.search(regionId, {
       origin,
@@ -656,14 +678,14 @@ export class AssistantService {
     // названное место (nameQuery) — сначала совпавшие по названию. «Найкращі» — по рейтингу Google. Экскурсия —
     // остановки по релевантности (порядок обхода — orderRoute). Без точки — прежний порядок.
     const ordered = intent.kind === "places";
-    if (ordered && intent.sort === "rating") found = byRating(found, enrichment);
+    // Найденные по названию (основы слов) — выше совпавших только по адресу (и при «найкращі»).
+    // Своего раздела — выше (водоспад, а не таксі «…Водоспад Гук»); внутри — начало названия.
+    const tier = (p: PlaceSummaryDto) =>
+      intent.nameQuery
+        ? (named.has(p.id) ? (namedInSection.has(p.id) ? 0 : 1) : 2) + nameTier(p, intent.nameQuery) / 10
+        : 0;
+    if (ordered && intent.sort === "rating") found = byRating(found, enrichment, tier);
     else if (ordered && origin) {
-      // Найденные по названию (основы слов) — выше совпавших только по адресу.
-      // Своего раздела — выше (водоспад, а не таксі «…Водоспад Гук»); внутри — начало названия, затем расстояние.
-      const tier = (p: PlaceSummaryDto) =>
-        intent.nameQuery
-          ? (named.has(p.id) ? (namedInSection.has(p.id) ? 0 : 1) : 2) + nameTier(p, intent.nameQuery) / 10
-          : 0;
       found = [...found].sort(
         (a, b) => tier(a) - tier(b) || (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity),
       );

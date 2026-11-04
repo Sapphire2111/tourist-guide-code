@@ -10,6 +10,7 @@ import type { RegionsRepository } from "../regions/index.js";
 import {
   AssistantService,
   describe as describePlace,
+  nameHasStems,
   nameStems,
   shorten,
   wantsBest,
@@ -1197,7 +1198,7 @@ describe("порядок списка — по расстоянию от тур�
   });
 
   it("явное «найкращий» — по рейтингу", async () => {
-    expect(await chargers("найкраща зарядка поруч", YAREMCHE_AT)).toEqual(["Далека", "Близька", "Середня"]);
+    expect(await chargers("найкраща зарядка", YAREMCHE_AT)).toEqual(["Далека", "Близька", "Середня"]);
   });
 
   it("без точки — прежний порядок (релевантность и рейтинг)", async () => {
@@ -1231,6 +1232,8 @@ describe("порядок списка — по расстоянию от тур�
     for (const t of ["покращення дороги", "кафе з рейтингом від 4", "bestseller"])
       expect(wantsBest(t)).toBe(false);
     expect(wantsBest("за рейтингом")).toBe(true);
+    for (const t of ["мені краще щось недороге", "що краще: кафе чи ресторан"])
+      expect(wantsBest(t)).toBe(false);
   });
 
   it("ключевые слова с точкой — кандидаты из репозитория ближайшие (order distance); «найкращі» и экскурсия — score", async () => {
@@ -1280,6 +1283,30 @@ describe("порядок списка — по расстоянию от тур�
     );
     expect(nearer.intent.sort).toBeNull();
     expect(names(nearer)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("«топ кафе» → «де аптека» — новая тема по расстоянию; «кращі кафе поруч» — «поруч» главнее", async () => {
+    const mk = (cats: string[]) =>
+      setup({
+        searchAt: () => [far, mid, near],
+        enrichment: { [far.id]: { google: google({ rating: 5 }), wiki: null, ai: null } },
+        llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: cats })))) },
+      });
+    const top = await mk(["cafes"]).service.query(REGION, USER, ask("топ кафе", { origin: YAREMCHE_AT }));
+    expect(top.intent.sort).toBe("rating");
+    const pharmacy = await mk(["museums"]).service.query(
+      REGION,
+      USER,
+      ask("де аптека", { origin: YAREMCHE_AT, previous: top.intent as AssistantIntent }),
+    );
+    expect(pharmacy.intent.sort).toBeNull();
+    expect(pharmacy.items.map((i) => i.place.name.uk)).toEqual(["Близька", "Середня", "Далека"]);
+    const nearBest = await mk(["cafes"]).service.query(
+      REGION,
+      USER,
+      ask("кращі кафе поруч", { origin: YAREMCHE_AT }),
+    );
+    expect(nearBest.intent.sort).toBeNull();
   });
 
   it("«з дітьми» с точкой — строго по расстоянию (пригодность — метка)", async () => {
@@ -1368,6 +1395,7 @@ describe("названное место вне населённых пункто
     distanceMeters: 60_000,
   });
   const nearby = place(46, { name: { uk: "Водоспад Пробій" }, categoryId: NATURE, distanceMeters: 300 });
+  const bare = (t: string) => t.toLocaleLowerCase("uk").replace(/['ʼ’]/g, "");
   const all = [huk, taxi, mountHuk, hoverla, khomiak, brebeneskul, nearby];
   // Как каталог: ILIKE по названию, радиус, пункт (у вершин и водопадов locality_id null — «Локація» их отсекает).
   const run = (text: string, over: Partial<AssistantIntent>, kind: "places" | "tour" = "places") => {
@@ -1375,7 +1403,7 @@ describe("названное место вне населённых пункто
       searchAt: (s) =>
         all.filter(
           (p) =>
-            (!s.text || p.name.uk!.toLocaleLowerCase("uk").includes(s.text.toLocaleLowerCase("uk"))) &&
+            (!s.text || bare(p.name.uk!).includes(bare(s.text))) &&
             (s.radius === undefined || (p.distanceMeters ?? 0) <= s.radius) &&
             (!s.categoryId || s.categoryId === NATURE || p.categoryId === s.categoryId),
         ),
@@ -1410,5 +1438,27 @@ describe("названное место вне населённых пункто
     expect(nameStems("Женецького Гуку")).toEqual(["женецьк", "гук"]);
     expect(nameStems("водоспад Гук")).toEqual(["гук"]);
     expect(nameStems("гора Говерла")).toEqual(["говерл"]);
+    expect(nameStems("озеро Синевир")).toEqual(["синевир"]);
+    expect(nameStems("водопад Гук")).toEqual(["гук"]);
+    expect(nameStems("Хом'як")).toEqual(["хомяк"]);
+  });
+
+  it("короткая основа — только с начала слова; апостроф не важен", () => {
+    const named = (uk: string) => place(1, { name: { uk } });
+    expect(nameHasStems(named("Водоспад Гук"), ["гук"])).toBe(true);
+    expect(nameHasStems(named("Гуків"), ["гук"])).toBe(true);
+    expect(nameHasStems(named("Чугуківка"), ["гук"])).toBe(false);
+    expect(nameHasStems(named("Готель Буковель"), ["гук"])).toBe(false);
+    expect(nameHasStems(named("Хомʼяк"), nameStems("Хомяк"))).toBe(true);
+  });
+
+  it("«Хомяк» без апострофа находит «Хомʼяк»", async () => {
+    expect((await run("на Хомяк", { nameQuery: "Хомяк" }))[0]).toBe("Хомʼяк");
+  });
+
+  it("«найкращі» — названное место всё равно первым", async () => {
+    expect((await run("найкращий водоспад Гук", { nameQuery: "водоспад Гук" }))[0]).toBe(
+      "Водоспад Женецький Гук",
+    );
   });
 });
