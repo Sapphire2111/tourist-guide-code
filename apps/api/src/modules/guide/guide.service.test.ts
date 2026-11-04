@@ -22,6 +22,7 @@ const row = (n: number): PlaceRow => ({
   recommended: false,
   location: { lon: 24, lat: 48 },
   distance: null,
+  google_place_id: null,
 });
 
 function service(repo: Partial<GuideRepository>) {

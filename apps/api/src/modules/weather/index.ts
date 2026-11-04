@@ -17,3 +17,5 @@ export {
   type WeatherSource,
   type WeatherWarning,
 } from "./weather-rules.js";
+// Горные точки прогноза — для погоды «на вершині» (раздел «Вершини»).
+export { meters, MOUNTAIN_POINTS } from "./weather-points.js";

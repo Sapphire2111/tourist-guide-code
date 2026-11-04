@@ -3163,6 +3163,64 @@ export interface components {
       /** @description Страница файла (Wikimedia) */
       sourceUrl: string | null;
     };
+    /** @enum {string} */
+    PeakRange: "chornohora" | "gorgany" | "svydovets";
+    /**
+     * @description Сложность по правилу PEAK_DIFFICULTY_RULE; null — нет данных маршрута
+     * @enum {string}
+     */
+    PeakDifficulty: "easy" | "moderate" | "hard" | "expert";
+    PeakPointDto: {
+      lat: number;
+      lng: number;
+    };
+    /**
+     * @description difference — разница высот вершины и старта; stated — перепад из источника
+     * @enum {string}
+     */
+    PeakGainKind: "difference" | "stated";
+    PeakRouteDto: {
+      /** @description Старт (село, база) */
+      start: components["schemas"]["LocalizedTextDto"];
+      /** @description Точка старта; null — неизвестна */
+      startLocation: components["schemas"]["PeakPointDto"] | null;
+      /** @description Туда-назад, км */
+      roundTripKm: number | null;
+      /** @description Набор высоты, м */
+      elevationGainM: number | null;
+      /** @description difference — разница высот вершины и старта; stated — перепад из источника */
+      gainKind: components["schemas"]["PeakGainKind"] | null;
+      /** @description Подъём, ч */
+      upHours: number | null;
+      /** @description Спуск, ч */
+      downHours: number | null;
+      /** @description Туда-назад, ч (подъём + спуск) */
+      totalHours: number | null;
+      /** @description Маркировка/путь */
+      trail: components["schemas"]["LocalizedTextDto"] | null;
+    };
+    PeakSourceDto: {
+      /** @example Вікіпедія (uk): Говерла */
+      title: string;
+      /** @description Ссылка на версию статьи / страницу источника */
+      url: string;
+    };
+    PeakDto: {
+      /** @example hoverla */
+      slug: string;
+      /** @description Высота, м */
+      heightM: number | null;
+      range: components["schemas"]["PeakRange"] | null;
+      /** @description Сложность по правилу PEAK_DIFFICULTY_RULE; null — нет данных маршрута */
+      difficulty: components["schemas"]["PeakDifficulty"] | null;
+      route: components["schemas"]["PeakRouteDto"] | null;
+      note: components["schemas"]["LocalizedTextDto"] | null;
+      /** @description Сезонность и предупреждения */
+      warnings: components["schemas"]["LocalizedTextDto"][];
+      sources: components["schemas"]["PeakSourceDto"][];
+      /** @description Горная точка прогноза погоды рядом с вершиной (GET /weather); null — у вершины прогноза нет */
+      weatherPoint: components["schemas"]["PeakPointDto"] | null;
+    };
     PlaceSummaryDto: {
       /** Format: uuid */
       id: string;
@@ -3186,6 +3244,8 @@ export interface components {
       cover: components["schemas"]["PlacePhotoDto"] | null;
       /** @description Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover */
       coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
+      /** @description Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина */
+      peak: components["schemas"]["PeakDto"] | null;
     };
     PlaceSearchResultDto: {
       /** @description Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет */
@@ -3336,6 +3396,8 @@ export interface components {
       cover: components["schemas"]["PlacePhotoDto"] | null;
       /** @description Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover */
       coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
+      /** @description Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина */
+      peak: components["schemas"]["PeakDto"] | null;
       /** Format: uuid */
       regionId: string;
       category: components["schemas"]["GuideCategoryRefDto"];

@@ -47,6 +47,7 @@ const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto 
   phone: null,
   cover: null,
   coverPhoto: null,
+  peak: null,
   ...over,
 });
 
