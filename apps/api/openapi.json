@@ -14887,6 +14887,11 @@
         "enum": ["car", "foot"],
         "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо"
       },
+      "AssistantSort": {
+        "type": "string",
+        "enum": ["rating"],
+        "description": "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу"
+      },
       "AssistantIntentDto": {
         "type": "object",
         "properties": {
@@ -14964,6 +14969,11 @@
             "nullable": true,
             "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо",
             "allOf": [{ "$ref": "#/components/schemas/AssistantPlanTransport" }]
+          },
+          "sort": {
+            "nullable": true,
+            "description": "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantSort" }]
           }
         },
         "required": [

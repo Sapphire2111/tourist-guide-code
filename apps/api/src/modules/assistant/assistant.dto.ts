@@ -32,6 +32,8 @@ import {
   PLAN_SCOPES,
   PLAN_STARTS,
   PLAN_TRANSPORTS,
+  ASSISTANT_SORTS,
+  type AssistantSort,
   type PlanTransport,
   type AssistantKind,
   type AssistantQuestion,
@@ -238,6 +240,16 @@ export class AssistantIntentDto {
   @IsOptional()
   @IsIn(PLAN_TRANSPORTS)
   transport?: PlanTransport | null;
+
+  @ApiPropertyOptional({
+    enum: ASSISTANT_SORTS,
+    enumName: "AssistantSort",
+    nullable: true,
+    description: "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу",
+  })
+  @IsOptional()
+  @IsIn(ASSISTANT_SORTS)
+  sort?: AssistantSort | null;
 }
 
 export class AssistantQueryDto extends OriginQueryDto {

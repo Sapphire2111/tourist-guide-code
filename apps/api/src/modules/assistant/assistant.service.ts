@@ -179,9 +179,43 @@ export function keywordRank(
 
 /** Явная просьба о лучших по рейтингу: «найкращий», «з найвищим рейтингом», «топ», «лучший». */
 export function wantsBest(text: string): boolean {
-  return /(найкращ|найліпш|найвищ\S* рейтинг|рейтинг|лучш|высок\S* рейтинг|(^|[^\p{L}])топ($|[^\p{L}])|bbestb|top[- ]?rated|highest[- ]rated)/iu.test(
-    text,
-  );
+  return BEST_RE.test(text);
+}
+
+const NOT_LETTER = String.raw`(?:^|$|[^\p{L}])`;
+/** «найкращий», «кращі», «найпопулярніші», «за рейтингом», «з найвищим рейтингом», «топ», best / top rated. Голое
+ * «рейтинг» («з рейтингом від 4») — не порядок. */
+const BEST_RE = new RegExp(
+  [
+    "найкращ",
+    "найліпш",
+    "найпопулярніш",
+    "лучш",
+    String.raw`самы\S*\s+популярн`,
+    String.raw`за\s+рейтинг`,
+    String.raw`по\s+рейтинг`,
+    String.raw`найвищ\S*\s+рейтинг`,
+    String.raw`високи\S*\s+рейтинг`,
+    String.raw`высок\S*\s+рейтинг`,
+    `${NOT_LETTER}кращ(?:ий|а|е|і|их)${NOT_LETTER}`,
+    `${NOT_LETTER}топ${NOT_LETTER}`,
+    `${NOT_LETTER}best${NOT_LETTER}`,
+    String.raw`(?:top|high|highest|best)[-\s]?rated`,
+  ].join("|"),
+  "iu",
+);
+
+/** «ближчі», «поруч» — снова от ближайшего (сброс «найкращих» из прошлого запроса). */
+const NEAR_RE = /ближч|ближайш|поруч|рядом|nearest|closer|nearby/iu;
+
+/** Совпадение названия с nameQuery: начало названия — 0, внутри — 1, нет (по адресу, по описанию) — 2. */
+function nameTier(p: PlaceSummaryDto, query: string): number {
+  const q = query.toLocaleLowerCase("uk");
+  const names = Object.values(p.name)
+    .filter((n): n is string => typeof n === "string")
+    .map((n) => n.toLocaleLowerCase("uk"));
+  if (names.some((n) => n.startsWith(q))) return 0;
+  return names.some((n) => n.includes(q)) ? 1 : 2;
 }
 
 /** По рейтингу Google (больше отзывов — выше при равном), без рейтинга — в конце; иначе — порядок как был. */
@@ -355,7 +389,11 @@ export class AssistantService {
       localityCenter: localityRows.find((l) => l.id === localityIds[0])?.location ?? undefined,
     };
     if (intent.kind === "plan") return this.plan(regionId, userId, intent, catalog, scope);
-    return this.select(regionId, intent, catalog, scope, wantsBest(q.text));
+    // «Найкращі» — по рейтингу; уточнение («а дешевші?») сохраняет порядок прошлого запроса, «ближчі» — сбрасывает.
+    if (wantsBest(q.text)) intent.sort = "rating";
+    else if (NEAR_RE.test(q.text)) intent.sort = null;
+    else if (q.previous?.sort === "rating" && !intent.sort) intent.sort = "rating";
+    return this.select(regionId, intent, catalog, scope);
   }
 
   async transcribe(regionId: string, userId: string, audio: Buffer, mime: AudioMime): Promise<string> {
@@ -408,6 +446,9 @@ export class AssistantService {
         // Без категорий одно упоминание в отзыве (отель, где «замовляли суші») не считается.
         minScore: sections.length ? 1 : 2,
         limit: KEYWORD_CANDIDATES,
+        // Список «знайди» с точкой — кандидаты ближайшие из релевантных (иначе LIMIT отсёк бы ближние со слабым
+        // совпадением); экскурсия и «найкращі» — самые релевантные.
+        order: scope.origin && intent.kind === "places" && intent.sort !== "rating" ? "distance" : "score",
       });
     let matches = await run(radius);
     if (matches.length < WIDEN_BELOW && radius !== undefined && intent.radiusMeters === null) {
@@ -433,7 +474,6 @@ export class AssistantService {
     intent: AssistantIntent,
     catalog: Catalog,
     scope: Scope,
-    best = false,
   ): Promise<AssistantResultDto> {
     const { origin, localityIds } = scope;
     const byLocality = localityIds.length > 0;
@@ -515,11 +555,17 @@ export class AssistantService {
       );
       found = [...found].sort((a, b) => rank.get(b.id)! - rank.get(a.id)!);
     }
-    // Порядок списка — от ближайшего к дальнему от точки туриста (релевантность — только отбор кандидатов);
-    // «найкращий / з найвищим рейтингом» — по рейтингу Google. Без точки — прежний порядок.
-    if (best) found = byRating(found, enrichment);
-    else if (origin)
-      found = [...found].sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
+    // Порядок списка «знайди» — от ближайшего к дальнему от точки туриста (релевантность — только отбор кандидатов);
+    // названное место (nameQuery) — сначала совпавшие по названию. «Найкращі» — по рейтингу Google. Экскурсия —
+    // остановки по релевантности (порядок обхода — orderRoute). Без точки — прежний порядок.
+    const ordered = intent.kind === "places";
+    if (ordered && intent.sort === "rating") found = byRating(found, enrichment);
+    else if (ordered && origin) {
+      const tier = (p: PlaceSummaryDto) => (intent.nameQuery ? nameTier(p, intent.nameQuery) : 0);
+      found = [...found].sort(
+        (a, b) => tier(a) - tier(b) || (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity),
+      );
+    }
     let items: AssistantPlaceDto[] = found.map((place) => this.placeDto(place, enrichment.get(place.id)));
     if (intent.priceMin !== null || intent.priceMax !== null) {
       const min = intent.priceMin ?? 0;
@@ -529,8 +575,9 @@ export class AssistantService {
       if (priced.length) items = priced;
       else if (items.length) notes.push("price_unknown");
     }
-    // «З дітьми» — не фильтр (данные о детях есть не у всех мест): подходящие — первыми.
-    if (intent.withKids)
+    // «З дітьми» — не фильтр (данные о детях есть не у всех мест). С точкой — порядок строго по расстоянию (метка
+    // в карточке), без точки — подходящие первыми.
+    if (intent.withKids && !(ordered && origin))
       items = [...items.filter((i) => i.kidsFriendly), ...items.filter((i) => !i.kidsFriendly)];
 
     if (intent.kind === "tour") {
@@ -1067,6 +1114,7 @@ function clarifyIntent(previous: AssistantIntent | null, allowed: ReadonlySet<st
     scope: kind === "plan" ? (previous?.scope ?? null) : null,
     scopeLocalityIds: kind === "plan" ? (previous?.scopeLocalityIds ?? []) : [],
     transport: kind === "plan" ? (previous?.transport ?? null) : null,
+    sort: previous?.sort ?? null,
   };
 }
 
