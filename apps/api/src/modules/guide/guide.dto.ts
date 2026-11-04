@@ -47,7 +47,8 @@ export const SEARCH_RADIUS_DEFAULT = 500;
 export const SEARCH_RADIUS_MAX = 20_000;
 export const SEARCH_RADIUS_MIN = 10;
 export const SEARCH_LIMIT_DEFAULT = 20;
-export const SEARCH_LIMIT_MAX = 50;
+/** Предел страницы: карта «Що поруч» на радиусе 10–20 км берёт до 300 мест одним запросом (иначе — только ближайшие). */
+export const SEARCH_LIMIT_MAX = 300;
 /** Глубина листания поиска (offset): дальше — уточнить запрос. */
 export const SEARCH_OFFSET_MAX = 1000;
 export const SEARCH_QUERY_MAX = 100;
