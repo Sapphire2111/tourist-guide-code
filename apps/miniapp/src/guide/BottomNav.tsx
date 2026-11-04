@@ -1,22 +1,15 @@
-// Нижняя навигация (C02, 4 вкладки): Головна | Мій план | Обране | Халепа?.
-// Профіль — кнопка в шапке (AppTop). «Мій план» — только при module.host_requests. «Бонуси» — блок 9.
+// Нижня навігація в стилі Концепту Б «Мольфарська Ватра»: Ватра (🔥) | Поруч (🧭) | План (✨) | Профіль (👤).
 import { Link, useFeatureFlag, useRoute, useT } from "@tg/ui";
-import { ICONS } from "../design/Ornament.js";
-
-const ITEMS = [
-  { to: "/", key: "miniapp.nav.home", icon: ICONS.home },
-  { to: "/plan", key: "miniapp.nav.plan", icon: ICONS.plan },
-  { to: "/favorites", key: "miniapp.nav.favorites", icon: ICONS.heart },
-  { to: "/help", key: "miniapp.nav.help", icon: ICONS.sos },
-] as const;
 
 export function BottomNav({ profile = false }: { profile?: boolean }) {
   const { t } = useT();
   const items = [
-    ITEMS[0],
-    { to: "/nearby", key: "miniapp.modern.nearby", icon: ICONS.nearby },
-    ITEMS[1],
-    profile ? ({ to: "/profile", key: "miniapp.nav.profile", icon: ICONS.user } as const) : ITEMS[2],
+    { to: "/", key: "miniapp.nav.home", short: "Ватра", icon: "🔥" },
+    { to: "/nearby", key: "miniapp.modern.nearby", short: "Поруч", icon: "🧭" },
+    { to: "/plan", key: "miniapp.nav.plan", short: "План", icon: "✨" },
+    profile
+      ? ({ to: "/profile", key: "miniapp.nav.profile", short: "Профіль", icon: "👤" } as const)
+      : ({ to: "/favorites", key: "miniapp.nav.favorites", short: "Профіль", icon: "👤" } as const),
   ] as const;
   const [path] = useRoute();
   const plan = useFeatureFlag("module.host_requests");
@@ -30,10 +23,13 @@ export function BottomNav({ profile = false }: { profile?: boolean }) {
             key={i.to}
             to={i.to}
             className="kosiv-nav-item"
+            aria-label={t(i.key)}
             aria-current={active(i.to) ? "page" : undefined}
           >
-            <span className="kosiv-nav-icon">{i.icon}</span>
-            <span>{t(i.key)}</span>
+            <span className="kosiv-nav-icon" aria-hidden="true">
+              {i.icon}
+            </span>
+            <span aria-hidden="true">{i.short}</span>
           </Link>
         ))}
     </nav>

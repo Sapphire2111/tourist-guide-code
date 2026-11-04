@@ -117,14 +117,14 @@ describe("главная C02", () => {
         .getAllByRole("link")
         .map((a) => a.getAttribute("href")),
     ).toEqual([
-      "#/section/stay",
-      "#/section/eat",
       "#/section/relax",
-      "#/section/shop",
       "#/section/fun",
-      "#/section/ski",
+      "#/section/shop",
       "#/section/transfer",
+      "#/section/stay",
+      "#/section/ski",
       "#/section/services",
+      "#/section/eat",
     ]);
     expect(href(/Про заклад/)).toBe("#/about");
     rerender(view(false));
