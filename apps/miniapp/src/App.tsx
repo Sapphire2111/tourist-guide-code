@@ -33,6 +33,7 @@ import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
+import { AppBackdrop } from "./design/AppBackdrop.js";
 import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
 import { resolveScan, type ScanOutcome } from "./scan.js";
 import { LocationChip, LocationSheetHost } from "./guide/LocationPicker.js";
@@ -274,15 +275,16 @@ function HomeAssistant(props: RoutesProps) {
   const [, navigate] = useRoute();
   const { regionId } = useGuide();
   const api = useAssistantApi(props);
+  const { t } = useT();
+  // Без входа или региона запрос не отправить: честная подпись вместо поля, которое не работает.
   if (!regionId || !props.session) {
     return (
-      <div className="assistant" aria-hidden="true">
-        <div className="assistant-pill">
-          <span className="assistant-pill-icon">🎙️</span>
-          <input type="search" readOnly tabIndex={-1} placeholder="Натисни на ватру або напиши запит…" />
-          <span className="assistant-action">🔥</span>
-        </div>
-      </div>
+      <Feature flag="module.assistant">
+        <p className="modern-assistant-off" data-testid="assistant-off">
+          <span aria-hidden="true">🎙️ </span>
+          {t(props.session ? "miniapp.home.assistantNeedsRegion" : "miniapp.home.assistantNeedsTelegram")}
+        </p>
+      </Feature>
     );
   }
   return (
@@ -315,9 +317,11 @@ function Home(props: RoutesProps) {
   const partnerOrgs = usePartnerOrgs();
   return (
     <>
-      <Welcome user={user} session={session} retryContext={retryContext} />
-      <div className="home-loc-row">
-        <HomeWeather {...props} />
+      <div className="home-top-row">
+        <Welcome user={user} session={session} retryContext={retryContext} />
+        <div className="home-loc-row">
+          <HomeWeather {...props} />
+        </div>
       </div>
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
@@ -769,6 +773,7 @@ function Shell({
   }, [path]);
   return (
     <>
+      <AppBackdrop />
       <AppTop
         path={path}
         profile={profile}

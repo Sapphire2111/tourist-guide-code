@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { TelegramWebApp } from "../telegram.js";
 import { useTheme } from "./ThemeProvider.js";
-import { NIGHT_WINDOW_COLORS, type Theme } from "./theme.js";
+import { DAY_HEADER_COLOR, NIGHT_WINDOW_COLORS, type Theme } from "./theme.js";
 import { isSeason, readSeason, saveSeason, WINDOW_COLORS, type Season } from "./season.js";
 
 type SeasonState = { season: Season; setSeason: (s: Season) => void };
@@ -38,7 +38,7 @@ export function syncTelegramColors(
   const at = (v: string) => !webApp.isVersionAtLeast || webApp.isVersionAtLeast(v);
   const { bg, surface } = theme === "night" ? NIGHT_WINDOW_COLORS : WINDOW_COLORS[season];
   if (at("6.1")) safe(() => webApp.setBackgroundColor?.(bg));
-  if (at("6.9")) safe(() => webApp.setHeaderColor?.(surface));
+  if (at("6.9")) safe(() => webApp.setHeaderColor?.(theme === "night" ? surface : DAY_HEADER_COLOR));
   if (at("7.10")) safe(() => webApp.setBottomBarColor?.(surface));
 }
 

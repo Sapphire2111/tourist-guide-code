@@ -1,3 +1,4 @@
+import { DAY_HEADER_COLOR } from "./theme.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -101,7 +102,8 @@ describe("сезон", () => {
         <SeasonSwitcher />
       </SeasonProvider>,
     );
-    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.autumn.surface);
+    // Шапка окна «День» — верх неба картинки, не зависит от сезона: сливается с верхней полосой.
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(DAY_HEADER_COLOR);
     expect(screen.getByRole("button", { name: "Осінь" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Зима" }));
     expect(document.documentElement.getAttribute("data-season")).toBe("winter");

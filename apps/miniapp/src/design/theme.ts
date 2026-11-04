@@ -13,10 +13,13 @@ export const THEME_NAMES: Record<Theme, MessageKey> = {
 export const THEME_STORAGE_KEY = "tg.theme";
 
 /**
- * Цвета окна Telegram для ночи (день — по сезону, season.ts): фон и шапка совпадают с --app-bg / --top-bg темы
- * (#091913, modern.css), чтобы шапка Telegram сливалась с верхней полосой. Те же значения — в public/season-boot.js.
+ * Цвета окна Telegram для ночи: фон — --app-bg, шапка — верх неба ночной картинки (--top-bg, modern.css), чтобы шапка
+ * Telegram сливалась с верхней полосой. Те же значения — в public/season-boot.js.
  */
-export const NIGHT_WINDOW_COLORS = { bg: "#091913", surface: "#091913" } as const;
+export const NIGHT_WINDOW_COLORS = { bg: "#091913", surface: "#071510" } as const;
+
+/** Шапка окна Telegram днём — верх рассветного неба (--bar-sky, modern.css); фон окна днём — по сезону (season.ts). */
+export const DAY_HEADER_COLOR = "#FDE8D0";
 
 export function isTheme(v: unknown): v is Theme {
   return v === "day" || v === "night";

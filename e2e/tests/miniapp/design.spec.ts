@@ -17,7 +17,7 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
   await page.goto("/");
   await expect(page.getByTestId("venue-summary")).toBeAttached();
   await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
-  await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Запитай у гір, чого бажаєш" })).toBeVisible();
   await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(8);
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({ path: testInfo.outputPath("implemented-modern-home.png"), fullPage: false });
@@ -78,7 +78,7 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
 test("modern narrow screen retains working list", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Запитай у гір, чого бажаєш" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expectNoSeriousA11yViolations(page);
   await page

@@ -30,7 +30,9 @@
     summer: ["#FDFBF6", "#FFFFFF"],
     autumn: ["#FAF5EE", "#FFFDF9"],
   }[season];
-  if (theme === "night") colors = ["#091913", "#091913"]; // как NIGHT_WINDOW_COLORS (theme.ts) и --top-bg
+  // Ночь — как NIGHT_WINDOW_COLORS (theme.ts) и --top-bg; день — шапка как DAY_HEADER_COLOR и --bar-sky (верх неба картинки).
+  if (theme === "night") colors = ["#091913", "#071510"];
+  else colors[1] = "#FDE8D0";
   var tg = window.Telegram && window.Telegram.WebApp;
   if (!tg || tg.platform === "unknown") return;
   var at = function (v) {

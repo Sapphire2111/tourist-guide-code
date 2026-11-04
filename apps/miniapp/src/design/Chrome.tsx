@@ -80,9 +80,9 @@ export type ScanControl = { start: () => void; message: MessageKey | null };
 const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 /**
- * Верхня смуга в стилі Концепту Б «Мольфарська Ватра»:
- * ліворуч — круглий значок вогника 🔥 (відкриває налаштування) та підпис «Мольфарський Гід / Яремче — Буковель ▾»,
- * праворуч — капсули «📷 QR» та «🆘 112».
+ * Верхняя полоса по Концепту Б: слева значок огня (открывает меню: сезон, тема, профиль) и подпись с выбором локации
+ * (только на главной), справа — «QR» (если сканер доступен, только на главной) и «112» (ведёт на экран помощи /help,
+ * номер не набирает). Сообщение сканера — плашка под полосой. На главной — скрытый заголовок h1.
  */
 export function AppTop({
   path,
@@ -154,9 +154,9 @@ export function AppTop({
       </button>
       <div className="modern-top-brand">
         <span className="modern-top-kicker" aria-hidden="true">
-          Мольфарський Гід
+          {t("miniapp.top.brand")}
         </span>
-        <div className="modern-top-loc">{location}</div>
+        {location && <div className="modern-top-loc">{location}</div>}
       </div>
       {home && <h1 className="kosiv-sr-only">{t("app.name")}</h1>}
       {scan && (
@@ -168,32 +168,25 @@ export function AppTop({
           {scan.message ? t(scan.message) : ""}
         </p>
       )}
-      {home &&
-        (scan ? (
-          <button
-            type="button"
-            className="kosiv-menu-btn modern-qr-pill"
-            aria-label={t("miniapp.scan.open")}
-            data-testid="scan-btn"
-            onClick={scan.start}
-          >
-            <span aria-hidden="true">📷</span>
-            <b aria-hidden="true">QR</b>
-          </button>
-        ) : (
-          <span className="kosiv-menu-btn modern-qr-pill" aria-hidden="true">
-            <span>📷</span>
-            <b>QR</b>
-          </span>
-        ))}
-      <Link to="/help" className="modern-help" aria-label={t("miniapp.modern.help")}>
+      {home && scan && (
+        <button
+          type="button"
+          className="kosiv-menu-btn modern-qr-pill"
+          aria-label={t("miniapp.scan.open")}
+          data-testid="scan-btn"
+          onClick={scan.start}
+        >
+          <span aria-hidden="true">📷</span>
+          <b aria-hidden="true">QR</b>
+        </button>
+      )}
+      <Link to="/help" className="modern-help" aria-label={t("miniapp.top.help")} data-testid="help-112">
         <span className="modern-sos-icon" aria-hidden="true">
           🆘
         </span>
         <b className="modern-sos-num" aria-hidden="true">
           112
         </b>
-        <span className="kosiv-sr-only">{t("miniapp.modern.help")}</span>
       </Link>
       {open && (
         <div

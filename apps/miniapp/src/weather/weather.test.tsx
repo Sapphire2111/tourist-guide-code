@@ -6,6 +6,7 @@ import type { ApiClient } from "@tg/api-client";
 import { I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
+import { LOCATION_STORAGE_KEY, LocationProvider } from "../guide/LocationProvider.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { formatTemp, WeatherChip } from "./Weather.js";
 import {
@@ -87,9 +88,10 @@ describe("погода на главной", () => {
     const chip = await screen.findByTestId("weather-chip");
     expect(api.forecast).toHaveBeenCalledWith({ lat: 48.45, lng: 24.55 }, expect.anything());
     expect(chip.textContent).toContain("+2°");
-    expect(chip.getAttribute("aria-label")).toBe("Погода: Хмарно, +2°. Відкрити прогноз");
+    expect(chip.getAttribute("aria-label")).toBe("Погода, Hotel: Хмарно, +2°. Відкрити прогноз");
+    expect(within(chip).getByTestId("weather-place").textContent).toBe("Hotel");
     fireEvent.click(chip);
-    const sheet = screen.getByRole("dialog", { name: "Погода на 5 днів" });
+    const sheet = screen.getByRole("dialog", { name: "Погода на 5 днів: Hotel" });
     expect(sheet.getAttribute("aria-modal")).toBe("true");
     expect(within(sheet).getByTestId("weather-warnings").textContent).toContain("Гроза");
     expect(within(sheet).getByTestId("weather-days").querySelectorAll("li")).toHaveLength(5);
@@ -137,13 +139,81 @@ describe("погода на главной", () => {
     api.forecast.mockImplementation(() => new Promise<Forecast | null>(() => {}));
     rerender(tree(api, { lat: 48.34, lng: 24.57 }, webApp));
     expect(api.forecast).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("dialog", { name: "Погода на 5 днів" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Погода на 5 днів: Hotel" })).toBeTruthy();
     // Перерисовка не перезапускает эффект листа (onClose стабилен).
     expect(back.show).toHaveBeenCalledTimes(1);
     act(() => onBack!());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(back.hide).toHaveBeenCalled();
     expect(back.offClick).toHaveBeenCalled();
+  });
+
+  describe("для какой точки прогноз", () => {
+    const YAR = { id: "yar", name: { uk: "Яремче" }, placeCount: 3, location: { lat: 48.45, lng: 24.55 } };
+    const TAT = { id: "tat", name: { uk: "Татарів" }, placeCount: 2, location: { lat: 48.35, lng: 24.58 } };
+    const located = (api: WeatherApi, base: { name: string; point: { lat: number; lng: number } } | null) => (
+      <I18nProvider locale="uk">
+        <GuideProvider
+          value={{
+            api: { ...noopGuideApi(), localities: async () => [YAR, TAT] },
+            analytics: noopAnalytics,
+            base,
+            regionId: "r",
+            signedIn: false,
+          }}
+        >
+          <LocationProvider>
+            <WeatherChip api={api} />
+          </LocationProvider>
+        </GuideProvider>
+      </I18nProvider>
+    );
+    afterEach(() => localStorage.clear());
+
+    it("без выбора — название первого пункта региона, а не «регион»", async () => {
+      const api = { forecast: vi.fn(async () => forecast) };
+      render(located(api, null));
+      const chip = await screen.findByTestId("weather-chip");
+      expect(within(chip).getByTestId("weather-place").textContent).toBe("Яремче");
+      expect(chip.getAttribute("aria-label")).toContain("Погода, Яремче:");
+      expect(api.forecast).toHaveBeenCalledWith(YAR.location, expect.anything());
+    });
+
+    it("несколько выбранных: прогноз первого, переключатель городов; другой город запрашивается только при выборе", async () => {
+      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "r", ids: ["yar", "tat"] }));
+      const api = { forecast: vi.fn(async () => forecast) };
+      render(located(api, null));
+      const chip = await screen.findByTestId("weather-chip");
+      expect(api.forecast).toHaveBeenCalledTimes(1);
+      fireEvent.click(chip);
+      const sheet = screen.getByRole("dialog", { name: "Погода на 5 днів: Яремче" });
+      const group = within(sheet).getByRole("group", { name: "Місто прогнозу" });
+      expect(within(group).getByRole("button", { name: "Яремче" }).getAttribute("aria-pressed")).toBe("true");
+      expect(api.forecast).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(group).getByRole("button", { name: "Татарів" }));
+      await screen.findByRole("dialog", { name: "Погода на 5 днів: Татарів" });
+      expect(api.forecast).toHaveBeenCalledTimes(2);
+      expect(api.forecast).toHaveBeenLastCalledWith(TAT.location, expect.anything());
+      expect(within(group).getByRole("button", { name: "Татарів" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      expect(chip.getAttribute("aria-label")).toContain("Погода, Татарів:");
+    });
+
+    it("у выбранного города нет прогноза: сообщение и переключатель; после закрытия пилюля возвращается", async () => {
+      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "r", ids: ["yar", "tat"] }));
+      const api = {
+        forecast: vi.fn(async (p: { lat: number }) => (p.lat === TAT.location.lat ? null : forecast)),
+      };
+      render(located(api, null));
+      fireEvent.click(await screen.findByTestId("weather-chip"));
+      fireEvent.click(screen.getByRole("button", { name: "Татарів" }));
+      expect(await screen.findByText("Для «Татарів» прогнозу зараз немає.")).toBeTruthy();
+      expect(screen.getByRole("dialog", { name: "Погода на 5 днів: Татарів" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Закрити прогноз" }));
+      const chip = await screen.findByTestId("weather-chip");
+      expect(chip.getAttribute("aria-label")).toContain("Погода, Яремче:");
+    });
   });
 
   it("нет прогноза — ничего не показывается", async () => {

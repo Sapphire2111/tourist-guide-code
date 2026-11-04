@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { NIGHT_WINDOW_COLORS } from "./theme.js";
+import { DAY_HEADER_COLOR, NIGHT_WINDOW_COLORS } from "./theme.js";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
@@ -35,6 +35,16 @@ describe("загрузочные атрибуты", () => {
     const night = read("src", "design", "modern.css").split('html[data-theme="night"] {')[1] ?? "";
     expect(/--top-bg:\s*(#[0-9a-f]{6})/i.exec(night)![1]!.toLowerCase()).toBe(
       NIGHT_WINDOW_COLORS.surface.toLowerCase(),
+    );
+  });
+
+  it("шапка окна Telegram в «День» — верх неба: одна в theme.ts, season-boot.js и --bar-sky", () => {
+    const boot = read("public", "season-boot.js");
+    expect(/else colors\[1\] = "(#[0-9A-Fa-f]{6})"/.exec(boot)![1]).toBe(DAY_HEADER_COLOR);
+    const css = read("src", "design", "modern.css");
+    expect(/--bar-sky:\s*(#[0-9a-f]{6})/i.exec(css)![1]!.toLowerCase()).toBe(DAY_HEADER_COLOR.toLowerCase());
+    expect(/\.app-backdrop \{[\s\S]*?180deg,\s*(#[0-9a-f]{6}) 0/i.exec(css)![1]!.toLowerCase()).toBe(
+      DAY_HEADER_COLOR.toLowerCase(),
     );
   });
 });
