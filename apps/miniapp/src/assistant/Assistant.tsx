@@ -4,7 +4,7 @@
 import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
+import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
 import { useGuide } from "../guide/context.js";
 import { distanceMeters, type LatLng } from "../guide/geo.js";
@@ -16,6 +16,7 @@ import type { LocalityOption } from "../guide/types.js";
 import { useOptionalHost } from "../host/context.js";
 import { useErrorText } from "../host/errors.js";
 import { markPlanPartial } from "../plan/partial-notice.js";
+import { useBackStep } from "../screen-state.js";
 import type {
   AssistantApi,
   AssistantIntent,
@@ -727,6 +728,11 @@ function AddToMyPlan({
   const enabled = useFeatureFlag("module.host_requests");
   const [, navigate] = useRoute();
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  const { session, setUi } = useAssistantSession();
+  const last = session.turns[session.turns.length - 1];
+  const planId = last && session.ui?.turn === last.id ? session.ui.planId : undefined;
+  // Пока план создаётся, «Назад» не уводит с экрана: иначе кнопка вернулась бы активной и создала второй.
+  useBackStep(state === "busy", () => undefined);
   if (!host || !enabled) return null;
   const add = async () => {
     setState("busy");
@@ -740,6 +746,7 @@ function AddToMyPlan({
         startDate: plan.days[0]?.date ?? null,
       });
       createdId = created.id;
+      setUi({ planId: created.id });
       // По одному пункту: api «Мій план» добавляет место галочкой в часть дня.
       for (const d of plan.days)
         for (const p of d.parts)
@@ -756,6 +763,12 @@ function AddToMyPlan({
       } else setState("error");
     }
   };
+  if (planId && state !== "busy")
+    return (
+      <Link to={`/plan/saved/${planId}`} className="kosiv-cta" data-testid="assistant-plan-open">
+        {t("miniapp.assistant.plan.open")}
+      </Link>
+    );
   return (
     <>
       <Button onClick={() => void add()} disabled={state === "busy"} data-testid="assistant-plan-add">

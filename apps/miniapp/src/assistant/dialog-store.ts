@@ -14,6 +14,8 @@ export type DialogUi = {
   shown: number;
   dayIndex: number;
   scrollY: number;
+  /** План, уже созданный из этого ответа: повторно не создаётся, кнопка ведёт к нему. */
+  planId?: string;
 };
 
 /**

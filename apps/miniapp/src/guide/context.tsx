@@ -68,7 +68,8 @@ export type Async<T> =
 /**
  * Загрузка данных с повтором: `const [state, retry] = useAsync(() => api.x(), [deps])`.
  * `memo` — данные запоминаются за записью истории: возврат «Назад» с теми же параметрами (`memo.key`) показывает
- * их сразу, без запроса и мигания (back.ts). Новый заход на экран — новая запись, данные свежие.
+ * их сразу, без мигания (back.ts); данные старше срока жизни обновляются в фоне. Смена региона — другой ключ.
+ * Новый заход на экран — новая запись, данные свежие.
  */
 export function useAsync<T>(
   load: (signal: AbortSignal) => Promise<T>,
@@ -76,8 +77,10 @@ export function useAsync<T>(
   memo?: { slot: string; key: string },
 ): [Async<T>, () => void] {
   const [entry] = useState(() => (memo ? currentEntryKey() : ""));
+  const region = useContext(GuideContext)?.regionId ?? "";
+  const memoKey = memo ? `${region}|${memo.key}` : "";
   const [state, setState] = useState<Async<T>>(() => {
-    const hit = memo && readMemo<T>(entry, memo.slot, memo.key);
+    const hit = memo && readMemo<T>(entry, memo.slot, memoKey);
     return hit ? { status: "ready", data: hit.data } : { status: "loading" };
   });
   const [attempt, setAttempt] = useState(0);
@@ -89,24 +92,24 @@ export function useAsync<T>(
     };
   }, [entry, memoSlot]);
   useEffect(() => {
-    const hit = memo && attempt === 0 ? readMemo<T>(entry, memo.slot, memo.key) : undefined;
-    if (hit) {
+    const hit = memo && attempt === 0 ? readMemo<T>(entry, memo.slot, memoKey) : undefined;
+    if (hit)
       setState((s) =>
         s.status === "ready" && s.data === hit.data ? s : { status: "ready", data: hit.data },
       );
-      return;
-    }
+    if (hit && !hit.stale) return;
     let alive = true;
     // Смена зависимостей отменяет прежнюю загрузку (догрузка страниц «Де жити» не продолжается впустую).
     const abort = new AbortController();
-    setState({ status: "loading" });
+    if (!hit) setState({ status: "loading" });
     load(abort.signal).then(
       (data) => {
         if (!alive) return;
-        if (memo) writeMemo(entry, memo.slot, memo.key, data);
+        if (memo) writeMemo(entry, memo.slot, memoKey, data);
         setState({ status: "ready", data });
       },
-      (error: unknown) => alive && setState({ status: "error", error }),
+      // Фоновое обновление не удалось — остаётся показанный список.
+      (error: unknown) => alive && !hit && setState({ status: "error", error }),
     );
     return () => {
       alive = false;

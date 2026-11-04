@@ -2,7 +2,7 @@
 // P05 — карточка брони с действиями (доступные переходы считает сервер по роли: allowedTransitions); ресурсы —
 // создание и правка (version, 409 versionConflict → обновить), правила доступности по дням недели, ручной статус
 // «Доступно зараз» с TTL. Телефон клиента — как отдаёт API (кассиру — нет). Экран грузится лениво.
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
@@ -92,6 +92,12 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
       ),
     [api, placeId, day, timeZone],
   );
+  // Брони из сохранённого открытого пункта больше нет в списке — без фантомного шага «Назад».
+  const openGone =
+    openId !== null && bookings.status === "ready" && !bookings.data.some((b) => b.id === openId);
+  useEffect(() => {
+    if (openGone) setOpenId(null);
+  }, [openGone, setOpenId]);
   if (gate || !abilities) return gate;
   const manage = abilities.manageResources;
   const open = openId && bookings.status === "ready" ? bookings.data.find((b) => b.id === openId) : undefined;

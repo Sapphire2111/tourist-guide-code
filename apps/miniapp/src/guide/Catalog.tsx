@@ -89,7 +89,10 @@ function CategoryPlaces({
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
   // Подраздел, запрос и вид — за записью истории: «Назад» из карточки места возвращает их как были.
-  const [categoryId, setCategoryId] = useScreenState("catalog.category", rootId);
+  const [savedCategory, setCategoryId] = useScreenState("catalog.category", rootId);
+  // Подраздел мог исчезнуть из справочника (другой регион после скана QR, правка каталога) — раздел целиком.
+  const categoryId =
+    savedCategory === rootId || subcategories.some((c) => c.id === savedCategory) ? savedCategory : rootId;
   // Подраздел — ступень «Назад»: сначала к разделу целиком, затем с экрана.
   useBackStep(categoryId !== rootId, () => setCategoryId(rootId));
   const [draft, setDraft] = useScreenState("catalog.draft", initialQuery);

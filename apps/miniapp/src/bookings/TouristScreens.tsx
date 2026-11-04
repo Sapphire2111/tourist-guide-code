@@ -4,7 +4,7 @@
 // альтернативу. Экран грузится лениво (не входит в первый экран).
 import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
 import { useBackStep, useScreenState } from "../screen-state.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
@@ -68,10 +68,8 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
     () => (resources.find((r) => r.availability.availableNow) ?? resources[0])?.id ?? "",
   );
   const [slot, setSlot] = useScreenState<Slot | null>("booking.slot", null);
-  // Подтверждение — без записи в хранилище; возврат из «Мої бронювання» показывает его же, а не новую бронь.
-  const [done, setDone] = useScreenState<Booking | null>("booking.done", null, { inMemoryOnly: true });
-  // Шаг формы: «Назад» — к выбору времени, а не с экрана.
-  useBackStep(slot !== null && done === null, () => setSlot(null));
+  // Подтверждение — только пока экран открыт: снимок статуса устарел бы, а слот в хранилище вернул бы форму.
+  const [done, setDone] = useState<Booking | null>(null);
   const [notice, setNotice] = useState<Message>(null);
   // Слот «заняли» после неясного исхода прежней попытки — возможно, это наша же бронь.
   const [checkMine, setCheckMine] = useState(false);
@@ -128,7 +126,10 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             setCheckMine(Boolean(maybeOurs));
             if (message) setReload((n) => n + 1);
           }}
-          onDone={setDone}
+          onDone={(booking) => {
+            setSlot(null);
+            setDone(booking);
+          }}
         />
       ) : (
         <>
@@ -306,6 +307,10 @@ function BookingForm({
   const ids = { people: useId(), phone: useId(), comment: useId(), consent: useId(), name: useId() };
   const phone = normalizePhone(phoneRaw);
   const uncertain = useRef(false);
+  // Шаг формы: «Назад» — к выбору времени; пока заявка отправляется, с формы не уйти (исход ещё неизвестен).
+  useBackStep(true, () => {
+    if (!busy) onBack(undefined, uncertain.current);
+  });
   const tg = webApp as ContactWebApp | undefined;
   const user = tg?.initDataUnsafe?.user;
   const contactName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : null;
@@ -412,7 +417,7 @@ function BookingForm({
             </>
           )}
         </dl>
-        <Button type="button" onClick={() => onBack()}>
+        <Button type="button" disabled={busy} onClick={() => onBack(undefined, uncertain.current)}>
           {t("miniapp.booking.changeTime")}
         </Button>
         <div>
@@ -521,6 +526,7 @@ function BookingForm({
 
 function Done({ place, booking }: { place: PlaceDetail; booking: Booking }) {
   const { t, locale } = useT();
+  const [, navigate] = useRoute();
   const { timeZone } = useBookings();
   return (
     <Stack>
@@ -537,7 +543,15 @@ function Done({ place, booking }: { place: PlaceDetail; booking: Booking }) {
           )}
         </p>
       </div>
-      <Link to="/bookings" className="kosiv-cta">
+      {/* Заменой: «Назад» из списка — не на снимок статуса и не на новую бронь того же места. */}
+      <Link
+        to="/bookings"
+        className="kosiv-cta"
+        onClick={(e) => {
+          e.preventDefault();
+          navigate("/bookings", { replace: true });
+        }}
+      >
         {t("miniapp.booking.mine")}
       </Link>
     </Stack>

@@ -32,7 +32,7 @@ import {
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { AssistantSessionProvider } from "./assistant/session.js";
-import { initNavigation, pressBack } from "./back.js";
+import { focusScreenHeading, initNavigation, pressBack, takeReturnFocus } from "./back.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
@@ -418,18 +418,27 @@ function useFocusHeading(path: string) {
       first.current = false;
       return;
     }
-    // Заголовок может появиться после загрузки данных — пробуем сразу и ещё раз позже.
-    const focus = () => {
-      const h1 = document.querySelector<HTMLElement>("main h1");
-      if (!h1) return false;
-      if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
-      // Без прокрутки к заголовку: новый экран и так сверху, возврат восстанавливает свою позицию (back.ts).
-      h1.focus({ preventScroll: true });
-      return true;
+    // Возврат на экран: фокус на ссылку, с которой ушли; её ещё нет (данные грузятся) — заголовок, затем ссылка.
+    const href = takeReturnFocus();
+    const focusLink = () => {
+      if (!href) return false;
+      const link = [...document.querySelectorAll<HTMLElement>("main a[href]")].find(
+        (a) => a.getAttribute("href") === href,
+      );
+      link?.focus({ preventScroll: true });
+      return Boolean(link);
     };
-    if (focus()) return;
-    const id = window.setTimeout(focus, 300);
-    return () => window.clearTimeout(id);
+    if (focusLink()) return;
+    let heading = focusScreenHeading();
+    const timers = [100, 300, 800, 1500, 3000].map((ms) =>
+      window.setTimeout(() => {
+        const active = document.activeElement;
+        // Пользователь уже перешёл к другому элементу — фокус не отбираем.
+        if (active && active !== document.body && active.tagName !== "H1") return;
+        if (!focusLink() && !heading) heading = focusScreenHeading();
+      }, ms),
+    );
+    return () => timers.forEach((id) => window.clearTimeout(id));
   }, [path]);
 }
 

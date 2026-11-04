@@ -4,6 +4,7 @@ import type { ApiClient } from "@tg/api-client";
 import { SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { clearAssistantDialog } from "./assistant/dialog-store.js";
+import { clearNavigationData } from "./back.js";
 import { messagingGranted } from "./consents.js";
 import { requestWriteAccess } from "./Entry.js";
 import { useScreenState } from "./screen-state.js";
@@ -75,8 +76,11 @@ export function Profile({
   const requestData = async (kind: Kind) => {
     setConfirmDelete(false);
     const res = await api.POST("/me/privacy-requests", { body: { kind } });
-    // Запрос на удаление — локальная история ассистента вкладки тоже стирается.
-    if (kind === "delete" && !res.error) clearAssistantDialog();
+    // Запрос на удаление — локальная история ассистента и сохранённое состояние экранов вкладки тоже стираются.
+    if (kind === "delete" && !res.error) {
+      clearAssistantDialog();
+      clearNavigationData();
+    }
     done(!res.error);
     await refresh();
   };

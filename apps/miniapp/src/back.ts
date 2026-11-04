@@ -12,14 +12,27 @@ const STORE_KEY = "tg.nav.v1";
 const PERSIST_MAX = 30;
 /** Сколько последних записей держат в памяти данные списков (страницы мест). */
 const MEMO_MAX = 10;
+/** Срок жизни данных списка: старше — при возврате показываются сразу и обновляются в фоне («Відкрито», цены). */
+export const MEMO_TTL_MS = 5 * 60_000;
 
-type Entry = { key: string; hash: string; scroll: number; slots: Record<string, unknown> };
+type Entry = {
+  key: string;
+  hash: string;
+  scroll: number;
+  slots: Record<string, unknown>;
+  /** Ссылка приложения, по которой ушли с экрана: при возврате фокус — на неё. */
+  focusHref?: string;
+};
 type Stamp = { idx: number; key: string };
-type Memo = { key: string; data: unknown };
+type Memo = { key: string; data: unknown; at: number };
 
 let stack: (Entry | null)[] = [];
 let index = -1;
 let counter = 0;
+/** Нижняя запись, до которой реально можно дойти назад: браузер отбрасывает старые (в Chromium — сверх 50). */
+let floor = 0;
+/** Ссылка, на которую вернуть фокус после возврата на экран. */
+let pendingFocus: string | undefined;
 /** Значения вне sessionStorage: координаты устройства, данные списков. */
 const volatile = new Map<string, Map<string, unknown>>();
 const memos = new Map<string, Map<string, Memo>>();
@@ -154,6 +167,7 @@ function sync(): Entry {
   const stamp = stampOf(window.history.state);
   const hash = normalizeHash(window.location.hash);
   if (!stamp) {
+    pendingFocus = undefined;
     const first = index < 0;
     if (first) stack = [];
     const idx = first ? 0 : index + 1;
@@ -191,6 +205,7 @@ function sync(): Entry {
   }
   entry.hash = hash;
   index = stamp.idx;
+  pendingFocus = entry.focusHref;
   restoreScroll(entry.scroll);
   return entry;
 }
@@ -201,15 +216,24 @@ function onDocumentClick(e: MouseEvent): void {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
   if (!(a instanceof HTMLAnchorElement) || a.target === "_blank") return;
-  sync();
+  const from = sync();
   const target = normalizeHash(new URL(a.href).hash);
   if (target === normalizeHash(window.location.hash)) {
     e.preventDefault();
     return;
   }
-  if (index > 0 && stack[index - 1]?.hash === target) {
+  from.focusHref = a.getAttribute("href") ?? undefined;
+  // Двойной тап: возврат по первому ещё не случился — второй не уводит на шаг дальше.
+  if (backPending()) {
     e.preventDefault();
-    window.history.back();
+    return;
+  }
+  if (index > floor && stack[index - 1]?.hash === target) {
+    e.preventDefault();
+    // Запись отброшена браузером — обычный переход по ссылке.
+    stepBack(Date.now, () => {
+      window.location.hash = target;
+    });
   }
 }
 
@@ -276,16 +300,23 @@ export function deleteSlot(key: string, slot: string, inMemoryOnly = false): voi
   persist();
 }
 
-/** Данные списка записи (только память): возврат показывает их сразу, без запроса. */
-export function readMemo<T>(key: string, slot: string, depsKey: string): { data: T } | undefined {
+/** Данные списка записи (только память): возврат показывает их сразу; `stale` — пора обновить в фоне. */
+export function readMemo<T>(
+  key: string,
+  slot: string,
+  depsKey: string,
+  now: number = Date.now(),
+): { data: T; stale: boolean } | undefined {
   const memo = memos.get(key)?.get(slot);
-  return memo && memo.key === depsKey ? { data: memo.data as T } : undefined;
+  return memo && memo.key === depsKey
+    ? { data: memo.data as T, stale: now - memo.at >= MEMO_TTL_MS }
+    : undefined;
 }
 
 export function writeMemo(key: string, slot: string, depsKey: string, data: unknown): void {
   if (!findEntry(key)) return;
   const slots = memos.get(key) ?? new Map<string, Memo>();
-  slots.set(slot, { key: depsKey, data });
+  slots.set(slot, { key: depsKey, data, at: Date.now() });
   memos.set(key, slots);
 }
 
@@ -307,24 +338,81 @@ export function parentOf(path: string): string {
 
 /** Повторное нажатие, пока возврат по истории не случился (адрес тот же), — не уводит на шаг дальше (из Mini App). */
 const GUARD_MS = 1000;
+/** Сколько ждать возврата: браузер отбросил запись — history.back() молчит, кнопка не должна быть мёртвой. */
+export const BACK_TIMEOUT_MS = 500;
 let backingUntil = 0;
 let backingFrom: string | null = null;
+let backTimer: ReturnType<typeof setTimeout> | undefined;
+
+function backPending(now: () => number = Date.now): boolean {
+  return now() < backingUntil && window.location.hash === backingFrom;
+}
+
+/** history.back() с защитой от повтора; адрес не сменился за BACK_TIMEOUT_MS — ниже записей нет, `onStuck`. */
+function stepBack(now: () => number, onStuck: () => void): void {
+  recordScroll();
+  const from = window.location.hash;
+  const fromIndex = index;
+  backingUntil = now() + GUARD_MS;
+  backingFrom = from;
+  clearTimeout(backTimer);
+  backTimer = setTimeout(() => {
+    sync();
+    if (window.location.hash !== from || index !== fromIndex) return;
+    floor = index;
+    backingUntil = 0;
+    onStuck();
+  }, BACK_TIMEOUT_MS);
+  window.history.back();
+}
 
 export function goBack(
   navigate: (to: string, opts?: { replace?: boolean }) => void,
   now: () => number = Date.now,
 ): void {
   sync();
-  if (now() < backingUntil && window.location.hash === backingFrom) return;
-  // history.length — страховка: браузер мог отбросить старые записи.
-  if (index > 0 && window.history.length > 1) {
-    recordScroll();
-    backingUntil = now() + GUARD_MS;
-    backingFrom = window.location.hash;
-    window.history.back();
+  if (backPending(now)) return;
+  const toParent = () => navigate(parentOf(pathFromHash(window.location.hash)), { replace: true });
+  if (index > floor && window.history.length > 1) {
+    stepBack(now, toParent);
     return;
   }
-  navigate(parentOf(pathFromHash(window.location.hash)), { replace: true });
+  toParent();
+}
+
+/** Ссылка, с которой ушли с экрана, если на него вернулись (один раз). */
+export function takeReturnFocus(): string | undefined {
+  const href = pendingFocus;
+  pendingFocus = undefined;
+  return href;
+}
+
+/** Фокус на заголовок экрана без прокрутки; false — заголовка ещё нет. */
+export function focusScreenHeading(): boolean {
+  const h1 = document.querySelector<HTMLElement>("main h1") ?? document.querySelector<HTMLElement>("h1");
+  if (!h1) return false;
+  if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
+  h1.focus({ preventScroll: true });
+  return true;
+}
+
+/** Запрос на удаление данных: состояние экранов, запросы в адресах прежних записей и данные списков стираются. */
+export function clearNavigationData(): void {
+  clearTimeout(persistTimer);
+  persistTimer = undefined;
+  stack.forEach((e, i) => {
+    if (!e) return;
+    e.slots = {};
+    delete e.focusHref;
+    if (i !== index) e.hash = "";
+  });
+  volatile.clear();
+  memos.clear();
+  try {
+    sessionStorage.removeItem(STORE_KEY);
+  } catch {
+    // нет хранилища — нечего очищать
+  }
 }
 
 /** Нажатие «Назад»: сначала слой поверх экрана (лист, фото, шаг формы), затем переход. */
@@ -337,8 +425,11 @@ export function resetNavigation(): void {
   stopRestore?.();
   clearTimeout(persistTimer);
   persistTimer = undefined;
+  clearTimeout(backTimer);
   stack = [];
   index = -1;
+  floor = 0;
+  pendingFocus = undefined;
   volatile.clear();
   memos.clear();
   backingUntil = 0;

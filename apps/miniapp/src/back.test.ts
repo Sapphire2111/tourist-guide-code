@@ -2,6 +2,8 @@
 // двойное нажатие — один шаг; ссылка на предыдущий экран — шаг назад; прокрутка и состояние — за записью.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BACK_TIMEOUT_MS,
+  clearNavigationData,
   currentEntryKey,
   goBack,
   initNavigation,
@@ -10,6 +12,7 @@ import {
   pressBack,
   readSlot,
   resetNavigation,
+  takeReturnFocus,
   writeSlot,
 } from "./back.js";
 import { interceptBack } from "./telegram.js";
@@ -125,6 +128,43 @@ describe("goBack", () => {
   });
 });
 
+describe("лимит истории браузера", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("history.back() молчит (запись отброшена) — родитель заменой, дальше без ожидания", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "#/");
+    resetNavigation();
+    initNavigation();
+    push("#/plan");
+    push("#/plan/saved/x");
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const navigate = vi.fn();
+    goBack(navigate);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(BACK_TIMEOUT_MS);
+    expect(navigate).toHaveBeenCalledWith("/plan/saved", { replace: true });
+    // Нижняя запись известна: следующее нажатие — сразу родитель, кнопка не «мёртвая».
+    navigate.mockClear();
+    goBack(navigate);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith("/plan/saved", { replace: true });
+  });
+
+  it("возврат случился вовремя — родитель не вызывается", async () => {
+    initNavigation();
+    push("#/plan");
+    const navigate = vi.fn();
+    await waitPop(() => goBack(navigate));
+    await new Promise((r) => setTimeout(r, BACK_TIMEOUT_MS + 50));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("#/");
+  });
+});
+
 describe("pressBack", () => {
   it("открыт слой — закрывается он, перехода нет; затем обычный «Назад»", () => {
     window.history.replaceState(null, "", "#/place/x");
@@ -175,6 +215,28 @@ describe("ссылки приложения", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
     expect(clickLink("#/plan")).toBe(false);
     expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it("двойной тап по ссылке на предыдущий экран — один шаг", () => {
+    initNavigation();
+    push("#/a");
+    push("#/b");
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    expect(clickLink("#/a")).toBe(false);
+    expect(clickLink("#/a")).toBe(false);
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it("при возврате — ссылка, с которой ушли (один раз); новый экран — без неё", async () => {
+    initNavigation();
+    push("#/a");
+    clickLink("#/b");
+    push("#/b");
+    expect(takeReturnFocus()).toBeUndefined();
+    await waitPop(() => window.history.back());
+    expect(currentEntryKey()).toBeTruthy();
+    expect(takeReturnFocus()).toBe("#/b");
+    expect(takeReturnFocus()).toBeUndefined();
   });
 
   it("другая ссылка и клик с модификатором — обычный переход", () => {
@@ -233,6 +295,25 @@ describe("состояние за записью истории", () => {
     window.dispatchEvent(new Event("pagehide"));
     expect(readSlot(key, "geo", true)).toEqual({ lat: 1 });
     expect(sessionStorage.getItem("tg.nav.v1")).not.toContain("lat");
+  });
+});
+
+describe("clearNavigationData", () => {
+  it("запрос на удаление данных: хранилище и значения экранов стёрты, запросы прежних адресов тоже", () => {
+    initNavigation();
+    push("#/search?q=secret");
+    const key = currentEntryKey();
+    writeSlot(key, "catalog.q", "secret");
+    writeSlot(key, "geo", { lat: 1 }, true);
+    push("#/profile");
+    window.dispatchEvent(new Event("pagehide"));
+    expect(sessionStorage.getItem("tg.nav.v1")).toContain("secret");
+    clearNavigationData();
+    expect(sessionStorage.getItem("tg.nav.v1")).toBeNull();
+    expect(readSlot(key, "catalog.q")).toBeUndefined();
+    expect(readSlot(key, "geo", true)).toBeUndefined();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(sessionStorage.getItem("tg.nav.v1")).not.toContain("secret");
   });
 });
 

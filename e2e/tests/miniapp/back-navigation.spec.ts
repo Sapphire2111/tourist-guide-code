@@ -346,6 +346,39 @@ test.describe("в Telegram (QR отеля)", () => {
   });
 });
 
+test.describe("лимит истории и партнёр", () => {
+  test("больше 50 записей: кнопка не «мёртвая», доходит до главной", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await page.evaluate(async () => {
+      for (let i = 1; i <= 60; i++) {
+        window.location.hash = `/nope/${i}`;
+        await new Promise((r) => window.addEventListener("hashchange", r, { once: true }));
+      }
+    });
+    await expect(page).toHaveURL(/#\/nope\/60$/);
+    // Назад до нижней сохранённой записи и ниже: каждое нажатие что-то делает, пока не главная.
+    for (let i = 0; i < 70; i++) {
+      if (await page.getByTestId("home-sections").isVisible()) break;
+      const before = page.url();
+      await press(page);
+      await expect.poll(() => page.url(), { timeout: 3000 }).not.toBe(before);
+    }
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await expect.poll(() => backVisible(page)).toBe(false);
+  });
+
+  test("возврат: фокус на ссылке, с которой ушли", async ({ page }) => {
+    await page.goto("/");
+    const link = page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" });
+    await link.click();
+    await expect(page).toHaveURL(/#\/section\/eat$/);
+    await press(page);
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await expect(link).toBeFocused();
+  });
+});
+
 test.describe("старый клиент Telegram (Bot API 6.0): BackButton без действия", () => {
   test.use({ telegram: { version: "6.0" } });
 

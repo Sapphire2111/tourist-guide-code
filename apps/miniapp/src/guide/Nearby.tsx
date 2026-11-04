@@ -80,7 +80,10 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
     { inMemoryOnly: true },
   );
 
+  // Запрос уже был: ушли с экрана, пока он шёл, — при возврате не спрашиваем снова без нажатия.
+  const [asked, setAsked] = useScreenState("nearby.asked", false, { inMemoryOnly: true });
   const locate = () => {
+    setAsked(true);
     setGeo({ status: "locating" });
     void requestLocation(webApp).then((point) =>
       setGeo(point ? { status: "granted", point } : { status: "denied" }),
@@ -88,7 +91,9 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   };
   // «Що поруч зі мною зараз» с главной — запрос сразу (это и есть нажатие пользователя).
   useEffect(() => {
-    if (geo.status === "locating") locate();
+    if (geo.status !== "locating") return;
+    if (asked) setGeo({ status: "idle" });
+    else locate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useMyLocation]);
 
