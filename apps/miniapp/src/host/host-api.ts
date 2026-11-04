@@ -109,6 +109,8 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
     iconUrl: safeIcon(w.iconUrl, API_URL),
   })),
   weatherSource: p.weatherSource ?? null,
+  // Старый ответ api без поля — без Claude.
+  generation: p.generation ?? null,
 });
 
 /** Правка плана → тело PATCH /me/plan/{id}. */
@@ -244,6 +246,12 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
       ),
     createPlan: async (trip) =>
       planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), ...trip } }))),
+    regeneratePlan: async (id) =>
+      planOf(
+        await ok(
+          api.POST("/me/plan/{id}/regenerate", { params: { path: { id } }, body: { regionId: region() } }),
+        ),
+      ),
     updatePlan: async (id, change) =>
       planOf(
         await ok(

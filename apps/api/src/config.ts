@@ -128,6 +128,16 @@ export const apiEnvSchema = z
       blankToUndefined,
       z.coerce.number().int().min(0).max(10_000).default(40),
     ),
+    // «Мій план» через Claude (флаг planner.ai): планов в сутки на всё api; сверх — правиловый план. По умолчанию 300.
+    PLANNER_AI_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(100_000).default(300),
+    ),
+    // И на пользователя в сутки (вместе с «Інший варіант»). По умолчанию 15.
+    PLANNER_AI_USER_DAILY_LIMIT: z.preprocess(
+      blankToUndefined,
+      z.coerce.number().int().min(0).max(10_000).default(15),
+    ),
     // GET /metrics (T1-18): задан — только с Authorization: Bearer; в prod без него /metrics не подключается.
     METRICS_TOKEN: optionalString(),
   })

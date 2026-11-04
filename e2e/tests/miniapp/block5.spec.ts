@@ -243,6 +243,45 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("plan-status")).toHaveText("Параметри збережено — варіанти оновлено.");
     await expect(page.getByTestId("plan-day")).toHaveCount(1);
   });
+
+  test("Мій план через Claude (planner.ai): «Складаємо план…» → план → «Інший варіант» → інший план; a11y", async ({
+    page,
+  }) => {
+    const state = apiMockState.get(page)!;
+    state.aiPlanner = true;
+    // Позже зарегистрированный маршрут Playwright проверяется первым — флаги с planner.ai.
+    await page.route("**/feature-flags*", (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            { key: "module.host_requests", enabled: true },
+            { key: "planner.ai", enabled: true },
+          ],
+        },
+        headers: { "access-control-allow-origin": "*" },
+      }),
+    );
+    await page.goto("/#/plan/new");
+    await page.getByRole("button", { name: "Більше: Діти" }).click();
+    await page.getByRole("button", { name: "Скласти план" }).click();
+    await expect(page.getByTestId("plan-status")).toHaveText("Складаємо план… Це займе до хвилини.");
+    await expect(page.getByRole("heading", { level: 1, name: "Водоспад, колиба й чани" })).toBeVisible();
+    const day1 = page.getByTestId("plan-day").first();
+    await expect(day1.getByTestId("plan-item")).toHaveCount(3);
+    await expect(day1.getByTestId("plan-item").first()).toContainText("Водоспад Пробій");
+    await expectNoSeriousA11yViolations(page);
+
+    await page.getByRole("button", { name: "Інший варіант" }).click();
+    await expect(page.getByTestId("plan-status")).toHaveText("Складаємо інший варіант…");
+    await expect(page.getByTestId("plan-status")).toHaveText("Готово: новий варіант плану.");
+    await expect(page.getByRole("heading", { level: 1, name: "Музей, ринок і вечеря" })).toBeVisible();
+    await expect(day1.getByTestId("plan-item").first()).toContainText("Музей «Гуцульщина»");
+    expect(state.aiCalls).toBe(2);
+    // План сохранён на сервере (как сейчас): в «Збережені» — один, уже новый вариант.
+    expect(state.plans).toHaveLength(1);
+    expect(state.plans[0]!.title).toEqual({ uk: "Музей, ринок і вечеря" });
+    expect(state.plans[0]!.trip).toMatchObject({ children: 1 });
+  });
 });
 
 test.describe("тёмная тема Telegram", () => {

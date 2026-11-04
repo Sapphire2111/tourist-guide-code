@@ -144,7 +144,12 @@ export type PlanTrip = {
   days: number;
 };
 
-export type TripInput = PlanTrip & { startDate?: string | null; basePlaceId?: string | null };
+export type TripInput = PlanTrip & {
+  startDate?: string | null;
+  basePlaceId?: string | null;
+  /** false — без Claude (флаг planner.ai): места добавит клиент. */
+  ai?: boolean;
+};
 
 export type PlanDay = { day: number; items: PlanItem[] };
 
@@ -166,6 +171,8 @@ export type UserPlan = {
   /** Погода по дням (только у одного плана, при дате начала и в пределах прогноза). */
   weather: PlanDayWeather[];
   weatherSource: WeatherSource | null;
+  /** Только в ответе создания и «Інший варіант»: ai — склав Claude, fallback — правиловий план, null — без Claude. */
+  generation: "ai" | "fallback" | null;
 };
 
 export type PlanChange =
@@ -228,5 +235,7 @@ export type HostApi = {
   savePlan(scenarioId: string, startDate?: string | null): Promise<UserPlan>;
   /** «Скласти свій план»: без сценария, с параметрами поездки. */
   createPlan(trip: TripInput): Promise<UserPlan>;
+  /** «Інший варіант»: новий план через Claude з тими ж параметрами (флаг planner.ai). */
+  regeneratePlan(id: string): Promise<UserPlan>;
   updatePlan(id: string, change: PlanChange): Promise<UserPlan>;
 };

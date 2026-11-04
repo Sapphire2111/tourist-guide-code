@@ -93,6 +93,11 @@ services:
         value: "500"
       - key: ASSISTANT_USER_DAILY_LIMIT
         value: "40"
+      # «Мій план» через Claude (флаг planner.ai, по умолчанию выключен): суточные пределы планов.
+      - key: PLANNER_AI_DAILY_LIMIT
+        value: "300"
+      - key: PLANNER_AI_USER_DAILY_LIMIT
+        value: "15"
       - key: TRUST_PROXY_HOPS
         # Цепочка на Render: клиент → Cloudflare → балансировщик Render → локальный прокси (::1); проверено 02.11.2026.
         value: "3"

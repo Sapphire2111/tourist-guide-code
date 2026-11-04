@@ -28,6 +28,8 @@ import {
 import type { RegionsRepository } from "../regions/index.js";
 import type { Forecast, WeatherDay, WeatherService } from "../weather/index.js";
 import { planItemsFromScenario } from "./plan-rules.js";
+import type { PlannerAi } from "./plan-ai.service.js";
+import { USER_PLANS_MAX } from "./planner.dto.js";
 import { PlannerModule } from "./planner.module.js";
 import type { CatalogPlaceRow, PlannerRepository, PlanPlaceRow } from "./planner.repository.js";
 import { PlannerService } from "./planner.service.js";
@@ -51,6 +53,7 @@ async function start(authenticated = false) {
     plans: vi.fn(() => Promise.resolve({ items: [] })),
     plan: vi.fn(() => Promise.resolve({ id: PLAN })),
     createPlan: vi.fn(() => Promise.resolve({ id: PLAN })),
+    regeneratePlan: vi.fn(() => Promise.resolve({ id: PLAN })),
     updatePlan: vi.fn(() => Promise.resolve({ id: PLAN })),
     deletePlan: vi.fn(() => Promise.resolve()),
     adminList: vi.fn(() => Promise.resolve({ items: [] })),
@@ -123,6 +126,25 @@ describe("HTTP планировщика", () => {
       .patch(`/me/plan/${PLAN}`)
       .send({ regionId: REGION, addItem: { dayNo: 1, slot: "night", placeId: P(3) } })
       .expect(400);
+    // «Інший варіант» и интересы живого плана; неизвестный интерес — 400.
+    await http()
+      .post(`/me/plan/${PLAN}/regenerate`)
+      .send({ regionId: REGION, interests: ["culture"] })
+      .expect(200);
+    expect(service.regeneratePlan).toHaveBeenCalledWith(USER, PLAN, {
+      regionId: REGION,
+      interests: ["culture"],
+    });
+    await http()
+      .post(`/me/plan/${PLAN}/regenerate`)
+      .send({ regionId: REGION, interests: ["space"] })
+      .expect(400);
+    await http().post("/me/plan/x/regenerate").send({ regionId: REGION }).expect(400);
+    await http()
+      .post("/me/plan")
+      .send({ regionId: REGION, interests: ["gastro", "relax"] })
+      .expect(201);
+    await http().post("/me/plan").send({ regionId: REGION, interests: "gastro" }).expect(400);
     // Админка сценариев — только с правом scenario.manage.
     await http().get("/admin/scenarios").expect(403);
   });
@@ -579,5 +601,195 @@ describe("PlannerService: админка без контекста регион�
     await expect(
       withTenant(db, regionContext(REGION), () => service.adminCreate(P(77), input, meta)),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("PlannerService: живой план через Claude (planner.ai)", () => {
+  const customRow = (over: Partial<UserPlan> = {}): UserPlan => ({
+    id: PLAN,
+    region_id: REGION,
+    user_id: USER,
+    scenario_id: null,
+    scenario_version: null,
+    title_i18n: { uk: "Мій план", en: "My plan" },
+    start_date: null,
+    items: [],
+    adults: 2,
+    children: 2,
+    with_car: true,
+    days: 3,
+    base_place_id: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...over,
+  });
+  const draft = {
+    title: { uk: "Три дні з дітьми", en: "Three days with kids" },
+    items: [
+      {
+        dayNo: 1,
+        placeId: P(10),
+        timeHint: "10:00",
+        durationMin: 90,
+        note: { uk: "Взуття." },
+        alternatives: [P(11)],
+      },
+      { dayNo: 2, placeId: P(11), timeHint: "18:30", durationMin: 75, note: null, alternatives: [] },
+    ],
+  };
+  function setup(opts: { flag?: boolean; ok?: boolean; enabled?: boolean; row?: UserPlan } = {}) {
+    let row = opts.row ?? customRow();
+    const generate = vi.fn(() =>
+      Promise.resolve(
+        opts.ok === false
+          ? { ok: false, reason: "invalid" }
+          : { ok: true, draft, attempts: 1, usage: {}, model: "m" },
+      ),
+    );
+    const ai = { enabled: opts.enabled ?? true, generate } as unknown as PlannerAi;
+    const flags = {
+      isEnabled: vi.fn((key: string) => Promise.resolve(key === "planner.ai" ? (opts.flag ?? true) : true)),
+    } as unknown as FeatureFlagsService;
+    const createPlan = vi.fn((r: Record<string, unknown>) =>
+      Promise.resolve(customRow(r as Partial<UserPlan>)),
+    );
+    const updatePlan = vi.fn((_id: string, patch: Partial<UserPlan>) => {
+      row = { ...row, ...patch };
+      return Promise.resolve(row);
+    });
+    const places = [place(10), place(11)];
+    const repo = {
+      findScenario: vi.fn(),
+      items: vi.fn(() => Promise.resolve([])),
+      places: vi.fn((ids: string[]) => Promise.resolve(places.filter((p) => ids.includes(p.id)))),
+      scenarioVersions: vi.fn(() => Promise.resolve(new Map())),
+      catalogPlaces: vi.fn(() => Promise.resolve([])),
+      firstLocality: vi.fn(() =>
+        Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
+      ),
+      countPlans: vi.fn(() => Promise.resolve(0)),
+      createPlan,
+      findPlan: vi.fn(() => Promise.resolve(row)),
+      updatePlan,
+    };
+    const { db } = recordingDb({});
+    const regions = {
+      findById: (id: string) => Promise.resolve({ id, status: "active", timezone: "Europe/Kyiv" }),
+    } as unknown as RegionsRepository;
+    const service = new PlannerService(
+      db,
+      repo as unknown as PlannerRepository,
+      regions,
+      {} as AuditService,
+      undefined,
+      flags,
+      ai,
+    );
+    return { service, generate, createPlan, updatePlan, repo };
+  }
+  const input = {
+    regionId: REGION,
+    days: 3,
+    children: 2,
+    withCar: true,
+    interests: ["waterfalls" as const],
+  };
+
+  it("флаг включён — пункты и назва от Claude, generation: ai; параметры туриста — в запрос", async () => {
+    const { service, generate, createPlan } = setup();
+    const dto = await service.createPlan(USER, { ...input, startDate: "2026-07-10" });
+    expect(generate).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ id: REGION }),
+      expect.objectContaining({
+        days: 3,
+        children: 2,
+        withCar: true,
+        season: "summer",
+        interests: ["waterfalls"],
+        centerName: "Яремче",
+      }),
+    );
+    expect(createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ title_i18n: draft.title, scenario_id: null }),
+    );
+    expect(dto.generation).toBe("ai");
+    expect(dto.plan[0]!.items[0]).toMatchObject({ slot: "morning", place: { id: P(10) }, timeHint: "10:00" });
+    expect(dto.plan[1]!.items[0]).toMatchObject({ slot: "evening", place: { id: P(11) } });
+  });
+
+  it("Claude не смог — правиловый план (пустой, с вариантами), generation: fallback; без ключа — тоже", async () => {
+    const failed = setup({ ok: false });
+    const dto = await failed.service.createPlan(USER, input);
+    expect(dto.generation).toBe("fallback");
+    expect(failed.createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ items: [], title_i18n: { uk: "Мій план", en: "My plan" } }),
+    );
+    const nokey = setup({ enabled: false });
+    expect((await nokey.service.createPlan(USER, input)).generation).toBe("fallback");
+    expect(nokey.generate).not.toHaveBeenCalled();
+  });
+
+  it("флаг выключен, сценарий или ai: false (ассистент) — без Claude, generation: null", async () => {
+    const manual = setup();
+    expect((await manual.service.createPlan(USER, { ...input, ai: false })).generation).toBeNull();
+    expect(manual.generate).not.toHaveBeenCalled();
+    const off = setup({ flag: false });
+    expect((await off.service.createPlan(USER, input)).generation).toBeNull();
+    expect(off.generate).not.toHaveBeenCalled();
+    const ok = setup();
+    ok.repo.findScenario.mockResolvedValue(scenario());
+    expect((await ok.service.createPlan(USER, { regionId: REGION, scenarioId: SCEN })).generation).toBeNull();
+    expect(ok.generate).not.toHaveBeenCalled();
+  });
+
+  it("планов уже максимум — 409 без запроса к Claude", async () => {
+    const full = setup();
+    full.repo.countPlans.mockResolvedValue(USER_PLANS_MAX);
+    await expect(full.service.createPlan(USER, input)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(full.generate).not.toHaveBeenCalled();
+  });
+
+  it("«Інший варіант»: параметры плана, места текущего — «уже були»; новые пункты и назва", async () => {
+    const current = customRow({
+      items: [
+        {
+          id: P(600),
+          dayNo: 1,
+          position: 0,
+          placeId: P(11),
+          timeHint: null,
+          durationMin: null,
+          note: null,
+          alternatives: [],
+          replacedPlaceId: null,
+        },
+      ],
+    });
+    const { service, generate, updatePlan } = setup({ row: current });
+    const dto = await service.regeneratePlan(USER, PLAN, { regionId: REGION });
+    expect(generate).toHaveBeenCalledWith(
+      USER,
+      expect.anything(),
+      expect.objectContaining({ days: 3, children: 2, avoid: [P(11)] }),
+    );
+    expect(updatePlan).toHaveBeenCalledWith(PLAN, expect.objectContaining({ title_i18n: draft.title }));
+    expect(dto).toMatchObject({ generation: "ai", title: draft.title });
+  });
+
+  it("«Інший варіант»: Claude не смог — план без изменений; флаг выключен — 404; план сценария — 422", async () => {
+    const failed = setup({ ok: false });
+    expect((await failed.service.regeneratePlan(USER, PLAN, { regionId: REGION })).generation).toBe(
+      "fallback",
+    );
+    expect(failed.updatePlan).not.toHaveBeenCalled();
+    await expect(
+      setup({ flag: false }).service.regeneratePlan(USER, PLAN, { regionId: REGION }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      setup({ row: customRow({ scenario_id: SCEN }) }).service.regeneratePlan(USER, PLAN, {
+        regionId: REGION,
+      }),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE", messageKey: "errors.plan.notCustom" });
   });
 });

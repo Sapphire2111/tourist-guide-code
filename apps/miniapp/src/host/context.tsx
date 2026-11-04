@@ -48,6 +48,7 @@ export function noopHostApi(): HostApi {
     plan: fail,
     savePlan: fail,
     createPlan: fail,
+    regeneratePlan: fail,
     updatePlan: fail,
   };
 }

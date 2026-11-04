@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { ApiError, toLocalized } from "../../common/http/index.js";
 import {
@@ -38,7 +39,9 @@ import type {
   PlanDayOptionsDto,
   PlanDayWeatherDto,
   PlanPlaceDto,
+  PlanGeneration,
   PlanTripDto,
+  RegenerateUserPlanDto,
   ScenarioDto,
   ScenarioInputDto,
   ScenarioItemDto,
@@ -51,6 +54,8 @@ import type {
 } from "./planner.dto.js";
 import { SCENARIO_SEASONS, USER_PLANS_MAX } from "./planner.dto.js";
 import { isMountainHike, itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
+import { draftToPlanItems } from "./plan-ai.js";
+import { PlannerAi } from "./plan-ai.service.js";
 import { seasonAt, seasonOfDate } from "./season.js";
 import {
   addItem,
@@ -134,6 +139,8 @@ export class PlannerService {
     // Погода (module.weather): нет модуля (тесты) — план без погоды.
     @Optional() @Inject(WeatherService) private readonly weather?: WeatherService,
     @Optional() @Inject(FeatureFlagsService) private readonly flags?: FeatureFlagsService,
+    // Живой план через Claude (PlannerModule.forRoot, флаг planner.ai): нет — только правиловый план.
+    @Optional() @Inject(PlannerAi) private readonly ai?: PlannerAi,
   ) {}
 
   // --- турист ---
@@ -194,6 +201,20 @@ export class PlannerService {
    * планов в регионе — не больше USER_PLANS_MAX (409).
    */
   async createPlan(userId: string, input: CreateUserPlanDto): Promise<UserPlanDto> {
+    // Свой план при флаге planner.ai — через Claude, ДО транзакции региона (ответ модели — десятки секунд).
+    const live =
+      input.scenarioId || input.ai === false
+        ? null
+        : await this.livePlan(userId, input.regionId, {
+            days: input.days ?? 1,
+            children: input.children ?? 0,
+            withCar: input.withCar ?? true,
+            startDate: input.startDate ?? null,
+            basePlaceId: input.basePlaceId ?? null,
+            interests: input.interests ?? [],
+            avoid: [],
+            checkLimit: true,
+          });
     return this.inRegion(input.regionId, async (region) => {
       const s = input.scenarioId ? await this.repo.findScenario(input.scenarioId) : null;
       if (s !== null && s?.status !== "published") throw new ApiError("NOT_FOUND");
@@ -207,18 +228,60 @@ export class PlannerService {
       // База из QR могла устареть (место снято с публикации) — план всё равно создаётся, без базы.
       const trip = await this.tripWrite(input, false);
       const days = trip.days ?? s?.days ?? 1;
-      const items = s ? trimDays(planItemsFromScenario(await this.repo.items([s.id])), days) : [];
+      const items = s
+        ? trimDays(planItemsFromScenario(await this.repo.items([s.id])), days)
+        : (live?.items ?? []);
       const row = await this.repo.createPlan({
         user_id: userId,
         scenario_id: s?.id ?? null,
         scenario_version: s?.version ?? null,
-        title_i18n: s?.title_i18n ?? CUSTOM_PLAN_TITLE,
+        title_i18n: s?.title_i18n ?? live?.title ?? CUSTOM_PLAN_TITLE,
         start_date: input.startDate ?? null,
         items,
         ...trip,
         days,
       });
-      return (await this.planDtos([row], await this.catalog(region.id)))[0]!;
+      const dto = (await this.planDtos([row], await this.catalog(region.id)))[0]!;
+      return { ...dto, generation: live?.generation ?? null };
+    });
+  }
+
+  /**
+   * «Інший варіант»: новый живой план (Claude) с теми же параметрами своего плана; места текущего — «уже були».
+   * Флаг planner.ai выключен — 404; план из сценария — 422 errors.plan.notCustom. Claude не смог (предел, ошибка) —
+   * план не меняется, generation: fallback.
+   */
+  async regeneratePlan(userId: string, id: string, input: RegenerateUserPlanDto): Promise<UserPlanDto> {
+    const row = await this.inRegion(input.regionId, () => this.repo.findPlan(userId, id));
+    if (!row) throw new ApiError("NOT_FOUND");
+    if (row.scenario_id !== null)
+      throw new ApiError("UNPROCESSABLE", {
+        messageKey: "errors.plan.notCustom",
+        details: { reason: "not_custom" },
+      });
+    const live = await this.livePlan(userId, input.regionId, {
+      days: planDays(row),
+      children: row.children,
+      withCar: row.with_car,
+      startDate: row.start_date === null ? null : dateOnly(row.start_date),
+      basePlaceId: row.base_place_id,
+      interests: input.interests ?? [],
+      avoid: row.items.map((i) => i.placeId),
+      checkLimit: false,
+    });
+    if (!live) throw new ApiError("NOT_FOUND");
+    return this.inRegion(input.regionId, async (region) => {
+      const catalog = await this.catalog(region.id);
+      const cur = await this.repo.findPlan(userId, id, true);
+      if (!cur) throw new ApiError("NOT_FOUND");
+      const updated = live.items
+        ? await this.repo.updatePlan(cur.id, {
+            items: live.items,
+            title_i18n: live.title ?? CUSTOM_PLAN_TITLE,
+          })
+        : cur;
+      const dto = (await this.planDtos([updated ?? cur], catalog))[0]!;
+      return { ...dto, generation: live.generation };
     });
   }
 
@@ -259,6 +322,83 @@ export class PlannerService {
     await this.inRegion(regionId, async () => {
       if (!(await this.repo.deletePlan(userId, id))) throw new ApiError("NOT_FOUND");
     });
+  }
+
+  /**
+   * Живой план через Claude (флаг planner.ai региона): null — не запрашивался (флаг выключен, нет модуля, регион не
+   * активен, планов уже максимум — 409 даст createPlan); fallback — Claude не смог (нет ключа, предел, ошибка, проверка)
+   * — правиловый план. Подготовка (жильё, погода) — короткой транзакцией региона, запрос к Claude — вне транзакции.
+   */
+  private async livePlan(
+    userId: string,
+    regionId: string,
+    p: {
+      days: number;
+      children: number;
+      withCar: boolean;
+      startDate: string | null;
+      basePlaceId: string | null;
+      interests: readonly ScenarioTag[];
+      avoid: readonly string[];
+      checkLimit: boolean;
+    },
+  ): Promise<{ generation: PlanGeneration; items?: UserPlanItemRecord[]; title?: LocalizedText } | null> {
+    if (!this.ai || !this.flags) return null;
+    const region = await this.regions.findById(regionId.toLowerCase());
+    if (region?.status !== "active" || !(await this.flags.isEnabled("planner.ai", region.id))) return null;
+    const fallback = { generation: "fallback" as const };
+    if (!this.ai.enabled) return fallback;
+    try {
+      const prep = await withTenant(this.db, regionContext(region.id), async () => {
+        if (p.checkLimit && (await this.repo.countPlans(userId)) >= USER_PLANS_MAX) return null;
+        const id = p.basePlaceId?.toLowerCase();
+        const base = id ? (await this.placeMap([id])).get(id) : undefined;
+        const point =
+          base?.status === "published" && base.location
+            ? { at: base.location, name: base.name_i18n }
+            : await this.repo
+                .firstLocality()
+                .then((l) => (l?.location ? { at: l.location, name: l.name_i18n } : null));
+        return point ? { point, noMountainDays: await this.noMountainDays(region.id, point.at, p) } : null;
+      });
+      this.weather?.flushRefresh();
+      if (!prep) return null;
+      const r = await this.ai.generate(userId, region, {
+        days: p.days,
+        children: p.children,
+        withCar: p.withCar,
+        season: p.startDate ? seasonOfDate(p.startDate) : seasonAt(new Date(), region.timezone),
+        center: prep.point.at,
+        centerName: prep.point.name.uk ?? Object.values(prep.point.name).find(Boolean) ?? "",
+        interests: p.interests,
+        avoid: p.avoid,
+        noMountainDays: prep.noMountainDays,
+      });
+      if (!r.ok) return fallback;
+      return { generation: "ai", items: draftToPlanItems(r.draft, randomUUID), title: r.draft.title };
+    } catch (e) {
+      // Турист получает план всегда: сбой подготовки или каталога — правиловый план.
+      this.logger.warn(`Planner AI: сбой (${e instanceof Error ? e.name : "error"}) — правиловый план`);
+      return fallback;
+    }
+  }
+
+  /** Дни поездки с опасной для гор погодой по снимку прогноза у точки (без даты или без погоды — нет). */
+  private async noMountainDays(
+    regionId: string,
+    at: LonLat,
+    p: { days: number; startDate: string | null },
+  ): Promise<Set<number>> {
+    const out = new Set<number>();
+    const start = p.startDate;
+    if (!this.weather || !start) return out;
+    if (this.flags && !(await this.flags.isEnabled("module.weather", regionId))) return out;
+    const f = await this.weather.snapshotAt({ lat: at.lat, lng: at.lon });
+    for (let d = 1; d <= p.days; d++) {
+      const w = f?.days.find((x) => x.date === addDays(start, d - 1));
+      if (w && hikeUnsafe(w)) out.add(d);
+    }
+    return out;
   }
 
   // --- админка (tenant-контекст запроса) ---
@@ -502,6 +642,7 @@ export class PlannerService {
         options: catalog && season ? optionsDto(days, catalog, trip, baseAt, season, wx.noMountainDays) : [],
         weather: wx.days,
         weatherSource: wx.source,
+        generation: null,
         createdAt: r.created_at.toISOString(),
         updatedAt: r.updated_at.toISOString(),
       });

@@ -744,6 +744,8 @@ function AddToMyPlan({
         withCar: true,
         days: plan.days.length,
         startDate: plan.days[0]?.date ?? null,
+        // Места ассистента добавляются ниже галочками — без живого плана Claude (флаг planner.ai).
+        ai: false,
       });
       createdId = created.id;
       setUi({ planId: created.id });

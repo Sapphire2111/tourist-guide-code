@@ -27,6 +27,10 @@ export type Block5State = {
   serviceRequests: ServiceRequestMock[];
   /** Сохранённые планы (UserPlanDto). */
   plans: PlanMock[];
+  /** Флаг planner.ai: свой план «составляет Claude» (варианты по кругу), «Інший варіант» — следующий. */
+  aiPlanner: boolean;
+  /** Сколько планов «составил Claude» (создание и «Інший варіант»). */
+  aiCalls: number;
 };
 
 type PlaceMock = {
@@ -210,7 +214,49 @@ function refresh(plan: PlanMock): PlanMock {
 }
 
 export function newBlock5State(): Block5State {
-  return { staff: false, acceptingNow: true, serviceRequests: [], plans: [] };
+  return { staff: false, acceptingNow: true, serviceRequests: [], plans: [], aiPlanner: false, aiCalls: 0 };
+}
+
+/** Живые планы «от Claude» по кругу: по три места каталога (ранок, день, вечір) на первый день. */
+const AI_VARIANTS: readonly { title: string; items: readonly [string, string, string][] }[] = [
+  {
+    title: "Водоспад, колиба й чани",
+    items: [
+      ["00000000-0000-4000-8000-000000000a02", "10:00", "morning"],
+      ["00000000-0000-4000-8000-000000000a04", "13:00", "afternoon"],
+      ["00000000-0000-4000-8000-000000000a08", "18:00", "evening"],
+    ],
+  },
+  {
+    title: "Музей, ринок і вечеря",
+    items: [
+      ["00000000-0000-4000-8000-000000000a03", "10:30", "morning"],
+      ["00000000-0000-4000-8000-000000000a06", "14:00", "afternoon"],
+      ["00000000-0000-4000-8000-000000000a07", "18:30", "evening"],
+    ],
+  },
+];
+
+function aiPlanDays(n: number): { dayNo: number; items: ItemMock[] }[] {
+  const v = AI_VARIANTS[n % AI_VARIANTS.length]!;
+  return [
+    {
+      dayNo: 1,
+      items: v.items.map(([id, time, slot], k) => ({
+        id: `00000000-0000-4000-8000-0000000c${String(n).padStart(2, "0")}0${k}`,
+        position: k,
+        timeHint: time,
+        durationMin: 90,
+        note: { uk: "Порада від плану." },
+        place: optionPlace(OPTION_SEEDS.find((o) => o.id === id)!),
+        available: true,
+        alternatives: [],
+        distanceFromPreviousMeters: null,
+        replaced: false,
+        slot,
+      })),
+    },
+  ];
 }
 
 const SERVICES = [
@@ -409,13 +455,20 @@ export async function installBlock5Mock(
         return json(route, { items: state.plans.map((p) => ({ ...p, options: [] })) });
       if (path === "/me/plan" && method === "POST") {
         const custom = !body.scenarioId;
+        const ai = custom && state.aiPlanner && body.ai !== false;
+        // «Claude думает» — видно ожидание «Складаємо план…».
+        if (ai) await new Promise((r) => setTimeout(r, 400));
         const plan: PlanMock = refresh({
           id: PLAN_ID,
           regionId: REGION_ID,
           scenarioId: custom ? null : SCENARIO_ID,
           scenarioVersion: custom ? null : 1,
           scenarioUpdated: false,
-          title: custom ? { uk: "Мій план", en: "My plan" } : scenarioSummary.title,
+          title: ai
+            ? { uk: AI_VARIANTS[state.aiCalls % AI_VARIANTS.length]!.title }
+            : custom
+              ? { uk: "Мій план", en: "My plan" }
+              : scenarioSummary.title,
           startDate: (body.startDate as string | null | undefined) ?? null,
           trip: {
             adults: (body.adults as number | undefined) ?? 2,
@@ -426,18 +479,32 @@ export async function installBlock5Mock(
               ? { kind: "place", placeId: body.basePlaceId, name: { uk: "Тестовий готель" } }
               : null,
           },
-          plan: custom
-            ? []
-            : scenarioPlan().map((d) => ({
-                ...d,
-                items: d.items.map((i) => ({ ...i, replaced: false })),
-              })),
+          plan: ai
+            ? aiPlanDays(state.aiCalls)
+            : custom
+              ? []
+              : scenarioPlan().map((d) => ({
+                  ...d,
+                  items: d.items.map((i) => ({ ...i, replaced: false })),
+                })),
           options: [],
           createdAt: "2026-11-02T10:00:00Z",
           updatedAt: "2026-11-02T10:00:00Z",
         });
         state.plans = [plan];
-        return json(route, plan, 201);
+        if (ai) state.aiCalls++;
+        return json(route, { ...plan, generation: ai ? "ai" : null }, 201);
+      }
+      const regen = /^\/me\/plan\/([^/]+)\/regenerate$/.exec(path)?.[1];
+      if (regen && method === "POST") {
+        const target = state.plans.find((p) => p.id === regen);
+        if (!target || !state.aiPlanner) return error(route, 404, "NOT_FOUND");
+        if (target.scenarioId) return error(route, 422, "UNPROCESSABLE", "errors.plan.notCustom");
+        await new Promise((r) => setTimeout(r, 400));
+        target.title = { uk: AI_VARIANTS[state.aiCalls % AI_VARIANTS.length]!.title };
+        target.plan = aiPlanDays(state.aiCalls);
+        state.aiCalls++;
+        return json(route, { ...refresh(target), generation: "ai" });
       }
       const planId = /^\/me\/plan\/([^/]+)$/.exec(path)?.[1];
       const plan = state.plans.find((p) => p.id === planId);

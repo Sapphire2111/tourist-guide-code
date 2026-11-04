@@ -32,7 +32,7 @@ function flag(
   return Object.freeze({ description, defaults, requires, financeGate });
 }
 
-/** Ключи флагов: `release.*`, `finance.*`, `module.*`. */
+/** Ключи флагов: `release.*`, `finance.*`, `module.*`, `planner.*`. */
 export const FEATURE_FLAG_KEYS = [
   "release.r1",
   "release.mvp",
@@ -46,6 +46,7 @@ export const FEATURE_FLAG_KEYS = [
   "module.ambassadors",
   "module.assistant",
   "module.weather",
+  "planner.ai",
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
@@ -79,6 +80,9 @@ export const FEATURE_FLAGS: Readonly<Record<FeatureFlagKey, FeatureFlagDefinitio
   ]),
   // Погода (Google Weather по серверному ключу с квотой, запасной — бесплатный Open-Meteo): на главной и в «Мій план».
   "module.weather": flag("Погода и предупреждения на главной и в «Мій план»", ALWAYS, ["release.r1"]),
+  // Живой план «Мій план» через Claude (платный API, решение владельца 04.11.2026): выключен везде, включают на регион
+  // или окружение; выключенный — правиловый план (варианты на выбор). Позже владелец вернёт базу готовых сценариев.
+  "planner.ai": flag("«Мій план»: свій план складає Claude в момент запиту", OFF, ["module.host_requests"]),
 });
 
 export function isFeatureFlagKey(key: string): key is FeatureFlagKey {

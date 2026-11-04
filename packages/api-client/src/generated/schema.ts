@@ -1273,9 +1273,29 @@ export interface paths {
     put?: never;
     /**
      * «Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки
-     * @description 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.
+     * @description Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.
      */
     post: operations["createMyPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/plan/{id}/regenerate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * «Інший варіант»: новий план через Claude з тими ж параметрами поїздки (флаг planner.ai)
+     * @description Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався (ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai вимкнено; 422 errors.plan.notCustom — план зі сценарію.
+     */
+    post: operations["regenerateMyPlan"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4238,6 +4258,11 @@ export interface components {
       /** @description Погода опасна для гор: горные походы в вариантах дня не предлагаются */
       noMountains: boolean;
     };
+    /**
+     * @description Только в ответе создания и «Інший варіант»: ai — план склав Claude; fallback — Claude недоступний (ліміт, помилка, перевірка не пройдена) — правиловий план; null — без Claude (сценарій, флаг planner.ai вимкнено, GET)
+     * @enum {string}
+     */
+    PlanGeneration: "ai" | "fallback";
     UserPlanDto: {
       /** Format: uuid */
       id: string;
@@ -4260,6 +4285,8 @@ export interface components {
       weather: components["schemas"]["PlanDayWeatherDto"][];
       /** @description Источник прогноза для подписи; null — прогноза нет */
       weatherSource: components["schemas"]["WeatherSource"] | null;
+      /** @description Только в ответе создания и «Інший варіант»: ai — план склав Claude; fallback — Claude недоступний (ліміт, помилка, перевірка не пройдена) — правиловий план; null — без Claude (сценарій, флаг planner.ai вимкнено, GET) */
+      generation: components["schemas"]["PlanGeneration"] | null;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -4288,6 +4315,10 @@ export interface components {
        * @description Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»
        */
       basePlaceId?: string | null;
+      /** @description Інтереси туриста для живого плану (флаг planner.ai): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки */
+      interests?: components["schemas"]["ScenarioTag"][];
+      /** @description За замовчуванням true. false — свій план без Claude навіть при флагу planner.ai (місця додасть клієнт, напр. асистент) */
+      ai?: boolean;
       /**
        * Format: uuid
        * @description Опубликованный сценарий региона; без него — свой план с вариантами на выбор
@@ -4298,6 +4329,15 @@ export interface components {
        * @example 2026-11-10
        */
       startDate?: string | null;
+    };
+    RegenerateUserPlanDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      /** @description Інтереси (як у POST /me/plan) */
+      interests?: components["schemas"]["ScenarioTag"][];
     };
     ReplacePlanItemDto: {
       /**
@@ -5429,7 +5469,8 @@ export interface components {
       | "module.reviews"
       | "module.ambassadors"
       | "module.assistant"
-      | "module.weather";
+      | "module.weather"
+      | "planner.ai";
     FeatureFlagValueDto: {
       key: components["schemas"]["FeatureFlagKey"];
       enabled: boolean;
@@ -13650,6 +13691,100 @@ export interface operations {
       };
       /** @description Ошибка */
       409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  regenerateMyPlan: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegenerateUserPlanDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserPlanDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

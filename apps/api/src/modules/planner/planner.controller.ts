@@ -42,6 +42,7 @@ import {
   AdminScenariosQueryDto,
   CreateUserPlanDto,
   PlannerRegionQueryDto,
+  RegenerateUserPlanDto,
   ScenarioInputDto,
   ScenariosQueryDto,
   ScenarioStatusDto,
@@ -130,6 +131,8 @@ export class UserPlansController {
     summary:
       "«Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки",
     description:
+      "Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; " +
+      "generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). " +
       "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; " +
       "422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
   })
@@ -137,6 +140,27 @@ export class UserPlansController {
   @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "UNPROCESSABLE", "RATE_LIMITED")
   create(@Body() body: CreateUserPlanDto, @Req() req: RbacRequest): Promise<UserPlanDto> {
     return this.planner.createPlan(userOf(req), body);
+  }
+
+  @Post(":id/regenerate")
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: "regenerateMyPlan",
+    summary: "«Інший варіант»: новий план через Claude з тими ж параметрами поїздки (флаг planner.ai)",
+    description:
+      "Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався " +
+      "(ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai " +
+      "вимкнено; 422 errors.plan.notCustom — план зі сценарію.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiOkResponse({ type: UserPlanDto })
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "UNPROCESSABLE", "RATE_LIMITED")
+  regenerate(
+    @Param("id", uuid) id: string,
+    @Body() body: RegenerateUserPlanDto,
+    @Req() req: RbacRequest,
+  ): Promise<UserPlanDto> {
+    return this.planner.regeneratePlan(userOf(req), id, body);
   }
 
   @Get(":id")

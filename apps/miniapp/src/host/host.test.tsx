@@ -308,6 +308,7 @@ describe("C09 Мій план", () => {
     options: [],
     weather: [],
     weatherSource: null,
+    generation: null,
     ...over,
   });
 

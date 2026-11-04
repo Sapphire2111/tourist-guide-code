@@ -57,6 +57,11 @@ export async function loadCatalog(db: Db, regionCode: string): Promise<GenCatalo
     .where("code", "=", regionCode)
     .executeTakeFirst();
   if (!region) throw new Error(`Регион ${regionCode} не найден`);
+  return loadRegionCatalog(db, region);
+}
+
+/** Каталог известного региона (живой план «Мій план» в api — регион уже найден по id). */
+export function loadRegionCatalog(db: Db, region: { id: string; timezone: string }): Promise<GenCatalog> {
   return withTenant(db, regionContext(region.id), async (trx) => {
     const rows = (await trx
       .selectFrom("places")

@@ -4,7 +4,8 @@
 // підходить, скільки йти/їхати); галочка — PATCH addItem, снятая — removeItemId. «Скласти свій план» — план без
 // сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24). Погода (module.weather, при дате начала):
 // в заголовке дня — иконка и t°, в дне — предупреждения; дождь — «якщо дощ» раскрыт; горный поход в опасный день —
-// с предупреждением; подпись источника под днями.
+// с предупреждением; подпись источника под днями. Флаг planner.ai: свой план составляет Claude (ожидание
+// «Складаємо план…» с пределом PLAN_WAIT_MS), «Інший варіант» — новый план с теми же параметрами.
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
@@ -37,7 +38,7 @@ import {
   WeatherAttribution,
   WeatherIcon,
 } from "../weather/Weather.js";
-import { takePlanPartial } from "./partial-notice.js";
+import { markPlanFallback, takePlanFallback, takePlanPartial } from "./partial-notice.js";
 import "./plan.css";
 
 // Сегменты в стиле переключателя сезонов (.kosiv-seasons): активный — поверхность и акцент.
@@ -58,6 +59,8 @@ const tabStyle = (active: boolean): CSSProperties => ({
 
 const PEOPLE_MAX = 20;
 const DAYS_MAX = 14;
+/** Живой план (Claude): дольше — сообщение и снова доступна кнопка (сервер — до двух попыток по ~35 с). */
+export const PLAN_WAIT_MS = 90_000;
 
 export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
   const { t } = useT();
@@ -325,16 +328,27 @@ export function NewPlanScreen() {
   const errorText = useErrorText();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Message>(null);
+  const aiOn = useFeatureFlag("planner.ai");
   const create = async (trip: PlanTrip, startDate: string | null) => {
     setBusy(true);
-    setStatus(null);
+    setStatus(aiOn ? { text: t("miniapp.plan.ai.generating"), alert: false } : null);
+    // Без вечного ожидания: дольше PLAN_WAIT_MS — сообщение и кнопка снова доступна (поздний ответ всё равно откроет план).
+    const timer = aiOn
+      ? window.setTimeout(() => {
+          setStatus({ text: t("miniapp.plan.ai.timeout"), alert: true });
+          setBusy(false);
+        }, PLAN_WAIT_MS)
+      : undefined;
     try {
       const input: TripInput = { ...trip, startDate, ...(hotelPlaceId ? { basePlaceId: hotelPlaceId } : {}) };
       const plan = await api.createPlan(input);
+      if (plan.generation === "fallback") markPlanFallback(plan.id);
       navigate(`/plan/saved/${plan.id}`, { replace: true });
     } catch (err) {
       setStatus({ text: errorText(err, "miniapp.plan.createError"), alert: true });
       setBusy(false);
+    } finally {
+      window.clearTimeout(timer);
     }
   };
   return (
@@ -349,7 +363,7 @@ export function NewPlanScreen() {
           <TripForm
             initial={DEFAULT_TRIP}
             startDate={null}
-            submitLabel={t("miniapp.plan.trip.create")}
+            submitLabel={t(aiOn ? "miniapp.plan.ai.create" : "miniapp.plan.trip.create")}
             busy={busy}
             onSubmit={(trip, date) => void create(trip, date)}
           />
@@ -487,6 +501,7 @@ export function SavedPlanScreen({ id }: { id: string }) {
   );
   // Ассистент добавил не все места — сообщаем один раз (флаг снимается при первом показе экрана).
   const [partial] = useState(() => takePlanPartial(id));
+  const [fallback] = useState(() => takePlanFallback(id));
   if (plan.status === "error" && plan.error instanceof NotFoundError)
     return <p role="alert">{t("miniapp.plan.notFound")}</p>;
   if (plan.status === "error" && plan.error instanceof UnauthorizedError)
@@ -496,6 +511,11 @@ export function SavedPlanScreen({ id }: { id: string }) {
       {partial && (
         <p role="status" data-testid="plan-partial">
           {t("miniapp.assistant.plan.partial")}
+        </p>
+      )}
+      {fallback && (
+        <p role="status" data-testid="plan-ai-fallback">
+          {t("miniapp.plan.ai.fallback")}
         </p>
       )}
       <AsyncView state={plan} retry={retry}>
@@ -571,6 +591,30 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
   };
   const edit: Edit = { busy, apply: (c, done, focus) => void apply(c, done, focus) };
   const weatherOn = useFeatureFlag("module.weather");
+  const aiOn = useFeatureFlag("planner.ai");
+  /** «Інший варіант»: новый план через Claude с теми же параметрами; не вышло — план без изменений. */
+  const another = async () => {
+    setBusy(true);
+    setStatus({ text: t("miniapp.plan.ai.anotherGenerating"), alert: false });
+    const timer = window.setTimeout(() => {
+      setStatus({ text: t("miniapp.plan.ai.timeout"), alert: true });
+      setBusy(false);
+    }, PLAN_WAIT_MS);
+    try {
+      const next = await api.regeneratePlan(plan.id);
+      setPlan(next);
+      setStatus(
+        next.generation === "ai"
+          ? { text: t("miniapp.plan.ai.anotherDone"), alert: false }
+          : { text: t("miniapp.plan.ai.anotherFailed"), alert: true },
+      );
+    } catch (err) {
+      setStatus({ text: errorText(err, "miniapp.plan.ai.anotherFailed"), alert: true });
+    } finally {
+      window.clearTimeout(timer);
+      setBusy(false);
+    }
+  };
   const { trip } = plan;
   return (
     <Stack>
@@ -617,6 +661,11 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
         ) : (
           <Button disabled={busy} onClick={() => setEditTrip(true)} data-testid="trip-edit">
             {t("miniapp.plan.trip.edit")}
+          </Button>
+        )}
+        {aiOn && plan.scenarioId === null && !editTrip && (
+          <Button disabled={busy} onClick={() => void another()} data-testid="plan-regenerate">
+            {t("miniapp.plan.ai.another")}
           </Button>
         )}
       </section>

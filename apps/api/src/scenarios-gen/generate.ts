@@ -137,7 +137,7 @@ function addTokens(usage: Usage, model: string, u: ApiUsage): void {
  * попытку, давшую ответ. Отказ до вывода оплачивается не всегда (зависит от категории), но считаем и его: лимит
  * расходов не должен срабатывать поздно.
  */
-function addMessage(usage: Usage, res: Anthropic.Beta.Messages.BetaMessage, requested: string): void {
+export function addMessage(usage: Usage, res: Anthropic.Beta.Messages.BetaMessage, requested: string): void {
   const served = res.model ?? requested;
   usage.requests++;
   usage.servedBy[served] = (usage.servedBy[served] ?? 0) + 1;

@@ -280,7 +280,11 @@ export class PlannerRepository {
 
   updatePlan(
     id: string,
-    patch: { start_date?: string | null; items?: UserPlanItemRecord[] } & PlanTripWrite,
+    patch: {
+      start_date?: string | null;
+      items?: UserPlanItemRecord[];
+      title_i18n?: LocalizedText;
+    } & PlanTripWrite,
   ): Promise<UserPlan | undefined> {
     const { items, ...rest } = patch;
     const set = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));

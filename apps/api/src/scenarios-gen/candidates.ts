@@ -104,16 +104,37 @@ export function areaCenter(catalog: GenCatalog, area: string): LonLat | null {
   return catalog.localities.find((l) => l.code === area)?.location ?? null;
 }
 
+/** Размер списка кандидатов по группам. */
+export type CandidateLimits = Readonly<Record<keyof typeof MAX, number>>;
+
 /**
- * Кандидаты заказа: центр — место-цель или населённый пункт; used — сколько раз место уже взято в готовые сценарии
- * этого прогона (штраф за частоту, разнообразие).
+ * Разнообразие живого плана: к баллу места — случайная добавка 0…jitter, детерминированная по (seed, id места):
+ * тот же seed — та же выборка (тесты), другой — другая.
+ */
+export type CandidateOptions = { max?: CandidateLimits; seed?: number; jitter?: number };
+
+/** Число 0…1 из seed и id (FNV-1a): не зависит от порядка мест в каталоге. */
+export function seededUnit(seed: number, id: string): number {
+  let h = (0x811c9dc5 ^ seed) >>> 0;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+  return (h ^ (h >>> 13)) / 0x1_0000_0000;
+}
+
+/**
+ * Кандидаты заказа: центр — место-цель, центр заказа или населённый пункт; used — сколько раз место уже взято в
+ * готовые сценарии этого прогона (штраф за частоту, разнообразие).
  */
 export function selectCandidates(
   b: Brief,
   catalog: GenCatalog,
   used: ReadonlyMap<string, number> = new Map(),
+  opts: CandidateOptions = {},
 ): CandidateSet {
-  const center = b.target?.location ?? areaCenter(catalog, b.area);
+  const max = opts.max ?? MAX;
+  const jitter = (id: string) =>
+    opts.seed === undefined || !opts.jitter ? 0 : seededUnit(opts.seed, id) * opts.jitter;
+  const center = b.target?.location ?? b.center ?? areaCenter(catalog, b.area);
   if (!center)
     return {
       candidates: [],
@@ -146,11 +167,10 @@ export function selectCandidates(
   const picked: Candidate[] = [];
   for (const g of ["focus", "meals", "relax", "other"] as const) {
     const u = (c: { place: GenPlace }) => used.get(c.place.id) ?? 0;
-    const sorted = groups[g].sort(
-      (x, y) => score(y, radius, u(y)) - score(x, radius, u(x)) || (x.place.id < y.place.id ? -1 : 1),
-    );
+    const s = (c: (typeof near)[number]) => score(c, radius, u(c)) + jitter(c.place.id);
+    const sorted = groups[g].sort((x, y) => s(y) - s(x) || (x.place.id < y.place.id ? -1 : 1));
     // Водоспады и маршруты темы — первыми, чтобы не вытеснились популярными кафе.
-    for (const c of sorted.slice(0, MAX[g])) picked.push({ ...c, ref: "", focus: g === "focus", used: u(c) });
+    for (const c of sorted.slice(0, max[g])) picked.push({ ...c, ref: "", focus: g === "focus", used: u(c) });
   }
   // Место-цель — всегда в списке (если подходит заказу), отмечено.
   if (b.target) {
