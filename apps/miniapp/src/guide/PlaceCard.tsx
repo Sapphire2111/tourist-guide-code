@@ -5,7 +5,7 @@
 import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { pickLocalized, type MessageKey } from "@tg/i18n";
+import { isAllDay, pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { usePlaceResources } from "../bookings/context.js";
 import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
@@ -78,16 +78,24 @@ function Section({
 function Schedule({ schedule }: { schedule: ScheduleInterval[] }) {
   const { t } = useT();
   const today = ((new Date().getDay() + 6) % 7) + 1;
+  const days = [1, 2, 3, 4, 5, 6, 7].map((d) => schedule.filter((s) => s.weekday === d));
+  const allDay = (day: ScheduleInterval[]) => day.some((s) => isAllDay(s.opens, s.closes));
+  // Круглосуточно все 7 дней — одна строка вместо списка по дням.
+  if (days.every(allDay)) return <p className="pc-m0">{t("miniapp.place.allDay")}</p>;
   return (
     <table className="pc-schedule">
       <tbody>
-        {[1, 2, 3, 4, 5, 6, 7].map((d) => {
-          const day = schedule.filter((s) => s.weekday === d);
+        {days.map((day, i) => {
+          const d = i + 1;
           return (
             <tr key={d} data-today={d === today || undefined}>
               <th scope="row">{t(`miniapp.weekday.${d}` as MessageKey)}</th>
               <td>
-                {day.length ? day.map((s) => `${s.opens}–${s.closes}`).join(", ") : t("miniapp.place.dayOff")}
+                {allDay(day)
+                  ? t("miniapp.place.allDay")
+                  : day.length
+                    ? day.map((s) => `${s.opens}–${s.closes}`).join(", ")
+                    : t("miniapp.place.dayOff")}
               </td>
             </tr>
           );

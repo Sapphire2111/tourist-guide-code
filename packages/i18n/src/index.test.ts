@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ERROR_MESSAGE_KEYS } from "@tg/shared";
 import {
   createTranslator,
+  isAllDay,
   DEFAULT_LOCALE,
   en,
   ENABLED_LOCALES,
@@ -98,5 +99,15 @@ describe("en для Mini App", () => {
       const text = messages["miniapp.scan.prompt"];
       if (text !== undefined) expect(text.length).toBeLessThanOrEqual(64);
     }
+  });
+});
+
+describe("isAllDay", () => {
+  it("00:00–23:59, 00:00–24:00 и 00:00–00:00 (с секундами и без) — весь день; остальное нет", () => {
+    expect(isAllDay("00:00", "23:59")).toBe(true);
+    expect(isAllDay("00:00:00", "24:00:00")).toBe(true);
+    expect(isAllDay("00:00", "00:00")).toBe(true);
+    expect(isAllDay("00:00", "22:00")).toBe(false);
+    expect(isAllDay("08:00", "23:59")).toBe(false);
   });
 });

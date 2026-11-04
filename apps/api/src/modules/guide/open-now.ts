@@ -2,6 +2,8 @@
 // местного времени в таймзоне региона: недельные (1 — понедельник … 7 — воскресенье; closes <= opens — через
 // полночь) и исключения на дату (closed — закрыто весь день, иначе интервалы даты вместо недельного графика).
 
+import { isAllDay } from "@tg/i18n";
+
 export type WeeklyRow = { dayOfWeek: number; opensAt: string; closesAt: string };
 export type ExceptionRow = { date: string; closed: boolean; opensAt: string | null; closesAt: string | null };
 export type ScheduleRows = { weekly: readonly WeeklyRow[]; exceptions: readonly ExceptionRow[] };
@@ -65,7 +67,7 @@ export function localMoment(now: Date, timeZone: string): LocalMoment {
 const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const hhmm = (t: string) => t.slice(0, 5);
 
-type Interval = { opens: number; closes: number; closesAt: string };
+type Interval = { opens: number; closes: number; closesAt: string; allDay: boolean };
 
 /** Интервалы даты: исключения даты (closed — пусто) или недельный график её дня. */
 function intervalsOn(s: ScheduleRows, date: string, dayOfWeek: number): Interval[] {
@@ -74,7 +76,12 @@ function intervalsOn(s: ScheduleRows, date: string, dayOfWeek: number): Interval
     ex.length > 0 ? (ex.some((e) => e.closed) ? [] : ex) : s.weekly.filter((w) => w.dayOfWeek === dayOfWeek);
   return rows
     .filter((r): r is { opensAt: string; closesAt: string } => r.opensAt !== null && r.closesAt !== null)
-    .map((r) => ({ opens: toMinutes(r.opensAt), closes: toMinutes(r.closesAt), closesAt: hhmm(r.closesAt) }));
+    .map((r) => ({
+      opens: toMinutes(r.opensAt),
+      closes: toMinutes(r.closesAt),
+      closesAt: hhmm(r.closesAt),
+      allDay: isAllDay(r.opensAt, r.closesAt),
+    }));
 }
 
 /**
@@ -87,12 +94,14 @@ export function openState(s: ScheduleRows, at: LocalMoment): OpenState {
   if (s.weekly.length === 0 && !relevantException) return { openNow: null, openUntil: null };
   const t = at.minutes;
   for (const i of intervalsOn(s, at.date, at.dayOfWeek)) {
+    // Круглосуточно (00:00–23:59 / 24:00): открыто весь день, времени закрытия нет.
+    if (i.allDay) return { openNow: true, openUntil: null };
     const overnight = i.closes <= i.opens;
     if (overnight ? t >= i.opens : t >= i.opens && t < i.closes)
       return { openNow: true, openUntil: i.closesAt };
   }
   const yesterday = at.dayOfWeek === 1 ? 7 : at.dayOfWeek - 1;
   for (const i of intervalsOn(s, at.previousDate, yesterday))
-    if (i.closes <= i.opens && t < i.closes) return { openNow: true, openUntil: i.closesAt };
+    if (!i.allDay && i.closes <= i.opens && t < i.closes) return { openNow: true, openUntil: i.closesAt };
   return { openNow: false, openUntil: null };
 }

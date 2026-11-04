@@ -197,6 +197,9 @@ describe("помощники", () => {
     expect(hoursOn(s, SAT)).toBe("10:00–18:00");
     expect(hoursOn(closed, SAT)).toBeNull();
     expect(hoursOn(s, SUN)).toBeNull();
+    // Круглосуточно (00:00–23:59 или 00:00–24:00) — «Цілодобово», а не цифры.
+    expect(hoursOn(weekly(6, "00:00", "23:59"), SAT)).toBe("Цілодобово");
+    expect(hoursOn(weekly(6, "00:00", "24:00"), SAT)).toBe("Цілодобово");
   });
 
   it("сегодня: начало через 15 мин на четверть часа; поздно — времени нет", () => {

@@ -93,6 +93,31 @@ function renderCard(place: PlaceDetail) {
   return act(async () => new Promise((r) => setTimeout(r, 0)));
 }
 
+describe("графік: цілодобово", () => {
+  const day = (weekday: number, opens: string, closes: string) => ({ weekday, opens, closes });
+  const week = (opens: string, closes: string) => [1, 2, 3, 4, 5, 6, 7].map((d) => day(d, opens, closes));
+
+  it("00:00–23:59 всі 7 днів — один рядок «Цілодобово» без таблиці", async () => {
+    await renderCard({ ...base, schedule: week("00:00", "23:59") });
+    expect(screen.getByText("Цілодобово")).toBeTruthy();
+    expect(document.querySelector(".pc-schedule")).toBeNull();
+  });
+
+  it("00:00–24:00 всі 7 днів — теж «Цілодобово»", async () => {
+    await renderCard({ ...base, schedule: week("00:00", "24:00") });
+    expect(screen.getByText("Цілодобово")).toBeTruthy();
+    expect(document.querySelector(".pc-schedule")).toBeNull();
+  });
+
+  it("частина днів — «цілодобово» лише в них, решта цифрами", async () => {
+    await renderCard({ ...base, schedule: [day(1, "00:00", "23:59"), day(2, "10:00", "22:00")] });
+    const rows = [...document.querySelectorAll(".pc-schedule tr")].map((r) => r.textContent);
+    expect(rows[0]).toContain("Цілодобово");
+    expect(rows[1]).toContain("10:00–22:00");
+    expect(rows[2]).toContain("вихідний");
+  });
+});
+
 describe("богатая картка місця", () => {
   it("тип, ціни, рейтинг Google, «Про місце» без пометки ШІ, «Що пропонує», відгуки, атрибуція Google", async () => {
     await renderCard({ ...base, ...rich });
