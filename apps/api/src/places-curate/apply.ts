@@ -461,9 +461,16 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     });
   // Главная не должна сама уходить в архив или быть дублем и должна быть опубликована (в этой же транзакции).
   const dupSet = new Set(merges.map((m) => m.dup));
+  // Данные и ручные правки проверяются только у дубля (он уходит в архив); главная сохраняет своё —
+  // у неё только место партнёра/источник.
   const blockers = opts.guardMerges
-    ? await mergeBlockers(trx, [...new Set(merges.flatMap((m) => [m.dup, m.main]))], places)
+    ? await mergeBlockers(trx, [...new Set(merges.map((m) => m.dup))], places)
     : new Map<string, string[]>();
+  if (opts.guardMerges)
+    for (const m of merges) {
+      const p = places.get(m.main);
+      if (p && !blockers.has(m.main)) blockers.set(m.main, placeMergeBlockers(p));
+    }
   for (const m of [...merges]) {
     const why = mergeSkipReason({
       main: m.main,
@@ -878,12 +885,15 @@ export const MERGE_BLOCKING_TABLES = [
  * всегда пишет `schedule.edit` по месту. Обложки (place_cover_photos) — только google/wikimedia,
  * их пишут автоматически, поэтому не блокируют.
  */
-export const SCHEDULE_TABLES = ["place_schedules", "place_schedule_exceptions"] as const;
+export const SCHEDULE_TABLES = ["place_schedules", "place_schedule_exceptions", "place_tags"] as const;
 export const MANUAL_SCHEDULE_ACTION = "schedule.edit";
 
-/** Блокирует ли строка таблицы слияние: расписание — только при ручной правке. */
-export function tableBlocksMerge(table: string, scheduleEditedManually: boolean): boolean {
-  if ((SCHEDULE_TABLES as readonly string[]).includes(table)) return scheduleEditedManually;
+/**
+ * Блокирует ли строка таблицы слияние. Расписание и теги пишет и импорт Google (теги — автоматически по категории),
+ * поэтому они блокируют только при ручной правке места (schedule.edit для расписания, любая ручная правка для тегов).
+ */
+export function tableBlocksMerge(table: string, editedManually: boolean): boolean {
+  if ((SCHEDULE_TABLES as readonly string[]).includes(table)) return editedManually;
   return (MERGE_BLOCKING_TABLES as readonly string[]).includes(table);
 }
 
@@ -956,11 +966,13 @@ async function mergeBlockers(
     .where((w) => w.or([w("actor_type", "=", "user"), w("action", "=", CURATE_ACTION)]))
     .execute();
   const manualSchedule = new Set<string>();
+  const manualPlaces = new Set<string>();
   for (const a of audits) {
     if (!a.entity_id) continue;
     const id = a.entity_id.toLowerCase();
     if (a.action === MANUAL_SCHEDULE_ACTION) manualSchedule.add(id);
     const why = manualEditBlocker(a);
+    if (why) manualPlaces.add(id);
     if (why && !out.get(id)?.some((w) => w.startsWith(`${id}: ручн`))) add(id, `${id}: ${why}`);
   }
   const manualExtras = await trx
@@ -979,7 +991,13 @@ async function mergeBlockers(
       .groupBy("place_id")
       .execute();
     for (const r of rows)
-      if (r.place_id && tableBlocksMerge(table, manualSchedule.has(r.place_id)))
+      if (
+        r.place_id &&
+        tableBlocksMerge(
+          table,
+          table === "place_tags" ? manualPlaces.has(r.place_id) : manualSchedule.has(r.place_id),
+        )
+      )
         add(r.place_id, `${r.place_id}: ${table} ×${Number(r.n)}`);
   }
   return out;

@@ -31,6 +31,9 @@ describe("placeMergeBlockers", () => {
       expect(tableBlocksMerge(t, true)).toBe(true);
     }
     expect(tableBlocksMerge("bookings", false)).toBe(true);
+    // Теги импорт ставит сам — блокируют только при ручной правке.
+    expect(tableBlocksMerge("place_tags", false)).toBe(false);
+    expect(tableBlocksMerge("place_tags", true)).toBe(true);
   });
 
   it("обложки google/wikimedia не блокируют", () => {

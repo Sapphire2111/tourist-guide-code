@@ -94,23 +94,31 @@ describe.skipIf(!dockerAvailable)(`Осторожная чистка мест (p
       [user, dup],
     );
 
-    const report = await curatePlaces(appDb, {
-      regionCode: "test-region",
-      findings: [],
-      decisions: [
-        { kind: "merge", id: dup, mainId: main, note: "тест" },
-        { kind: "merge", id: manual, mainId: main, note: "тест" },
-        { kind: "archive", id: partner, note: "тест: вне региона" },
-      ],
-      localityIssueIds: [],
-      dryRun: false,
-      reason: "тест",
-      guardMerges: true,
-    });
+    const run = (dryRun: boolean) =>
+      curatePlaces(appDb, {
+        regionCode: "test-region",
+        findings: [],
+        decisions: [
+          { kind: "merge", id: dup, mainId: main, note: "тест" },
+          { kind: "merge", id: manual, mainId: main, note: "тест" },
+          { kind: "archive", id: partner, note: "тест: вне региона" },
+        ],
+        localityIssueIds: [],
+        dryRun,
+        reason: "тест",
+        guardMerges: true,
+      });
 
-    expect(await statusOf("cDup")).toBe("archived");
-    expect(await statusOf("cManual")).toBe("published");
-    expect(await statusOf("cPartner")).toBe("published");
+    // Пробный прогон откатывается: план есть, в БД ничего не изменилось.
+    const plan = await run(true);
+    expect(plan.counts.merge, JSON.stringify(plan.todo)).toBe(1);
+    expect(await statusOf("cDup")).toBe("published");
+
+    const report = await run(false);
+    const why = JSON.stringify(report.todo);
+    expect(await statusOf("cDup"), why).toBe("archived");
+    expect(await statusOf("cManual"), why).toBe("published");
+    expect(await statusOf("cPartner"), why).toBe("published");
     expect(
       (await sql("SELECT count(*)::int AS n FROM favorites WHERE place_id = $1", [main])).rows[0].n,
     ).toBe(1);
