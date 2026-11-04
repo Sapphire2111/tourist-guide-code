@@ -827,76 +827,242 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   font-size: 0.8125rem;
 }
 
-/* Ползунок радиуса: подпись, шкала, значение в одну строку. Видимая высота 32 px; зона касания шкалы 44 px —
-   прозрачная область выступает за строку (отрицательные поля), видимая дорожка тонкая. */
+/* Ползунок радиуса «Жаринка»: капсула 44 px (зона касания целиком), тонкая дорожка с огненным заполнением,
+   деления по шагам, бегунок-уголёк, значение в чипе справа. Overlay («Поруч») — стекло темы; иначе — поверхность. */
 .kosiv-radius-slider {
+  --rs-rail: rgb(22 56 43 / 18%);
+  --rs-tick: rgb(22 56 43 / 40%);
+  --rs-thumb: 22px;
+  --rs-bw: 1.5px;
+  --p: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  color: var(--app-text);
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 6px 0 12px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border, #e2d9c5);
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #1c2822);
+  font-family: var(--font-body, system-ui, sans-serif);
 }
 .kosiv-radius-slider label {
   flex: none;
   font-size: 0.75rem;
   font-weight: 600;
+  color: var(--app-muted, #434e48);
 }
-.kosiv-radius-slider input[type="range"] {
+.kosiv-rs-icon {
+  flex: none;
+  color: var(--glass-muted, var(--app-muted, #434e48));
+}
+
+/* Дорожка: рельс и заполнение рисуем сами; input прозрачный — только бегунок и зона касания. */
+.kosiv-rs-track {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 44px;
-  margin: -6px 0;
+  margin: calc(var(--rs-bw) * -1) 0; /* зона касания 44 px перекрывает рамку капсулы: высота капсулы ровно 44 */
+}
+.kosiv-rs-track::before,
+.kosiv-rs-fill {
+  content: "";
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.kosiv-rs-track::before {
+  left: calc(var(--rs-thumb) / 2);
+  right: calc(var(--rs-thumb) / 2);
+  background: var(--rs-rail);
+}
+.kosiv-rs-fill {
+  left: calc(var(--rs-thumb) / 2);
+  width: calc((100% - var(--rs-thumb)) * var(--p));
+  background: linear-gradient(90deg, var(--ember-b, #e06d2b), var(--ember-a, #f26419));
+  transition: width 0.12s ease;
+}
+.kosiv-rs-ticks {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--rs-thumb) / 2 - 2px);
+  right: calc(var(--rs-thumb) / 2 - 2px);
+  display: flex;
+  justify-content: space-between;
+  margin-top: -2px;
+  pointer-events: none;
+}
+.kosiv-rs-ticks i {
+  box-sizing: border-box;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--rs-tick);
+}
+.kosiv-rs-ticks i[data-passed] {
+  background: rgb(255 255 255 / 90%);
+}
+/* «Усі місця» — кольцо, а не точка. */
+.kosiv-rs-ticks i[data-all] {
+  width: 7px;
+  height: 7px;
+  margin: -1.5px;
   background: transparent;
-  accent-color: var(--app-accent, #2d6a4f);
+  border: 1.5px solid var(--rs-tick);
+}
+.kosiv-rs-ticks i[data-all][data-passed] {
+  border-color: var(--ember-a, #f26419);
+}
+
+.kosiv-rs-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
+  outline: none;
+  touch-action: pan-y;
 }
-.kosiv-radius-slider input[type="range"]::-webkit-slider-runnable-track {
+.kosiv-rs-track input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 2px;
-  background: rgb(128 128 128 / 55%);
-  background: color-mix(in srgb, currentColor 35%, transparent);
+  background: transparent;
 }
-.kosiv-radius-slider input[type="range"]::-moz-range-track {
+.kosiv-rs-track input[type="range"]::-moz-range-track {
   height: 4px;
-  border-radius: 2px;
-  background: rgb(128 128 128 / 55%);
-  background: color-mix(in srgb, currentColor 35%, transparent);
+  background: transparent;
 }
-.kosiv-radius-slider input[type="range"]::-webkit-slider-thumb {
+/* Бегунок-уголёк. */
+.kosiv-rs-track input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  margin-top: -8px;
+  width: var(--rs-thumb);
+  height: var(--rs-thumb);
+  margin-top: calc(var(--rs-thumb) / -2 + 2px);
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  background: var(--app-accent, #2d6a4f);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+  border: 2px solid rgb(255 255 255 / 92%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--ember-c, #f6ae2d) 0%,
+    var(--ember-a, #f26419) 45%,
+    #b83d18 100%
+  );
+  box-shadow:
+    0 0 0 3px rgb(242 100 25 / 18%),
+    0 2px 6px rgb(0 0 0 / 35%);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.kosiv-radius-slider input[type="range"]::-moz-range-thumb {
+.kosiv-rs-track input[type="range"]::-moz-range-thumb {
   box-sizing: border-box;
-  width: 20px;
-  height: 20px;
+  width: var(--rs-thumb);
+  height: var(--rs-thumb);
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  background: var(--app-accent, #2d6a4f);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+  border: 2px solid rgb(255 255 255 / 92%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--ember-c, #f6ae2d) 0%,
+    var(--ember-a, #f26419) 45%,
+    #b83d18 100%
+  );
+  box-shadow:
+    0 0 0 3px rgb(242 100 25 / 18%),
+    0 2px 6px rgb(0 0 0 / 35%);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.kosiv-radius-slider input[type="range"]:focus-visible {
-  outline: 3px solid var(--app-accent, #2d6a4f);
-  outline-offset: -2px;
-  border-radius: 8px;
+@media (hover: hover) {
+  .kosiv-rs-track input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.08);
+  }
+  .kosiv-rs-track input[type="range"]:hover::-moz-range-thumb {
+    transform: scale(1.08);
+  }
 }
+/* Перетаскивание: уголёк разгорается. */
+.kosiv-radius-slider[data-dragging] input[type="range"]::-webkit-slider-thumb,
+.kosiv-rs-track input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+  box-shadow:
+    0 0 0 7px rgb(242 100 25 / 22%),
+    0 0 18px var(--ember-glow, rgb(242 100 25 / 55%));
+}
+.kosiv-radius-slider[data-dragging] input[type="range"]::-moz-range-thumb,
+.kosiv-rs-track input[type="range"]:active::-moz-range-thumb {
+  transform: scale(1.18);
+  box-shadow:
+    0 0 0 7px rgb(242 100 25 / 22%),
+    0 0 18px var(--ember-glow, rgb(242 100 25 / 55%));
+}
+/* Фокус клавиатуры: золотое кольцо с просветом вокруг бегунка; запас — золотая рамка капсулы. */
+.kosiv-rs-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px var(--glass-bg, var(--app-surface, #ffffff)),
+    0 0 0 5.5px var(--ember-c, #f6ae2d);
+}
+.kosiv-rs-track input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 3px var(--glass-bg, var(--app-surface, #ffffff)),
+    0 0 0 5.5px var(--ember-c, #f6ae2d);
+}
+.kosiv-radius-slider:focus-within:has(input:focus-visible) {
+  border-color: var(--ember-c, #f6ae2d);
+}
+
+/* Значение — чип-кикер темы. */
 .kosiv-radius-slider output {
   flex: none;
-  min-width: 4em;
-  text-align: right;
-  font-size: 0.75rem;
-  font-weight: 700;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--kicker-border, transparent);
+  background: var(--kicker-bg, var(--app-pill-bg, #f9e4d2));
+  color: var(--kicker-text, var(--app-accent-ink, #8a2c0f));
+  font: 800 12px/1 var(--font-body, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: transform 0.15s ease;
 }
-/* Поверх карты видимой подписи нет (дорожка длиннее на 320 px); для читалок подпись остаётся. */
+.kosiv-radius-slider[data-dragging] output {
+  transform: scale(1.04);
+}
+
+/* Disabled. */
+.kosiv-radius-slider[data-disabled] {
+  opacity: 0.55;
+  filter: saturate(0.3);
+  pointer-events: none;
+}
+
+/* Поверх карты: стеклянная капсула; подпись только для читалок, слева — значок. */
+.kosiv-radius-overlay {
+  --rs-bw: 1px;
+  margin: 0 0 2px;
+  border-width: 1px;
+  border-color: var(--glass-border, #ffffff);
+  background-color: var(--glass-bg, rgb(255 255 255 / 90%));
+  color: var(--glass-text, #16382b);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 3px 8px rgb(15 34 26 / 14%);
+  pointer-events: auto;
+}
 .kosiv-radius-overlay label {
   position: absolute;
   width: 1px;
@@ -908,19 +1074,14 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   white-space: nowrap;
   border: 0;
 }
-/* Поверх карты: стеклянная капсула по ширине панели, события — только на ней. */
-.kosiv-radius-overlay {
-  box-sizing: border-box;
-  margin: 3px 0 8px;
-  padding: 0 12px;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background-color: var(--glass-bg);
-  color: var(--glass-text);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 2px 4px rgb(15 34 26 / 14%);
-  pointer-events: auto;
+
+@media (prefers-reduced-motion: reduce) {
+  .kosiv-rs-fill,
+  .kosiv-radius-slider output,
+  .kosiv-rs-track input[type="range"]::-webkit-slider-thumb,
+  .kosiv-rs-track input[type="range"]::-moz-range-thumb {
+    transition: none;
+  }
 }
 
 /* Легенда карты мест: цвет маркера — раздел. */

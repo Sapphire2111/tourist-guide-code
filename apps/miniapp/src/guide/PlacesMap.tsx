@@ -264,6 +264,15 @@ function accentColor(): string {
 
 /** Цвет пунктирного круга радиуса на тёмной карте («Ніч»). */
 const RING_COLOR_NIGHT = "#fde68a";
+
+/** Цвета круга радиуса — токены темы (как у ползунка): ночь --ember-c, день --fire; подложка не даёт пунктиру теряться. */
+function ringColors(night: boolean): { dash: string; halo: string } {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string, fb: string) => css.getPropertyValue(name).trim() || fb;
+  return night
+    ? { dash: v("--ember-c", RING_COLOR_NIGHT), halo: "#091913" }
+    : { dash: v("--fire", "#c2521a"), halo: "#ffffff" };
+}
 const EARTH_R = 6_371_000;
 
 /** Точка на расстоянии dist м от center по азимуту bearing (рад) — сферическая формула. */
@@ -475,8 +484,8 @@ export default function PlacesMap({
     const ringCenter = radiusCenter ?? (centerMarker ? center : null);
     const hasRing = Boolean(radius && ringCenter);
     if (radius && ringCenter) {
-      const dayColor = floating ? "#B8430F" : "#1d4ed8";
-      const ringColor = night ? RING_COLOR_NIGHT : dayColor;
+      const rc = ringColors(night);
+      const ringColor = floating ? rc.dash : night ? RING_COLOR_NIGHT : "#1d4ed8";
       // Лёгкая заливка — отдельный Circle без обводки; граница — пунктирная линия по точкам окружности
       // (google.maps.Circle штрихов не умеет): видно, почему за кругом нет мест.
       o.other.push(
@@ -487,9 +496,19 @@ export default function PlacesMap({
             radius,
             strokeOpacity: 0,
             strokeWeight: 0,
-            fillColor: night ? RING_COLOR_NIGHT : floating ? "#E06D2B" : "#1d4ed8",
-            fillOpacity: night ? 0.06 : floating ? 0.08 : 0.05,
+            fillColor: night ? "#f6ae2d" : floating ? "#E06D2B" : "#1d4ed8",
+            fillOpacity: night ? 0.07 : floating ? 0.08 : 0.05,
             clickable: false,
+          }),
+        ),
+        detach(
+          new libs.maps.Polyline({
+            map: m,
+            path: circlePath(ringCenter, radius),
+            clickable: false,
+            strokeColor: rc.halo,
+            strokeOpacity: night ? 0.55 : 0.6,
+            strokeWeight: 4,
           }),
         ),
         detach(
@@ -500,9 +519,9 @@ export default function PlacesMap({
             clickable: false,
             icons: [
               {
-                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: ringColor, scale: 2 },
+                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.95, strokeColor: ringColor, scale: 2.5 },
                 offset: "0",
-                repeat: "10px",
+                repeat: "14px",
               },
             ],
           }),

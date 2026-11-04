@@ -166,7 +166,7 @@ vi.mock("./google-maps.js", async (orig) => {
           icons?: { icon: { strokeColor?: string } }[];
         }) {
           super(o);
-          if (o.path) {
+          if (o.path && o.icons) {
             calls.paths.push(o.path);
             calls.lines.push(this);
           }
@@ -723,7 +723,7 @@ describe("PlacesMap (Google Maps)", () => {
     expect(calls.routeColors.at(-1)).toBe("#1d4ed8");
     view.rerender(wrap(<PlacesMap places={[]} center={center} radius={500} floating />));
     await flush();
-    expect(calls.routeColors.at(-1)).toBe("#B8430F");
+    expect(calls.routeColors.at(-1)).toBe("#c2521a");
   });
 
   it("смена высоты окна карты — новый размер карте и повторная подгонка границ", async () => {
