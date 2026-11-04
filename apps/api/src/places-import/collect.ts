@@ -13,6 +13,7 @@ import {
   PlannedRequest,
   RequestLimitError,
   type GooglePlacesClient,
+  type SearchFields,
   type SearchTextRequest,
 } from "./google-client.js";
 import {
@@ -52,7 +53,12 @@ export type CollectStats = {
   limitReached: boolean;
   queriesDone: number;
   queriesTotal: number;
+  /** Зоны поиска отдельно (SEARCH_ZONES): запросов, запросов к Google, оценка (--plan), ответов из кэша. */
+  zones: { queries: number; googleRequests: number; planned: number; cacheHits: number };
 };
+
+/** Полнота ответа по маске: при дубле места остаётся версия из более полного ответа. */
+const FIELDS_RANK: Readonly<Record<SearchFields, number>> = { full: 2, enterprise: 1, pro: 0 };
 
 export type CollectResult = {
   places: MappedPlace[];
@@ -92,6 +98,10 @@ export async function collect(
   const queries = opts.queries ?? IMPORT_QUERIES;
   const log = opts.log ?? (() => {});
   const raw = new Map<string, GooglePlace>();
+  /** С какой маской получена хранимая версия места. */
+  const rawFields = new Map<string, SearchFields>();
+  const zoneCodes = new Set(zones.map((z) => z.code));
+  const zoneStats = { queries: 0, googleRequests: 0, planned: 0, cacheHits: 0 };
   let fetched = 0;
   let queriesDone = 0;
   let limitReached = false;
@@ -104,10 +114,19 @@ export async function collect(
 
   outer: for (const locality of areas) {
     const box = boundingBox(locality.at, locality.radiusM);
+    const isZone = zoneCodes.has(locality.code) && !localities.some((l) => l.code === locality.code);
+    const before = { g: client.requests.search, p: client.planned.search, c: client.cacheHits };
+    const countZone = () => {
+      if (!isZone) return;
+      zoneStats.googleRequests += client.requests.search - before.g;
+      zoneStats.planned += client.planned.search - before.p;
+      zoneStats.cacheHits += client.cacheHits - before.c;
+    };
     for (const textQuery of queries) {
+      if (isZone) zoneStats.queries++;
       let pageToken: string | undefined;
-      /** Запросы цепочки страниц этого запроса: при устаревшем токене кэш сбрасывается целиком. */
-      const chain: SearchTextRequest[] = [];
+      /** Страницы цепочки этого запроса и маска ответа: при устаревшем токене их кэш сбрасывается целиком. */
+      const chain: { request: SearchTextRequest; fields: SearchFields }[] = [];
       try {
         for (let page = 0; page < MAX_PAGES; page++) {
           const request: SearchTextRequest = {
@@ -135,13 +154,19 @@ export async function collect(
               throw err;
             log(`${locality.code} «${textQuery}»: страница ${page + 1} отклонена Google (400), пропущена`);
             pagesFailed++;
-            for (const r of chain) await client.forgetSearch(r);
+            for (const r of chain) await client.forgetSearch(r.request, r.fields);
             break;
           }
-          chain.push(request);
+          chain.push({ request, fields: res.fields });
           for (const p of res.places ?? []) {
             fetched++;
-            if (p.id && !raw.has(p.id)) raw.set(p.id, p);
+            if (!p.id) continue;
+            // Первая увиденная версия, но более полная (маска full/enterprise) вытесняет дешёвую (pro).
+            const had = rawFields.get(p.id);
+            if (had === undefined || FIELDS_RANK[res.fields] > FIELDS_RANK[had]) {
+              raw.set(p.id, p);
+              rawFields.set(p.id, res.fields);
+            }
           }
           pageToken = res.nextPageToken;
           if (!pageToken) break;
@@ -150,10 +175,12 @@ export async function collect(
         if (!(err instanceof RequestLimitError || err instanceof GoogleRateLimitedError)) throw err;
         log(err.message);
         limitReached = true;
+        countZone();
         break outer;
       }
       queriesDone++;
     }
+    countZone();
     log(`${locality.code}: запросов выполнено, уникальных мест всего ${raw.size}`);
   }
 
@@ -168,6 +195,7 @@ export async function collect(
       outside_radius: 0,
       no_category: 0,
       no_name: 0,
+      unverified: 0,
     },
     byLocality: {},
     byCategory: {},
@@ -182,12 +210,17 @@ export async function collect(
     limitReached,
     queriesDone,
     queriesTotal: areas.length * queries.length,
+    zones: zoneStats,
   };
   const places: MappedPlace[] = [];
   const closedIds: string[] = [];
   const rejectedIds: string[] = [];
   for (const p of raw.values()) {
-    const r = mapPlace(p, localities, opts.categoryNames, undefined, zones);
+    // Число отзывов (паркинги) есть только в ответах не pro; unverified не попадает в rejectedIds (не архивируется).
+    const r = mapPlace(p, localities, opts.categoryNames, undefined, {
+      zones,
+      ratingsKnown: rawFields.get(p.id) !== "pro",
+    });
     if (!r.ok) {
       stats.skipped[r.reason]++;
       const lat = p.location?.latitude;

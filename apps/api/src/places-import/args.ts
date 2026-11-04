@@ -128,6 +128,12 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
     throw new ImportArgsError(
       "places:import-google: --zones-only/--search — широкий импорт, несовместимы с --queries-file/--query",
     );
+  // Дешёвая маска без телефона/часов/отзывов в обычной записи обновила бы существующие места бедными данными (и
+  // правила, которым нужны эти поля) — только для новых мест или без записи.
+  if (args.fields !== "full" && !args.insertOnly && !args.dryRun)
+    throw new ImportArgsError(
+      "places:import-google: --fields enterprise|pro — только с --insert-only/--zones-only (или --dry-run/--plan)",
+    );
   if (args.dryRun && args.photos)
     throw new ImportArgsError(
       "places:import-google: --photos пишет в БД и хранилище — несовместим с --dry-run",

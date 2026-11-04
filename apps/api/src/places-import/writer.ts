@@ -46,6 +46,8 @@ export type WriteStats = {
   missingExamples: string[];
   /** Места этого прогона, которые после записи не опубликованы (архив, скрыто, черновик) — реальный статус. */
   notPublished: { googlePlaceId: string; name: string; status: string }[];
+  /** google place id вставленных (новых) мест — этап фото при --insert-only берёт только их. */
+  insertedIds: string[];
 };
 
 export type WriteOptions = {
@@ -123,6 +125,7 @@ export async function writePlaces(
       missingFromGoogle: null,
       missingExamples: [],
       notPublished: [],
+      insertedIds: [],
     };
 
     const newLocalities = await trx
@@ -310,7 +313,9 @@ export async function writePlaces(
             status: r.status,
           });
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
-      stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
+      const insertedIds = googleIds.filter((id) => !existing.has(id));
+      stats.inserted += insertedIds.length;
+      stats.insertedIds.push(...insertedIds);
 
       // Дополнительные категории импорта пересобираются (новые правила) только у мест, где основную категорию
       // ставил импорт: админка сменила категорию — набор места её, импорт его не трогает. Поставленные админкой

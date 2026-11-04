@@ -16,7 +16,7 @@ import { createDatabase } from "../db/index.js";
 import { ImportArgsError, parseImportArgs, photoStorageEnv } from "../places-import/args.js";
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
-import { importPhotos } from "../places-import/photos.js";
+import { importPhotos, photoCandidates } from "../places-import/photos.js";
 import { CATEGORY_NAMES, googlePlaceIds, ImportWriteError, writePlaces } from "../places-import/writer.js";
 import {
   ALL_LOCALITIES,
@@ -61,6 +61,10 @@ try {
         `\nОценка: запросов Text Search мимо кэша (первые страницы) ${client.planned.search}, из кэша ${client.cacheHits}; ` +
           "вторые-третьи страницы — сверх (до ×3 на запрос).",
       );
+    console.log(
+      `Из них зоны поиска (SEARCH_ZONES): запросов ${stats.zones.queries}, к Google ${stats.zones.googleRequests}` +
+        `${args.plan ? `, мимо кэша (оценка) ${stats.zones.planned}` : ""}, из кэша ${stats.zones.cacheHits}.`,
+    );
     const report: Record<string, unknown> = { collect: stats };
 
     console.log(
@@ -107,7 +111,15 @@ try {
         );
         if (storage) {
           const ids = await googlePlaceIds(db, written.regionId);
-          const photos = await importPhotos(db, client, storage, written.regionId, places, ids, console.log);
+          const photos = await importPhotos(
+            db,
+            client,
+            storage,
+            written.regionId,
+            photoCandidates(places, written.insertedIds, args.insertOnly),
+            ids,
+            console.log,
+          );
           report.photos = photos;
           console.log(
             `Фото (${storage.driver.driver}): добавлено ${photos.added}, отклонено ${photos.rejected}, ошибок ${photos.failed}` +
@@ -196,7 +208,15 @@ async function runTargeted(
         console.log(`  не опубликовано: ${n.name} (${n.googlePlaceId}) — статус ${n.status}`);
       if (storage) {
         const ids = await googlePlaceIds(db, written.regionId);
-        const photos = await importPhotos(db, client, storage, written.regionId, places, ids, console.log);
+        const photos = await importPhotos(
+          db,
+          client,
+          storage,
+          written.regionId,
+          photoCandidates(places, written.insertedIds, args.insertOnly),
+          ids,
+          console.log,
+        );
         report.photos = photos;
         console.log(
           `Фото: добавлено ${photos.added}, отклонено ${photos.rejected}, ошибок ${photos.failed}.`,

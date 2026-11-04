@@ -384,31 +384,41 @@ export class GooglePlacesClient {
     return path.join(this.options.cacheDir, `search-${hash(key)}.json`);
   }
 
-  /** Свой файл и запасные: ответ с той же или более полной маской; full принимает и enterprise (без описания). */
-  private searchFiles(body: SearchTextRequest): string[] {
-    const fields = this.options.searchFields ?? "full";
-    return SEARCH_FIELDS_FALLBACK[fields].map((f) => this.searchFileFor(body, f));
+  /**
+   * Text Search: ответ и маска, с которой он получен (`fields`: своя или более полная/запасная из кэша — порядок
+   * SEARCH_FIELDS_FALLBACK; full принимает и enterprise, без описания).
+   */
+  async searchText(body: SearchTextRequest): Promise<SearchTextResponse & { fields: SearchFields }> {
+    const own = this.options.searchFields ?? "full";
+    const order = SEARCH_FIELDS_FALLBACK[own];
+    const from = { index: 0 };
+    const res = await this.cached(
+      order.map((f) => this.searchFileFor(body, f)),
+      "search",
+      isSearchResponse,
+      async (key) => {
+        const r = await this.googleFetch(`${API}/places:searchText`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": SEARCH_FIELD_MASKS[own],
+          },
+          body: JSON.stringify(body),
+        });
+        return this.json(r, "searchText", isSearchResponse);
+      },
+      from,
+    );
+    return { ...res, fields: order[from.index]! };
   }
 
-  searchText(body: SearchTextRequest): Promise<SearchTextResponse> {
-    const fields = this.options.searchFields ?? "full";
-    return this.cached(this.searchFiles(body), "search", isSearchResponse, async (key) => {
-      const res = await this.googleFetch(`${API}/places:searchText`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": SEARCH_FIELD_MASKS[fields],
-        },
-        body: JSON.stringify(body),
-      });
-      return this.json(res, "searchText", isSearchResponse);
-    });
-  }
-
-  /** Убрать ответ из кэша (страница, чей токен следующей страницы устарел). */
-  async forgetSearch(body: SearchTextRequest): Promise<void> {
-    for (const f of this.searchFiles(body)) await rm(f, { force: true });
+  /**
+   * Убрать ответ из кэша (страница, чей токен следующей страницы устарел): только файл маски `fields` — тот, из
+   * которого ответ прочитан (searchText().fields); ответы с другой маской остаются.
+   */
+  async forgetSearch(body: SearchTextRequest, fields: SearchFields): Promise<void> {
+    await rm(this.searchFileFor(body, fields), { force: true });
   }
 
   /**
@@ -501,20 +511,25 @@ export class GooglePlacesClient {
     this.requests[kind]++;
   }
 
-  /** `files` — файл ответа и запасные (тот же запрос с другой маской полей); новый ответ пишется в первый. */
+  /**
+   * `files` — файл ответа и запасные (тот же запрос с другой маской полей); новый ответ пишется в первый. `from.index`
+   * — из какого файла списка ответ (0 — свой или свежий из Google).
+   */
   private async cached<T>(
     files: string | readonly string[],
     kind: keyof GooglePlacesClient["requests"],
     valid: (v: unknown) => v is T,
     load: (apiKey: string) => Promise<T>,
+    from: { index: number } = { index: 0 },
   ): Promise<T> {
     const list = typeof files === "string" ? [files] : files;
     const file = list[0]!;
-    for (const f of list) {
+    for (const [i, f] of list.entries()) {
       try {
         const data: unknown = JSON.parse(await readFile(f, "utf8"));
         if (valid(data)) {
           this.cacheHits++;
+          from.index = i;
           return data;
         }
       } catch {
@@ -536,6 +551,7 @@ export class GooglePlacesClient {
     if (sku && this.options.quota && !(await this.options.quota(sku)))
       throw new MonthlyLimitError(`Исчерпан месячный предел Google (${sku})`);
     this.take(kind);
+    from.index = 0;
     const data = await load(key);
     await mkdir(this.options.cacheDir, { recursive: true });
     await writeFile(file, JSON.stringify(data));

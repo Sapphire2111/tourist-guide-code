@@ -615,6 +615,7 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
       archivedRejected: 0,
       recategorized: 0,
       missingFromGoogle: null,
+      insertedIds: ["gIO2"],
     });
     const rows = (
       await sql(

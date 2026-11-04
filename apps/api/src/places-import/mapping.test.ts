@@ -517,9 +517,31 @@ describe("зоны поиска (SEARCH_ZONES) и отнесение к пунк
       primaryType: "courier_service",
     };
     expect(mapPlace(np, IMPORT_LOCALITIES)).toEqual({ ok: false, reason: "outside_radius" });
-    expect(mapPlace(np, IMPORT_LOCALITIES, {}, undefined, SEARCH_ZONES)).toMatchObject({
+    expect(mapPlace(np, IMPORT_LOCALITIES, {}, undefined, { zones: SEARCH_ZONES })).toMatchObject({
       ok: true,
       place: { localityCode: "yaremche", categoryCode: "post" },
+    });
+  });
+});
+
+describe("паркинг и маска без числа отзывов", () => {
+  const parking: GooglePlace = {
+    id: "pk",
+    displayName: { text: "Парковка" },
+    location: { latitude: IMPORT_LOCALITIES[0]!.at.lat, longitude: IMPORT_LOCALITIES[0]!.at.lon },
+    primaryType: "parking",
+  };
+  it("число отзывов не запрашивалось (pro) — unverified, а не «не наш»", () => {
+    expect(mapPlace(parking, IMPORT_LOCALITIES, {}, undefined, { ratingsKnown: false })).toEqual({
+      ok: false,
+      reason: "unverified",
+    });
+  });
+  it("запрашивалось — прежнее правило PARKING_MIN_REVIEWS", () => {
+    expect(mapPlace(parking, IMPORT_LOCALITIES)).toEqual({ ok: false, reason: "no_category" });
+    expect(mapPlace({ ...parking, userRatingCount: 9 }, IMPORT_LOCALITIES)).toMatchObject({
+      ok: true,
+      place: { categoryCode: "parking" },
     });
   });
 });
@@ -544,6 +566,16 @@ describe("пошта: чужі відділення й поштомати", () =
     expect(isForeignPost("Нова пошта №1")).toBe(false);
   });
 
+  it("наша область в любом написании: «Ів.-Франківська обл.», латинская I, «ІФ обл.», «Франківська обл.», латиница", () => {
+    expect(isForeignPost("Нова Пошта №3 м. Яремче, Ів.-Франківська обл.")).toBe(false);
+    expect(isForeignPost("Нова Пошта №3 м. Яремче, Iвано-Франківська область")).toBe(false); // латинская I
+    expect(isForeignPost("Нова Пошта №3 м. Яремче, ІФ обл.")).toBe(false);
+    expect(isForeignPost("Нова Пошта №3 м. Яремче, Франківська обл.")).toBe(false);
+    expect(isForeignPost("Nova Poshta №3 Yaremche, Ivano-Frankivsk Oblast")).toBe(false);
+    expect(isForeignPost("Нова Пошта №1 с. Соколівка, Львівська обл.")).toBe(true);
+    expect(isForeignPost("Nova Poshta №1 Sokolivka, Lviv Oblast")).toBe(true);
+  });
+
   it("mapCategory: чужое отделение Укрпошти с точкой в Микуличине — без категории", () => {
     const ukr = { primaryType: "post_office", types: ["post_office", "courier_service"] };
     expect(mapCategory(ukr, "Укрпошта 77344")).toBeUndefined();
@@ -553,5 +585,9 @@ describe("пошта: чужі відділення й поштомати", () =
   it("природа с названием только пункта («Яремче») — метка, не заведение", () => {
     expect(mapCategory({ primaryType: "natural_feature" }, "Яремче")).toBeUndefined();
     expect(mapCategory({ primaryType: "natural_feature" }, "Водоспад Пробій")).toBe("nature");
+    expect(mapCategory({ primaryType: "park" }, "Ворохта")).toBeUndefined();
+    // «Буковель» і «Карпати» — це й гора/хребет: природа з такою назвою лишається.
+    expect(mapCategory({ primaryType: "natural_feature" }, "Буковель")).toBe("nature");
+    expect(mapCategory({ primaryType: "natural_feature" }, "Карпати")).toBe("nature");
   });
 });
