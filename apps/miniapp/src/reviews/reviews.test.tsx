@@ -56,6 +56,8 @@ const ratings = (over: Partial<PlaceReviewsData["rating"]> = {}): PlaceReviewsDa
   fewReviews: false,
   score: 4.3,
   minReviews: 3,
+  formulaVersion: 1,
+  computedAt: "2026-11-03T08:00:00.000Z",
   ...over,
 });
 

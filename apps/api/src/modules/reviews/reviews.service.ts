@@ -64,7 +64,7 @@ import type {
   MyReviewDto,
   PartnerReviewDto,
   PartnerReviewListDto,
-  PlaceRatingDto,
+  PlaceReviewRatingDto,
   PlaceRatingListDto,
   PlaceReviewsDto,
   PublicReviewDto,
@@ -711,7 +711,7 @@ export class ReviewsService {
    * Рейтинг для публичного GET без записи: свежий кэш текущей версии формулы — как есть; нет кэша или он устарел
    * (затухание по давности, другая версия формулы) — расчёт в памяти, кэш обновится при следующем изменении отзывов.
    */
-  private async publicRatingOf(place: PlaceRef): Promise<PlaceRatingDto> {
+  private async publicRatingOf(place: PlaceRef): Promise<PlaceReviewRatingDto> {
     const now = this.now();
     const row = (await this.repo.ratings([place.id])).get(place.id);
     if (row && !ratingStale(row, now)) return toRatingDto(row);
@@ -1016,7 +1016,7 @@ function ownDismissed(c: ReviewComplaint, userId: string): boolean {
 }
 
 /** Нет кэша — нет опубликованных отзывов: «Мало відгуків». */
-function emptyRating(placeId: string, now: Date): PlaceRatingDto {
+function emptyRating(placeId: string, now: Date): PlaceReviewRatingDto {
   return {
     placeId,
     reviewCount: 0,
@@ -1057,7 +1057,7 @@ function publicResponse(r: ReviewResponse | undefined, includeHidden = false): R
   };
 }
 
-function toRatingDto(r: PlaceReviewRating): PlaceRatingDto {
+function toRatingDto(r: PlaceReviewRating): PlaceReviewRatingDto {
   const score = r.score === null ? null : Math.round(Number(r.score) * 10) / 10;
   return {
     placeId: r.place_id,

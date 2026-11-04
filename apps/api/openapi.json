@@ -19300,6 +19300,34 @@
         },
         "required": ["status"]
       },
+      "PlaceReviewRatingDto": {
+        "type": "object",
+        "properties": {
+          "placeId": { "type": "string", "format": "uuid" },
+          "reviewCount": { "type": "integer", "description": "Опубликованных проверенных отзывов" },
+          "fewReviews": {
+            "type": "boolean",
+            "description": "Меньше 3 отзывов — «Мало відгуків» вместо цифры (score = null)"
+          },
+          "score": {
+            "type": "number",
+            "nullable": true,
+            "description": "Рейтинг 1–5 (D-37 В: сглаживание к среднему категории и вес давности), до десятых"
+          },
+          "minReviews": { "type": "integer" },
+          "formulaVersion": { "type": "integer", "description": "Версия формулы рейтинга" },
+          "computedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "placeId",
+          "reviewCount",
+          "fewReviews",
+          "score",
+          "minReviews",
+          "formulaVersion",
+          "computedAt"
+        ]
+      },
       "ReviewVerificationLevel": { "type": "string", "enum": ["verified_booking"] },
       "ReviewResponseDto": {
         "type": "object",
@@ -19351,7 +19379,7 @@
       "PlaceReviewsDto": {
         "type": "object",
         "properties": {
-          "rating": { "$ref": "#/components/schemas/PlaceRatingDto" },
+          "rating": { "$ref": "#/components/schemas/PlaceReviewRatingDto" },
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/PublicReviewDto" } }
         },
         "required": ["rating", "items"]
@@ -19359,7 +19387,7 @@
       "PlaceRatingListDto": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PlaceRatingDto" } }
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/PlaceReviewRatingDto" } }
         },
         "required": ["items"]
       },

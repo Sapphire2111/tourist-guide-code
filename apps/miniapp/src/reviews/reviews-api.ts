@@ -15,20 +15,8 @@ export type PartnerReview = ApiSchemas["PartnerReviewDto"];
 export type ReviewComplaint = ApiSchemas["ComplaintDto"];
 export type ReviewAppeal = ApiSchemas["AppealDto"];
 
-/**
- * Рейтинг места (D-37). В сгенерированной схеме имя PlaceRatingDto занято DTO гида (рейтинг Google, одноимённый
- * класс), поэтому тип рейтинга отзывов описан здесь по reviews.dto.ts сервера.
- */
-export type PlaceRating = {
-  placeId: string;
-  /** Опубликованных проверенных отзывов. */
-  reviewCount: number;
-  /** Меньше minReviews отзывов — «Мало відгуків» вместо цифры (score = null). */
-  fewReviews: boolean;
-  /** 1–5 до десятых; null — мало отзывов. */
-  score: number | null;
-  minReviews: number;
-};
+/** Рейтинг места по отзывам (D-37): score = null и fewReviews — «Мало відгуків». */
+export type PlaceRating = ApiSchemas["PlaceReviewRatingDto"];
 
 export type PlaceReviews = { rating: PlaceRating; items: PublicReview[] };
 
@@ -65,10 +53,8 @@ export type ReviewsApi = {
 
 export function createReviewsApi(api: ApiClient): ReviewsApi {
   return {
-    placeReviews: async (regionId, placeId) => {
-      const res = await ok(api.GET("/reviews", { params: { query: { regionId, placeId } } }));
-      return { rating: res.rating as unknown as PlaceRating, items: res.items };
-    },
+    placeReviews: (regionId, placeId) =>
+      ok(api.GET("/reviews", { params: { query: { regionId, placeId } } })),
     eligibility: async (regionId) =>
       (await ok(api.GET("/reviews/eligibility", { params: { query: { regionId } } }))).items,
     submit: (regionId, input) => ok(api.POST("/reviews", { body: { regionId, ...input } })),
