@@ -124,7 +124,9 @@ export async function planPeaks(
   regionId: string,
   extraIds: ReadonlyMap<string, string> = new Map(),
 ): Promise<PeakPlan[]> {
-  const idOf = (p: PeakData) => p.googlePlaceId ?? extraIds.get(p.slug) ?? null;
+  // id из peaks.ts и id вставленного сейчас (Google мог вернуть другое место, чем вписано в peaks.ts).
+  const idsOf = (p: PeakData) =>
+    [p.googlePlaceId, extraIds.get(p.slug)].filter((x): x is string => Boolean(x));
   return withTenant(db, regionContext(regionId), async (trx) => {
     const base = () =>
       trx
@@ -142,7 +144,7 @@ export async function planPeaks(
         ])
         .where("places.region_id", "=", regionId)
         .where("places.status", "!=", "archived");
-    const ids = PEAKS.flatMap((p) => idOf(p) ?? []);
+    const ids = PEAKS.flatMap(idsOf);
     const byId = new Map(
       (ids.length ? await base().where("places.google_place_id", "in", ids).execute() : []).map((r) => [
         r.google_place_id!,
@@ -151,8 +153,9 @@ export async function planPeaks(
     );
     const plans: PeakPlan[] = [];
     for (const peak of PEAKS) {
-      const id = idOf(peak);
-      const known = id ? byId.get(id) : undefined;
+      const known = idsOf(peak)
+        .map((id) => byId.get(id))
+        .find(Boolean);
       if (known) {
         plans.push({ peak, place: known, matchedBy: "google_place_id" });
         continue;
@@ -369,11 +372,13 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
   // 3. Запись — одна транзакция: подкатегория, вставка, перенос в peaks, обложки и аудит (вложенные withTenant с тем
   // же регионом идут в этой же транзакции).
   plans = await withTenant(deps.db, regionContext(regionId), async (trx) => {
-    stats.categoryCreated = await ensureCategory(deps.db, regionId);
+    stats.categoryCreated = await ensureCategory(trx, regionId);
     if (fresh.length)
       // Только новые места (pinCategory: категория запроса закреплена — общий импорт её не переразметит).
+      // trx, а не корневой db: writePlaces сначала ищет регион запросом — на корневом db внутри withTenant это
+      // новое соединение (TenantContextError; при maxConnections 1 — дедлок).
       await writePlaces(
-        deps.db,
+        trx,
         deps.regionCode,
         // Название — из peaks.ts (Вікіпедія): у Google бывает латиницей («Hora Kukul»).
         fresh.map((f) => ({ ...f.place, name: f.peak.name.uk })),
@@ -381,7 +386,7 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
         { pinCategory: true },
       );
     // Вставленные находятся по своему id Google (вписать в peaks.ts по отчёту).
-    const after = fresh.length ? await planPeaks(deps.db, regionId, freshIds) : plans;
+    const after = fresh.length ? await planPeaks(trx, regionId, freshIds) : plans;
     const cat = await trx
       .selectFrom("categories")
       .select("id")
@@ -405,7 +410,7 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
         stats.covers.push({ slug, status: "failed", detail: "места нет после вставки" });
         continue;
       }
-      await writeCoverById(deps.db, regionId, place.id, cover);
+      await writeCoverById(trx, regionId, place.id, cover);
       stats.covers.push({ slug, status: "written", detail });
     }
     await new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS).record(trx, {
