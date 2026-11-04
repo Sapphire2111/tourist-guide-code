@@ -206,6 +206,8 @@ export default function PlacesMap({
   const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
   /** Установка вида под текущий размер карты (задаёт эффект маркеров); вызывается и при смене размера контейнера. */
   const applyView = useRef<(() => void) | null>(null);
+  /** Пользователь сам двигал карту (dragstart): автоподгонка при смене размера её не сбрасывает. */
+  const userMoved = useRef(false);
   // Тексты подписи читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
@@ -260,9 +262,20 @@ export default function PlacesMap({
     return () => m.setOptions({ zoomControlOptions: { position: libs.core.ControlPosition.RIGHT_BOTTOM } });
   }, [libs, map, floating]);
 
+  useEffect(() => {
+    if (!map) return;
+    const l = map.map.addListener("dragstart", () => {
+      userMoved.current = true;
+    });
+    return () => l.remove();
+  }, [map]);
+
   // Маркеры, круг, линия и границы — только при смене мест, базы, радиуса или режима маршрута.
   useEffect(() => {
-    if (!libs || !map) return;
+    // Тема сменилась, а карта в состоянии ещё прежней схемы (эффект выбора карты поставит новую следующим проходом):
+    // ничего не строим — иначе кластеризатор окажется на карте, которую уже сняли с экрана.
+    if (!libs || !map || map.night !== night) return;
+    userMoved.current = false;
     const o = overlays.current;
     const m = map.map;
     infoRef.current?.close();
@@ -429,14 +442,25 @@ export default function PlacesMap({
     let w = host.clientWidth;
     let h = host.clientHeight;
     let timer: number | undefined;
+    // Явная смена размера — «Список ↓» / «Розгорнути» (data-map-mode предка «Поруч»): подгоняем всегда.
+    // Прочая (клавиатура, dvh, поворот) — только если пользователь не двигал карту сам.
+    const modeOf = () => host.closest<HTMLElement>("[data-map-mode]")?.dataset.mapMode ?? "";
+    let mode = modeOf();
+    let explicit = false;
     const observer = new ResizeObserver(() => {
       if (Math.abs(host.clientWidth - w) < 2 && Math.abs(host.clientHeight - h) < 2) return;
       w = host.clientWidth;
       h = host.clientHeight;
+      if (modeOf() !== mode) {
+        mode = modeOf();
+        explicit = true;
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         libs.core.event.trigger(map.map, "resize");
-        applyView.current?.();
+        if (explicit) userMoved.current = false;
+        if (!userMoved.current) applyView.current?.();
+        explicit = false;
       }, 120);
     });
     observer.observe(host);

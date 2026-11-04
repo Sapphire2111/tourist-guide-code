@@ -14,6 +14,9 @@ const calls = vi.hoisted(() => ({
   markers: [] as { map: unknown; content: HTMLElement | null; title?: string; click?: () => void }[],
   circles: [] as { fillOpacity?: number; strokeColor?: string; map: unknown }[],
   schemes: [] as (string | undefined)[],
+  maps: [] as { scheme?: string }[],
+  clusterMaps: [] as unknown[],
+  dragstart: null as (() => void) | null,
   routeColors: [] as (string | undefined)[],
   polylines: 0,
   clusterAdds: 0,
@@ -26,6 +29,9 @@ const calls = vi.hoisted(() => ({
 
 vi.mock("@googlemaps/markerclusterer", () => ({
   MarkerClusterer: class {
+    constructor(o: { map?: unknown }) {
+      calls.clusterMaps.push(o.map);
+    }
     addMarkers(m: unknown[]) {
       calls.clusterAdds += m.length;
     }
@@ -69,6 +75,13 @@ vi.mock("./google-maps.js", async (orig) => {
         constructor(_div: unknown, o?: { colorScheme?: string }) {
           calls.map++;
           calls.schemes.push(o?.colorScheme);
+          this.scheme = o?.colorScheme;
+          calls.maps.push(this);
+        }
+        scheme?: string;
+        addListener(name: string, f: () => void) {
+          if (name === "dragstart") calls.dragstart = f;
+          return { remove: () => undefined };
         }
         fitBounds() {
           calls.fit++;
@@ -146,6 +159,9 @@ beforeEach(() => {
     markers: [],
     circles: [],
     schemes: [],
+    maps: [],
+    clusterMaps: [],
+    dragstart: null,
     routeColors: [],
     polylines: 0,
     clusterAdds: 0,
@@ -330,6 +346,95 @@ describe("PlacesMap (Google Maps)", () => {
     await flush();
     localStorage.clear();
     expect(calls.routeColors).toEqual(["#111827", "#fde68a"]);
+  });
+
+  it("смена темы при ≥ CLUSTER_MIN мест: кластеризатор строится только на карте новой схемы", async () => {
+    document.documentElement.setAttribute("data-theme", "day");
+    function Switch() {
+      const { setTheme } = useTheme();
+      return (
+        <button type="button" onClick={() => setTheme("night")}>
+          night
+        </button>
+      );
+    }
+    const many = Array.from({ length: CLUSTER_MIN }, (_, i) => place(`p${i}`));
+    const view = render(
+      wrap(
+        <ThemeProvider>
+          <Switch />
+          <PlacesMap places={many} center={null} />
+        </ThemeProvider>,
+      ),
+    );
+    await flush();
+    act(() => view.getByText("night").click());
+    await flush();
+    const dark = calls.maps.find((m) => m.scheme === "DARK");
+    expect(dark).toBeDefined();
+    // Каждый созданный кластеризатор на карте своей схемы; последний — на тёмной.
+    expect(calls.clusterMaps.length).toBeGreaterThan(0);
+    expect(calls.clusterMaps.at(-1)).toBe(dark);
+    expect(calls.clusterMaps.filter((m) => m === dark)).toHaveLength(1);
+    localStorage.clear();
+  });
+
+  it("смена размера не сбрасывает ручное перемещение; «Список ↓» и новый набор мест — подгоняют", async () => {
+    let notify: () => void = () => undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          notify = cb;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const tree = (places: PlaceSummary[]) =>
+        wrap(
+          <div data-map-mode="full" data-testid="mode">
+            <PlacesMap places={places} center={{ lat: 48.4, lng: 24.5 }} />
+          </div>,
+        );
+      const view = render(tree([place("a"), place("b")]));
+      await flush();
+      const host = view.getByTestId("places-map");
+      let height = 400;
+      const resize = async () => {
+        height -= 50;
+        Object.defineProperty(host, "clientHeight", { configurable: true, value: height });
+        notify();
+        await act(async () => new Promise((r) => setTimeout(r, 200)));
+      };
+      const fit = calls.fit;
+      // Без перемещения (клавиатура, поворот) — подгонка.
+      await resize();
+      expect(calls.fit).toBe(fit + 1);
+      // Пользователь двинул карту — подгонки нет, но размер карте сообщён.
+      act(() => calls.dragstart?.());
+      const resizes = calls.resizes;
+      await resize();
+      expect(calls.fit).toBe(fit + 1);
+      expect(calls.resizes).toBe(resizes + 1);
+      // Явная смена режима — подгоняем всегда.
+      view.getByTestId("mode").setAttribute("data-map-mode", "split");
+      await resize();
+      expect(calls.fit).toBe(fit + 2);
+      // Флаг сброшен: обычная смена размера снова подгоняет.
+      await resize();
+      expect(calls.fit).toBe(fit + 3);
+      // Новый набор мест сбрасывает флаг.
+      act(() => calls.dragstart?.());
+      view.rerender(tree([place("a"), place("c")]));
+      await flush();
+      const afterPlaces = calls.fit;
+      await resize();
+      expect(calls.fit).toBe(afterPlaces + 1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("режим сцены задаёт проп floating, а не наличие плашки", async () => {

@@ -267,7 +267,7 @@ test("лист меню: кольцо фокуса не жёлтое (на св�
 
 test("«Поруч» без геолокации: сортировка «від <база>», а не «від вас»", async ({ page }) => {
   await page.goto("/#/nearby");
-  await expect(page.locator(".modern-results-kicker")).toHaveText(/За відстанню від Тестовий готель/);
+  await expect(page.locator(".modern-results-kicker")).toHaveText(/Відстань рахуємо від: Тестовий готель/);
   await expect(page.locator(".modern-results-kicker")).not.toContainText("від вас");
 });
 
@@ -299,8 +299,24 @@ test("«Ніч»: контраст на «Про заклад» и ассист�
     await page.goto(path);
     await expect(page.getByText(heading, { exact: true }).first()).toBeVisible();
     await expect(html(page)).toHaveAttribute("data-theme", "night");
+    // Карта ассистента (12 мест — кластеризатор) настоящая, а не заглушка: проверяем контраст с ней.
+    if (path.includes("assistant"))
+      await expect(page.locator(".gm-fake-map[data-clusterer]")).toHaveAttribute("data-color-scheme", "DARK");
     await expectNoSeriousA11yViolations(page);
   }
+});
+
+test("ассистент, 12 мест (кластеры): смена темы — кластеризатор на карте новой схемы", async ({ page }) => {
+  await installAssistantMock(page);
+  await page.goto(`/#/assistant?q=${encodeURIComponent("Де поїсти суші")}`);
+  const map = page.locator(".gm-fake-map");
+  await expect(map).toHaveAttribute("data-clusterer", "true");
+  await expect(map).toHaveAttribute("data-color-scheme", "LIGHT");
+  const menu = await openMenu(page);
+  await menu.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "Ніч" }).click();
+  await expect(map).toHaveCount(1);
+  await expect(map).toHaveAttribute("data-color-scheme", "DARK");
+  await expect(map).toHaveAttribute("data-clusterer", "true");
 });
 
 test("«Ніч»: контраст на брони туриста, кабинете партнёра, персонале и бронях партнёра", async ({ page }) => {
