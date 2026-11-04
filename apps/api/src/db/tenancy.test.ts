@@ -48,7 +48,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
     expect([...enabled].sort()).toEqual([...tenantTableNames()].sort());
   });
 
-  it("глобальные: regions, users, idempotency_keys, sessions, app_meta, Telegram и профиль; tenant-optional: журналы, назначения, risk_flags, qr_scan_events, attribution_touches; tenant: media_assets, qr_points, entry_contexts, emergency_contacts, promotions, каталог (0012), favorites (0014), блок 5 (0015), бронирования (0022); глобальные admin_credentials, admin_login_failures", () => {
+  it("глобальные: regions, users, idempotency_keys, sessions, app_meta, Telegram и профиль; tenant-optional: журналы, назначения, risk_flags, qr_scan_events, attribution_touches; tenant: media_assets, qr_points, entry_contexts, emergency_contacts, promotions, каталог (0012), favorites (0014), блок 5 (0015), бронирования (0022), отзывы (0028); глобальные admin_credentials, admin_login_failures", () => {
     expect([...tenantTableNames()].sort()).toEqual([
       "analytics_events",
       "attribution_touches",
@@ -75,6 +75,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "place_enrichments",
       "place_extra_categories",
       "place_media",
+      "place_review_ratings",
       "place_schedule_exceptions",
       "place_schedules",
       "place_tags",
@@ -83,6 +84,12 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "qr_points",
       "qr_scan_events",
       "resources",
+      "review_appeals",
+      "review_complaints",
+      "review_eligibilities",
+      "review_responses",
+      "review_revisions",
+      "reviews",
       "risk_flags",
       "role_assignments",
       "scenario_items",

@@ -123,25 +123,25 @@ describe.skipIf(!dockerAvailable)(`Фича-флаги (T1-22)${title}`, () => {
     const flags = service("staging");
     const actor = { type: "user", userId: admin } as const;
     await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
-      flags.set(trx, { key: "module.reviews", regionId: null, enabled: false, actor, requestId: "t122-1" }),
+      flags.set(trx, { key: "module.weather", regionId: null, enabled: false, actor, requestId: "t122-1" }),
     );
     await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
-      flags.set(trx, { key: "module.reviews", regionId: null, enabled: true, actor }),
+      flags.set(trx, { key: "module.weather", regionId: null, enabled: true, actor }),
     );
     await withTenant(appDb, PLATFORM_CONTEXT, (trx) =>
-      flags.set(trx, { key: "module.reviews", regionId: regionA, enabled: false, actor }),
+      flags.set(trx, { key: "module.weather", regionId: regionA, enabled: false, actor }),
     );
     const { rows } = await owner.query(
-      "SELECT target_region_id, enabled FROM feature_flags WHERE key = 'module.reviews' ORDER BY target_region_id NULLS FIRST",
+      "SELECT target_region_id, enabled FROM feature_flags WHERE key = 'module.weather' ORDER BY target_region_id NULLS FIRST",
     );
     expect(rows).toEqual([
       { target_region_id: null, enabled: true },
       { target_region_id: regionA, enabled: false },
     ]);
-    expect((await flags.effective(regionA))["module.reviews"]).toBe(false);
-    expect((await flags.effective(null))["module.reviews"]).toBe(true);
+    expect((await flags.effective(regionA))["module.weather"]).toBe(false);
+    expect((await flags.effective(null))["module.weather"]).toBe(true);
     const audit = await owner.query(
-      "SELECT region_id, old_values, new_values FROM audit_logs WHERE action = 'feature_flag.set' AND entity_id = 'module.reviews' ORDER BY created_at, id",
+      "SELECT region_id, old_values, new_values FROM audit_logs WHERE action = 'feature_flag.set' AND entity_id = 'module.weather' ORDER BY created_at, id",
     );
     expect(audit.rows).toEqual([
       { region_id: null, old_values: { enabled: null }, new_values: { enabled: false, appEnv: "staging" } },

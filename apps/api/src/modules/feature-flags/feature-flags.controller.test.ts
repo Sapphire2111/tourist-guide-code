@@ -110,7 +110,7 @@ class BookingsProbeController {
 }
 
 @Controller("t122/regions/:regionId/reviews")
-@RequireFeature("module.reviews", { region: regionFromParam("regionId") })
+@RequireFeature("module.weather", { region: regionFromParam("regionId") })
 class ReviewsProbeController {
   @Get()
   list() {
@@ -174,17 +174,17 @@ describe("GET /feature-flags", () => {
     const s = await start({
       appEnv: "staging",
       flags: [
-        { key: "module.reviews", target_region_id: A, enabled: false, updated_by: null },
+        { key: "module.weather", target_region_id: A, enabled: false, updated_by: null },
         { key: "module.ambassadors", target_region_id: null, enabled: false, updated_by: null },
       ],
     });
     app = s.app;
     const inA = await request(app.getHttpServer()).get(`/feature-flags?regionId=${A}`).expect(200);
     expect(inA.body.regionId).toBe(A);
-    expect(enabledOf(inA.body, "module.reviews")).toBe(false);
+    expect(enabledOf(inA.body, "module.weather")).toBe(false);
     expect(enabledOf(inA.body, "module.ambassadors")).toBe(false);
     const inB = await request(app.getHttpServer()).get(`/feature-flags?regionId=${B}`).expect(200);
-    expect(enabledOf(inB.body, "module.reviews")).toBe(true);
+    expect(enabledOf(inB.body, "module.weather")).toBe(true);
     expect(enabledOf(inB.body, "module.ambassadors")).toBe(false);
   });
 
@@ -225,7 +225,7 @@ describe("@RequireFeature: выключенный модуль недоступ�
 
 describe("@RequireFeature: регион без tenant-контекста (гость, турист)", () => {
   const flags = [
-    { key: "module.reviews", target_region_id: A, enabled: false, updated_by: null },
+    { key: "module.weather", target_region_id: A, enabled: false, updated_by: null },
     { key: "module.ambassadors", target_region_id: A, enabled: false, updated_by: null },
   ];
 
@@ -305,13 +305,13 @@ describe("управление флагами /admin/feature-flags", () => {
     const s = await start({ principal: { userId: USER }, grants: [SUPERUSER] });
     app = s.app;
     const res = await request(app.getHttpServer())
-      .put("/admin/feature-flags/module.reviews")
+      .put("/admin/feature-flags/module.weather")
       .set("X-Request-Id", "req-1")
       .send({ enabled: false, reason: "инцидент" })
       .expect(200);
-    expect(res.body).toMatchObject({ key: "module.reviews", override: false, effective: false });
+    expect(res.body).toMatchObject({ key: "module.weather", override: false, effective: false });
     expect(s.flags).toEqual([
-      { key: "module.reviews", target_region_id: null, enabled: false, updated_by: USER },
+      { key: "module.weather", target_region_id: null, enabled: false, updated_by: USER },
     ]);
     const [audit] = audits(s.queries);
     expect(audit!.parameters).toEqual([
@@ -320,7 +320,7 @@ describe("управление флагами /admin/feature-flags", () => {
       null,
       "feature_flag.set",
       "feature_flag",
-      "module.reviews",
+      "module.weather",
       { enabled: null },
       { enabled: false, appEnv: "staging" },
       "инцидент",
@@ -332,7 +332,7 @@ describe("управление флагами /admin/feature-flags", () => {
     const lock = order.findIndex((q) => q.includes("pg_advisory_xact_lock(hashtext($1))"));
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(order.findIndex((q) => q.includes("for update")));
-    expect(s.queries[lock]!.parameters).toEqual(["feature_flag:module.reviews:"]);
+    expect(s.queries[lock]!.parameters).toEqual(["feature_flag:module.weather:"]);
     // ПДн запроса (IP, user agent) — в audit_log_pii (auditFromRequest).
     expect(s.queries.some((q) => q.sql.startsWith('insert into "audit_log_pii"'))).toBe(true);
   });

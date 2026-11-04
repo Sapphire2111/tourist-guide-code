@@ -2031,6 +2031,210 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/reviews": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Отзывы места (C06/C13): только опубликованные проверенные, новые сверху, и рейтинг места
+     * @description Без аутентификации. rating.fewReviews — меньше minReviews отзывов: показывать «Мало відгуків» вместо цифры (score = null). Рейтинг Google в карточке — отдельное поле, здесь не участвует. 404 — места нет в регионе или оно не опубликовано.
+     */
+    get: operations["listPlaceReviews"];
+    put?: never;
+    /**
+     * Отзыв по праву (оценка 1–5 + текст) или новая версия своего отзыва
+     * @description Без своего права на отзыв (нет eligibility, чужое) — 403 errors.review.notEligible (ТЗ §16.2); окно прошло — 422 errors.review.eligibilityExpired; бронь отменена — 422 errors.review.eligibilityRevoked. Один отзыв на право: повтор — новая версия (история у модератора, показывается последняя). Ссылки, телефоны, e-mail, мат — status pending_moderation (autoFlags), иначе published сразу. Правка скрытого/отклонённого — снова к модератору. Бонуса за отзыв нет (D-35).
+     */
+    post: operations["submitReview"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/reviews/ratings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Рейтинги мест по отзывам (для списков и карточек): до 50 мест за запрос
+     * @description Без аутентификации. Неопубликованные и чужие места пропускаются.
+     */
+    get: operations["listPlaceRatings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/reviews/eligibility": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Права на отзыв пользователя (после завершённой брони) с его отзывом, статусом и сроком
+     * @description active — можно написать отзыв до expiresAt; consumed — отзыв написан (review), повторный POST /reviews с тем же eligibilityId — новая версия; expired; revoked — бронь отменена после завершения.
+     */
+    get: operations["listMyReviewEligibility"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/reviews/{id}/complaints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Жалоба на опубликованный отзыв: партнёр места (review.complain) или пользователь
+     * @description Отзыв остаётся опубликованным до решения модератора. Автор на свой отзыв — 403 own_review; отзыв не опубликован — 409 errors.review.notPublished; уже есть открытая жалоба этого пользователя — 409 errors.review.complaintExists.
+     */
+    post: operations["createReviewComplaint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/appeals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Апелляция: автора — на скрытый/отклонённый отзыв, владельца заведения — на «оставить» по его жалобе
+     * @description Одна апелляция на отзыв (409 errors.review.appealExists); решения модератора, к которому апеллировать, нет или статус не тот — 422 errors.review.appealNotAllowed. Решает другой модератор (POST /admin/reviews/{id}/appeal-decision). 404 — отзыв не найден или пользователь не автор и не владелец.
+     */
+    post: operations["createReviewAppeal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/reviews": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Отзывы о заведениях партнёра (P07): опубликованные и скрытые, с ответом и своими жалобами
+     * @description Право review.respond (ORG_OWNER, ORG_MANAGER) на место или организацию; скрыть отзыв партнёр не может — только ответить и пожаловаться (POST /reviews/{id}/complaints). 403 not_partner — нет мест с правом. 404 — модуль выключен во всех регионах назначений.
+     */
+    get: operations["listPartnerReviews"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/reviews/{id}/response": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Ответ заведения на отзыв: создать или изменить (один на отзыв, публикуется сразу)
+     * @description Ссылки, телефоны, e-mail, мат — 422 errors.review.responseRejected (details.flags). Отзыв не опубликован — 409 errors.review.notPublished. 403 — роль без review.respond; 404 — отзыв не своего заведения. AuditLog.
+     */
+    put: operations["putPartnerReviewResponse"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/reviews": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Очередь модерации отзывов (AD06): автофильтр, открытые жалобы и апелляции (старые сверху)
+     * @description status=queue (по умолчанию) — ждут решения (waitingSince); all или статус — журнал. История версий, жалобы, апелляция и ответ — в элементе. 403 — нет права review.moderate ни в одном регионе (или в regionId).
+     */
+    get: operations["listAdminReviews"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/reviews/{id}/decision": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Решение модератора: publish — оставить/одобрить/вернуть, hide — скрыть/отклонить (причина обязательна)
+     * @description Открытые жалобы закрываются (publish — dismissed, hide — upheld). Решение — AuditLog (review.moderate), пересчёт рейтинга. 403 own_organization — у модератора роль в организации места (BR-12); 409 errors.review.appealPending — открыта апелляция (решается отдельно), errors.review.nothingToDecide, errors.review.invalidDecision (details.currentStatus).
+     */
+    post: operations["decideAdminReview"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/reviews/{id}/appeal-decision": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Решение по апелляции отзыва: grant — отменить решение, deny — оставить (финально)
+     * @description Решает модератор, не принимавший обжалуемое решение (D-08): иначе 403 same_moderator (errors.review.appealSameModerator). grant: апелляция автора → published, партнёра → hidden. 404 — апелляции нет; 409 errors.review.appealDecided. AuditLog (appeal.decide).
+     */
+    post: operations["decideReviewAppeal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/feature-flags": {
     parameters: {
       query?: never;
@@ -5459,6 +5663,286 @@ export interface components {
       status: components["schemas"]["ManualAvailability"];
       /** @description TTL ручного статуса, мин (D-78 А: короткий); по умолчанию 60. Для unknown не нужен (игнорируется) */
       ttlMinutes?: number;
+    };
+    /** @enum {string} */
+    ReviewVerificationLevel: "verified_booking";
+    ReviewResponseDto: {
+      /** Format: uuid */
+      id: string;
+      text: string;
+      version: number;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    PublicReviewDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      placeId: string;
+      rating: number;
+      /** @description Текст последней версии */
+      text: string;
+      /** @description Номер версии (правка — новая версия) */
+      version: number;
+      verificationLevel: components["schemas"]["ReviewVerificationLevel"];
+      /** @description Имя автора (первое слово профиля) */
+      authorName: string | null;
+      /** Format: date-time */
+      publishedAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      /** @description Ответ заведения */
+      response: components["schemas"]["ReviewResponseDto"] | null;
+    };
+    PlaceReviewsDto: {
+      rating: components["schemas"]["PlaceRatingDto"];
+      items: components["schemas"]["PublicReviewDto"][];
+    };
+    PlaceRatingListDto: {
+      items: components["schemas"]["PlaceRatingDto"][];
+    };
+    /**
+     * @description active — можно написать отзыв; consumed — отзыв написан (повторный POST /reviews — новая версия); expired — окно 30 дн. после брони прошло; revoked — бронь отменена/возвращена
+     * @enum {string}
+     */
+    ReviewEligibilityStatus: "active" | "consumed" | "expired" | "revoked";
+    /**
+     * @description published — виден; pending_moderation — сработал автофильтр, ждёт модератора; hidden — скрыт модератором; rejected — отклонён модератором
+     * @enum {string}
+     */
+    ReviewStatus: "published" | "pending_moderation" | "hidden" | "rejected";
+    /** @enum {string} */
+    ReviewAutoFlag: "link" | "phone" | "email" | "profanity";
+    /** @enum {string} */
+    AppealKind: "author" | "partner";
+    /** @enum {string} */
+    AppealStatus: "open" | "granted" | "denied";
+    AppealDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      reviewId: string;
+      kind: components["schemas"]["AppealKind"];
+      text: string;
+      status: components["schemas"]["AppealStatus"];
+      decisionNote: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      decidedAt: string | null;
+    };
+    MyReviewDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      placeId: string;
+      /** @description published — виден; pending_moderation — сработал автофильтр, ждёт модератора; hidden — скрыт модератором; rejected — отклонён модератором */
+      status: components["schemas"]["ReviewStatus"];
+      rating: number;
+      text: string;
+      version: number;
+      autoFlags: components["schemas"]["ReviewAutoFlag"][];
+      /** @description Причина скрытия/отклонения */
+      hiddenReason: string | null;
+      /** Format: date-time */
+      publishedAt: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      response: components["schemas"]["ReviewResponseDto"] | null;
+      appeal: components["schemas"]["AppealDto"] | null;
+      /** @description Можно подать апелляцию (hidden/rejected, апелляций ещё не было) */
+      canAppeal: boolean;
+    };
+    ReviewEligibilityDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["LocalizedTextDto"];
+      /** Format: uuid */
+      bookingId: string;
+      level: components["schemas"]["ReviewVerificationLevel"];
+      /** @description active — можно написать отзыв; consumed — отзыв написан (повторный POST /reviews — новая версия); expired — окно 30 дн. после брони прошло; revoked — бронь отменена/возвращена */
+      status: components["schemas"]["ReviewEligibilityStatus"];
+      /** Format: date-time */
+      issuedAt: string;
+      /**
+       * Format: date-time
+       * @description До какого момента можно написать отзыв
+       */
+      expiresAt: string;
+      review: components["schemas"]["MyReviewDto"] | null;
+    };
+    ReviewEligibilityListDto: {
+      items: components["schemas"]["ReviewEligibilityDto"][];
+    };
+    SubmitReviewDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      /**
+       * Format: uuid
+       * @description Право на отзыв из GET /reviews/eligibility
+       */
+      eligibilityId: string;
+      rating: number;
+      text: string;
+    };
+    /** @enum {string} */
+    ComplaintReason: "insult" | "personal_data" | "spam" | "blackmail" | "fraud" | "other";
+    CreateComplaintDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      reasonCode: components["schemas"]["ComplaintReason"];
+      text?: string;
+    };
+    /** @enum {string} */
+    ComplaintKind: "partner" | "user";
+    /** @enum {string} */
+    ComplaintStatus: "open" | "upheld" | "dismissed";
+    ComplaintDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      reviewId: string;
+      kind: components["schemas"]["ComplaintKind"];
+      reasonCode: components["schemas"]["ComplaintReason"];
+      text: string | null;
+      status: components["schemas"]["ComplaintStatus"];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      decidedAt: string | null;
+    };
+    CreateAppealDto: {
+      /**
+       * Format: uuid
+       * @description Регион туриста: regionId из GET /context
+       */
+      regionId: string;
+      /** Format: uuid */
+      reviewId: string;
+      text: string;
+    };
+    PartnerReviewDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["LocalizedTextDto"];
+      status: components["schemas"]["ReviewStatus"];
+      rating: number;
+      text: string;
+      version: number;
+      authorName: string | null;
+      /** Format: date-time */
+      publishedAt: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      response: components["schemas"]["ReviewResponseDto"] | null;
+      /** @description Жалобы этого партнёра на отзыв */
+      myComplaints: components["schemas"]["ComplaintDto"][];
+      appeal: components["schemas"]["AppealDto"] | null;
+      /** @description Можно ответить (право review.respond) */
+      canRespond: boolean;
+      /** @description Можно подать апелляцию: модератор оставил отзыв по жалобе партнёра (право review.appeal) */
+      canAppeal: boolean;
+    };
+    PartnerReviewListDto: {
+      items: components["schemas"]["PartnerReviewDto"][];
+    };
+    PutReviewResponseDto: {
+      text: string;
+    };
+    /** @enum {string} */
+    AdminReviewFilter: "queue" | "all" | "published" | "pending_moderation" | "hidden" | "rejected";
+    ReviewRevisionDto: {
+      version: number;
+      rating: number;
+      text: string;
+      autoFlags: components["schemas"]["ReviewAutoFlag"][];
+      /** Format: date-time */
+      createdAt: string;
+    };
+    AdminReviewDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["LocalizedTextDto"];
+      /** Format: uuid */
+      organizationId: string | null;
+      /** Format: uuid */
+      authorUserId: string;
+      authorName: string | null;
+      status: components["schemas"]["ReviewStatus"];
+      rating: number;
+      text: string;
+      version: number;
+      autoFlags: components["schemas"]["ReviewAutoFlag"][];
+      hiddenReason: string | null;
+      /** Format: date-time */
+      publishedAt: string | null;
+      /**
+       * Format: uuid
+       * @description Модератор последнего решения
+       */
+      lastDecisionBy: string | null;
+      /** Format: date-time */
+      lastDecisionAt: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      /** @description История версий (старые сверху) */
+      revisions: components["schemas"]["ReviewRevisionDto"][];
+      complaints: components["schemas"]["ComplaintDto"][];
+      appeal: components["schemas"]["AppealDto"] | null;
+      response: components["schemas"]["ReviewResponseDto"] | null;
+      /** @description У модератора роль в организации места (BR-12) — решать нельзя */
+      ownOrganization: boolean;
+      /** @description Открытую апелляцию может решить этот модератор (не он принимал обжалуемое решение) */
+      canDecideAppeal: boolean;
+      /**
+       * Format: date-time
+       * @description С какого момента элемент ждёт решения
+       */
+      waitingSince: string;
+    };
+    AdminReviewListDto: {
+      items: components["schemas"]["AdminReviewDto"][];
+    };
+    /**
+     * @description publish — оставить / одобрить / вернуть (→ published); hide — скрыть (published → hidden, pending_moderation → rejected)
+     * @enum {string}
+     */
+    ReviewDecision: "publish" | "hide";
+    ReviewDecisionDto: {
+      /** @description publish — оставить / одобрить / вернуть (→ published); hide — скрыть (published → hidden, pending_moderation → rejected) */
+      decision: components["schemas"]["ReviewDecision"];
+      /** @description Причина — обязательна для hide (видна автору) */
+      reason?: string;
+    };
+    /** @enum {string} */
+    AppealDecision: "grant" | "deny";
+    AppealDecisionDto: {
+      decision: components["schemas"]["AppealDecision"];
+      reason?: string;
     };
     /** @enum {string} */
     FeatureFlagKey:
@@ -18321,6 +18805,1015 @@ export interface operations {
       };
       /** @description Ошибка */
       429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPlaceReviews: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+        /** @description Опубликованное место */
+        placeId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceReviewsDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  submitReview: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitReviewDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MyReviewDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPlaceRatings: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+        /** @description id мест через запятую (до 50) */
+        placeIds: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceRatingListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listMyReviewEligibility: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReviewEligibilityListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createReviewComplaint: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateComplaintDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ComplaintDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createReviewAppeal: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAppealDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppealDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPartnerReviews: {
+    parameters: {
+      query?: {
+        /** @description Только это место партнёра */
+        placeId?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerReviewListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  putPartnerReviewResponse: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PutReviewResponseDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PartnerReviewDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      422: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listAdminReviews: {
+    parameters: {
+      query?: {
+        /** @description Регион (по умолчанию — все регионы модератора) */
+        regionId?: string;
+        status?: components["schemas"]["AdminReviewFilter"];
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AdminReviewListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  decideAdminReview: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviewDecisionDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AdminReviewDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  decideReviewAppeal: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AppealDecisionDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AdminReviewDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;
