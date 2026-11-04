@@ -99,6 +99,8 @@ export async function collect(
     queries?: readonly string[];
     /** google id мест, уже опубликованных в регионе: при свёртке дублей остаётся опубликованная запись. */
     publishedIds?: ReadonlySet<string>;
+    /** Все google id мест региона (вкл. архив): после опубликованных — уже известная запись, а не новая. */
+    existingIds?: ReadonlySet<string>;
     categoryNames?: Readonly<Record<string, string>>;
     log?: (line: string) => void;
   } = {},
@@ -261,7 +263,11 @@ export async function collect(
   // Свёртка дублів (записи номерів Booking, однакові назви в 50 м): відкинуті — «не наші», уже імпортовані
   // запис архівує, якщо адмінка їх не чіпала.
   // Номера Booking — в архив; прочие дубли только не пишутся (dedupePlaces).
-  const { kept: places, duplicateIds, skippedIds } = dedupePlaces(mapped, opts.publishedIds);
+  const {
+    kept: places,
+    duplicateIds,
+    skippedIds,
+  } = dedupePlaces(mapped, opts.publishedIds, opts.existingIds);
   stats.skipped.duplicate = duplicateIds.length;
   stats.duplicatesSkipped = skippedIds.length;
   rejectedIds.push(...duplicateIds);

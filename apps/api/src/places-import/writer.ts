@@ -1,7 +1,7 @@
 // Запись импорта в каталог региона: в tenant-контексте региона (regionContext: TenantGuardPlugin + RLS), как пишет
 // api. Идемпотентно: населённые пункты и дополнительные категории — ON CONFLICT DO NOTHING по коду (правки админки не
 // трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются.
-import type { ExpressionBuilder } from "kysely";
+import type { ExpressionBuilder, SqlBool } from "kysely";
 import {
   point,
   regionContext,
@@ -100,6 +100,46 @@ const touched = (eb: PlacesEb) =>
       .where("a.entity_type", "=", "place")
       .where("a.action", "<>", "place.import")
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
+  );
+/**
+ * Люди меняли статус места: публикация/скрытие/архив в админке или ручная чистка (place.curate) со status в новых
+ * значениях. Только такие действия мешают снять с публикации закрытое навсегда.
+ */
+const statusTouched = (eb: PlacesEb) =>
+  eb.exists(
+    eb
+      .selectFrom("audit_logs as a")
+      .select(eb.lit(1).as("one"))
+      .where("a.entity_type", "=", "place")
+      .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      .where((w) =>
+        w.or([
+          w("a.action", "in", ["place.publish", "place.suspend", "place.archive"]),
+          w.and([
+            w("a.action", "=", "place.curate"),
+            // new_values ? 'status' (jsonb_exists — та же операция функцией).
+            w.fn<SqlBool>("jsonb_exists", [w.ref("a.new_values"), w.cast(w.val("status"), "text")]),
+          ]),
+        ]),
+      ),
+  );
+/**
+ * Теги места правили люди: действия пользователя или правка места/доп. категорий (снятый тег импорт не возвращает).
+ * Ручная чистка от system (place.curate) теги не трогала — такие места теги получают.
+ */
+const tagsTouched = (eb: PlacesEb) =>
+  eb.exists(
+    eb
+      .selectFrom("audit_logs as a")
+      .select(eb.lit(1).as("one"))
+      .where("a.entity_type", "=", "place")
+      .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      .where((w) =>
+        w.or([
+          w("a.actor_type", "=", "user"),
+          w("a.action", "in", ["place.edit", "place.extra_categories.edit"]),
+        ]),
+      ),
   );
 /** Местом пользуются: избранное, отзывы, сценарии, брони, планы — такое место импорт не архивирует. */
 const inUse = (eb: PlacesEb) =>
@@ -452,8 +492,8 @@ export async function writePlaces(
       }
 
       // Теги (tagsForPlace): по категории и удобствам Google (place_enrichments.google.amenities — их пишет
-      // places:enrich). Только добавляются (ON CONFLICT DO NOTHING) и только местам, которые не трогали (touched —
-      // админка могла снять тег): теги админки импорт не меняет.
+      // places:enrich). Только добавляются (ON CONFLICT DO NOTHING) и только местам, где люди не правили теги
+      // (tagsTouched — админка могла снять тег): теги админки импорт не меняет.
       if (tagId.size) {
         const taggable = await trx
           .selectFrom("places")
@@ -465,7 +505,7 @@ export async function writePlaces(
             batch.map((p) => placeId.get(p.googlePlaceId)!),
           )
           .whereRef("places.import_category_id", "=", "places.category_id")
-          .where((eb) => eb.not(touched(eb)))
+          .where((eb) => eb.not(tagsTouched(eb)))
           .execute();
         const byGoogleId = new Map(batch.map((p) => [p.googlePlaceId, p]));
         const tagRows = taggable.flatMap((r) => {
@@ -513,7 +553,7 @@ export async function writePlaces(
     }
 
     // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем,
-    // статус мест, которые трогали люди (touched), — тоже.
+    // место, чей статус меняли люди (statusTouched: публикация/скрытие/архив, чистка со status), — тоже.
     const closed = options.insertOnly ? [] : [...new Set(options.closedIds ?? [])];
     for (let from = 0; from < closed.length; from += BATCH) {
       const rows = await trx
@@ -521,7 +561,7 @@ export async function writePlaces(
         .set({ status: "suspended" })
         .where("source", "=", "google")
         .where("status", "=", "published")
-        .where((eb) => eb.not(touched(eb)))
+        .where((eb) => eb.not(statusTouched(eb)))
         .where("google_place_id", "in", closed.slice(from, from + BATCH))
         .returning("google_place_id")
         .execute();
@@ -606,18 +646,23 @@ export async function googlePlaceIds(db: Db, regionId: string): Promise<Map<stri
 }
 
 /**
- * google id опубликованных мест региона: при свёртке дублей (dedupePlaces) остаётся уже опубликованная запись, а не
- * новая или архивная.
+ * google id мест региона: опубликованные и все (вкл. архив, скрытые). При свёртке дублей (dedupePlaces) остаётся
+ * опубликованная запись, затем любая уже известная — архивированный админом дубль не «воскреснет» новым местом.
  */
-export async function publishedGoogleIds(db: Db, regionCode: string): Promise<Set<string>> {
+export async function regionGoogleIds(
+  db: Db,
+  regionCode: string,
+): Promise<{ published: Set<string>; existing: Set<string> }> {
   const regionId = await findRegionId(db, regionCode);
   return withTenant(db, regionContext(regionId), async (trx) => {
     const rows = await trx
       .selectFrom("places")
-      .select("google_place_id")
+      .select(["google_place_id", "status"])
       .where("source", "=", "google")
-      .where("status", "=", "published")
       .execute();
-    return new Set(rows.map((r) => r.google_place_id!));
+    return {
+      published: new Set(rows.filter((r) => r.status === "published").map((r) => r.google_place_id!)),
+      existing: new Set(rows.map((r) => r.google_place_id!)),
+    };
   });
 }

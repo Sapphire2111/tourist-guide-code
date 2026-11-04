@@ -664,6 +664,8 @@ describe("правила импорта по аудиту категорий (04
     // «Дерев'яний» — не дерево; магазин «Озерце» — не природа.
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Дерев'яна церква")).toBe("sights");
     expect(mapCategory({ primaryType: "store" }, "Озерце")).toBe("stores");
+    // «Привілля» — не вілла (житло тільки з початку слова): водоспад лишається природою.
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Водоспад Привілля")).toBe("nature");
   });
 
   it("4. «Зона для прогулянок» — природа, не активність; без упізнаної назви — лише з відгуками", () => {
@@ -884,6 +886,23 @@ describe("правила импорта по аудиту категорий (04
       new Set(["r2"]),
     );
     expect([rooms.kept.map((p) => p.googlePlaceId), rooms.duplicateIds]).toEqual([["r2"], ["r1"]]);
+    // Опубліковані главнее відомих у БД (вкл. архів), відомі — главнее нових: архівований дубль не повертається.
+    const known = dedupePlaces(
+      [mp("n1", { categoryCode: "nature" }), mp("n2", { categoryCode: "nature", at: near })],
+      new Set(),
+      new Set(["n2"]),
+    );
+    expect(known.kept.map((p) => p.googlePlaceId)).toEqual(["n2"]);
+    const pubFirst = dedupePlaces(
+      [
+        mp("n1", { categoryCode: "nature" }),
+        mp("n2", { categoryCode: "nature", at: near }),
+        mp("n3", { categoryCode: "nature", at: near }),
+      ],
+      new Set(["n3"]),
+      new Set(["n2", "n3"]),
+    );
+    expect(pubFirst.kept.map((p) => p.googlePlaceId)).toEqual(["n3"]);
     // Мережі (зарядки, банкомати, аптеки) з однаковою назвою поруч — не дублі.
     const chargers = dedupePlaces([
       mp("g1", { categoryCode: "ev-charging", name: "GO TO-U" }),
@@ -926,6 +945,15 @@ describe("правила импорта по аудиту категорий (04
     };
     expect(code(place(comps("Микуличин")))).toBe("mykulychyn");
     expect(code(place({}))).toBe("tatariv");
+    // «Яремче» (центр громади) в адресі, а за відстанню ближче інший пункт — пункт за відстанню; у колі Яремча — Яремче.
+    expect(code(place(comps("Яремче")))).toBe("tatariv");
+    expect(code(place({ ...comps("Яремче"), location: { latitude: 48.4505, longitude: 24.5547 } }))).toBe(
+      "yaremche",
+    );
+    // Південь Микуличина ближче до Яремча, ніж до Татарова — але адреса «Микуличин» не громада: віримо адресі.
+    expect(code(place({ ...comps("Микуличин"), location: { latitude: 48.42, longitude: 24.58 } }))).toBe(
+      "mykulychyn",
+    );
     // Поза колами й зонами адреса не допомагає.
     expect(code(place({ ...comps("Яремче"), location: { latitude: 48.92, longitude: 24.71 } }))).toBe(
       "outside_radius",

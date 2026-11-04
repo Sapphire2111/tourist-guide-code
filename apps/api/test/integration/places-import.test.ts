@@ -278,6 +278,108 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     expect((await row("gFav1")).status).toBe("published");
   });
 
+  it("тронутое место с import_category_id = category_id: категория не меняется, не архивируется; теги — после чистки да", async () => {
+    const t = new Date();
+    await writePlaces(appDb, "test-region", [place("gTch1", { categoryCode: "hotels", week: null })], t);
+    // Чистка (system, place.curate) без смены категории: import_category_id = category_id.
+    await sql(
+      `INSERT INTO audit_logs (actor_type, region_id, action, entity_type, entity_id, new_values)
+       SELECT 'system', region_id, 'place.curate', 'place', id::text, '{"name":"x"}'::jsonb
+       FROM places WHERE google_place_id = 'gTch1'`,
+    );
+    await sql(
+      `INSERT INTO place_enrichments (region_id, place_id, google)
+       SELECT region_id, id, '{"amenities":["dogs_allowed"]}'::jsonb FROM places WHERE google_place_id = 'gTch1'`,
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gTch1", { categoryCode: "sadyby", week: null })],
+      t,
+      { rejectedIds: ["gTch1"] },
+    );
+    expect(r.recategorized).toBe(0);
+    expect(r.archivedRejected).toBe(0);
+    const row = (
+      await sql(
+        `SELECT p.status, c.code AS category, p.import_category_id = p.category_id AS own FROM places p
+         JOIN categories c ON c.id = p.category_id WHERE p.google_place_id = 'gTch1'`,
+      )
+    ).rows[0];
+    expect(row).toEqual({ status: "published", category: "hotels", own: true });
+    // Чистка system теги не правила — удобства Google дают тег.
+    const tags = (
+      await sql(
+        `SELECT t.code FROM place_tags pt JOIN tags t ON t.id = pt.tag_id JOIN places p ON p.id = pt.place_id
+         WHERE p.google_place_id = 'gTch1'`,
+      )
+    ).rows.map((x) => x.code);
+    expect(tags).toEqual(["pets"]);
+  });
+
+  it("закрытые навсегда: статус меняли люди (place.suspend/publish, curate со status) — не снимается; правка без статуса — снимается", async () => {
+    const t = new Date();
+    const ids = ["gCl1", "gCl2", "gCl3", "gCl4"];
+    await writePlaces(
+      appDb,
+      "test-region",
+      ids.map((id) => place(id, { week: null })),
+      t,
+    );
+    const audit = async (id: string, action: string, newValues: string | null) =>
+      sql(
+        `INSERT INTO audit_logs (actor_type, region_id, action, entity_type, entity_id, new_values)
+         SELECT 'system', region_id, $2, 'place', id::text, $3::jsonb FROM places WHERE google_place_id = $1`,
+        [id, action, newValues],
+      );
+    await audit("gCl1", "place.publish", null);
+    await audit("gCl2", "place.curate", '{"status":"published"}');
+    await audit("gCl3", "place.curate", '{"name":"Нова назва"}');
+    await audit("gCl4", "place.edit", '{"phone":"+380000000000"}');
+    const r = await writePlaces(appDb, "test-region", [], t, { closedIds: ids });
+    expect(r.suspendedIds.sort()).toEqual(["gCl3", "gCl4"]);
+  });
+
+  it("используемые места (сценарии, планы пользователей) не архивируются", async () => {
+    const t = new Date();
+    await writePlaces(
+      appDb,
+      "test-region",
+      ["gUse1", "gUse2", "gUse3", "gUse4"].map((id) => place(id, { week: null })),
+      t,
+    );
+    const scenario = String(
+      (
+        await sql(
+          `INSERT INTO scenarios (region_id, code, title_i18n) SELECT region_id, 'imp-test', '{"uk":"Тест"}'::jsonb
+           FROM places WHERE google_place_id = 'gUse1' RETURNING id`,
+        )
+      ).rows[0].id,
+    );
+    await sql(
+      `INSERT INTO scenario_items (region_id, scenario_id, day_no, position, place_id)
+       SELECT region_id, $1, 1, 0, id FROM places WHERE google_place_id = 'gUse1'`,
+      [scenario],
+    );
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO user_plans (region_id, user_id, title_i18n, items)
+       SELECT region_id, $1, '{"uk":"План"}'::jsonb,
+         jsonb_build_array(jsonb_build_object('id', 'i1', 'dayNo', 1, 'position', 0, 'placeId', id::text))
+       FROM places WHERE google_place_id = 'gUse2'`,
+      [user],
+    );
+    await sql(
+      `INSERT INTO user_plans (region_id, user_id, title_i18n, base_place_id)
+       SELECT region_id, $1, '{"uk":"План 2"}'::jsonb, id FROM places WHERE google_place_id = 'gUse3'`,
+      [user],
+    );
+    const r = await writePlaces(appDb, "test-region", [], t, {
+      rejectedIds: ["gUse1", "gUse2", "gUse3", "gUse4"],
+    });
+    expect(r.archivedIds).toEqual(["gUse4"]);
+  });
+
   it("CHECK: google_place_id только у source = google; уникален в регионе", async () => {
     await expect(sql("UPDATE places SET google_place_id = 'x1' WHERE source = 'manual'")).rejects.toThrow(
       /places_google_source_consistent/,

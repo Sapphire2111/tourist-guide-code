@@ -21,7 +21,7 @@ import {
   CATEGORY_NAMES,
   googlePlaceIds,
   ImportWriteError,
-  publishedGoogleIds,
+  regionGoogleIds,
   writePlaces,
 } from "../places-import/writer.js";
 import {
@@ -55,19 +55,20 @@ try {
   if (args.queriesFile || args.queries.length) {
     await runTargeted(args, client, storage);
   } else {
-    // Опубликованные места региона (кроме --dry-run): при свёртке дублей остаётся уже опубликованная запись.
-    let publishedIds: Set<string> | undefined;
+    // Места региона (и при --dry-run, если задана БД): при свёртке дублей остаётся опубликованная, затем уже известная
+    // запись — тот же выбор, что при записи.
+    let known: { published: Set<string>; existing: Set<string> } | undefined;
     const dbUrl = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
-    if (!args.dryRun && !args.plan && dbUrl) {
+    if (!args.plan && dbUrl) {
       const db = createDatabase({ connectionString: dbUrl, maxConnections: 1 });
       try {
-        publishedIds = await publishedGoogleIds(db, args.region);
+        known = await regionGoogleIds(db, args.region);
       } finally {
         await db.destroy();
       }
-    }
+    } else if (!args.plan) console.log("ВНИМАНИЕ: БД не задана — дубли сворачиваются без учёта мест в БД.");
     const { places, stats, closedIds, rejectedIds, seenIds } = await collect(client, {
-      ...(publishedIds ? { publishedIds } : {}),
+      ...(known ? { publishedIds: known.published, existingIds: known.existing } : {}),
       categoryNames: CATEGORY_NAMES,
       log: console.log,
       zonesOnly: args.zonesOnly,
@@ -133,7 +134,7 @@ try {
             `${written.archivedRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
         );
         console.log(
-          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; номеров Booking в архив: ` +
+          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; кандидатов в архив (номера Booking): ` +
             `${stats.skipped.duplicate}, прочих дублей не записано: ${stats.duplicatesSkipped}.`,
         );
         if (storage) {

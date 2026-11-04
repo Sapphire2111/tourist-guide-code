@@ -275,7 +275,7 @@ const NATURE_NAME =
  * вершина, навіть зі «смерекою» чи «джерелом» у назві.
  */
 const VENUE_NAME =
-  /садиб|sadyb|котедж|cottage|готел|hotel|хостел|hostel|апартамент|apartment|вілл|villa(?!ge)|шале|chalet|resort|резорт|колиб|kolyb|ресторан|restaurant|кафе|cafe|кав.ярн|піцер|магазин|крамниц|(база|комплекс|будинок) відпоч|будиноч|хат[аи]|chata/i;
+  /(^|[^а-яіїєґa-z])вілл|садиб|sadyb|котедж|cottage|готел|hotel|хостел|hostel|апартамент|apartment|villa(?!ge)|шале|chalet|resort|резорт|колиб|kolyb|ресторан|restaurant|кафе|cafe|кав.ярн|піцер|магазин|крамниц|(база|комплекс|будинок) відпоч|будиноч|хат[аи]|chata/i;
 /** «Mountain stream», «Вид на гору», «Гора Явірник Горганський гід» — вода, вид чи гід, не вершина. */
 const NOT_PEAK =
   /stream|river|lake|view|source|струм|потік|водоспад|waterfall|озер|джерел|вид на|гід|екскурс|excursion|похід|походи/i;
@@ -582,7 +582,7 @@ export function isGenericLabel(name: string): boolean {
 export const LABEL_MIN_REVIEWS = 5;
 
 /**
- * Слабкі типи Google, яким у таблиці дано не «слабку» категорію (hiking_area → nature): для правил за назвою вони —
+ * Слабкі типи Google, яким у таблиці дано не «слабку» категорію (hiking_area, park → nature): для правил за назвою вони —
  * як active (назва уточнює: чан, квадроцикли, водоспад, вершина), без уточнення — категорія за таблицею.
  */
 const WEAK_SOURCE_TYPES: ReadonlySet<string> = new Set(["hiking_area", "park"]);
@@ -933,7 +933,8 @@ const NO_DEDUP_CATEGORIES: ReadonlySet<string> = new Set(["ev-charging", "atm", 
  * (крім NO_DEDUP_CATEGORIES) або один із записів — тип номера Booking (roomListing; основний запис може бути «Готелі»,
  * номер — «Садиби»).
  *
- * Залишається запис без суфікса Booking, потім уже опублікований у БД (`publishedIds`), потім з меншим google id —
+ * Залишається запис без суфікса Booking, потім уже опублікований у БД (`publishedIds`), потім будь-який відомий у БД
+ * (`existingIds`, вкл. архів — архівований дубль не повертається новим місцем), потім з меншим google id —
  * вибір не залежить від відгуків, що змінюються між прогонами. Відкинуті:
  * - `duplicateIds` — записи номерів Booking: «не наші», запис їх архівує (якщо люди не чіпали місце);
  * - `skippedIds` — інші дублі: не пишуться (нові не вставляються), але й не архівуються — однакова назва поруч може
@@ -942,11 +943,13 @@ const NO_DEDUP_CATEGORIES: ReadonlySet<string> = new Set(["ev-charging", "atm", 
 export function dedupePlaces(
   places: readonly MappedPlace[],
   publishedIds: ReadonlySet<string> = new Set(),
+  existingIds: ReadonlySet<string> = new Set(),
 ): { kept: MappedPlace[]; duplicateIds: string[]; skippedIds: string[] } {
   const rank = [...places].sort(
     (a, b) =>
       Number(!!a.roomListing) - Number(!!b.roomListing) ||
       Number(!publishedIds.has(a.googlePlaceId)) - Number(!publishedIds.has(b.googlePlaceId)) ||
+      Number(!existingIds.has(a.googlePlaceId)) - Number(!existingIds.has(b.googlePlaceId)) ||
       a.googlePlaceId.localeCompare(b.googlePlaceId),
   );
   const byKey = new Map<string, MappedPlace[]>();
@@ -1130,8 +1133,8 @@ export function mapPlace(
     (!RECOGNIZED_OUTDOOR.test(name) || VENUE_NAME.test(name))
   ) {
     if (opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
-    // Назва житла чи закладу («Садиба Юровича» з park) — не мітка, а заклад без свого типу: не імпортується, але й не
-    // архівується (unverified).
+    // Назва закладу без правила («Деревʼяний будиночок» з hiking_area) — не мітка, а заклад без свого типу: не
+    // імпортується, але й не архівується (unverified).
     if (VENUE_NAME.test(name)) return { ok: false, reason: "unverified" };
     if ((p.userRatingCount ?? 0) < WEAK_MIN_REVIEWS) return { ok: false, reason: "no_category" };
   }

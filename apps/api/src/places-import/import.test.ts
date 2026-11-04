@@ -424,6 +424,9 @@ describe("выгрузка", () => {
     // Повтор (из кэша) с тем же набором опубликованных — тот же выбор.
     const again = await collect(client, { ...opts, publishedIds: new Set(["w2"]) });
     expect(again.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
+    // Не опубліковано нічого, але w2 уже в БД (архів) — лишається w2, архівований дубль не вставляється новим w1.
+    const archived = await collect(client, { ...opts, existingIds: new Set(["w2"]) });
+    expect(archived.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
   });
 });
 
