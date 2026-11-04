@@ -871,7 +871,8 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   padding-bottom: 10px;
   font-size: 0.875rem;
   /* InfoWindow Google всегда белый (и в «Ніч»): цвета заданы явно, не наследуются от темы приложения.
-     Контраст на #ffffff: название 16,7:1, категория 9,7:1, ссылка 6,7:1. */
+     Контраст на #ffffff: название 17,5:1, категория 10,3:1, «Відкрити картку» 12,8:1;
+     белый «Маршрут» на #b83d18 — 5,6:1. Кольцо фокуса #1d4ed8 на белом — 6,7:1. */
   background-color: #ffffff;
   color: #1c1917;
 }
@@ -884,6 +885,20 @@ html[data-season] .kosiv-place-credit a:focus-visible {
 .kosiv-map-popup a {
   color: #16382b;
   font-weight: 700;
+}
+/* Кольцо фокуса не от темы: окно всегда белое, в «Ніч» цвет темы на нём не виден. */
+html[data-season] .kosiv-map-popup :focus-visible {
+  outline: 2.5px solid #1d4ed8;
+  outline-offset: 2px;
+}
+/* На тёмной полосе подписи и на тёмном кружке × — белое, внутри своего узла: у края окна кольцо снаружи обрезалось бы. */
+html[data-season] .kosiv-map-popup .kosiv-map-popup-credit a:focus-visible {
+  outline-color: #ffffff;
+  outline-offset: -2.5px;
+}
+html[data-season] .kosiv-map-popup .kosiv-map-popup-close:focus-visible {
+  outline-color: #ffffff;
+  outline-offset: -10px;
 }
 /* Служебные отступы InfoWindow Google убраны: карточка сама задаёт поля, фото — до края окна.
    Ширину Google ограничивает шириной карты минус 126 px (на 320 px экрана — 170 px): карточка шире, предел снят. */
@@ -1005,6 +1020,8 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   height: 44px;
   padding: 0;
   border: 0;
+  border-radius: 9999px;
+  z-index: 2;
   background: transparent;
   color: #ffffff;
   font-size: 19px;

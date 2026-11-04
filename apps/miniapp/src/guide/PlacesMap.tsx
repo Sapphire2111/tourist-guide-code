@@ -175,6 +175,8 @@ export function popupNode(d: PopupData): HTMLElement {
   close.setAttribute("aria-label", d.closeText);
   close.textContent = "×";
   close.addEventListener("click", d.onClose);
+  // Первой в порядке Tab: на экране она поверх фото (z-index в kosiv.css).
+  box.append(close);
   const titles = document.createElement("div");
   titles.className = "kosiv-map-popup-titles";
   const title = document.createElement("strong");
@@ -239,7 +241,7 @@ export function popupNode(d: PopupData): HTMLElement {
     d.navigate(`/place/${encodeURIComponent(d.id)}`);
   });
   actions.append(route, link);
-  box.append(head, actions, close);
+  box.append(head, actions);
   return box;
 }
 
@@ -295,6 +297,8 @@ export default function PlacesMap({
   const [state, setState] = useState<Libs>({ status: "loading" });
   const [map, setMap] = useState<PooledMap | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
+  /** Откуда открыто окно маркера: туда возвращается фокус при закрытии. */
+  const openerRef = useRef<HTMLElement | null>(null);
   const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
   /** Установка вида под текущий размер карты (задаёт эффект маркеров); вызывается и при смене размера контейнера. */
   const applyView = useRef<(() => void) | null>(null);
@@ -340,7 +344,15 @@ export default function PlacesMap({
     const o = overlays.current;
     setMap(item);
     // Кнопки масштаба лежат выше окна: на узкой карте они прячутся на время, пока окно открыто (panPopupIntoView).
-    const closed = info.addListener("close", () => item.map.setOptions({ zoomControl: true }));
+    const closed = info.addListener("close", () => {
+      item.map.setOptions({ zoomControl: true });
+      // Фокус был в окне (или пропал вместе с ним) — обратно на маркер; маркер уже снят с карты — некуда, остаётся как есть.
+      const opener = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || active.closest(".kosiv-map-popup")))
+        opener.focus({ preventScroll: true });
+    });
     return () => {
       ready.remove();
       closed.remove();
@@ -504,7 +516,16 @@ export default function PlacesMap({
             onClose: () => infoRef.current?.close(),
           }),
         );
-        info.open({ map: m, anchor: marker });
+        const active = document.activeElement;
+        // Нажатие на другой маркер при открытом окне: фокус уже на нём; иначе — сам маркер (настоящий маркер — HTML-элемент).
+        openerRef.current =
+          active instanceof HTMLElement && active !== document.body && !active.closest(".kosiv-map-popup")
+            ? active
+            : (marker as unknown) instanceof HTMLElement
+              ? (marker as unknown as HTMLElement)
+              : null;
+        info.setOptions({ ariaLabel: name });
+        info.open({ map: m, anchor: marker, shouldFocus: true });
       });
       o.markers.push({ marker, place: p, stop });
       bounds.extend(p.location!);
@@ -585,7 +606,11 @@ export default function PlacesMap({
       timer = window.setTimeout(() => {
         libs.core.event.trigger(map.map, "resize");
         if (explicit) userMoved.current = false;
-        if (!userMoved.current) applyView.current?.();
+        if (!userMoved.current) {
+          // Окно привязано к маркеру и после новой подгонки ушло бы за панель: закрываем (кнопки масштаба возвращаются).
+          infoRef.current?.close();
+          applyView.current?.();
+        }
         explicit = false;
       }, 120);
     });

@@ -82,17 +82,10 @@ export function distanceMeters(a: LatLng, b: LatLng): number {
   return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
-/** Ссылка «Маршрут» на OSM (D-06): открывается во внешнем браузере/приложении карт. */
-export function routeUrl(to: LatLng, from?: LatLng | null): string {
-  const dst = `${to.lat}%2C${to.lng}`;
-  // route=<откуда>;<куда>; пустое «откуда» — пользователь выберет старт на сайте/в приложении.
-  const src = from ? `${from.lat}%2C${from.lng}` : "";
-  return `https://www.openstreetmap.org/directions?route=${src}%3B${dst}`;
-}
-
 /**
- * Маршрут в Google Картах из окна маркера: точку старта определяет сам Google (местоположение устройства), способ
- * передвижения выбирает турист. Координаты устройства в ссылку не передаются.
+ * Единая ссылка всех кнопок «Маршрут» (список, карточка места, окно маркера): Google Карты, открываются снаружи
+ * приложения. Точку старта определяет сам Google (местоположение устройства), способ передвижения выбирает турист.
+ * Координаты устройства в ссылку не передаются.
  */
 export function googleRouteUrl(to: LatLng, placeId?: string | null): string {
   const base = `https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}`;

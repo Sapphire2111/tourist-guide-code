@@ -4,7 +4,7 @@ import { createApiClient, type ApiSchemas } from "@tg/api-client";
 import { clientAnalyticsBatchSchema } from "@tg/shared";
 import { createAnalytics, uuidv7, type Analytics } from "./analytics.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
-import { routeUrl } from "./geo.js";
+import { googleRouteUrl } from "./geo.js";
 import { createGuideApi } from "./guide-api.js";
 import { Catalog, STAY_MAP_MAX } from "./Catalog.js";
 import { Help } from "./Help.js";
@@ -237,7 +237,8 @@ describe("картка місця C06", () => {
     fireEvent.click(call);
     expect(analytics.track).toHaveBeenCalledWith("call_clicked", { placeId: P1 });
     const route = screen.getByTestId("place-route");
-    expect(route.getAttribute("href")).toBe(routeUrl({ lat: 48.45, lng: 24.56 }, env.base!.point));
+    expect(route.getAttribute("href")).toBe(googleRouteUrl({ lat: 48.45, lng: 24.56 }));
+    expect(route.getAttribute("href")).toBe("https://www.google.com/maps/dir/?api=1&destination=48.45,24.56");
     fireEvent.click(route);
     expect(analytics.track).toHaveBeenCalledWith("route_clicked", { placeId: P1 });
 

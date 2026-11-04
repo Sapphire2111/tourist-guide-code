@@ -176,7 +176,11 @@ function fakeGoogleMaps() {
     constructor(o?: { headerDisabled?: boolean }) {
       this.node.className = "gm-fake-info";
       this.node.dataset.headerDisabled = String(o?.headerDisabled === true);
+      this.node.setAttribute("role", "dialog");
       this.node.style.cssText = "position:absolute;left:8px;top:8px;background:#fff;z-index:1";
+    }
+    setOptions(o: { ariaLabel?: string }) {
+      if (o.ariaLabel) this.node.setAttribute("aria-label", o.ariaLabel);
     }
     setContent(c: HTMLElement) {
       this.node.replaceChildren(c);
@@ -191,7 +195,8 @@ function fakeGoogleMaps() {
         },
       };
     }
-    open(o: { map?: unknown }) {
+    open(o: { map?: unknown; shouldFocus?: boolean }) {
+      this.node.dataset.shouldFocus = String(o.shouldFocus === true);
       // Как настоящее окно: появляется на прежнем месте относительно маркера, сдвиг — забота приложения.
       this.node.style.left = "8px";
       this.node.style.top = "8px";

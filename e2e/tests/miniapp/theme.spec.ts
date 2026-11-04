@@ -216,10 +216,9 @@ for (const [width, height, mapHeight] of [
     const map = page.locator(".gm-fake-map");
     await expect(map).toHaveAttribute("data-fit-padding-bottom", "40");
     const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
-    await expect(map).toHaveAttribute(
-      "data-fit-padding-top",
-      String(Math.ceil(panel.y + panel.height - box.y) + 16),
-    );
+    // Округление вверх от дробной высоты панели во время анимации появления: допуск 1 px.
+    const top = Number(await map.getAttribute("data-fit-padding-top"));
+    expect(Math.abs(top - (panel.y + panel.height - box.y + 16))).toBeLessThanOrEqual(1);
   });
 }
 

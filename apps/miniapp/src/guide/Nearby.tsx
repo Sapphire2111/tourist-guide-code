@@ -392,7 +392,7 @@ export function ModernNearbyResults({
         </div>
         {list.length >= NEARBY_LIMIT && <p>{t("miniapp.nearby.limited", { n: NEARBY_LIMIT })}</p>}
         {visible.length ? (
-          <PlaceList places={visible} quickRoute routeFrom={me ?? base} />
+          <PlaceList places={visible} quickRoute />
         ) : (
           <div className="modern-empty" data-testid="nearby-empty">
             <p>

@@ -1,5 +1,5 @@
 // C06 «Картка місця»: галерея (свои фото и фото Google с авторами), тип и рейтинг Google, бейджи, действия
-// (маршрут OSM, звонок tel:, сайт, Telegram, обране), «Про місце» (текст ШІ с пометкой или описание Google),
+// (маршрут в Google Карты, звонок tel:, сайт, Telegram, обране), «Про місце» (текст ШІ с пометкой или описание Google),
 // «Що пропонує», график, адрес и контакты, отзывы Google, блок Вікіпедії, подписи источников. Нет данных — блока нет.
 // «Доступно зараз» и «Забронювати» — блок 7 (флаг module.bookings); иначе «Уточнити доступність» (ТЗ §10.3).
 import { SHOW_AI_LABELS } from "../ai-labels.js";
@@ -11,7 +11,7 @@ import { usePlaceResources } from "../bookings/context.js";
 import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { useAsync, useGuide } from "./context.js";
 import { interceptBack } from "../telegram.js";
-import { routeUrl } from "./geo.js";
+import { googleRouteUrl } from "./geo.js";
 import { Badge, ExtLink, PlaceBadges, useDistance } from "./parts.js";
 import "./place-card.css";
 import {
@@ -369,7 +369,7 @@ function Offers({ amenities }: { amenities: string[] }) {
 
 function PlaceView({ place }: { place: PlaceDetail }) {
   const { t, locale } = useT();
-  const { api, analytics, webApp, signedIn, base, regionId } = useGuide();
+  const { api, analytics, webApp, signedIn, regionId } = useGuide();
   const resources = usePlaceResources(place.id, regionId);
   const distance = useDistance()(place.distanceMeters);
   const name = pickLocalized(place.name, locale);
@@ -394,7 +394,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
     setBusy(false);
   };
 
-  const route = place.location ? routeUrl(place.location, base?.point) : null;
+  const route = place.location ? googleRouteUrl(place.location, place.googlePlaceId) : null;
   const verified = place.verifiedAt ? new Date(place.verifiedAt).toLocaleDateString("uk-UA") : null;
   // Своих фото нет, галереи Google нет (предел запросов) — обложка у нас с подписью автора.
   const googlePhotos = place.googlePhotos ?? [];

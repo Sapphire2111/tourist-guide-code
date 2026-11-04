@@ -60,7 +60,7 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("link", { name: "Маршрут", exact: true }).first()).toHaveAttribute(
     "href",
-    /openstreetmap.org\/directions/,
+    /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=/,
   );
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({

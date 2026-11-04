@@ -23,7 +23,10 @@ const calls = vi.hoisted(() => ({
   info: [] as HTMLElement[],
   infoOptions: [] as unknown[],
   infoOpen: 0,
+  infoOpenArgs: [] as { shouldFocus?: boolean }[],
+  infoLabels: [] as (string | undefined)[],
   infoClose: 0,
+  infoCloseListeners: [] as (() => void)[],
   pans: [] as [number, number][],
   fail: false,
   authFailed: false,
@@ -107,14 +110,20 @@ vi.mock("./google-maps.js", async (orig) => {
         setContent(n: HTMLElement) {
           calls.info.push(n);
         }
-        addListener() {
+        addListener(name: string, f: () => void) {
+          if (name === "close") calls.infoCloseListeners.push(f);
           return { remove: () => undefined };
         }
-        open() {
+        setOptions(o: { ariaLabel?: string }) {
+          calls.infoLabels.push(o.ariaLabel);
+        }
+        open(o: { shouldFocus?: boolean }) {
           calls.infoOpen++;
+          calls.infoOpenArgs.push(o);
         }
         close() {
           calls.infoClose++;
+          calls.infoCloseListeners.forEach((f) => f());
         }
       },
       Circle: class extends Overlay {
@@ -185,7 +194,10 @@ beforeEach(() => {
     info: [],
     infoOptions: [],
     infoOpen: 0,
+    infoOpenArgs: [],
+    infoLabels: [],
     infoClose: 0,
+    infoCloseListeners: [],
     pans: [],
     fail: false,
     authFailed: false,
@@ -368,6 +380,36 @@ describe("PlacesMap (Google Maps)", () => {
     expect(calls.infoClose).toBe(closed + 1);
   });
 
+  it("окно и фокус: название в ariaLabel, фокус в окно, × первая в Tab; при закрытии — обратно на нажатый маркер", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a", "Смерека")]} center={null} />));
+    await flush();
+    const opener = document.createElement("button");
+    view.container.append(opener);
+    opener.focus();
+    act(() => calls.markers[0]!.click!());
+    expect(calls.infoLabels.at(-1)).toBe("Смерека");
+    expect(calls.infoOpenArgs.at(-1)?.shouldFocus).toBe(true);
+    const box = calls.info.at(-1)!;
+    expect(box.querySelector("a, button")?.className).toBe("kosiv-map-popup-close");
+    view.container.append(box);
+    box.querySelector<HTMLButtonElement>(".kosiv-map-popup-close")!.focus();
+    box.querySelector<HTMLButtonElement>(".kosiv-map-popup-close")!.click();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("закрытие окна, когда фокус уже в другом месте, его не перехватывает", async () => {
+    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
+    await flush();
+    const opener = document.createElement("button");
+    const other = document.createElement("button");
+    view.container.append(opener, other);
+    opener.focus();
+    act(() => calls.markers[0]!.click!());
+    other.focus();
+    calls.info.at(-1)!.querySelector<HTMLButtonElement>(".kosiv-map-popup-close")!.click();
+    expect(document.activeElement).toBe(other);
+  });
+
   it("смена темы на открытом экране — карта нужной схемы, маркеры и круг на месте", async () => {
     document.documentElement.setAttribute("data-theme", "day");
     const center = { lat: 48.45, lng: 24.56 };
@@ -544,10 +586,14 @@ describe("PlacesMap (Google Maps)", () => {
       const fit = calls.fit;
       const resizes = calls.resizes;
       const host = view.getByTestId("places-map");
+      act(() => calls.markers.at(-1)!.click!());
+      const closed = calls.infoClose;
       Object.defineProperty(host, "clientHeight", { configurable: true, value: 306 });
       notify();
       await act(async () => new Promise((r) => setTimeout(r, 200)));
       expect(calls.fit).toBe(fit + 1);
+      // Окно закрыто до новой подгонки: иначе оно уехало бы за панель.
+      expect(calls.infoClose).toBe(closed + 1);
       expect(calls.resizes).toBe(resizes + 1);
       // Размер не менялся — подгонка не повторяется.
       notify();

@@ -235,6 +235,98 @@ test.describe("окно маркера", () => {
   }
 });
 
+test.describe("окно маркера: фокус и размер карты", () => {
+  test("× первая в Tab, кольца контрастны, закрытие возвращает фокус на маркер", async ({ page }) => {
+    await mockPlace(page, { coverPhoto: googleCover });
+    const popup = await openPopup(page);
+    const info = page.locator(".gm-fake-info");
+    await expect(info).toHaveAttribute("aria-label", "Кав'ярня «Смерека»");
+    await expect(info).toHaveAttribute("data-should-focus", "true");
+    const close = popup.getByRole("button", { name: "Закрити" });
+    // × — первая по порядку фокуса, но видна поверх фото.
+    expect(await popup.locator("a, button").first().getAttribute("aria-label")).toBe("Закрити");
+    const box = (await close.boundingBox())!;
+    const top = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className, {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    });
+    expect(top).toBe("kosiv-map-popup-close");
+    await close.focus();
+    const ring = (sel: string) =>
+      popup.locator(sel).evaluate((n) => {
+        const s = getComputedStyle(n);
+        return { color: s.outlineColor, offset: parseFloat(s.outlineOffset), style: s.outlineStyle };
+      });
+    // С клавиатуры: Tab вперёд — подпись/действия, Shift+Tab — обратно на × (кольцо :focus-visible).
+    await page.keyboard.press("Tab");
+    await expect(popup.locator("a.kosiv-map-popup-route")).toBeFocused();
+    const routeRing = await ring("a.kosiv-map-popup-route");
+    expect(routeRing.style).toBe("solid");
+    expect(routeRing.color).toBe("rgb(29, 78, 216)");
+    await page.keyboard.press("Shift+Tab");
+    await expect(close).toBeFocused();
+    const closeRing = await ring(".kosiv-map-popup-close");
+    expect(closeRing.color).toBe("rgb(255, 255, 255)");
+    expect(closeRing.offset).toBeLessThan(0);
+    await close.click();
+    await expect(popup).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.className)).toContain("gm-fake-marker");
+  });
+
+  test("«Список ↓» закрывает окно: оно не уходит за панель, кнопки масштаба возвращаются", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await mockPlace(page, { coverPhoto: googleCover });
+    const popup = await openPopup(page);
+    const map = page.locator(".gm-fake-map");
+    await expect(map).toHaveAttribute("data-zoom-control", "false");
+    await page.getByRole("button", { name: "Список ↓" }).click();
+    await expect(popup).toHaveCount(0);
+    await expect(map).toHaveAttribute("data-zoom-control", "true");
+    await expect(map).toHaveAttribute("data-fit-height", "306");
+  });
+});
+
+test.describe("кнопки «Маршрут» вне окна маркера: Google Карты", () => {
+  const telegramOpenLink = (page: Page) =>
+    page.addInitScript(() => {
+      const w = window as unknown as {
+        Telegram: { WebApp: { openLink?: (u: string) => void } };
+        __opened: string[];
+      };
+      w.__opened = [];
+      w.Telegram.WebApp.openLink = (u) => w.__opened.push(u);
+    });
+  const opened = (page: Page) => page.evaluate(() => (window as unknown as { __opened: string[] }).__opened);
+  const routeEvents = (page: Page) =>
+    apiMockState.get(page)!.events.filter((e) => e.event === "route_clicked");
+
+  test("список «Поруч»: ссылка Google, openLink в Telegram, аналитика; OSM на экране нет", async ({
+    page,
+  }) => {
+    await telegramOpenLink(page);
+    await mockPlace(page);
+    await page.goto("/#/nearby");
+    const route = page.getByTestId("place-item").first().getByRole("link", { name: "Маршрут", exact: true });
+    await expect(route).toHaveAttribute("href", ROUTE);
+    await expect(page.locator('a[href*="openstreetmap"]')).toHaveCount(0);
+    await route.click();
+    expect(await opened(page)).toEqual([ROUTE]);
+    await expect.poll(() => routeEvents(page).length).toBe(1);
+  });
+
+  test("карточка места: ссылка Google, openLink в Telegram, аналитика", async ({ page }) => {
+    await telegramOpenLink(page);
+    await page.goto(`/#/place/${CAFE_PLACE}`);
+    const route = page.getByTestId("place-route");
+    await expect(route).toHaveAttribute("href", ROUTE);
+    await route.click();
+    expect(await opened(page)).toEqual([ROUTE]);
+    await expect.poll(() => routeEvents(page).length).toBe(1);
+  });
+});
+
 test.describe("капсула радиуса", () => {
   for (const width of [320, 390] as const) {
     for (const night of [false, true]) {

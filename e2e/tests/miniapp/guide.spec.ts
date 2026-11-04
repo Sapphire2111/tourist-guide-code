@@ -182,7 +182,10 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("badge-open")).toBeVisible();
     await expect(page.getByRole("img", { name: "Фото: Кав'ярня «Смерека»" })).toBeVisible();
     await expect(page.getByTestId("place-call")).toHaveAttribute("href", "tel:+380501112233");
-    await expect(page.getByTestId("place-route")).toHaveAttribute("href", /openstreetmap\.org\/directions/);
+    await expect(page.getByTestId("place-route")).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=48.4512,24.5612",
+    );
     await expectNoSeriousA11yViolations(page);
 
     // Ссылки не уводят со страницы в тесте: tel: и внешний маршрут перехватываем.
