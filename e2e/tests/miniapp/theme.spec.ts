@@ -1,6 +1,7 @@
 // Тема «День» / «Ніч»: переключатель в меню, хранение в localStorage (tg.theme), первый кадр сразу в своей теме.
 import type { Page } from "@playwright/test";
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
+import { animationsDone } from "../../support/animations.js";
 import { apiMockState } from "../../support/api-mock.js";
 import { installAssistantMock } from "../../support/assistant-mock.js";
 import { bookingDto, installBookingsMock, PARTNER_PLACE } from "../../support/bookings-mock.js";
@@ -209,6 +210,7 @@ for (const [width, height, mapHeight] of [
     await page.setViewportSize({ width, height });
     await page.goto("/#/nearby");
     await expect(page.getByTestId("places-map")).toBeVisible();
+    await animationsDone(page);
     const box = (await page.getByTestId("places-map").boundingBox())!;
     expect(Math.round(box.height)).toBe(mapHeight);
     await expect(page.locator(".modern-map-spot")).toHaveCount(0);
@@ -216,9 +218,12 @@ for (const [width, height, mapHeight] of [
     const map = page.locator(".gm-fake-map");
     await expect(map).toHaveAttribute("data-fit-padding-bottom", "40");
     const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
-    // Округление вверх от дробной высоты панели во время анимации появления: допуск 1 px.
-    const top = Number(await map.getAttribute("data-fit-padding-top"));
-    expect(Math.abs(top - (panel.y + panel.height - box.y + 16))).toBeLessThanOrEqual(1);
+    const expected = Math.ceil(panel.y + panel.height - box.y - 0.01) + 16;
+    await expect(map).toHaveAttribute("data-fit-padding-top", String(expected));
+    // Значение устойчиво: после анимации замер не меняется.
+    await page.waitForTimeout(100);
+    const again = (await page.locator('[data-map-inset="top"]').boundingBox())!;
+    expect(again.y + again.height).toBe(panel.y + panel.height);
   });
 }
 
@@ -235,6 +240,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
     );
   await page.goto("/#/nearby");
   await expect(page.locator(".modern-filters button").first()).toBeVisible();
+  await animationsDone(page);
   for (const sel of [".modern-filters button", ".modern-radius button"]) {
     const items = await reach(sel);
     expect(items.length).toBeGreaterThan(0);
@@ -244,6 +250,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
   expect(chip[0]!.h).toBe(34);
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
+  await animationsDone(page);
   const tags = await reach(".modern-hero-glass .kosiv-tag");
   if (tags.length) {
     for (const i of tags) expect(i.total).toBeGreaterThanOrEqual(44);

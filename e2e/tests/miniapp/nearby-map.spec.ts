@@ -1,6 +1,7 @@
 // «Що поруч»: окно маркера (фото, «Маршрут», карточка) и компактная капсула радиуса. Карта — фейк API (support/google-maps-fake.ts).
 import type { Page } from "@playwright/test";
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
+import { animationsDone } from "../../support/animations.js";
 import { apiMockState, CAFE_PLACE } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
 
@@ -51,6 +52,9 @@ async function mockPlace(page: Page, over: Record<string, unknown> = {}) {
 
 async function openPopup(page: Page) {
   await page.goto("/#/nearby");
+  // Холодная загрузка под нагрузкой (медленный CPU на CI) дольше 5 с: это ожидание, а не допуск замера.
+  await expect(page.getByTestId("places-map")).toBeVisible({ timeout: 15_000 });
+  await animationsDone(page);
   await page.getByTestId("places-map").locator(".kosiv-pin[data-distance]").first().click();
   const popup = page.locator(".kosiv-map-popup");
   await expect(popup).toBeVisible();
@@ -337,6 +341,7 @@ test.describe("капсула радиуса", () => {
         await page.setViewportSize({ width, height: 844 });
         await page.goto("/#/nearby");
         await expect(page.getByTestId("places-map")).toBeVisible();
+        await animationsDone(page);
         const radius = page.getByRole("group", { name: "Радіус" });
         await expect(radius.getByRole("button")).toHaveText([
           "300 м",

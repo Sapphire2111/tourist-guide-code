@@ -738,7 +738,8 @@ function fitPadding(host: HTMLElement | null): google.maps.Padding {
   const top = stage.querySelector('[data-map-inset="top"]')?.getBoundingClientRect();
   base.bottom = FIT_PADDING_LOGO;
   // Запас 16 px: маркер (капсула 30 px высотой привязана центром к точке) не должен касаться края панели.
-  if (top) base.top = Math.max(base.top, Math.ceil(top.bottom - map.top) + 16);
+  // Минус 0,01: шум плавающей точки в координатах (91,00001) не должен давать лишний пиксель.
+  if (top) base.top = Math.max(base.top, Math.ceil(top.bottom - map.top - 0.01) + 16);
   // Панель не должна съесть карту: вместе не больше 70% высоты, иначе fitBounds нечего вписывать.
   const room = map.height * 0.7;
   const used = base.top + base.bottom;
