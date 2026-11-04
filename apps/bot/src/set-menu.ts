@@ -5,8 +5,8 @@ import { BotApiClient } from "./telegram/bot-api.js";
 import { menuRequests } from "./telegram/menu.js";
 
 const env = loadEnvOrExit("bot", botEnvSchema);
-if (!env.TELEGRAM_BOT_TOKEN || !env.PUBLIC_MINIAPP_URL) {
-  console.error("Нужны TELEGRAM_BOT_TOKEN и PUBLIC_MINIAPP_URL (см. .env.example)");
+if (!env.TELEGRAM_BOT_TOKEN || !env.PUBLIC_MINIAPP_URL?.startsWith("https://")) {
+  console.error("Нужны TELEGRAM_BOT_TOKEN и https-адрес PUBLIC_MINIAPP_URL (см. .env.example)");
   process.exit(1);
 }
 const client = new BotApiClient({ token: env.TELEGRAM_BOT_TOKEN });

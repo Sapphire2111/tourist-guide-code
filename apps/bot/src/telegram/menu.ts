@@ -7,9 +7,9 @@ export interface BotApiRequest {
 }
 
 /**
- * Кнопка меню чата (web_app) и команды бота. Кнопку Telegram рисует сам, без запроса к нашему серверу, —
- * вход в Mini App работает сразу, даже пока api на Render просыпается. Методы идемпотентны: повторный
- * вызов перезаписывает то же значение. Без https-адреса Mini App кнопку не ставим (Telegram требует https).
+ * Кнопка меню чата (web_app) и команды бота. Кнопку Telegram показывает сам, без запроса к нашему серверу, —
+ * она видна сразу, даже пока api на Render спит (сама Mini App при входе всё равно ждёт api). Методы
+ * идемпотентны: повторный вызов перезаписывает то же значение. Без https-адреса — ошибка (Telegram требует https).
  */
 export function menuRequests(miniappUrl: string | undefined): BotApiRequest[] {
   if (!miniappUrl?.startsWith("https://")) {
