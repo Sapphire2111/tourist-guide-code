@@ -7,6 +7,7 @@ import {
   type Author,
   type EmergencyContact,
   type GuideApi,
+  type Peak,
   type Photo,
   type PlaceDetail,
   type PlaceSummary,
@@ -64,6 +65,38 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     openNow: dto.openNow,
     recommended: dto.recommended,
     adLabel: dto.adLabel,
+    peak: peakOf((dto as Partial<SummaryDto>).peak),
+  };
+}
+
+/** Вершина из api; ссылки источников — только https. api старее схемы — null. */
+export function peakOf(dto: SummaryDto["peak"] | undefined): Peak | null {
+  if (!dto) return null;
+  return {
+    slug: dto.slug,
+    heightM: dto.heightM,
+    range: dto.range,
+    difficulty: dto.difficulty,
+    route: dto.route
+      ? {
+          start: dto.route.start,
+          startLocation: dto.route.startLocation,
+          roundTripKm: dto.route.roundTripKm,
+          elevationGainM: dto.route.elevationGainM,
+          gainKind: dto.route.gainKind,
+          upHours: dto.route.upHours,
+          downHours: dto.route.downHours,
+          totalHours: dto.route.totalHours,
+          trail: dto.route.trail,
+        }
+      : null,
+    note: dto.note,
+    warnings: dto.warnings,
+    sources: dto.sources.flatMap((s) => {
+      const url = https(s.url);
+      return url ? [{ title: s.title, url }] : [];
+    }),
+    weatherPoint: dto.weatherPoint,
   };
 }
 

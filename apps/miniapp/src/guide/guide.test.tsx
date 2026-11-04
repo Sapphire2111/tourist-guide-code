@@ -97,7 +97,7 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("modern: одна сетка из 8 разделов (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
+  it("modern: одна сетка из 9 разделов (с «Вершини») (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
     const { env } = setup();
     const view = (hasVenue: boolean) => (
       <GuideProvider value={env}>
@@ -105,7 +105,7 @@ describe("главная C02", () => {
       </GuideProvider>
     );
     const { rerender } = render(view(true));
-    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(8);
+    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(9);
     const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
     // Еда — большая карточка, плитка не дублирует её.
     expect(href(/^Де смачно поїсти/)).toBe("#/section/eat");
@@ -115,6 +115,7 @@ describe("главная C02", () => {
     // Имена на плитках и подсказка «Де жити» — для скринридера.
     expect(href(/^Де жити.*Готелі, садиби/)).toBe("#/section/stay");
     expect(href("Обране")).toBe("#/favorites");
+    expect(href("Вершини")).toBe("#/peaks");
     expect(href("Відпочити та зігрітися")).toBe("#/section/relax");
     expect(href("Розваги та враження")).toBe("#/section/fun");
     expect(
@@ -127,6 +128,7 @@ describe("главная C02", () => {
       "#/section/shop",
       "#/section/fun",
       "#/section/ski",
+      "#/peaks",
       "#/section/transfer",
       "#/section/services",
       "#/favorites",
@@ -480,6 +482,7 @@ describe("адаптер api и аналитика", () => {
       openNow: null,
       phone: null,
       coverPhoto: null,
+      peak: null,
       cover: {
         mediaAssetId: P1,
         alt: { uk: "Фасад" },

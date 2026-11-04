@@ -457,6 +457,7 @@ describe("cardOf — богатые поля", () => {
       ],
       googleMapsUri: "http://maps.google.com",
       wikipedia: null,
+      peak: null,
     } as CardDto);
     expect(card.reviews![0]!.author).toEqual({ name: "X", uri: null, photoUri: null });
     expect(card.reviews![0]!.uri).toBeNull();

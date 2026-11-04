@@ -5,6 +5,7 @@ import { currentEntryKey, deleteMemo, readMemo, writeMemo } from "../back.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { noopAnalytics, type Analytics } from "./analytics.js";
 import type { LatLng } from "./geo.js";
+import type { WeatherApi } from "../weather/weather-api.js";
 import type { GuideApi } from "./types.js";
 
 export type GuideEnv = {
@@ -17,6 +18,8 @@ export type GuideEnv = {
   regionId: string | null;
   /** Есть сессия (вход через Telegram) — избранное доступно. */
   signedIn: boolean;
+  /** Прогноз погоды (погода на вершине в картке місця); нет — блок не показывается. */
+  weather?: WeatherApi;
 };
 
 const GuideContext = createContext<GuideEnv | null>(null);

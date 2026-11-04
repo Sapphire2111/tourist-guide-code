@@ -465,6 +465,7 @@ describe("createAssistantApi", () => {
           phone: null,
           cover: null,
           coverPhoto: null,
+          peak: null,
         },
         priceLevel: 2,
         kidsFriendly: false,

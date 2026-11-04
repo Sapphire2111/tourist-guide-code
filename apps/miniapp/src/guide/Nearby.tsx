@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useCategoryIndex } from "./categories.js";
 import { useScreenState } from "../screen-state.js";
 import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
-import { Button, useT } from "@tg/ui";
+import { Button, Link, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import type { Async } from "./context.js";
@@ -401,6 +401,11 @@ export function ModernNearbyResults({
             {t("miniapp.modern.radiusUpTo", { r: radiusLabel(selectedRadius) })}
           </p>
         </div>
+        {/* Раздел «Вершини» — из «Що поруч» (вершины — подкатегория этого раздела). */}
+        <Link to="/peaks" className="modern-route peak-link" data-testid="nearby-peaks">
+          <span aria-hidden="true">🏔️</span>
+          {t("miniapp.peaks.link")}
+        </Link>
         {list.length >= NEARBY_LIMIT && <p>{t("miniapp.nearby.limited", { n: NEARBY_LIMIT })}</p>}
         {visible.length ? (
           <PlaceList places={visible} quickRoute />
