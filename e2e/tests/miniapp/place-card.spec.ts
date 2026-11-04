@@ -80,7 +80,6 @@ function richCard() {
       lang: "uk",
       title: "Яремче",
       url: "https://uk.m.wikipedia.org/wiki/Яремче",
-      extract: "Яремче — місто в Івано-Франківській області.",
       image: {
         url: "https://upload.wikimedia.org/wikipedia/commons/x.jpg",
         width: 1200,

@@ -87,9 +87,6 @@ export type Review = {
 export type WikipediaInfo = {
   title: string;
   url: string;
-  extract: string;
-  /** Опис скорочено (у статье больше текста). */
-  truncated: boolean;
   image: { url: string; author: string | null; license: string | null; sourceUrl: string } | null;
 };
 

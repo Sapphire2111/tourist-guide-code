@@ -104,30 +104,92 @@ export const SYSTEM_PROMPT = `Ти пишеш короткий текст для
 - До 300 символів. Звичайний нейтральний стиль путівника.
 - Якщо фактів замало для змістовного тексту, відповідай рівно: ${AI_NO_DATA}`;
 
-export function factsHash(facts: AiFacts): string {
-  return createHash("sha256")
-    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${SYSTEM_PROMPT}|${JSON.stringify(facts)}`)
+/**
+ * Режим --covers-source wikimedia: текст Вікіпедії (CC BY-SA) — только источник фактов, пересказ своими словами. В
+ * обычном режиме правила нет: промпт входит в хэш, и его смена сняла бы готовые тексты при прогоне без --ai.
+ */
+export const WIKI_RULE = `
+- Факт «Вікіпедія» — лише джерело фактів (висота, розташування, історія тощо): перекажи їх своїми словами, не копіюй речень і зворотів зі статті дослівно.`;
+
+export const systemPrompt = (facts: AiFacts, paraphrase = false) =>
+  paraphrase && facts["Вікіпедія"] ? `${SYSTEM_PROMPT}${WIKI_RULE}` : SYSTEM_PROMPT;
+
+/**
+ * Признак текста режима Wikimedia в ai_input_hash (без миграции: CHECK допускает 16–64 hex-символа): 8 символов префикса
+ * и 32 символа хэша — всего 40; хэш обычного режима всегда 32. Такой текст обычный прогон не снимает и не заменяет.
+ */
+const WIKIMEDIA_HASH_PREFIX = "57ed1a00";
+
+export const isWikimediaHash = (hash: string | null | undefined) =>
+  hash?.length === WIKIMEDIA_HASH_PREFIX.length + 32 && hash.startsWith(WIKIMEDIA_HASH_PREFIX);
+
+export function factsHash(facts: AiFacts, paraphrase = false): string {
+  const hash = createHash("sha256")
+    .update(`${AI_MODEL}|${AI_PROMPT_VERSION}|${systemPrompt(facts, paraphrase)}|${JSON.stringify(facts)}`)
     .digest("hex")
     .slice(0, 32);
+  return paraphrase ? `${WIKIMEDIA_HASH_PREFIX}${hash}` : hash;
 }
 
 /** Параметры одного запроса (и для Batches, и для теста). */
-export function requestParams(facts: AiFacts): Anthropic.MessageCreateParamsNonStreaming {
+export function requestParams(facts: AiFacts, paraphrase = false): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: AI_MODEL,
     max_tokens: AI_MAX_TOKENS,
     // Короткий текст по фактам: низкое усилие — дешевле, качество достаточное.
     output_config: { effort: "low" },
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(facts, paraphrase),
     messages: [{ role: "user", content: `Факти про місце (JSON):\n${JSON.stringify(facts, null, 1)}` }],
   };
 }
 
+/** Цепочка из стольких слов подряд — уже оборот, а не название или факт («водоспад на річці Прут» — 4 слова). */
+const COPY_NGRAM = 5;
 /**
- * Проверка ответа модели: только текст, 1–4 предложения, 30–500 символов, без ссылок/разметки/телефонов. Иное
- * (в т. ч. «НЕМАЄ ДАНИХ») — null: текст в карточку не попадёт.
+ * Копией считается: ≥ 20 % пятисловий текста есть в статье или ≥ 8 совпавших слов подряд. В тексте 2–3 предложения,
+ * ≈ 40 слов и ≈ 36 пятисловий: одна общая фактическая фраза — 3 %, две-три — до 15 %, это нормальный пересказ; 20 % —
+ * уже несколько переписанных оборотов; 8 слов подряд — целая часть предложения (CC BY-SA, дословно не копировать).
  */
-export function acceptText(raw: string): string | null {
+const COPY_MAX_SHARE = 0.2;
+const COPY_MAX_RUN_WORDS = 8;
+
+const copyWords = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[’'ʼ`]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+/** Текст переписывает статью дословно (без учёта регистра, знаков и порядка предложений). */
+export function copiesSource(text: string, source: string | null | undefined): boolean {
+  if (!source) return false;
+  const t = copyWords(text);
+  const s = copyWords(source);
+  if (t.length < COPY_NGRAM || s.length < COPY_NGRAM) return false;
+  const grams = new Set<string>();
+  for (let i = 0; i + COPY_NGRAM <= s.length; i++) grams.add(s.slice(i, i + COPY_NGRAM).join(" "));
+  const total = t.length - COPY_NGRAM + 1;
+  let hits = 0;
+  let run = 0;
+  let longest = 0;
+  for (let i = 0; i < total; i++) {
+    run = grams.has(t.slice(i, i + COPY_NGRAM).join(" ")) ? run + 1 : 0;
+    if (run) hits++;
+    longest = Math.max(longest, run);
+  }
+  return hits / total >= COPY_MAX_SHARE || (longest > 0 && longest + COPY_NGRAM - 1 >= COPY_MAX_RUN_WORDS);
+}
+
+const wikiSource = (facts: AiFacts) => {
+  const v = facts["Вікіпедія"];
+  return typeof v === "string" ? v : null;
+};
+
+/**
+ * Проверка ответа модели: только текст, 1–4 предложения, 30–500 символов, без ссылок/разметки/телефонов, не копия
+ * статьи source. Иное (в т. ч. «НЕМАЄ ДАНИХ») — null: текст в карточку не попадёт.
+ */
+export function acceptText(raw: string, source?: string | null): string | null {
   const t = raw
     .replace(/\s+/g, " ")
     .trim()
@@ -138,12 +200,79 @@ export function acceptText(raw: string): string | null {
   if (/https?:|www\.|[*#_`[\]<>]|\+?\d[\d\s-]{8,}/i.test(t)) return null;
   const sentences = t.split(/[.!?…]+(?:\s|$)/).filter((s) => s.trim().length > 0);
   if (sentences.length > 4) return null;
+  if (copiesSource(t, source)) return null;
   return t;
 }
 
 export type AiResult = { text: string | null; model: string; generatedAt: string };
 
-export type AiItem = { hash: string; facts: AiFacts };
+/** paraphrase — режим Wikimedia: в промпте правило пересказа (WIKI_RULE), хэш считан с ним же. */
+export type AiItem = { hash: string; facts: AiFacts; paraphrase?: boolean };
+
+export type AiPlace = {
+  googlePlaceId: string;
+  name: string;
+  categoryCode: string;
+  localityCode: string;
+  address: string | null;
+  google: PlaceEnrichmentGoogle | null;
+  googleFromImport?: boolean;
+  wiki?: PlaceEnrichmentWiki | null | undefined;
+};
+
+/**
+ * Что отправить в ИИ. Режим Wikimedia: только туда, где текста нет (по всем местам), только при найденной статье и
+ * только с фактами статьи — без сохранённых данных Google. Из кэша импорта: только где текста нет. keepText — текст
+ * режима Wikimedia, обычный прогон его не заменит, платить незачем.
+ */
+export function buildAiItems(
+  places: readonly AiPlace[],
+  o: {
+    withAi: ReadonlySet<string>;
+    wikimediaOnly: boolean;
+    keepText?: ReadonlySet<string>;
+    categoryName: (code: string) => string;
+    localityName: (code: string) => string | null;
+  },
+): Map<string, AiItem> {
+  const items = new Map<string, AiItem>();
+  for (const p of places) {
+    if ((o.wikimediaOnly || p.googleFromImport) && o.withAi.has(p.googlePlaceId)) continue;
+    if (o.keepText?.has(p.googlePlaceId)) continue;
+    if (o.wikimediaOnly && !p.wiki) continue;
+    const facts = buildFacts({
+      name: p.name,
+      category: o.categoryName(p.categoryCode),
+      locality: o.localityName(p.localityCode),
+      address: p.address,
+      google: o.wikimediaOnly ? null : p.google,
+      wiki: p.wiki ?? null,
+    });
+    if (facts)
+      items.set(p.googlePlaceId, {
+        hash: factsHash(facts, o.wikimediaOnly),
+        facts,
+        paraphrase: o.wikimediaOnly,
+      });
+  }
+  return items;
+}
+
+/**
+ * Копии статьи из кэша результатов (пакет прошлых прогонов мог быть принят без статьи под рукой) удаляются: иначе текст
+ * считался бы готовым навсегда и не создавался заново. Возвращает, сколько удалено.
+ */
+export async function purgeCopies(store: AiStore, items: Iterable<AiItem>): Promise<number> {
+  let purged = 0;
+  for (const it of items) {
+    const cached = await store.get(it.hash);
+    if (cached?.text && copiesSource(cached.text, wikiSource(it.facts))) {
+      await store.remove(it.hash);
+      purged++;
+    }
+  }
+  return purged;
+}
 
 /** Кэш результатов и состояние отправленного пакета — файлы в каталоге кэша. */
 export class AiStore {
@@ -168,6 +297,9 @@ export class AiStore {
   async put(hash: string, r: AiResult): Promise<void> {
     await mkdir(this.cacheDir, { recursive: true });
     await writeFile(this.file(hash), JSON.stringify(r));
+  }
+  async remove(hash: string): Promise<void> {
+    await rm(this.file(hash), { force: true });
   }
   async pending(): Promise<{ batchId: string; hashes: string[] } | null> {
     try {
@@ -199,6 +331,8 @@ export type AiRunStats = {
   /** Получено из пакета: принято, отклонено проверкой / «нет данных», ошибок. */
   accepted: number;
   rejected: number;
+  /** Отброшено как копия статьи: в кэш не идёт, следующий прогон с --ai создаст текст заново. */
+  copies: number;
   errored: number;
   batchId: string | null;
   /** Пакет ещё обрабатывается (результаты — при следующем прогоне). */
@@ -231,11 +365,20 @@ export async function runAi(
     submitted: 0,
     accepted: 0,
     rejected: 0,
+    copies: 0,
     errored: 0,
     batchId: null,
     stillProcessing: false,
     usage: { inputTokens: 0, outputTokens: 0 },
   };
+
+  // Проверка копии — только режим Wikimedia: обычный режим как раньше (копия не кэшировалась бы и оплачивалась снова).
+  const sourceOf = new Map(
+    items.flatMap((it) => (it.paraphrase ? [[it.hash, wikiSource(it.facts)]] : [])) as [
+      string,
+      string | null,
+    ][],
+  );
 
   const collect = async (batchId: string): Promise<boolean> => {
     const started = Date.now();
@@ -265,6 +408,10 @@ export async function runAi(
         continue;
       }
       const text = acceptText(raw);
+      if (text && copiesSource(text, sourceOf.get(r.custom_id))) {
+        stats.copies++;
+        continue;
+      }
       if (text) stats.accepted++;
       else stats.rejected++;
       await store.put(r.custom_id, { text, model: msg.model || AI_MODEL, generatedAt });
@@ -291,7 +438,7 @@ export async function runAi(
   const batch = missing.slice(0, opts.maxNew);
   if (!batch.length) return stats;
   const created = await batches.create({
-    requests: batch.map((it) => ({ custom_id: it.hash, params: requestParams(it.facts) })),
+    requests: batch.map((it) => ({ custom_id: it.hash, params: requestParams(it.facts, it.paraphrase) })),
   });
   stats.batchId = created.id;
   stats.submitted = batch.length;
