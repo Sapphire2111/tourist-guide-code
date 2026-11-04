@@ -271,5 +271,22 @@ describe("горные походы (погода)", () => {
     expect(isMountainHike(m("museums", "Музей Говерли"))).toBe(false);
     // «Горіховий» — не «гора».
     expect(isMountainHike(m("nature", "Горіховий гай"))).toBe(false);
+    // Раздел «Вершини» — всегда поход, даже без горного слова в названии.
+    expect(isMountainHike(m("peaks", "Туркул"))).toBe(true);
+  });
+});
+
+describe("«Вершини» в плане", () => {
+  it("зранку — вершина как прогулка (walk); взимку и в «якщо дощ» — нет", () => {
+    const places = [place(1, "peaks", 500, { names: ["Туркул"] }), place(2, "cafes", 100)];
+    const morning = slotOptions("morning", BASE, places, car, new Set());
+    expect(morning.find((o) => o.placeId === P(1))).toMatchObject({ kind: "peaks", reason: "walk" });
+    expect(slotOptions("rain", BASE, places, car, new Set()).map((o) => o.placeId)).not.toContain(P(1));
+    const ids = (season: "winter" | "summer") =>
+      planOptions({ days: 1, items: [], places, trip: car, base: BASE, season })[0]!.slots.flatMap((s) =>
+        s.options.map((o) => o.placeId),
+      );
+    expect(ids("summer")).toContain(P(1));
+    expect(ids("winter")).not.toContain(P(1));
   });
 });

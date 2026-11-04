@@ -15,7 +15,8 @@ export type PlanTravel = "walk" | "car";
 export const PLAN_TRAVELS: readonly PlanTravel[] = ["walk", "car"];
 
 /** Категории каталога по роли в плане (коды подкатегорий). */
-const SEE = ["sights", "nature", "museums"] as const;
+// «Вершини» — сходження на пів дня (ранок), не взимку (eligible).
+const SEE = ["sights", "nature", "peaks", "museums"] as const;
 // «Екскурсії» — турфирмы (записаться заранее), не пункт плана на час; в план не берём.
 const FUN = ["active", "entertainment", "kids", "adult-fun", "ski-resorts"] as const;
 const LUNCH = ["restaurants", "kolyby", "cafes"] as const;
@@ -36,6 +37,7 @@ export const ROLE_OF: Readonly<Record<string, PlanRole>> = {
 export const DURATION_OF: Readonly<Record<string, number>> = {
   sights: 45,
   nature: 90,
+  peaks: 210,
   museums: 60,
   active: 120,
   entertainment: 90,
@@ -316,7 +318,10 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
   return { days, lengthMeters: Math.round(lengthMeters) };
 }
 
-/** Кандидаты, которые вообще могут попасть в план: роль известна, «з дітьми» — без «Для дорослих», лыжи — зимой. */
+/**
+ * Кандидаты, которые вообще могут попасть в план: роль известна, «з дітьми» — без «Для дорослих», лыжи — зимой,
+ * вершины — не зимой.
+ */
 function eligible(
   candidates: readonly PlanCandidate[],
   o: Pick<PlanOptions, "withKids" | "month">,
@@ -326,7 +331,8 @@ function eligible(
     (c) =>
       ROLE_OF[c.category] !== undefined &&
       !(o.withKids && c.category === "adult-fun") &&
-      (winter || c.category !== "ski-resorts"),
+      (winter || c.category !== "ski-resorts") &&
+      !(winter && c.category === "peaks"),
   );
 }
 

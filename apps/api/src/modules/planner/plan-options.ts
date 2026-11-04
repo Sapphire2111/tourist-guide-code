@@ -77,7 +77,8 @@ const SLOT_ORDER: readonly PlanSlot[] = ["morning", "afternoon", "evening", "rai
 
 /** Категории части дня в порядке предпочтения: разнообразие — по одному месту каждой по кругу. */
 const SLOT_CATEGORIES: Record<PlanSlot, readonly string[]> = {
-  morning: ["cafes", "nature", "sights", "museums", "excursions", "active"],
+  // «Вершини» — сходження зранку (не зимой и не в непогоду — season.ts, isMountainHike).
+  morning: ["cafes", "nature", "peaks", "sights", "museums", "excursions", "active"],
   afternoon: [
     "restaurants",
     "kolyby",
@@ -147,6 +148,7 @@ function reasonOf(slot: PlanSlot, category: string): OptionReason {
     case "kolyby":
       return slot === "evening" ? "dinner" : "lunch";
     case "nature":
+    case "peaks":
     case "sights":
       return "walk";
     case "museums":

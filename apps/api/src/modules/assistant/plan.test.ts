@@ -128,6 +128,15 @@ describe("buildPlan", () => {
     expect(winter.days[0]!.parts[0]!.stops[0]!.placeId).toBe(ski.id);
   });
 
+  it("«Вершини»: сходження зранку як огляд (see, пів дня); взимку вершин у плані немає", () => {
+    const peak = c("peaks", 1, { rating: 5 });
+    const summer = buildPlan([peak, c("restaurants", 2)], opts({ parts: ["morning"], month: 7 }));
+    const stop = summer.days[0]!.parts[0]!.stops[0]!;
+    expect(stop).toMatchObject({ placeId: peak.id, role: "see", durationMin: 210 });
+    const winter = buildPlan([peak, c("nature", 1.5)], opts({ parts: ["morning"], month: 1 }));
+    expect(winter.days[0]!.parts.flatMap((p) => p.stops.map((s) => s.placeId))).not.toContain(peak.id);
+  });
+
   it("сегодня с 15:00 — без ранку; несколько дней — разные места, каждый день от жилья", () => {
     const today = buildPlan(catalog(), opts({ days: [{ ...SAT, fromMinute: 15 * 60 }] }));
     expect(today.days[0]!.parts.map((p) => p.part)).toEqual(["afternoon", "evening"]);
