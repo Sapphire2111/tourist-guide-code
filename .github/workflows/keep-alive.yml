@@ -1,36 +1,50 @@
 name: Keep-alive staging
 
 # Render free усыпляет web-сервис после ~15 мин без HTTP-трафика; первый запрос будит его ~30–60 с — всё это время
-# Mini App висит на заставке (вход POST /auth/telegram ждёт api). Пинг GET /health каждые 10 мин держит api
-# staging бодрым. Репозиторий публичный — минуты бесплатны; секретов нет (адрес публичный).
-# Ограничения: GitHub запускает schedule с задержкой (обычно минуты, в часы пик — дольше) — поэтому 10 мин, а не 14;
-# Render free даёт 750 ч инстанса в месяц на workspace — одного api 24/7 (~744 ч) хватает, второго — уже нет.
-# Отключить: Actions → Keep-alive staging → Disable workflow.
+# бот не отвечает на /start и Mini App висит на заставке. Пинг GET /health каждые ~5 мин держит api staging бодрым.
+# Почему один запуск живёт ~5 ч 45 мин: cron */10 GitHub фактически запускал раз в 5–7 ч, поэтому вместо частых
+# коротких запусков — один длинный цикл пингов (timeout-minutes 355 < лимита 360 мин на job).
+# Непрерывность: concurrency без cancel-in-progress — новый запуск ждёт окончания текущего (лишние ожидающие
+# GitHub заменяет последним, в очереди не больше одного); источники следующего запуска — ежечасный schedule
+# и workflow_dispatch самого себя в конце цикла (GITHUB_TOKEN может запускать workflow_dispatch), так что
+# цепочка не рвётся, даже если schedule задержится на часы.
+# Репозиторий публичный — минуты бесплатны; секретов нет (адрес публичный). Render free даёт 750 ч инстанса
+# в месяц на workspace — одного api 24/7 (~744 ч) хватает, второго — уже нет.
+# Отключить: Actions → Keep-alive staging → Disable workflow (и отменить идущий запуск).
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
   group: keep-alive
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 355
+    permissions:
+      actions: write # только для перезапуска самого себя
     steps:
-      - name: GET /health
+      - name: Цикл GET /health
         shell: bash
         run: |
           # Только код и время ответа — тело и заголовки в лог не пишутся.
-          # Холодный старт дольше таймаута одной попытки — повтор (запрос уже разбудил сервис).
-          for attempt in 1 2 3; do
+          end=$(( $(date +%s) + 345 * 60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
             out=$(curl -s -o /dev/null --max-time 60 -w '%{http_code} %{time_total}' https://tg-api-staging.onrender.com/health || true)
-            echo "attempt $attempt: HTTP ${out:-000} s"
-            case "$out" in 200\ *) exit 0 ;; esac
-            sleep 5
+            echo "$(date -u +%H:%M:%S) HTTP ${out:-000} s"
+            case "$out" in
+              200\ *) sleep 300 ;;
+              *) sleep 20 ;; # холодный старт/сбой — повтор скоро (запрос уже разбудил сервис)
+            esac
           done
-          echo "::warning::staging api не ответил 200 на /health"
+      - name: Следующий запуск
+        if: ${{ !cancelled() }} # отменённый вручную запуск цепочку не продолжает
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run keep-alive.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
