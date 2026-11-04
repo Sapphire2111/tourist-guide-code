@@ -38,6 +38,12 @@ export const BIG_START_MAX = 10 * 60;
 export const PEAK_START_MAX = 12 * 60;
 /** Бар (категорія «Бари» чи кафе-бар) — лише ввечері (як «Мій план»: вечір — від 17:00), хв від полуночі. */
 export const BAR_START_MIN = 17 * 60;
+/** Вершина лише зранку, бар лише ввечері: причина, якщо час не підходить, інакше null. */
+function wrongTime(p: Pick<GenPlace, "category" | "kind">, at: number): string | null {
+  if (p.category === "peaks" && at >= PEAK_START_MAX) return "вершина — лише зранку (старт до 12:00)";
+  if (p.kind === "bar" && at < BAR_START_MIN) return "бар — лише ввечері (від 17:00)";
+  return null;
+}
 /** Без авто — между соседними пунктами не дальше, м по прямой. */
 export const FOOT_HOP_MAX_M = 2_500;
 /** На авто — не дальше, м по прямой. */
@@ -317,12 +323,8 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
             `${it.ref} (${place.name}): похід ${minutes} хв має починатися до 10:00, а не о ${fromMin(at)}`,
           );
       }
-      if (place.category === "peaks" && at >= PEAK_START_MAX)
-        errors.push(
-          `${it.ref} (${place.name}): вершина — лише зранку (старт до 12:00), а не о ${fromMin(at)}`,
-        );
-      if (place.kind === "bar" && at < BAR_START_MIN)
-        errors.push(`${it.ref} (${place.name}): бар — лише ввечері (від 17:00), а не о ${fromMin(at)}`);
+      const timeError = wrongTime(place, at);
+      if (timeError) errors.push(`${it.ref} (${place.name}): ${timeError}, а не о ${fromMin(at)}`);
       const isMeal = (MEAL_CATEGORIES as readonly string[]).includes(place.category);
       if (isMeal) meal = true;
       if (isMeal && at >= LUNCH_WINDOW.from && at <= LUNCH_WINDOW.to) lunch = true;
@@ -353,6 +355,11 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
         const alt = set.byRef.get(a.trim());
         if (!alt || alt.id === place.id || alternatives.includes(alt.id)) {
           fixes.push(`${it.ref}: альтернатива «${a}» прибрана`);
+          continue;
+        }
+        // Заміна — на той самий час: вершина після 12:00 чи бар до 17:00 не годиться.
+        if (wrongTime(alt, at)) {
+          fixes.push(`${it.ref}: альтернатива «${a}» (${alt.name}) прибрана — не та частина дня`);
           continue;
         }
         if (alternatives.length < ALTERNATIVES_MAX) {

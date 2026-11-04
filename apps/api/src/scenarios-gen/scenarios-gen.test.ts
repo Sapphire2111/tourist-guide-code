@@ -310,9 +310,10 @@ describe("«Вершини» и «Бари» в сценариях", () => {
     expect(pub.adultsOnly).toBe(true);
   });
 
+  const errs = (r: { errors: string[] }) => r.errors.join(" | ");
+
   it("вершина — лише зранку, бар — лише ввечері", () => {
     const set = setOf([turkul, lunch, pub]);
-    const errs = (r: { errors: string[] }) => r.errors.join(" | ");
     const late = validateScenario(
       brief("peak"),
       set,
@@ -327,6 +328,19 @@ describe("«Вершини» и «Бари» в сценариях", () => {
     );
     expect(errs(day)).toMatch(/бар — лише ввечері/);
     expect(errs(day)).not.toMatch(/вершина — лише зранку/);
+  });
+
+  it("кафе-бар — обід удень без помилки; альтернатива не тієї частини дня прибирається", () => {
+    const cafeBar = place("cafes", "Кафе-бар Едельвейс", 700);
+    const set = setOf([probii, cafeBar, pub, turkul, chan]);
+    const r = validateScenario(
+      brief("waterfalls"),
+      set,
+      scenario([item("p1", "10:00", 45, ["p3", "p4"]), item("p2", "12:00", 75), item("p5", "15:00", 120)]),
+    );
+    expect(errs(r)).not.toMatch(/бар — лише ввечері/);
+    expect(r.fixes.some((f) => f.includes("«p3»") && f.includes("не та частина дня"))).toBe(true);
+    expect(r.fixes.some((f) => f.includes("«p4»"))).toBe(false);
   });
 });
 
