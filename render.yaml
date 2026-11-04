@@ -110,10 +110,11 @@ services:
     # frame-ancestors с Telegram и без X-Frame-Options; скрипт SDK — https://telegram.org. connect-src — адрес api
     # (VITE_API_URL); фото мест (T1-20) — img-src https:. Карта — Google Maps JavaScript API (векторная): скрипт,
     # тайлы и шрифты Google (*.googleapis.com, *.gstatic.com, *.google.com), воркеры и данные тайлов — blob:/data:.
+    # 'wasm-unsafe-eval' обязателен: подписи и значки векторной карты рисует WebAssembly Google; без него карта без подписей.
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' https://telegram.org https://*.googleapis.com https://*.gstatic.com https://*.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tg-api-staging.onrender.com https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://telegram.org https://*.googleapis.com https://*.gstatic.com https://*.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tg-api-staging.onrender.com https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'; object-src 'none'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
