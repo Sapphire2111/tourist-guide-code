@@ -38,6 +38,8 @@ export type CurateOptions = {
   dryRun: boolean;
   /** Радиус поиска основной записи для номеров Booking, м. */
   bookingRadiusM?: number;
+  /** Начало причины в аудите (по умолчанию CURATE_REASON). */
+  reason?: string;
 };
 
 export type TodoItem = { line: number | null; id: string; name: string; finding?: Finding; reason: string };
@@ -191,6 +193,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
   const log = (s: string) => lines.push(s);
   const todo: TodoItem[] = [];
   const radius = opts.bookingRadiusM ?? 2000;
+  const reasonPrefix = opts.reason ?? CURATE_REASON;
 
   const categories = new Map(
     (await trx.selectFrom("categories").select(["id", "code"]).execute()).map((c) => [c.code, c.id] as const),
@@ -593,7 +596,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       entityId: c.id,
       oldValues,
       newValues,
-      reason: `${CURATE_REASON}: ${c.sources.join("; ")}`.slice(0, 1000),
+      reason: `${reasonPrefix}: ${c.sources.join("; ")}`.slice(0, 1000),
     });
   }
 
@@ -637,7 +640,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
         ...(siteFrom ? { website: main.website } : {}),
       },
       newValues,
-      reason: `${CURATE_REASON}: контакты слитого дубля на главную (у главной их не было)`,
+      reason: `${reasonPrefix}: контакты слитого дубля на главную (у главной их не было)`,
     });
     contactsMoved.push({
       main: mainId,
@@ -719,7 +722,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       entityId: it.id,
       oldValues: { placeId: it.place_id, alternatives: it.alternatives },
       newValues: { placeId, alternatives: alts },
-      reason: `${CURATE_REASON}: ${why || "чистка альтернатив (само место пункта, повторы, архив чистки)"}`,
+      reason: `${reasonPrefix}: ${why || "чистка альтернатив (само место пункта, повторы, архив чистки)"}`,
     });
   }
   for (const [id, n] of stuck) archivedInScenarios.push({ id, name: nameOf(id), items: n });
