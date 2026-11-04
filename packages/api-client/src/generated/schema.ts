@@ -1273,7 +1273,7 @@ export interface paths {
     put?: never;
     /**
      * «Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки
-     * @description Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.
+     * @description Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). Повтор с тем же Idempotency-Key — тот же ответ (план не создаётся повторно). 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.
      */
     post: operations["createMyPlan"];
     delete?: never;
@@ -1293,7 +1293,7 @@ export interface paths {
     put?: never;
     /**
      * «Інший варіант»: новий план через Claude з тими ж параметрами поїздки (флаг planner.ai)
-     * @description Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався (ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai вимкнено; 422 errors.plan.notCustom — план зі сценарію.
+     * @description Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався (ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai вимкнено; 422 errors.plan.notCustom — план зі сценарію; 409 errors.plan.changedMeanwhile — план змінили, поки складався новий. Повтор з тим самим Idempotency-Key — та сама відповідь.
      */
     post: operations["regenerateMyPlan"];
     delete?: never;
@@ -4137,6 +4137,8 @@ export interface components {
       children: number;
       withCar: boolean;
       days: number;
+      /** @description Інтереси туриста (0027) для живого плану */
+      interests: components["schemas"]["ScenarioTag"][];
       /** @description Від чого рахується відстань, якщо в день ще нічого не вибрано */
       base: components["schemas"]["PlanBaseDto"] | null;
     };
@@ -4315,7 +4317,7 @@ export interface components {
        * @description Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»
        */
       basePlaceId?: string | null;
-      /** @description Інтереси туриста для живого плану (флаг planner.ai): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки */
+      /** @description Інтереси туриста для живого плану (флаг planner.ai; зберігаються в плані): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки */
       interests?: components["schemas"]["ScenarioTag"][];
       /** @description За замовчуванням true. false — свій план без Claude навіть при флагу planner.ai (місця додасть клієнт, напр. асистент) */
       ai?: boolean;
@@ -4379,6 +4381,8 @@ export interface components {
        * @description Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»
        */
       basePlaceId?: string | null;
+      /** @description Інтереси туриста для живого плану (флаг planner.ai; зберігаються в плані): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки */
+      interests?: components["schemas"]["ScenarioTag"][];
       /**
        * Format: date
        * @description null — убрать дату
@@ -13635,9 +13639,11 @@ export interface operations {
   createMyPlan: {
     parameters: {
       query?: never;
-      header?: {
+      header: {
         /** @description Correlation id; иначе генерируется */
         "X-Request-Id"?: string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
+        "Idempotency-Key": string;
       };
       path?: never;
       cookie?: never;
@@ -13738,9 +13744,11 @@ export interface operations {
   regenerateMyPlan: {
     parameters: {
       query?: never;
-      header?: {
+      header: {
         /** @description Correlation id; иначе генерируется */
         "X-Request-Id"?: string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
+        "Idempotency-Key": string;
       };
       path: {
         id: string;
@@ -13785,6 +13793,17 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

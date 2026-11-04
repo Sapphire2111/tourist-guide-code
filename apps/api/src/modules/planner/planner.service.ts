@@ -52,7 +52,7 @@ import type {
   UserPlanDto,
   UserPlanListDto,
 } from "./planner.dto.js";
-import { SCENARIO_SEASONS, USER_PLANS_MAX } from "./planner.dto.js";
+import { SCENARIO_SEASONS, SCENARIO_TAGS, USER_PLANS_MAX } from "./planner.dto.js";
 import { isMountainHike, itemSlots, planOptions, slotRank, type CatalogPlace } from "./plan-options.js";
 import { draftToPlanItems } from "./plan-ai.js";
 import { PlannerAi } from "./plan-ai.service.js";
@@ -211,7 +211,7 @@ export class PlannerService {
             withCar: input.withCar ?? true,
             startDate: input.startDate ?? null,
             basePlaceId: input.basePlaceId ?? null,
-            interests: input.interests ?? [],
+            interests: uniqueInterests(input.interests ?? []),
             avoid: [],
             checkLimit: true,
           });
@@ -249,7 +249,8 @@ export class PlannerService {
   /**
    * «Інший варіант»: новый живой план (Claude) с теми же параметрами своего плана; места текущего — «уже були».
    * Флаг planner.ai выключен — 404; план из сценария — 422 errors.plan.notCustom. Claude не смог (предел, ошибка) —
-   * план не меняется, generation: fallback.
+   * план не меняется, generation: fallback. План изменили, пока Claude составлял новый (PATCH, другая вкладка), — 409
+   * errors.plan.changedMeanwhile: чужие правки не перезаписываются. Интересы — из запроса (и сохраняются) или плана.
    */
   async regeneratePlan(userId: string, id: string, input: RegenerateUserPlanDto): Promise<UserPlanDto> {
     const row = await this.inRegion(input.regionId, () => this.repo.findPlan(userId, id));
@@ -265,7 +266,7 @@ export class PlannerService {
       withCar: row.with_car,
       startDate: row.start_date === null ? null : dateOnly(row.start_date),
       basePlaceId: row.base_place_id,
-      interests: input.interests ?? [],
+      interests: uniqueInterests(input.interests ?? (row.interests as ScenarioTag[])),
       avoid: row.items.map((i) => i.placeId),
       checkLimit: false,
     });
@@ -274,10 +275,17 @@ export class PlannerService {
       const catalog = await this.catalog(region.id);
       const cur = await this.repo.findPlan(userId, id, true);
       if (!cur) throw new ApiError("NOT_FOUND");
+      if (cur.updated_at.getTime() !== row.updated_at.getTime())
+        throw new ApiError("CONFLICT", {
+          messageKey: "errors.plan.changedMeanwhile",
+          details: { reason: "plan_changed" },
+        });
       const updated = live.items
         ? await this.repo.updatePlan(cur.id, {
-            items: live.items,
+            // Дни плана могли измениться — пункты лишних дней не сохраняются.
+            items: trimDays(live.items, planDays(cur)),
             title_i18n: live.title ?? CUSTOM_PLAN_TITLE,
+            ...(input.interests ? { interests: uniqueInterests(input.interests) } : {}),
           })
         : cur;
       const dto = (await this.planDtos([updated ?? cur], catalog))[0]!;
@@ -344,6 +352,10 @@ export class PlannerService {
     },
   ): Promise<{ generation: PlanGeneration; items?: UserPlanItemRecord[]; title?: LocalizedText } | null> {
     if (!this.ai || !this.flags) return null;
+    // Запрос к Claude (десятки секунд) — только вне транзакции запроса: контроллер помечен @WithoutTenantContext.
+    // Внутри чужого контекста — ошибка конфигурации, а не тихий правиловый план.
+    if (currentTenant())
+      throw new Error("Живой план (planner.ai) вызван внутри tenant-транзакции: нужен @WithoutTenantContext");
     const region = await this.regions.findById(regionId.toLowerCase());
     if (region?.status !== "active" || !(await this.flags.isEnabled("planner.ai", region.id))) return null;
     const fallback = { generation: "fallback" as const };
@@ -723,6 +735,7 @@ export class PlannerService {
       with_car: input.withCar,
       days: input.days,
       base_place_id: basePlaceId === undefined ? undefined : (basePlaceId?.toLowerCase() ?? null),
+      interests: input.interests == null ? undefined : uniqueInterests(input.interests),
     };
   }
 
@@ -733,7 +746,13 @@ export class PlannerService {
     withFallback: boolean,
   ): Promise<{ trip: PlanTripDto; baseAt: LonLat | null }> {
     const base: { trip: Omit<PlanTripDto, "base"> } = {
-      trip: { adults: r.adults, children: r.children, withCar: r.with_car, days: planDays(r) },
+      trip: {
+        adults: r.adults,
+        children: r.children,
+        withCar: r.with_car,
+        days: planDays(r),
+        interests: (r.interests ?? []) as ScenarioTag[],
+      },
     };
     if (r.base_place_id) {
       const p = bases.get(r.base_place_id);
@@ -800,6 +819,11 @@ function fromScenarioItem(i: ScenarioItem): ViewItem & { replacedPlaceId: null }
     alternatives: i.alternatives,
     replacedPlaceId: null,
   };
+}
+
+/** Интересы без повторов, в порядке справочника тегов. */
+function uniqueInterests(list: readonly ScenarioTag[]): ScenarioTag[] {
+  return SCENARIO_TAGS.filter((t) => list.includes(t));
 }
 
 /** Дней в плане: сохранённое число, у планов до 0019 — по пунктам (не меньше 1). */

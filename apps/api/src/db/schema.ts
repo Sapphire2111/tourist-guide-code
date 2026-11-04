@@ -972,6 +972,8 @@ export interface UserPlansTable {
   days: Nullable<number>;
   /** Где живёт турист (0019): от неё — «пішки / потрібен транспорт». */
   base_place_id: Nullable<string>;
+  /** Интересы туриста (0027): теги сценариев для живого плана (planner.ai). */
+  interests: ColumnType<string[], string[] | undefined, string[]>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }

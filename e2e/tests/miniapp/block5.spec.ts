@@ -263,6 +263,7 @@ test.describe("QR отеля demoHotel01", () => {
     );
     await page.goto("/#/plan/new");
     await page.getByRole("button", { name: "Більше: Діти" }).click();
+    await page.getByRole("button", { name: "Водоспади" }).click();
     await page.getByRole("button", { name: "Скласти план" }).click();
     await expect(page.getByTestId("plan-status")).toHaveText("Складаємо план… Це займе до хвилини.");
     await expect(page.getByRole("heading", { level: 1, name: "Водоспад, колиба й чани" })).toBeVisible();
@@ -271,7 +272,10 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(day1.getByTestId("plan-item").first()).toContainText("Водоспад Пробій");
     await expectNoSeriousA11yViolations(page);
 
+    // В плане есть пункты — сначала подтверждение замены.
     await page.getByRole("button", { name: "Інший варіант" }).click();
+    await expect(page.getByText("Новий варіант замінить ваш план разом із вашими змінами.")).toBeVisible();
+    await page.getByRole("button", { name: "Замінити план" }).click();
     await expect(page.getByTestId("plan-status")).toHaveText("Складаємо інший варіант…");
     await expect(page.getByTestId("plan-status")).toHaveText("Готово: новий варіант плану.");
     await expect(page.getByRole("heading", { level: 1, name: "Музей, ринок і вечеря" })).toBeVisible();
@@ -280,7 +284,7 @@ test.describe("QR отеля demoHotel01", () => {
     // План сохранён на сервере (как сейчас): в «Збережені» — один, уже новый вариант.
     expect(state.plans).toHaveLength(1);
     expect(state.plans[0]!.title).toEqual({ uk: "Музей, ринок і вечеря" });
-    expect(state.plans[0]!.trip).toMatchObject({ children: 1 });
+    expect(state.plans[0]!.trip).toMatchObject({ children: 1, interests: ["waterfalls"] });
   });
 });
 

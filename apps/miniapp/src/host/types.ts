@@ -137,7 +137,13 @@ export type PlanOption = {
 export type PlanDayOptions = { day: number; slots: { slot: PlanSlot; options: PlanOption[] }[] };
 
 /** Параметры поездки. */
+/** Интересы для живого плана (planner.ai) — теги сценариев, которые турист выбирает в форме. */
+export const PLAN_INTERESTS = ["waterfalls", "hiking", "culture", "gastro", "relax", "active"] as const;
+export type PlanInterest = (typeof PLAN_INTERESTS)[number];
+
 export type PlanTrip = {
+  /** Интересы (только при флаге planner.ai); нет — без интересов. */
+  interests?: PlanInterest[];
   adults: number;
   children: number;
   withCar: boolean;
@@ -232,10 +238,11 @@ export type HostApi = {
   plan(id: string): Promise<UserPlan>;
   /** «Зберегти як план»: план из сценария. */
   /** startDate (YYYY-MM-DD) — дата поездки: варианты плана — по её сезону. */
-  savePlan(scenarioId: string, startDate?: string | null): Promise<UserPlan>;
+  /** idempotencyKey — повтор после неясного исхода с тем же ключом не создаёт второй план (по умолчанию новый). */
+  savePlan(scenarioId: string, startDate?: string | null, idempotencyKey?: string): Promise<UserPlan>;
   /** «Скласти свій план»: без сценария, с параметрами поездки. */
-  createPlan(trip: TripInput): Promise<UserPlan>;
+  createPlan(trip: TripInput, idempotencyKey?: string): Promise<UserPlan>;
   /** «Інший варіант»: новий план через Claude з тими ж параметрами (флаг planner.ai). */
-  regeneratePlan(id: string): Promise<UserPlan>;
+  regeneratePlan(id: string, idempotencyKey?: string): Promise<UserPlan>;
   updatePlan(id: string, change: PlanChange): Promise<UserPlan>;
 };

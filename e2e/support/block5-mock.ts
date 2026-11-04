@@ -53,7 +53,14 @@ type ItemMock = {
   replaced?: boolean;
   slot?: string;
 };
-type TripMock = { adults: number; children: number; withCar: boolean; days: number; base: unknown };
+type TripMock = {
+  adults: number;
+  children: number;
+  withCar: boolean;
+  days: number;
+  interests?: string[];
+  base: unknown;
+};
 type PlanMock = {
   id: string;
   trip: TripMock;
@@ -454,6 +461,8 @@ export async function installBlock5Mock(
       if (path === "/me/plan" && method === "GET")
         return json(route, { items: state.plans.map((p) => ({ ...p, options: [] })) });
       if (path === "/me/plan" && method === "POST") {
+        // Как @Idempotent на сервере: без ключа — 400.
+        if (!req.headers()["idempotency-key"]) return error(route, 400, "IDEMPOTENCY_KEY_REQUIRED");
         const custom = !body.scenarioId;
         const ai = custom && state.aiPlanner && body.ai !== false;
         // «Claude думает» — видно ожидание «Складаємо план…».
@@ -475,6 +484,7 @@ export async function installBlock5Mock(
             children: (body.children as number | undefined) ?? 0,
             withCar: (body.withCar as boolean | undefined) ?? true,
             days: (body.days as number | undefined) ?? 1,
+            interests: (body.interests as string[] | undefined) ?? [],
             base: body.basePlaceId
               ? { kind: "place", placeId: body.basePlaceId, name: { uk: "Тестовий готель" } }
               : null,

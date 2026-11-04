@@ -35,8 +35,13 @@ export const PLANNER_AI_EFFORT = "low" as const;
 export const PLANNER_AI_MAX_TOKENS = 12_000;
 /** Предел одного запроса к Claude, мс (турист ждёт на экране). */
 export const PLANNER_AI_TIMEOUT_MS = 35_000;
-/** Повторная попытка — только если от первой прошло меньше (иначе туристу ждать больше минуты). */
-export const PLANNER_AI_RETRY_BEFORE_MS = 25_000;
+/**
+ * Общий дедлайн генерации, мс (обе попытки вместе): ответ api укладывается в ~55 с — раньше предела ожидания Mini
+ * App (PLAN_WAIT_MS 70 с) и таймаута прокси Cloudflare (100 с). Повторов SDK нет (maxRetries 0).
+ */
+export const PLANNER_AI_DEADLINE_MS = 55_000;
+/** Вторая попытка — только если от дедлайна осталось не меньше (иначе сразу правиловый план). */
+export const PLANNER_AI_MIN_ATTEMPT_MS = 15_000;
 /** Дольше — правиловый план (длинный ответ модели не уложится в живое ожидание). */
 export const PLANNER_AI_DAYS_MAX = 5;
 
@@ -209,7 +214,11 @@ export function planParams(userText: string): GenParams {
 
 /** Порт Claude (подменяется в тестах). */
 export type PlanAiMessages = {
-  create(params: GenParams, opts: { timeout: number }): Promise<Anthropic.Beta.Messages.BetaMessage>;
+  /** timeout — предел этой попытки, signal — общий дедлайн генерации. */
+  create(
+    params: GenParams,
+    opts: { timeout: number; signal: AbortSignal },
+  ): Promise<Anthropic.Beta.Messages.BetaMessage>;
 };
 
 /** Сбой вызова Claude (сеть, HTTP, таймаут) — от адаптера SDK; текст ошибки не нужен. */
@@ -240,33 +249,45 @@ export type PlanAiResult =
   | { ok: true; draft: ScenarioDraft; attempts: number; usage: Usage; model: string }
   | { ok: false; reason: PlanAiFailure; errors: string[]; attempts: number; usage: Usage };
 
+/** Заказ и кандидаты живого плана (до списания предела: «мало мест» не тратит его). */
+export function prepareLivePlan(catalog: GenCatalog, p: PlanAiParams): { brief: Brief; set: CandidateSet } {
+  const brief = planBrief(p);
+  return { brief, set: planCandidates(brief, catalog, p) };
+}
+
 /**
- * План через Claude: попытка → проверка программой; ошибки — одна повторная попытка с их перечнем (если первая
- * уложилась в PLANNER_AI_RETRY_BEFORE_MS). Исключения API не выходят наружу: результат — ok или причина отказа.
+ * План через Claude: попытка → проверка программой; ошибки — одна повторная попытка с их перечнем, если до общего
+ * дедлайна (PLANNER_AI_DEADLINE_MS) осталось не меньше PLANNER_AI_MIN_ATTEMPT_MS; попытка получает предел
+ * min(PLANNER_AI_TIMEOUT_MS, остаток). Исключения API не выходят наружу: результат — ok или причина отказа.
  */
 export async function generateLivePlan(
   messages: PlanAiMessages,
   catalog: GenCatalog,
   p: PlanAiParams,
-  opts: { now?: () => number; avoidNames?: readonly string[] } = {},
+  opts: {
+    now?: () => number;
+    avoidNames?: readonly string[];
+    prepared?: { brief: Brief; set: CandidateSet };
+  } = {},
 ): Promise<PlanAiResult> {
   const now = opts.now ?? Date.now;
   const usage = emptyUsage();
-  const b = planBrief(p);
-  const set = planCandidates(b, catalog, p);
+  const { brief: b, set } = opts.prepared ?? prepareLivePlan(catalog, p);
   if (!set.viable)
     return { ok: false, reason: "no_candidates", errors: [set.reason ?? ""], attempts: 0, usage };
-  const started = now();
+  const deadline = now() + PLANNER_AI_DEADLINE_MS;
+  const signal = AbortSignal.timeout(PLANNER_AI_DEADLINE_MS);
   let errors: string[] = [];
   let reason: PlanAiFailure = "invalid";
   let attempts = 0;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    if (attempt === 2 && now() - started > PLANNER_AI_RETRY_BEFORE_MS) break;
+    const left = deadline - now();
+    if (attempt === 2 && left < PLANNER_AI_MIN_ATTEMPT_MS) break;
     attempts = attempt;
     const params = planParams(planPrompt(b, set, p, opts.avoidNames ?? [], errors));
     let res: Anthropic.Beta.Messages.BetaMessage;
     try {
-      res = await messages.create(params, { timeout: PLANNER_AI_TIMEOUT_MS });
+      res = await messages.create(params, { timeout: Math.min(PLANNER_AI_TIMEOUT_MS, left), signal });
     } catch (e) {
       usage.failedRequests++;
       const timeout = e instanceof PlanAiCallError && e.timeout;

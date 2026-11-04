@@ -45,6 +45,15 @@
   min-height: 44px;
   font-size: 0.95rem;
 }
+/* Интересы живого плана: 6 кнопок в два ряда. */
+.plan-interests {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: 22px;
+}
+.plan-interests .kosiv-season {
+  min-height: 44px;
+  font-size: 0.95rem;
+}
 .plan-date {
   display: flex;
   flex-direction: column;

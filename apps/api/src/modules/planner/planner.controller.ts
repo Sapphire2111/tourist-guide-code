@@ -27,6 +27,7 @@ import { currentTenant } from "../../db/index.js";
 import { auditFromRequest, type AuditableRequest } from "../audit/index.js";
 import { RequireAuth } from "../auth/index.js";
 import { RequireFeature, type FeatureRegionResolver } from "../feature-flags/index.js";
+import { Idempotent } from "../idempotency/index.js";
 import { RequirePermission, scopeFromTenant, type RbacRequest } from "../rbac/index.js";
 import {
   AdminScenarioDetailDto,
@@ -126,6 +127,10 @@ export class UserPlansController {
   }
 
   @Post()
+  // Живой план — десятки секунд: повтор после таймаута с тем же ключом не создаёт второй план и не тратит лимит.
+  @Idempotent()
+  // Запрос к Claude — вне транзакции запроса (сервис входит в регион короткими транзакциями) — для любых ролей.
+  @WithoutTenantContext()
   @ApiOperation({
     operationId: "createMyPlan",
     summary:
@@ -133,28 +138,52 @@ export class UserPlansController {
     description:
       "Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; " +
       "generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). " +
+      "Повтор с тем же Idempotency-Key — тот же ответ (план не создаётся повторно). " +
       "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; " +
       "422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
   })
   @ApiCreatedResponse({ type: UserPlanDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "UNPROCESSABLE", "RATE_LIMITED")
+  @ApiErrors(
+    "VALIDATION_FAILED",
+    "UNAUTHENTICATED",
+    "NOT_FOUND",
+    "CONFLICT",
+    "UNPROCESSABLE",
+    "RATE_LIMITED",
+    "IDEMPOTENCY_KEY_REQUIRED",
+    "IDEMPOTENCY_IN_PROGRESS",
+    "IDEMPOTENCY_KEY_REUSED",
+  )
   create(@Body() body: CreateUserPlanDto, @Req() req: RbacRequest): Promise<UserPlanDto> {
     return this.planner.createPlan(userOf(req), body);
   }
 
   @Post(":id/regenerate")
   @HttpCode(200)
+  @Idempotent()
+  @WithoutTenantContext()
   @ApiOperation({
     operationId: "regenerateMyPlan",
     summary: "«Інший варіант»: новий план через Claude з тими ж параметрами поїздки (флаг planner.ai)",
     description:
       "Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався " +
       "(ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai " +
-      "вимкнено; 422 errors.plan.notCustom — план зі сценарію.",
+      "вимкнено; 422 errors.plan.notCustom — план зі сценарію; 409 errors.plan.changedMeanwhile — план змінили, " +
+      "поки складався новий. Повтор з тим самим Idempotency-Key — та сама відповідь.",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })
   @ApiOkResponse({ type: UserPlanDto })
-  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "UNPROCESSABLE", "RATE_LIMITED")
+  @ApiErrors(
+    "VALIDATION_FAILED",
+    "UNAUTHENTICATED",
+    "NOT_FOUND",
+    "CONFLICT",
+    "UNPROCESSABLE",
+    "RATE_LIMITED",
+    "IDEMPOTENCY_KEY_REQUIRED",
+    "IDEMPOTENCY_IN_PROGRESS",
+    "IDEMPOTENCY_KEY_REUSED",
+  )
   regenerate(
     @Param("id", uuid) id: string,
     @Body() body: RegenerateUserPlanDto,

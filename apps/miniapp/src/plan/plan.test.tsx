@@ -205,14 +205,19 @@ describe("Мій план: параметри поїздки", () => {
       target: { value: "2026-11-10" },
     });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Підібрати варіанти" })));
-    expect(createPlan).toHaveBeenCalledWith({
-      adults: 3,
-      children: 1,
-      withCar: false,
-      days: 3,
-      startDate: "2026-11-10",
-      basePlaceId: HOTEL,
-    });
+    // Без флага planner.ai — без выбора интересов.
+    expect(screen.queryByTestId("trip-interests")).toBeNull();
+    expect(createPlan).toHaveBeenCalledWith(
+      {
+        adults: 3,
+        children: 1,
+        withCar: false,
+        days: 3,
+        startDate: "2026-11-10",
+        basePlaceId: HOTEL,
+      },
+      expect.any(String),
+    );
     expect(window.location.hash).toBe(`#/plan/saved/${PLAN}`);
   });
 
@@ -503,19 +508,66 @@ describe("Мій план: живий план через Claude (planner.ai)", 
     expect(screen.queryByTestId("plan-ai-fallback")).toBeNull();
   });
 
-  it("без вечного ожидания: дольше PLAN_WAIT_MS — сообщение и кнопка снова доступна", async () => {
+  it("без вечного ожидания: дольше PLAN_WAIT_MS — сообщение и «Збережені плани»; повтор — тот же Idempotency-Key", async () => {
     vi.useFakeTimers();
     try {
-      setup(<NewPlanScreen />, { createPlan: () => new Promise<UserPlan>(() => undefined) }, {}, true, AI);
+      const createPlan = vi.fn<HostApi["createPlan"]>(() => new Promise<UserPlan>(() => undefined));
+      setup(<NewPlanScreen />, { createPlan }, {}, true, AI);
+      fireEvent.click(screen.getByRole("button", { name: "Гастро" }));
+      expect(screen.getByRole("button", { name: "Гастро" }).getAttribute("aria-pressed")).toBe("true");
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скласти план" })));
       await act(async () => vi.advanceTimersByTime(PLAN_WAIT_MS + 1));
       expect(screen.getByTestId("plan-status").textContent).toBe(
         "План складається задовго. Спробуйте ще раз.",
       );
+      expect(screen.getByTestId("plan-open-saved").getAttribute("href")).toContain("/plan/saved");
       expect(screen.getByRole("button", { name: "Скласти план" })).toHaveProperty("disabled", false);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скласти план" })));
+      expect(createPlan).toHaveBeenCalledTimes(2);
+      const [first, second] = createPlan.mock.calls;
+      expect(first![0]).toMatchObject({ interests: ["gastro"] });
+      expect(second![1]).toBe(first![1]);
+      expect(PLAN_WAIT_MS).toBeLessThan(100_000);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("«Інший варіант» при пунктах в плане — сначала подтверждение; 409 — сообщение и план перечитан", async () => {
+    const withItem = plan({
+      schedule: [
+        {
+          day: 1,
+          items: [
+            {
+              id: "i1",
+              time: "10:00",
+              durationMin: 60,
+              place: { id: "m1", name: { uk: "Кав'ярня «Ранок»" } },
+              note: null,
+              alternatives: [],
+              distanceMeters: null,
+              slot: "morning",
+            },
+          ],
+        },
+      ],
+    } as unknown as Partial<UserPlan>);
+    const planFn = vi.fn(async () => withItem);
+    const regeneratePlan = vi.fn<HostApi["regeneratePlan"]>(async () => {
+      throw new ConflictError("errors.plan.changedMeanwhile");
+    });
+    setup(<SavedPlanScreen id={PLAN} />, { plan: planFn, regeneratePlan }, {}, true, AI);
+    fireEvent.click(await screen.findByRole("button", { name: "Інший варіант" }));
+    expect(screen.getByText("Новий варіант замінить ваш план разом із вашими змінами.")).toBeTruthy();
+    expect(regeneratePlan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Залишити як є" }));
+    expect(screen.queryByTestId("plan-replace-confirm")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Інший варіант" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Замінити план" })));
+    expect(regeneratePlan).toHaveBeenCalledWith(PLAN, expect.any(String));
+    expect(screen.getByTestId("plan-status").textContent).toContain("План змінився");
+    expect(planFn).toHaveBeenCalledTimes(2);
   });
 
   it("«Інший варіант»: новый план с теми же параметрами; не вышло — план без изменений; без флага — кнопки нет", async () => {
@@ -524,7 +576,7 @@ describe("Мій план: живий план через Claude (planner.ai)", 
     setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan(), regeneratePlan }, {}, true, AI);
     const another = await screen.findByRole("button", { name: "Інший варіант" });
     await act(async () => fireEvent.click(another));
-    expect(regeneratePlan).toHaveBeenCalledWith(PLAN);
+    expect(regeneratePlan).toHaveBeenCalledWith(PLAN, expect.any(String));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Інший день");
     expect(screen.getByTestId("plan-status").textContent).toBe("Готово: новий варіант плану.");
     regeneratePlan.mockResolvedValueOnce(plan({ generation: "fallback" }));

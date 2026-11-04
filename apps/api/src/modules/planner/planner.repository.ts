@@ -48,6 +48,7 @@ export type PlanTripWrite = {
   with_car?: boolean;
   days?: number | null;
   base_place_id?: string | null;
+  interests?: string[];
 };
 
 export type ScenarioWrite = {

@@ -116,6 +116,13 @@ export const OPTION_REASONS = [
 ] as const satisfies readonly OptionReason[];
 export const TRAVEL_MODES = ["walk", "car", "transport"] as const satisfies readonly Travel[];
 
+/** Интересов в запросе живого плана, не больше. */
+export const PLAN_INTERESTS_MAX = 6;
+
+/** Как получен план в этом ответе: ai — склав Claude (флаг planner.ai), fallback — правиловий план замість нього. */
+export const PLAN_GENERATIONS = ["ai", "fallback"] as const;
+export type PlanGeneration = (typeof PLAN_GENERATIONS)[number];
+
 /** Параметры поездки (0019), любые из полей; при создании по умолчанию — 2 дорослих, 0 дітей, з авто. */
 export class PlanTripInputDto extends PlannerRegionQueryDto {
   @ApiPropertyOptional({ type: "integer", minimum: 1, maximum: PLAN_PEOPLE_MAX, description: "Дорослих" })
@@ -165,23 +172,14 @@ export class PlanTripInputDto extends PlannerRegionQueryDto {
   @ValidateIf((o: PlanTripInputDto) => o.basePlaceId !== undefined && o.basePlaceId !== null)
   @IsUUID()
   basePlaceId?: string | null;
-}
 
-/** Интересов в запросе живого плана, не больше. */
-export const PLAN_INTERESTS_MAX = 6;
-
-/** Как получен план в этом ответе: ai — склав Claude (флаг planner.ai), fallback — правиловий план замість нього. */
-export const PLAN_GENERATIONS = ["ai", "fallback"] as const;
-export type PlanGeneration = (typeof PLAN_GENERATIONS)[number];
-
-export class CreateUserPlanDto extends PlanTripInputDto {
   @ApiPropertyOptional({
     enum: SCENARIO_TAGS,
     enumName: "ScenarioTag",
     isArray: true,
     maxItems: PLAN_INTERESTS_MAX,
     description:
-      "Інтереси туриста для живого плану (флаг planner.ai): водоспади, культура, гастро…; теги аудиторії (kids, " +
+      "Інтереси туриста для живого плану (флаг planner.ai; зберігаються в плані): водоспади, культура, гастро…; теги аудиторії (kids, " +
       "no_car, rain) і формату ігноруються — вони з параметрів поїздки",
   })
   @IsOptional()
@@ -189,7 +187,9 @@ export class CreateUserPlanDto extends PlanTripInputDto {
   @ArrayMaxSize(PLAN_INTERESTS_MAX)
   @IsIn(SCENARIO_TAGS, { each: true })
   interests?: ScenarioTag[];
+}
 
+export class CreateUserPlanDto extends PlanTripInputDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
@@ -469,6 +469,13 @@ export class PlanTripDto {
   @ApiProperty({ type: "integer" }) children!: number;
   @ApiProperty({ type: Boolean }) withCar!: boolean;
   @ApiProperty({ type: "integer", minimum: 1, maximum: PLAN_DAYS_MAX }) days!: number;
+  @ApiProperty({
+    enum: SCENARIO_TAGS,
+    enumName: "ScenarioTag",
+    isArray: true,
+    description: "Інтереси туриста (0027) для живого плану",
+  })
+  interests!: ScenarioTag[];
 
   @ApiProperty({
     type: PlanBaseDto,

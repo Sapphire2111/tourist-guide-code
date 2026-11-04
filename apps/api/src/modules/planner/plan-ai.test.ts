@@ -13,7 +13,10 @@ import {
   planBrief,
   planCandidates,
   planParams,
+  PLANNER_AI_DEADLINE_MS,
   PLANNER_AI_EFFORT,
+  PLANNER_AI_MIN_ATTEMPT_MS,
+  PLANNER_AI_TIMEOUT_MS,
   PLANNER_AI_MODEL,
   PLANNER_AI_SYSTEM,
   type PlanAiMessages,
@@ -227,15 +230,34 @@ describe("живой план: генерация", () => {
     expect(await generateLivePlan(u.messages, catalog, params())).toMatchObject({ ok: true, attempts: 2 });
   });
 
-  it("повтор — только если первая попытка была быстрой", async () => {
+  it("общий дедлайн: вторая попытка — с остатком бюджета; остаток меньше 15 с — сразу откат", async () => {
+    const opts = (c: { mock: { calls: unknown[][] } }, i: number) =>
+      c.mock.calls[i]![1] as { timeout: number; signal: AbortSignal };
     let now = 0;
-    const { messages, create } = mock((p) => {
+    const slow = mock((p) => {
       now += 30_000;
       return { ...goodPlan(p), days: [] };
     });
-    const r = await generateLivePlan(messages, catalog, params(), { now: () => now });
-    expect(r).toMatchObject({ ok: false, attempts: 1 });
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(await generateLivePlan(slow.messages, catalog, params(), { now: () => now })).toMatchObject({
+      ok: false,
+      attempts: 2,
+    });
+    expect(opts(slow.create, 0).timeout).toBe(PLANNER_AI_TIMEOUT_MS);
+    // 55 с − 30 с первой попытки: вторая — не дольше 25 с, а не ещё 35.
+    expect(opts(slow.create, 1).timeout).toBe(PLANNER_AI_DEADLINE_MS - 30_000);
+    expect(opts(slow.create, 1).signal).toBeInstanceOf(AbortSignal);
+    now = 0;
+    const slower = mock((p) => {
+      now += PLANNER_AI_DEADLINE_MS - PLANNER_AI_MIN_ATTEMPT_MS + 1;
+      return { ...goodPlan(p), days: [] };
+    });
+    expect(await generateLivePlan(slower.messages, catalog, params(), { now: () => now })).toMatchObject({
+      ok: false,
+      attempts: 1,
+    });
+    expect(slower.create).toHaveBeenCalledTimes(1);
+    // Обе попытки вместе — не дольше дедлайна.
+    expect(PLANNER_AI_DEADLINE_MS).toBeLessThanOrEqual(55_000);
   });
 
   it("погода: горный поход в опасный день — ошибка и повтор; в промпте — предупреждение", async () => {
@@ -317,6 +339,17 @@ describe("PlannerAi: пределы, сессия, стоимость", () => {
     expect((await s.generate("u2", region, input)).ok).toBe(true);
     expect(await s.generate("u3", region, input)).toEqual({ ok: false, reason: "limit" });
     expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("«мало мест» — правиловый план без запроса и без списания предела", async () => {
+    const { messages, create } = mock(goodPlan);
+    const s = new PlannerAi({} as never, { userDailyLimit: 1 }, messages);
+    const spy = vi.spyOn(s, "catalog").mockResolvedValue({ ...catalog, places: [probii] });
+    expect(await s.generate("u", region, input)).toEqual({ ok: false, reason: "no_candidates" });
+    expect(await s.generate("u", region, input)).toEqual({ ok: false, reason: "no_candidates" });
+    spy.mockResolvedValue(catalog);
+    expect((await s.generate("u", region, input)).ok).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it("длинная поездка — правиловый план (too_long)", async () => {

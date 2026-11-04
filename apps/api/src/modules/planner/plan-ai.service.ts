@@ -17,6 +17,7 @@ import {
 import {
   generateLivePlan,
   PlanAiCallError,
+  prepareLivePlan,
   PLANNER_AI_DAYS_MAX,
   type PlanAiMessages,
   type PlanAiParams,
@@ -47,14 +48,20 @@ const DAY_MS = 24 * 3600_000;
 /** Адаптер SDK: ключ передаётся явно; ошибки — PlanAiCallError (только статус, без тела). */
 export function createPlannerMessages(apiKey: string | undefined): PlanAiMessages | null {
   if (!apiKey) return null;
-  // Один повтор SDK (408/409/429/5xx до ответа) — не оплачивается токенами; живое ожидание ограничено timeout.
-  const client = new Anthropic({ apiKey, maxRetries: 1 });
+  // Без повторов SDK: они шли бы и после таймаута и ждали бы retry-after без границы — живое ожидание вышло бы за
+  // дедлайн генерации. Повтор (один, с перечнем ошибок или после сбоя) решает generateLivePlan в пределах дедлайна.
+  const client = new Anthropic({ apiKey, maxRetries: 0 });
   return {
     async create(params, opts) {
       try {
-        return await client.beta.messages.create({ ...params, stream: false }, { timeout: opts.timeout });
+        return await client.beta.messages.create(
+          { ...params, stream: false },
+          { timeout: opts.timeout, signal: opts.signal },
+        );
       } catch (e) {
-        if (e instanceof Anthropic.APIConnectionTimeoutError) throw new PlanAiCallError(true);
+        // Предел попытки или общий дедлайн (abort) — таймаут.
+        if (e instanceof Anthropic.APIConnectionTimeoutError || e instanceof Anthropic.APIUserAbortError)
+          throw new PlanAiCallError(true);
         if (e instanceof Anthropic.APIError) throw new PlanAiCallError(false, e.status ?? undefined);
         throw e;
       }
@@ -129,18 +136,21 @@ export class PlannerAi {
     params: Omit<PlanAiParams, "seed" | "avoid"> & { avoid?: readonly string[] },
   ): Promise<PlanAiOutcome> {
     if (!this.messages) return { ok: false, reason: "upstream" };
+    // Длинная поездка и «мало мест» — правиловый план без списания предела.
     if (params.days > PLANNER_AI_DAYS_MAX) return { ok: false, reason: "too_long" };
-    if (!(await this.take(userId))) {
-      this.log.log("Planner AI: суточный предел — правиловый план");
-      return { ok: false, reason: "limit" };
-    }
     const catalog = await this.catalog(region);
     const avoid = [...new Set([...(params.avoid ?? []), ...this.recent(userId)])];
     const byId = new Map(catalog.places.map((p) => [p.id, p.name]));
     const avoidNames = avoid.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : [])).slice(0, 20);
-    const seed = this.seed();
+    const full = { ...params, avoid, seed: this.seed() };
+    const prepared = prepareLivePlan(catalog, full);
+    if (!prepared.set.viable) return { ok: false, reason: "no_candidates" };
+    if (!(await this.take(userId))) {
+      this.log.log("Planner AI: суточный предел — правиловый план");
+      return { ok: false, reason: "limit" };
+    }
     const started = this.now();
-    const r = await generateLivePlan(this.messages, catalog, { ...params, avoid, seed }, { avoidNames });
+    const r = await generateLivePlan(this.messages, catalog, full, { avoidNames, prepared });
     const u = r.usage;
     this.log.log(
       `Planner AI: ${r.ok ? "ok" : `fallback ${r.reason}`} days=${params.days} attempts=${r.attempts} ` +
