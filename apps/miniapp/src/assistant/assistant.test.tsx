@@ -24,7 +24,6 @@ import { AssistantBox } from "./AssistantBox.js";
 import { loadDialog } from "./dialog-store.js";
 import { recordMime } from "./recorder.js";
 import { AssistantSessionProvider } from "./session.js";
-import { FROM_ASSISTANT } from "../back.js";
 
 const REGION = "00000000-0000-4000-8000-0000000000a1";
 const CAFES = "00000000-0000-4000-8000-000000000102";
@@ -347,7 +346,7 @@ describe("Assistant: «Назад» из карточки", () => {
 });
 
 describe("Assistant: переход в карточку", () => {
-  it("ссылка на место из ответа — запись истории с меткой «из ассистента» (для «Назад»)", async () => {
+  it("ссылка на место из ответа — обычный переход, прокрутка ответа запомнена в диалоге", async () => {
     const api = fakeAssistant();
     render(
       <GuideProvider value={env()}>
@@ -358,9 +357,8 @@ describe("Assistant: переход в карточку", () => {
     const link = screen
       .getAllByTestId("assistant-place")[0]!
       .querySelector<HTMLAnchorElement>("a[href^='#/']")!;
-    fireEvent.click(link);
-    expect(window.location.hash).toBe(link.getAttribute("href"));
-    expect((window.history.state as Record<string, unknown>)[FROM_ASSISTANT]).toBe(true);
+    // Ссылка не перехватывается ассистентом: «Назад» идёт по общей истории (back.ts).
+    expect(fireEvent.click(link)).toBe(true);
   });
 });
 

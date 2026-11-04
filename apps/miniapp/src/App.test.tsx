@@ -162,6 +162,64 @@ describe("роутинг и ролевой режим", () => {
     unmount();
   });
 
+  it("в Telegram: цепочка экранов — «Назад» по истории, на главной кнопка скрыта", async () => {
+    const webApp = fakeWebApp();
+    render(<App api={apiWith(200)} role="guest" webApp={webApp} />);
+    const go = (hash: string) =>
+      act(async () => {
+        window.location.hash = hash;
+        await new Promise((r) => setTimeout(r, 0));
+      });
+    await go("#/help");
+    await go("#/nope");
+    expect(webApp.BackButton.show).toHaveBeenCalledTimes(1);
+    const onBack = vi.mocked(webApp.BackButton.onClick).mock.calls[0]![0] as () => void;
+    await act(async () => {
+      onBack();
+      await vi.waitFor(() => expect(window.location.hash).toBe("#/help"));
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Халепа?" })).toBeDefined();
+    expect(webApp.BackButton.hide).not.toHaveBeenCalled();
+    await act(async () => {
+      onBack();
+      await vi.waitFor(() => expect(window.location.hash).toBe(""));
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
+    expect(webApp.BackButton.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("старый клиент: BackButton есть, но Bot API ниже 6.1 — своя кнопка «Назад»", async () => {
+    window.location.hash = "#/help";
+    const webApp = { ...fakeWebApp(), isVersionAtLeast: (v: string) => Number(v) <= 6 };
+    render(<App api={apiWith(200)} role="guest" webApp={webApp} />);
+    expect(webApp.BackButton.show).not.toHaveBeenCalled();
+    await act(async () => {
+      screen.getByRole("button", { name: "Назад" }).click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
+  });
+
+  it("на главной, пока открыт лист меню, «Назад» Telegram видна и закрывает лист; потом снова скрыта", async () => {
+    const webApp = fakeWebApp();
+    render(<App api={apiWith(200)} role="guest" webApp={webApp} />);
+    expect(webApp.BackButton.show).not.toHaveBeenCalled();
+    await act(async () => {
+      screen.getByTestId("menu-btn").click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByTestId("app-settings")).toBeDefined();
+    expect(webApp.BackButton.show).toHaveBeenCalledTimes(1);
+    const onBack = vi.mocked(webApp.BackButton.onClick).mock.calls[0]![0] as () => void;
+    await act(async () => {
+      onBack();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryByTestId("app-settings")).toBeNull();
+    expect(webApp.BackButton.hide).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe("");
+  });
+
   it("роль-заглушка из ?role=", () => {
     expect(getStubRole("?role=partner")).toBe("partner");
     expect(getStubRole("?role=admin")).toBe("guest");

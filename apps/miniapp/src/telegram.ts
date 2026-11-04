@@ -88,16 +88,28 @@ export function initTelegram(webApp: TelegramWebApp, root: HTMLElement = documen
 }
 
 /**
- * Перехват «Назад» (нативная BackButton): открытый поверх экрана слой (полноэкранное фото) закрывается вместо
- * перехода на главную. Последний зарегистрированный — первым; возвращает функцию снятия.
+ * Перехват «Назад»: открытый поверх экрана слой (полноэкранное фото, лист) закрывается вместо перехода.
+ * Последний зарегистрированный — первым; возвращает функцию снятия.
  */
 const backInterceptors: (() => void)[] = [];
+const interceptListeners = new Set<() => void>();
+const notifyIntercept = () => interceptListeners.forEach((l) => l());
 export function interceptBack(fn: () => void): () => void {
   backInterceptors.push(fn);
+  notifyIntercept();
   return () => {
     const i = backInterceptors.lastIndexOf(fn);
     if (i >= 0) backInterceptors.splice(i, 1);
+    notifyIntercept();
   };
+}
+/** Есть перехватчик: на главной кнопка «Назад» Telegram показывается, пока открыт слой. */
+export function hasBackIntercept(): boolean {
+  return backInterceptors.length > 0;
+}
+export function subscribeBackIntercept(listener: () => void): () => void {
+  interceptListeners.add(listener);
+  return () => interceptListeners.delete(listener);
 }
 /** Обработать «Назад» перехватчиком; true — обработано, переход не нужен. */
 export function consumeBack(): boolean {
@@ -105,6 +117,16 @@ export function consumeBack(): boolean {
   if (!fn) return false;
   fn();
   return true;
+}
+
+/**
+ * Нативная кнопка «Назад» (Bot API 6.1+). Скрипт Telegram создаёт объект BackButton и на старых клиентах, но show()
+ * там ничего не делает: кнопки не было бы совсем, поэтому для них — своя кнопка экрана.
+ */
+export function nativeBackButton(webApp?: TelegramWebApp): TelegramBackButton | undefined {
+  if (!webApp?.BackButton) return undefined;
+  if (webApp.isVersionAtLeast && !webApp.isVersionAtLeast("6.1")) return undefined;
+  return webApp.BackButton;
 }
 
 /** Сканер QR доступен: Bot API 6.4+ и методы есть (в браузере и старых клиентах кнопку не показываем). */

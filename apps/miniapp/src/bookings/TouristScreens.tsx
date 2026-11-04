@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
+import { useBackStep, useScreenState } from "../screen-state.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError, type PlaceDetail } from "../guide/types.js";
 import { ApiCallError } from "../host/types.js";
@@ -62,11 +63,15 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const { t, locale } = useT();
   const { signedIn } = useGuide();
   const name = pickLocalized(place.name, locale);
-  const [resourceId, setResourceId] = useState(
+  const [resourceId, setResourceId] = useScreenState(
+    "booking.resource",
     () => (resources.find((r) => r.availability.availableNow) ?? resources[0])?.id ?? "",
   );
-  const [slot, setSlot] = useState<Slot | null>(null);
-  const [done, setDone] = useState<Booking | null>(null);
+  const [slot, setSlot] = useScreenState<Slot | null>("booking.slot", null);
+  // Подтверждение — без записи в хранилище; возврат из «Мої бронювання» показывает его же, а не новую бронь.
+  const [done, setDone] = useScreenState<Booking | null>("booking.done", null, { inMemoryOnly: true });
+  // Шаг формы: «Назад» — к выбору времени, а не с экрана.
+  useBackStep(slot !== null && done === null, () => setSlot(null));
   const [notice, setNotice] = useState<Message>(null);
   // Слот «заняли» после неясного исхода прежней попытки — возможно, это наша же бронь.
   const [checkMine, setCheckMine] = useState(false);

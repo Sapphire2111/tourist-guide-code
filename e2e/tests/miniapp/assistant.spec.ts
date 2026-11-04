@@ -142,14 +142,9 @@ test("«Назад» Telegram из карточки места: тот же сп
   await expect(page.getByTestId("home-sections")).toBeVisible();
 });
 
-test("«Назад» из карточки, открытой не из ассистента, — на главную; вход по ссылке на #/assistant — не выход", async ({
-  page,
-}) => {
+test("вход по ссылке на карточку: «Назад» — на главную, из Mini App не выходит", async ({ page }) => {
   await installAssistantMock(page);
-  await page.goto("/#/assistant?q=" + encodeURIComponent("Де поїсти суші"));
-  await expect(page.getByTestId("assistant-place")).toHaveCount(10);
-  // Карточка по адресу (replace, как QR → «Про заклад»): без метки «из ассистента».
-  await page.evaluate(() => window.location.replace("#/place/00000000-0000-4000-8000-000000000300"));
+  await page.goto("/#/place/00000000-0000-4000-8000-000000000300");
   await expect(page).toHaveURL(/#\/place\//);
   await page.evaluate(() =>
     (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),

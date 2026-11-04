@@ -90,6 +90,30 @@ test("турист: «Доступно зараз» → слот → согла�
   expect(mock.statusChanges.at(-1)).toMatchObject({ status: "confirmed" });
 });
 
+test("«Назад» в бронировании: форма → выбор времени → карточка места → экран, откуда пришли", async ({
+  page,
+}) => {
+  await installBookingsMock(page);
+  await page.goto(`/#/place/${CAFE_PLACE}`);
+  await page.getByTestId("place-book").click();
+  await page.getByTestId("slots").getByRole("button", { name: "10:00" }).click();
+  await page.getByTestId("slot-pick").click();
+  await expect(page.getByTestId("booking-summary")).toBeVisible();
+  const press = () =>
+    page.evaluate(() =>
+      (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
+    );
+  await press();
+  await expect(page.getByTestId("slots")).toBeVisible();
+  await expect(page).toHaveURL(/#\/book\//);
+  await press();
+  await expect(page).toHaveURL(/#\/place\//);
+  await expect(page.getByRole("heading", { level: 1, name: "Кав'ярня «Смерека»" })).toBeVisible();
+  // Вход был по прямой ссылке на карточку: дальше — главная.
+  await press();
+  await expect(page.getByTestId("home-sections")).toBeVisible();
+});
+
 test("партнёр: P04 брони дня → P05 подтвердить; ручная запись; ресурсы — 409 version и ручной статус; a11y", async ({
   page,
 }) => {

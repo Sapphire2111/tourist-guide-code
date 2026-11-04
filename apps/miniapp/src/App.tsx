@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import type { ApiClient } from "@tg/api-client";
 import {
   DEFAULT_LOCALE,
@@ -23,7 +32,7 @@ import {
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { AssistantSessionProvider } from "./assistant/session.js";
-import { goBack } from "./back.js";
+import { initNavigation, pressBack } from "./back.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
@@ -60,7 +69,15 @@ import { PartnerProvider, usePartnerOrgs } from "./partner/context.js";
 import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
 import { ModeSwitch } from "./partner/parts.js";
 import type { Role } from "./role.js";
-import { canScanQr, consumeBack, scanQr, type TelegramUser, type TelegramWebApp } from "./telegram.js";
+import {
+  canScanQr,
+  hasBackIntercept,
+  nativeBackButton,
+  scanQr,
+  subscribeBackIntercept,
+  type TelegramUser,
+  type TelegramWebApp,
+} from "./telegram.js";
 import { API_URL } from "./api.js";
 import { WeatherChip } from "./weather/Weather.js";
 import { createWeatherApi, type WeatherApi } from "./weather/weather-api.js";
@@ -154,29 +171,33 @@ type RoutesProps = Omit<
 };
 
 /**
- * «Назад» (на главную, replace — без новой записи истории): в Telegram — нативная BackButton, в браузере — обычная кнопка.
- * Не history.back(): при входе по прямой ссылке он увёл бы из приложения.
+ * Нативная BackButton: одна на приложение, видна на всех экранах, кроме главной, и на главной, пока открыт слой
+ * (лист меню, «Локація», прогноз). Логика нажатия — pressBack (back.ts).
  */
-/** «Назад»: из экрана, открытого из ассистента (метка в истории), — обратно в ассистент; иначе — на главную. */
-function Back({ webApp }: { webApp?: TelegramWebApp }) {
-  const { t } = useT();
-  const [, navigate] = useRoute();
-  const back = webApp?.BackButton;
+function NativeBack({ webApp }: { webApp?: TelegramWebApp }) {
+  const [path, navigate] = useRoute();
+  const overlay = useSyncExternalStore(subscribeBackIntercept, hasBackIntercept);
+  const back = nativeBackButton(webApp);
+  const visible = path !== "/" || overlay;
   useEffect(() => {
-    if (!back) return;
-    // Открыт слой поверх экрана (полноэкранное фото) — «Назад» закрывает его, а не уводит на главную.
-    const onClick = () => {
-      if (!consumeBack()) goBack(navigate);
-    };
+    if (!back || !visible) return;
+    const onClick = () => pressBack(navigate);
     back.onClick(onClick);
     back.show();
     return () => {
       back.offClick(onClick);
       back.hide();
     };
-  }, [back, navigate]);
-  if (back) return null;
-  return <Button onClick={() => goBack(navigate)}>{t("common.back")}</Button>;
+  }, [back, visible, navigate]);
+  return null;
+}
+
+/** Своя кнопка «Назад» экрана: браузер и старый клиент Telegram без нативной кнопки. */
+function ScreenBack({ webApp }: { webApp?: TelegramWebApp }) {
+  const { t } = useT();
+  const [, navigate] = useRoute();
+  if (nativeBackButton(webApp)) return null;
+  return <Button onClick={() => pressBack(navigate)}>{t("common.back")}</Button>;
 }
 
 /**
@@ -361,7 +382,7 @@ function Screen({
     <Stack>
       {title && <h1>{title}</h1>}
       {children}
-      <Back webApp={webApp} />
+      <ScreenBack webApp={webApp} />
     </Stack>
   );
 }
@@ -402,7 +423,8 @@ function useFocusHeading(path: string) {
       const h1 = document.querySelector<HTMLElement>("main h1");
       if (!h1) return false;
       if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
-      h1.focus();
+      // Без прокрутки к заголовку: новый экран и так сверху, возврат восстанавливает свою позицию (back.ts).
+      h1.focus({ preventScroll: true });
       return true;
     };
     if (focus()) return;
@@ -694,9 +716,11 @@ function Shell({
   routes,
   profile,
   scan,
+  webApp,
 }: {
   routes: ReactNode;
   profile: boolean;
+  webApp?: TelegramWebApp;
   /** Сканер QR (нет — кнопки не показываются). */
   scan?: (prompt: string, isCurrent: () => boolean) => Promise<ScanOutcome | null>;
 }) {
@@ -760,6 +784,7 @@ function Shell({
   }, [path]);
   return (
     <>
+      <NativeBack webApp={webApp} />
       <AppTop path={path} profile={profile} scan={scanControl} />
       <div className="kosiv-content" ref={content}>
         {routes}
@@ -781,6 +806,8 @@ export function App({
   ...props
 }: AppProps) {
   const { webApp } = props;
+  // Учёт истории — с первого рендера: адрес входа (прямая ссылка, QR) становится первой записью.
+  useState(initNavigation);
   const [state, setState] = useState<StartupState>(startup ? { status: "loading" } : { status: "browser" });
   // ready() после первого рендера: Telegram снимает заглушку загрузки, когда интерфейс уже есть.
   useEffect(() => webApp?.ready(), [webApp]);
@@ -907,6 +934,7 @@ export function App({
                           <Shell
                             profile={Boolean(session && hasRequiredConsents(session.me))}
                             scan={scanHandler}
+                            webApp={webApp}
                             routes={
                               // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
                               <AssistantSessionProvider>

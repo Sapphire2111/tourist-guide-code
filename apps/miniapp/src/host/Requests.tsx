@@ -4,6 +4,7 @@ import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { useGuide } from "../guide/context.js";
+import { useScreenState } from "../screen-state.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { UnauthorizedError } from "../guide/types.js";
 import { useHost, useLiveAsync } from "./context.js";
@@ -219,7 +220,7 @@ export function StaffRequests() {
   const { t } = useT();
   const { api, staff } = useHost();
   const errorText = useErrorText();
-  const [filter, setFilter] = useState<RequestStatus | "">("");
+  const [filter, setFilter] = useScreenState<RequestStatus | "">("staff.filter", "");
   const [list, retry] = useLiveAsync(
     () => (staff === "yes" ? api.staffRequests(filter || null) : Promise.resolve([])),
     [api, staff, filter],

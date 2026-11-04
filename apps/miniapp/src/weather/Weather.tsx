@@ -200,22 +200,10 @@ export function WeatherSheet({ forecast, onClose }: { forecast: Forecast; onClos
   const { t, locale } = useT();
   const text = useConditionText();
   const sheet = useRef<HTMLDivElement>(null);
-  const { webApp } = useGuide();
-  const back = webApp?.BackButton;
   useEffect(() => {
     sheet.current?.querySelector<HTMLElement>("button")?.focus();
   }, []);
-  // «Назад» Telegram: на главной кнопки нет — показываем её, пока лист открыт; нажатие закрывает лист.
-  useEffect(() => {
-    if (!back) return;
-    back.onClick(onClose);
-    back.show();
-    return () => {
-      back.offClick(onClose);
-      // Лист — только на главной, где своей кнопки нет; при уходе с главной новый экран покажет её снова.
-      back.hide();
-    };
-  }, [back, onClose]);
+  // «Назад» Telegram закрывает лист: пока перехват есть, кнопка видна и на главной (NativeBack в App.tsx).
   useEffect(() => {
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";

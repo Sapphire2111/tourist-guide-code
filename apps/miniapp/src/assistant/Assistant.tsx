@@ -2,8 +2,7 @@
 // обогащение); модель на сервере выбирает лишь категории и фильтры. Уточнения — следующей репликой или чипом;
 // контекст диалога (прежние реплики и намерение) хранится здесь и отправляется с каждым запросом.
 import { SHOW_AI_LABELS } from "../ai-labels.js";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { pushFromAssistant } from "../back.js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
@@ -128,12 +127,14 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
   const questions = result?.questions ?? [];
 
   return (
-    // Переход из ответа в экран приложения (карточка места) — запись истории с меткой: «Назад» вернёт сюда.
+    // Переход из ответа в экран приложения (карточка места): прокрутка — сейчас, до смены экрана
+    // (сохранение по прокрутке отложено и может не успеть). «Назад» идёт по истории (back.ts).
     <div
       className="assistant-screen"
-      onClickCapture={(e) =>
-        markLinkFromAssistant(e, () => setUi({ scrollY: Math.max(0, Math.round(window.scrollY)) }))
-      }
+      onClickCapture={(e) => {
+        if ((e.target as Element | null)?.closest?.("a[href^='#/']"))
+          setUi({ scrollY: Math.max(0, Math.round(window.scrollY)) });
+      }}
     >
       <Stack>
         <h1>{t("miniapp.assistant.title")}</h1>
@@ -240,17 +241,6 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
       </Stack>
     </div>
   );
-}
-
-/** Ссылка #/… внутри ответа (обычный клик) — переход pushState с меткой «из ассистента». */
-function markLinkFromAssistant(e: MouseEvent<HTMLDivElement>, beforeLeave: () => void) {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
-  if (!(a instanceof HTMLAnchorElement) || a.target === "_blank") return;
-  e.preventDefault();
-  // Прокрутка — сейчас, до смены экрана (сохранение по прокрутке отложено и может не успеть).
-  beforeLeave();
-  pushFromAssistant(a.getAttribute("href")!);
 }
 
 /**

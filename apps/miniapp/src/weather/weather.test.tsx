@@ -6,7 +6,7 @@ import type { ApiClient } from "@tg/api-client";
 import { I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { consumeBack, hasBackIntercept, type TelegramWebApp } from "../telegram.js";
 import { formatTemp, WeatherChip } from "./Weather.js";
 import {
   createWeatherApi,
@@ -120,30 +120,22 @@ describe("погода на главной", () => {
     );
   });
 
-  it("«Назад» Telegram: кнопка видна, пока лист открыт, и закрывает его; смена точки не закрывает лист", async () => {
-    let onBack: (() => void) | null = null;
-    const back = {
-      show: vi.fn(),
-      hide: vi.fn(),
-      onClick: vi.fn((cb: () => void) => (onBack = cb)),
-      offClick: vi.fn(),
-    };
-    const webApp = { BackButton: back } as unknown as TelegramWebApp;
+  it("«Назад» Telegram закрывает лист (перехват для общей кнопки); смена точки не закрывает лист", async () => {
     const api = { forecast: vi.fn(async (): Promise<Forecast | null> => forecast) };
-    const { rerender } = render(tree(api, undefined, webApp));
+    const { rerender } = render(tree(api));
+    expect(hasBackIntercept()).toBe(false);
     fireEvent.click(await screen.findByTestId("weather-chip"));
-    expect(back.show).toHaveBeenCalledTimes(1);
+    expect(hasBackIntercept()).toBe(true);
     // Новая точка (сменили «Локація»): прогноз грузится — лист остаётся с прежними данными.
     api.forecast.mockImplementation(() => new Promise<Forecast | null>(() => {}));
-    rerender(tree(api, { lat: 48.34, lng: 24.57 }, webApp));
+    rerender(tree(api, { lat: 48.34, lng: 24.57 }));
     expect(api.forecast).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("dialog", { name: "Погода на 5 днів" })).toBeTruthy();
-    // Перерисовка не перезапускает эффект листа (onClose стабилен).
-    expect(back.show).toHaveBeenCalledTimes(1);
-    act(() => onBack!());
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(back.hide).toHaveBeenCalled();
-    expect(back.offClick).toHaveBeenCalled();
+    expect(hasBackIntercept()).toBe(false);
   });
 
   it("нет прогноза — ничего не показывается", async () => {

@@ -10,6 +10,7 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
+import { useScreenState } from "../screen-state.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "../host/context.js";
 import { isMessageKey, useErrorText } from "../host/errors.js";
@@ -109,8 +110,11 @@ function ScenarioList() {
   const { t, locale } = useT();
   const { api } = useHost();
   // Дата поездки: сценарии её сезона (зимой можно спланировать летнюю поездку); без даты — текущий сезон.
-  const [tripDate, setTripDate] = useState("");
-  const [list, retry] = useAsync(() => api.scenarios(tripDate || null), [api, tripDate]);
+  const [tripDate, setTripDate] = useScreenState("plan.date", "");
+  const [list, retry] = useAsync(() => api.scenarios(tripDate || null), [api, tripDate], {
+    slot: "plan.scenarios",
+    key: tripDate,
+  });
   const dateId = useId();
   return (
     <>
@@ -694,7 +698,7 @@ function DaySection({
 }) {
   const { t } = useT();
   const text = useConditionText();
-  const [open, setOpen] = useState(initiallyOpen);
+  const [open, setOpen] = useScreenState(`plan.day.${day.day}`, initiallyOpen);
   const bodyId = `day-${day.day}-body`;
   return (
     <section aria-labelledby={`day-${day.day}`} data-testid="plan-day" data-open={open} className="plan-day">
@@ -769,11 +773,14 @@ function SlotSection({
 }) {
   const { t } = useT();
   const headingId = `day-${day}-${slot}`;
-  const [open, setOpen] = useState(slot !== "rain" || items.length > 0 || rainy);
+  const [open, setOpen] = useScreenState(
+    `plan.slot.${day}.${slot}`,
+    slot !== "rain" || items.length > 0 || rainy,
+  );
   // Прогноз изменился (план перечитан) и обещает дождь — раскрыть «якщо дощ»; свернуть сам не сворачиваем.
   useEffect(() => {
     if (rainy) setOpen(true);
-  }, [rainy]);
+  }, [rainy, setOpen]);
   const list = (opts: PlanOption[]) => (
     <ul className="plan-choices" aria-label={t("miniapp.plan.options")}>
       {opts.map((o) => (
