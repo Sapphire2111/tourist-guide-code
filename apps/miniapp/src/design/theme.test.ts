@@ -39,7 +39,10 @@ describe("theme", () => {
     expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
     expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
     expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
+    // Без аргумента — «Ніч» (тема по умолчанию); «День» — явно.
     syncTelegramColors(webApp);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
+    syncTelegramColors(webApp, "day");
     expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith("#16382B");
     expect(webApp.setHeaderColor).toHaveBeenLastCalledWith("#FDE8D0");
     expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith("#16382B");

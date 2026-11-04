@@ -1,5 +1,5 @@
 import { WINDOW_COLORS } from "./theme.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
@@ -780,5 +780,64 @@ describe("главная без сезонных тегов", () => {
   it("SeasonConfig не содержит быстрых тегов", async () => {
     const { SEASON_CONFIG } = await import("./season.js");
     for (const cfg of Object.values(SEASON_CONFIG)) expect(cfg).not.toHaveProperty("tags");
+  });
+});
+
+describe("локация: выбрана ли туристом", () => {
+  const chipOf = async (venueEntry = false) => {
+    render(
+      <GuideProvider value={env(vi.fn(async () => [place]))}>
+        <LocationProvider venueEntry={venueEntry}>
+          <LocationChip />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    return screen.getByTestId("location-chip");
+  };
+  beforeEach(() => sessionStorage.clear());
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("по умолчанию: призыв «Оберіть локацію», data-unpicked и одна пульсация за сеанс", async () => {
+    stubGeolocation(null);
+    const first = await chipOf();
+    expect(first.getAttribute("data-unpicked")).toBe("true");
+    expect(first.getAttribute("data-pulse")).toBe("true");
+    expect(first.textContent).toContain("Оберіть локацію");
+    cleanup();
+    const second = await chipOf();
+    expect(second.getAttribute("data-unpicked")).toBe("true");
+    expect(second.getAttribute("data-pulse")).toBeNull();
+  });
+
+  it.each([
+    ["пункты", { regionId: "region", ids: [YAREMCHE] }],
+    ["«Усі локації»", { regionId: "region", ids: [], mode: "all" }],
+    ["«Моє місцезнаходження»", { regionId: "region", ids: [], mode: "gps" }],
+  ])("сохранённый выбор (%s) между сеансами — выбрано, без призыва", async (_n, saved) => {
+    stubGeolocation(null);
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(saved));
+    const chip = await chipOf();
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
+    expect(chip.getAttribute("data-pulse")).toBeNull();
+    expect(chip.textContent).not.toContain("Оберіть локацію");
+  });
+
+  it("вход по QR заведения — локацию задаёт заведение: выбрано", async () => {
+    stubGeolocation(null);
+    const chip = await chipOf(true);
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
+    expect(chip.textContent).toContain("Усі локації");
+  });
+
+  it("автоматическая точка устройства — выбрано", async () => {
+    stubGeolocation({ lat: 48.45, lng: 24.55 });
+    const chip = await chipOf();
+    await flush();
+    expect(chip.textContent).toContain("Моє місцезнаходження");
+    expect(chip.getAttribute("data-unpicked")).toBeNull();
   });
 });

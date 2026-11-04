@@ -8,6 +8,7 @@ import { googleRouteUrl } from "./geo.js";
 import { createGuideApi } from "./guide-api.js";
 import { Catalog, STAY_MAP_MAX } from "./Catalog.js";
 import { Help } from "./Help.js";
+import { ThemeProvider } from "../design/ThemeProvider.js";
 import { HomeSections } from "./HomeSections.js";
 import { Nearby } from "./Nearby.js";
 import { PlaceCard } from "./PlaceCard.js";
@@ -97,6 +98,27 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
+  it("бейдж над заголовком: «День» — «☀️ Сонячні Карпати», «Ніч» — «✨ Жива Ватра Карпат»", () => {
+    const { env } = setup();
+    const kicker = () => screen.getByTestId("modern-hero").querySelector(".modern-hero-kicker")!.textContent;
+    for (const [theme, text] of [
+      ["day", "☀️ Сонячні Карпати"],
+      ["night", "✨ Жива Ватра Карпат"],
+    ] as const) {
+      document.documentElement.setAttribute("data-theme", theme);
+      const view = render(
+        <ThemeProvider>
+          <GuideProvider value={env}>
+            <HomeSections hasVenue={false} />
+          </GuideProvider>
+        </ThemeProvider>,
+      );
+      expect(kicker()).toBe(text);
+      view.unmount();
+    }
+    document.documentElement.removeAttribute("data-theme");
+  });
+
   it("modern: одна сетка из 9 разделов (с «Пам'ятки» — каталог «Що поруч») (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
     const { env } = setup();
     const view = (hasVenue: boolean) => (

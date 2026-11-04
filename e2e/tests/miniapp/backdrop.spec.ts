@@ -540,6 +540,7 @@ test("главная не запрашивает места для ленты (/
 test("огонёк меню живой: анимация есть, раскладку не двигает; при reduced-motion — без анимации", async ({
   page,
 }) => {
+  await night(page); // огонь — символ «Ніч»
   await page.goto("/");
   const flame = page.getByTestId("menu-btn").locator(".fire-flame");
   await expect(flame).toBeVisible();
