@@ -2,6 +2,10 @@
 // Только чистые функции: CSV, классификация строки «исправление», базовое имя записи-номера Booking, населённый
 // пункт из адреса Google. Данные аудита в репозиторий не кладутся — путь к файлам передаётся аргументами.
 
+import type { LonLat } from "../db/index.js";
+import { IMPORT_LOCALITIES, type ImportLocality } from "../places-import/config.js";
+import { haversineMeters } from "../places-import/mapping.js";
+
 /** Строка CSV как объект «заголовок → значение». */
 export type CsvRow = Readonly<Record<string, string>>;
 
@@ -244,9 +248,23 @@ const LOCALITY_ALIASES: ReadonlyArray<readonly [RegExp, string]> = [
 
 /**
  * Населённый пункт по адресу Google: последний сегмент адреса через запятую, не номер/индекс. Код — только если
- * сегмент целиком совпадает с написанием пункта (кроме Яремче), иначе null.
+ * сегмент целиком совпадает с написанием пункта (кроме Яремче) и (при заданной точке) точка не дальше 2 радиусов
+ * пункта от его центра, иначе null.
  */
-export function localityFromAddress(address: string | null | undefined): string | null {
+export function localityFromAddress(
+  address: string | null | undefined,
+  at?: LonLat | null,
+  localities: readonly ImportLocality[] = IMPORT_LOCALITIES,
+): string | null {
+  const code = townFromAddress(address);
+  if (!code || !at) return code;
+  // Как в импорте: адрес Google бывает ошибочным — пункт принимается, только если точка не дальше 2 его радиусов.
+  const l = localities.find((x) => x.code === code);
+  return l && haversineMeters(at, l.at) <= 2 * l.radiusM ? code : null;
+}
+
+/** Пункт по последнему сегменту адреса Google (без проверки расстояния). */
+export function townFromAddress(address: string | null | undefined): string | null {
   if (!address) return null;
   const parts = address
     .split(",")

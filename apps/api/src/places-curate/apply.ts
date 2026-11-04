@@ -15,6 +15,8 @@ import {
   type PlaceUpdate,
 } from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
+import { IMPORT_LOCALITIES, SEARCH_ZONES } from "../places-import/config.js";
+import { localityOf } from "../places-import/mapping.js";
 import {
   bookingBaseName,
   classifyFix,
@@ -85,7 +87,15 @@ export type CurateReport = {
   merges: { dup: string; main: string; dupName: string; mainName: string; kind: "booking" | "decision" }[];
   leftRefs: { dup: string; table: string; count: number }[];
   movedRefs: Record<string, number>;
+  /** Пункты сценариев, где осталось неопубликованное место архива чистки (нет опубликованной замены). */
   archivedInScenarios: { id: string; name: string; items: number }[];
+  /** Исправленные пункты сценариев: замена архивного места, чистка альтернатив. */
+  scenarioFixes: {
+    item: string;
+    scenario: string;
+    replaced?: { from: string; to: string };
+    removedAlternatives: string[];
+  }[];
   bookingNotes: string[];
   publishedByCategory: { before: Record<string, number>; after: Record<string, number> };
   publishedRoomSuffix: { before: number; after: number };
@@ -219,6 +229,21 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     ]),
   );
 
+  // Прошлые прогоны чистки (идемпотентность): какие места уже архивированы чисткой и кому чистка ставила пункт.
+  const priorAudits = await trx
+    .selectFrom("audit_logs")
+    .select(["entity_id", "new_values"])
+    .where("action", "=", CURATE_ACTION)
+    .where("entity_type", "=", "place")
+    .execute();
+  const priorArchived = new Set<string>();
+  const priorLocality = new Set<string>();
+  for (const a of priorAudits) {
+    if (!a.entity_id) continue;
+    if (a.new_values?.status === "archived") priorArchived.add(a.entity_id);
+    if (a.new_values && "locality" in a.new_values) priorLocality.add(a.entity_id);
+  }
+
   const before = await publishedByCategory(trx);
   const roomBefore = await publishedRoomSuffix(trx);
 
@@ -331,7 +356,8 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       addTodo(f, f.id, "места нет в БД");
       continue;
     }
-    const base = bookingBaseName(p.name.uk);
+    // Повторный прогон: главная уже переименована — базовое имя из названия в разметке.
+    const base = bookingBaseName(p.name.uk) ?? bookingBaseName(f.name);
     if (!base) {
       addTodo(f, f.id, "в названии нет суффикса типа номера");
       continue;
@@ -414,14 +440,22 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     const p = places.get(id);
     const c = changes.get(id);
     if (!p || p.status === "archived" || c?.archive || c?.locality) continue;
-    const code = localityFromAddress(p.address);
+    const at = p.lon != null && p.lat != null ? { lon: p.lon, lat: p.lat } : null;
+    const code = localityFromAddress(p.address, at);
     const f = findingsById.get(id)?.[0];
+    if (!code && priorLocality.has(id) && at) {
+      // Прошлый прогон поставил пункт по адресу, который дальше 2 радиусов пункта, — вернуть пункт по расстоянию.
+      const byDistance = localityOf(at, IMPORT_LOCALITIES, SEARCH_ZONES)?.code;
+      if (byDistance && byDistance !== p.locality && localities.has(byDistance))
+        change(id, "пункт по расстоянию (адрес Google дальше 2 радиусов пункта)").locality = byDistance;
+      continue;
+    }
     if (!code) {
       todo.push({
         line: null,
         id,
         name: p.name.uk,
-        reason: `пункт: адрес «${p.address ?? ""}» не называет пункт однозначно (громада Яремче/код/нет)`,
+        reason: `пункт: адрес «${p.address ?? ""}» не называет пункт однозначно (громада Яремче/код/нет) или пункт дальше 2 радиусов`,
       });
       continue;
     }
@@ -456,6 +490,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     const oldValues: Record<string, unknown> = {};
     const newValues: Record<string, unknown> = {};
     const set: PlaceUpdate = {};
+    const target = c.category ?? p.category;
     if (c.category && c.category !== p.category) {
       oldValues.category = p.category;
       newValues.category = c.category;
@@ -469,7 +504,6 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       set.status = "archived";
       counts[c.mergeInto ? "merge" : "archive"]! += 1;
     }
-    if (c.mergeInto) newValues.mergedInto = c.mergeInto;
     if (c.name && c.name !== p.name.uk) {
       oldValues.name = p.name;
       const name: LocalizedText = { ...p.name, uk: c.name };
@@ -491,15 +525,25 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       set.locality_id = localities.get(c.locality);
       counts.locality! += 1;
     }
-    const target = c.category ?? p.category;
     const extras = [...c.extras].filter((e) => e !== target);
     if (Object.keys(set).length) await trx.updateTable("places").set(set).where("id", "=", c.id).execute();
-    if (set.category_id)
-      await trx
+    if (c.category) {
+      // Новая основная категория не дублируется доп.; доп. категории импорта относились к старой категории.
+      const removed = await trx
         .deleteFrom("place_extra_categories")
         .where("place_id", "=", c.id)
-        .where("category_id", "=", set.category_id)
+        .where((eb) => eb.or([eb("category_id", "=", categories.get(target)!), eb("source", "=", "import")]))
+        .returning(["category_id", "source"])
         .execute();
+      const codeById = new Map([...categories].map(([code, id]) => [id, code] as const));
+      const dropped = removed
+        .filter((r) => r.source === "import" || r.category_id !== categories.get(target))
+        .map((r) => `${codeById.get(r.category_id) ?? r.category_id}:${r.source}`);
+      if (dropped.length) {
+        newValues.removedExtraCategories = dropped;
+        counts.extraRemoved = (counts.extraRemoved ?? 0) + dropped.length;
+      }
+    }
     if (extras.length) {
       const added = await trx
         .insertInto("place_extra_categories")
@@ -520,6 +564,8 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       for (const [table, count] of Object.entries(refs.left))
         if (count) leftRefs.push({ dup: c.id, table, count });
       if (Object.values(refs.moved).some(Boolean)) newValues.movedRefs = refs.moved;
+      // Уже слитый дубль (повторный прогон) без новых ссылок — не изменение.
+      if (Object.keys(newValues).length) newValues.mergedInto = c.mergeInto;
     }
     if (!Object.keys(newValues).length) continue;
     changed += 1;
@@ -535,19 +581,80 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     });
   }
 
-  // Архивные (не слитые) места, на которые ссылаются пункты сценариев, — сценарии стоит перегенерировать.
-  const archivedIds = [...changes.values()].filter((c) => c.archive && !c.mergeInto).map((c) => c.id);
+  // --- Сценарии: место пункта, архивированное чисткой, — на ближайшую опубликованную альтернативу пункта;
+  // из альтернатив убрать само место пункта, повторы и места, архивированные чисткой ---
+  const curatedArchived = new Set([
+    ...priorArchived,
+    ...[...changes.values()].filter((c) => c.archive).map((c) => c.id),
+  ]);
+  const scenarioFixes: CurateReport["scenarioFixes"] = [];
   const archivedInScenarios: CurateReport["archivedInScenarios"] = [];
-  if (archivedIds.length) {
-    const rows = await trx
-      .selectFrom("scenario_items")
-      .select(["place_id", (eb) => eb.fn.countAll<string>().as("n")])
-      .where("place_id", "in", archivedIds)
-      .groupBy("place_id")
-      .execute();
-    for (const r of rows)
-      archivedInScenarios.push({ id: r.place_id, name: nameOf(r.place_id), items: Number(r.n) });
+  const statusNow = new Map(
+    (await trx.selectFrom("places").select(["id", "status"]).execute()).map((r) => [r.id, r.status] as const),
+  );
+  const items = await trx
+    .selectFrom("scenario_items")
+    .select(["id", "scenario_id", "place_id", "alternatives"])
+    .orderBy("scenario_id")
+    .orderBy("day_no")
+    .orderBy("position")
+    .execute();
+  // Места пунктов сценария: замена не должна повторять место, уже стоящее в этом сценарии.
+  const usedInScenario = new Map<string, Map<string, number>>();
+  for (const it of items) {
+    const m = usedInScenario.get(it.scenario_id) ?? new Map<string, number>();
+    m.set(it.place_id, (m.get(it.place_id) ?? 0) + 1);
+    usedInScenario.set(it.scenario_id, m);
   }
+  const stuck = new Map<string, number>();
+  for (const it of items) {
+    const used = usedInScenario.get(it.scenario_id)!;
+    let placeId = it.place_id;
+    let replaced: { from: string; to: string } | undefined;
+    let why = "";
+    const archived = curatedArchived.has(placeId) && statusNow.get(placeId) !== "published";
+    // Повтор места в сценарии (в т.ч. после замены прошлым прогоном) — второй и далее пункт меняется.
+    const repeated = (used.get(placeId) ?? 0) > 1;
+    if (archived || repeated) {
+      const from = places.get(placeId);
+      const candidates = it.alternatives
+        .filter((a) => a !== placeId && statusNow.get(a) === "published" && places.has(a) && !used.has(a))
+        .map((a) => places.get(a)!)
+        .sort((a, b) => (from ? haversine(from, a) - haversine(from, b) : 0));
+      if (candidates[0]) {
+        replaced = { from: placeId, to: candidates[0].id };
+        used.set(placeId, (used.get(placeId) ?? 1) - 1);
+        if (!used.get(placeId)) used.delete(placeId);
+        placeId = candidates[0].id;
+        used.set(placeId, 1);
+        why = archived
+          ? "место пункта в архиве — замена на ближайшую опубликованную альтернативу"
+          : "место повторяется в сценарии — замена на ближайшую опубликованную альтернативу";
+      } else if (archived) stuck.set(placeId, (stuck.get(placeId) ?? 0) + 1);
+    }
+    const alts: string[] = [];
+    for (const a of it.alternatives)
+      if (a !== placeId && !alts.includes(a) && !(curatedArchived.has(a) && statusNow.get(a) !== "published"))
+        alts.push(a);
+    const removedAlternatives = it.alternatives.filter((a) => !alts.includes(a));
+    if (!replaced && !removedAlternatives.length) continue;
+    await trx
+      .updateTable("scenario_items")
+      .set({ place_id: placeId, alternatives: alts })
+      .where("id", "=", it.id)
+      .execute();
+    scenarioFixes.push({ item: it.id, scenario: it.scenario_id, replaced, removedAlternatives });
+    await audit.record(trx, {
+      actor: { type: "system" },
+      action: CURATE_ACTION,
+      entityType: "scenario_item",
+      entityId: it.id,
+      oldValues: { placeId: it.place_id, alternatives: it.alternatives },
+      newValues: { placeId, alternatives: alts },
+      reason: `${CURATE_REASON}: ${why || "чистка альтернатив (само место пункта, повторы, архив чистки)"}`,
+    });
+  }
+  for (const [id, n] of stuck) archivedInScenarios.push({ id, name: nameOf(id), items: n });
 
   const after = await publishedByCategory(trx);
   const roomAfter = await publishedRoomSuffix(trx);
@@ -572,6 +679,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     leftRefs,
     movedRefs,
     archivedInScenarios,
+    scenarioFixes,
     bookingNotes,
     publishedByCategory: { before, after },
     publishedRoomSuffix: { before: roomBefore, after: roomAfter },
@@ -608,7 +716,20 @@ async function moveRefs(
   const withAlt = await trx
     .selectFrom("scenario_items")
     .select(["id", "place_id", "alternatives"])
-    .where(sql<boolean>`${dup}::uuid = any(alternatives)`)
+    .where((eb) =>
+      eb.or([
+        sql<boolean>`${dup}::uuid = any(alternatives)`,
+        ...(items.length
+          ? [
+              eb(
+                "id",
+                "in",
+                items.map((i) => i.id),
+              ),
+            ]
+          : []),
+      ]),
+    )
     .execute();
   for (const it of withAlt) {
     const alts: string[] = [];

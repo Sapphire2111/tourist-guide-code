@@ -4,10 +4,10 @@
 //     [--region test-region] [--dry-run]
 // Файлы аудита — вне репозитория (репозиторий публичный), путь передаётся аргументом. Применяются строки с
 // уверенностью «высокая»/«средняя» и однозначным исправлением; остальные и неоднозначные — в --todo-out.
-// --dry-run выполняет всё в транзакции и откатывает её (план = результат). Запись — под DATABASE_URL (роль
-// приложения, контекст региона), иначе DATABASE_MIGRATION_URL; одна транзакция, аудит place.curate по месту.
+// --dry-run выполняет всё в транзакции и откатывает её (план = результат). Только DATABASE_URL — роль приложения
+// без BYPASSRLS (RLS ограничивает все чтения и записи регионом контекста); одна транзакция, аудит place.curate.
 import { readFile, writeFile } from "node:fs/promises";
-import { createDatabase, type Db } from "../db/index.js";
+import { createDatabase, readDbRoleStatus, type Db } from "../db/index.js";
 import { curatePlaces, type TodoItem } from "../places-curate/apply.js";
 import { CurateInputError, parseCsv, parseDecisions, parseFindings } from "../places-curate/rules.js";
 
@@ -92,9 +92,15 @@ try {
       `режим: ${args.dryRun ? "без записи (--dry-run, откат)" : `запись в ${args.region}`}`,
   );
 
-  const url = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
-  if (!url) throw new CurateInputError("Не задан DATABASE_URL (или DATABASE_MIGRATION_URL)");
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url)
+    throw new CurateInputError("Не задан DATABASE_URL (роль приложения; DATABASE_MIGRATION_URL не подходит)");
   db = createDatabase({ connectionString: url, maxConnections: 1 });
+  const role = await readDbRoleStatus(db);
+  if (role.bypassesRls)
+    throw new CurateInputError(
+      `Роль ${role.role} обходит RLS — нужна роль приложения (DATABASE_URL), не владелец схемы`,
+    );
   const report = await curatePlaces(db, {
     regionCode: args.region,
     findings,
@@ -114,7 +120,14 @@ try {
   for (const l of report.leftRefs) console.log(`  осталось на дубле ${l.dup}: ${l.table} ×${l.count}`);
   for (const n of report.bookingNotes) console.log(`  Booking: ${n}`);
   for (const s of report.archivedInScenarios)
-    console.log(`  в архиве, но в сценариях: ${s.name} (${s.id}) — пунктов ${s.items}`);
+    console.log(
+      `  в архиве, в сценариях без опубликованной замены: ${s.name} (${s.id}) — пунктов ${s.items}`,
+    );
+  for (const f of report.scenarioFixes)
+    console.log(
+      `  пункт сценария ${f.item}: ${f.replaced ? `замена ${f.replaced.from} → ${f.replaced.to}; ` : ""}` +
+        `убрано из альтернатив ${f.removedAlternatives.length}`,
+    );
   console.log(`Не применено (в todo): ${report.todo.length}`);
   console.log(
     `Опубликованных с суффиксом номера Booking: ${report.publishedRoomSuffix.before} → ${report.publishedRoomSuffix.after}`,

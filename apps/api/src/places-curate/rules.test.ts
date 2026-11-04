@@ -189,6 +189,16 @@ describe("localityFromAddress", () => {
     expect(localityFromAddress("8G9X+53, Яблуниця")).toBe("yablunytsia");
   });
 
+  it("с точкой: пункт из адреса, только если точка не дальше 2 радиусов пункта", () => {
+    // Микуличин: центр 24.598/48.399, радиус 4 км.
+    expect(localityFromAddress("вулиця Грушевського, Микуличин", { lon: 24.6, lat: 48.41 })).toBe(
+      "mykulychyn",
+    );
+    // Яблуниця (радиус 3,5 км) — точка в Яремчі, ~17 км: адрес Google ошибочен.
+    expect(localityFromAddress("вулиця Героїв Майдану, Яблуниця", { lon: 24.5547, lat: 48.4505 })).toBeNull();
+    expect(localityFromAddress("вулиця Героїв Майдану, Яблуниця", null)).toBe("yablunytsia");
+  });
+
   it("Яремче (громада), чужой текст, пусто — null", () => {
     expect(localityFromAddress("вулиця Карпатська, Яремче")).toBeNull();
     expect(
