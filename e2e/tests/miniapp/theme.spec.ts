@@ -7,7 +7,8 @@ import { installAssistantMock } from "../../support/assistant-mock.js";
 import { bookingDto, installBookingsMock, PARTNER_PLACE } from "../../support/bookings-mock.js";
 import { expect, test } from "../../support/fixtures.js";
 
-test.use({ telegram: { startParam: "demoHotel01" } });
+// Здесь проверяется настоящая тема по умолчанию («Ніч»), а не подставленная фикстурой.
+test.use({ telegram: { startParam: "demoHotel01" }, defaultTheme: null });
 test.beforeEach(async ({ page }) => {
   apiMockState.get(page)!.consents = [
     { kind: "terms", version: "2026-11-01-draft" },
@@ -25,50 +26,51 @@ async function openMenu(page: Page) {
   return page.getByRole("dialog", { name: "Меню" });
 }
 
-test("по умолчанию «День», тема Telegram не наследуется", async ({ page }) => {
+test("по умолчанию «Ніч», тема Telegram не наследуется", async ({ page }) => {
   await page.addInitScript(() => {
-    // Тёмная тема системы и Telegram не должна включать «Ніч».
+    // Тема системы и Telegram на выбор темы не влияет: по умолчанию всегда «Ніч».
     (window as unknown as { Telegram: { WebApp: { colorScheme: string } } }).Telegram ??= {
-      WebApp: { colorScheme: "dark" },
+      WebApp: { colorScheme: "light" },
     };
   });
-  await page.emulateMedia({ colorScheme: "dark" });
+  await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
-  await expect(html(page)).toHaveAttribute("data-theme", "day");
+  await expect(html(page)).toHaveAttribute("data-theme", "night");
   const menu = await openMenu(page);
   const group = menu.getByRole("group", { name: "Тема оформлення" });
   await expect(group.getByRole("button")).toHaveText(["День", "Ніч"]);
-  await expect(group.getByRole("button", { name: "День" })).toHaveAttribute("aria-pressed", "true");
-  await expect(group.getByRole("button", { name: "Ніч" })).toHaveAttribute("aria-pressed", "false");
+  await expect(group.getByRole("button", { name: "День" })).toHaveAttribute("aria-pressed", "false");
+  await expect(group.getByRole("button", { name: "Ніч" })).toHaveAttribute("aria-pressed", "true");
   for (const b of await group.getByRole("button").all()) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
 });
 
-test("выбор «Ніч»: лист закрывается, тема сохраняется после перезагрузки", async ({ page }) => {
+test("выбор «День»: лист закрывается, тема сохраняется после перезагрузки", async ({ page }) => {
   await page.goto("/");
   const menu = await openMenu(page);
-  await menu.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "Ніч" }).click();
+  await menu.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }).click();
   await expect(page.getByRole("dialog", { name: "Меню" })).toHaveCount(0);
-  await expect(html(page)).toHaveAttribute("data-theme", "night");
-  expect(await page.evaluate(() => localStorage.getItem("tg.theme"))).toBe("night");
+  await expect(html(page)).toHaveAttribute("data-theme", "day");
+  expect(await page.evaluate(() => localStorage.getItem("tg.theme"))).toBe("day");
   await expectNoSeriousA11yViolations(page);
   await page.reload();
   await expect(page.getByTestId("home-sections")).toBeVisible();
-  await expect(html(page)).toHaveAttribute("data-theme", "night");
+  await expect(html(page)).toHaveAttribute("data-theme", "day");
+  // В «День» искр ватры нет.
+  await expect(page.getByTestId("app-embers")).toHaveCount(0);
   const menu2 = await openMenu(page);
   await expect(
-    menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "Ніч" }),
+    menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }).click();
-  await expect(html(page)).toHaveAttribute("data-theme", "day");
-  expect(await page.evaluate(() => localStorage.getItem("tg.theme"))).toBe("day");
+  await menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "Ніч" }).click();
+  await expect(html(page)).toHaveAttribute("data-theme", "night");
+  expect(await page.evaluate(() => localStorage.getItem("tg.theme"))).toBe("night");
 });
 
-test("сохранённая «Ніч»: первый кадр не в чужой теме", async ({ page }) => {
+test("по умолчанию «Ніч»: первый кадр не в чужой теме", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("tg.theme", "night");
     // Состояние на момент, когда документ разобран и бандл React ещё не отрисовал экран.
     document.addEventListener("DOMContentLoaded", () => {
       (window as unknown as { __firstFrame: string }).__firstFrame =
@@ -80,14 +82,14 @@ test("сохранённая «Ніч»: первый кадр не в чужо�
   expect(first).toBe("night|rgb(9, 25, 19)");
 });
 
-test("повреждённое значение — «День»", async ({ page }) => {
+test("повреждённое значение — «Ніч»", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("tg.theme", '{"theme":"purple"}'));
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
-  await expect(html(page)).toHaveAttribute("data-theme", "day");
+  await expect(html(page)).toHaveAttribute("data-theme", "night");
 });
 
-test("хранилище недоступно: «День», выбор действует до перезагрузки", async ({ page }) => {
+test("хранилище недоступно: «Ніч», выбор действует до перезагрузки", async ({ page }) => {
   await page.addInitScript(() => {
     const get = Storage.prototype.getItem;
     const set = Storage.prototype.setItem;
@@ -101,12 +103,12 @@ test("хранилище недоступно: «День», выбор дейс
     };
   });
   await page.goto("/");
-  await expect(html(page)).toHaveAttribute("data-theme", "day");
-  const menu = await openMenu(page);
-  await menu.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "Ніч" }).click();
   await expect(html(page)).toHaveAttribute("data-theme", "night");
-  await page.reload();
+  const menu = await openMenu(page);
+  await menu.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }).click();
   await expect(html(page)).toHaveAttribute("data-theme", "day");
+  await page.reload();
+  await expect(html(page)).toHaveAttribute("data-theme", "night");
 });
 
 test("«Ніч»: контраст на главной, «Що поруч», списке и избранном", async ({ page }) => {

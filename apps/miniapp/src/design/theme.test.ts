@@ -9,25 +9,25 @@ afterEach(() => {
 });
 
 describe("theme", () => {
-  it("по умолчанию «День»; сохранённая «night» читается", () => {
+  it("по умолчанию «Ніч»; сохранённая «day» уважается", () => {
+    expect(readTheme()).toBe("night");
+    saveTheme("day");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("day");
     expect(readTheme()).toBe("day");
-    saveTheme("night");
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("night");
+  });
+  it("повреждённое значение — «Ніч»", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, '{"x":1}');
     expect(readTheme()).toBe("night");
   });
-  it("повреждённое значение — «День»", () => {
-    localStorage.setItem(THEME_STORAGE_KEY, '{"x":1}');
-    expect(readTheme()).toBe("day");
-  });
-  it("хранилище недоступно: чтение — «День», запись не падает", () => {
+  it("хранилище недоступно: чтение — «Ніч», запись не падает", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("denied");
     });
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("denied");
     });
-    expect(readTheme()).toBe("day");
-    expect(() => saveTheme("night")).not.toThrow();
+    expect(readTheme()).toBe("night");
+    expect(() => saveTheme("day")).not.toThrow();
   });
   it("цвета окна Telegram по теме: шапка — верх неба, фон и нижняя панель — низ картинки", () => {
     const webApp = {
