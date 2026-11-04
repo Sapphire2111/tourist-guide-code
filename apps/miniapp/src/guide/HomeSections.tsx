@@ -53,7 +53,7 @@ function HomeTiles() {
   const { t } = useT();
   return (
     <nav className="modern-tiles" aria-label={t("miniapp.home.quickSections")}>
-      <ul id="home-tiles" className="modern-intentions" data-testid="home-sections">
+      <ul className="modern-intentions" data-testid="home-sections">
         {TILES.map((item) => (
           <li key={item.to}>
             <Link to={item.to} className="modern-intention" aria-label={item.aria ? t(item.aria) : undefined}>

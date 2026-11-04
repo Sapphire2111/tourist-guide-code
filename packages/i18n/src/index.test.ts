@@ -103,10 +103,10 @@ describe("en для Mini App", () => {
 });
 
 describe("isAllDay", () => {
-  it("00:00–23:59, 00:00–24:00 и 00:00–00:00 (с секундами и без) — весь день; остальное нет", () => {
+  it("00:00–23:59 и 00:00–24:00 (с секундами и без) — весь день; остальное нет", () => {
     expect(isAllDay("00:00", "23:59")).toBe(true);
     expect(isAllDay("00:00:00", "24:00:00")).toBe(true);
-    expect(isAllDay("00:00", "00:00")).toBe(true);
+    expect(isAllDay("00:00", "00:00")).toBe(false);
     expect(isAllDay("00:00", "22:00")).toBe(false);
     expect(isAllDay("08:00", "23:59")).toBe(false);
   });

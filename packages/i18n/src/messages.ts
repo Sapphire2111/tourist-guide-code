@@ -340,7 +340,7 @@ export const uk = {
     "Не вдалося визначити місцезнаходження — дозвольте доступ до геолокації. Показуємо всі локації.",
   "miniapp.location.more": "{name} +{count}",
   "miniapp.location.hint":
-    "Позначте один чи кілька населених пунктів — локація потрібна для «Поруч», карти та відстаней до місць. «Що поруч» шукає довкола вас.",
+    "Позначте один чи кілька населених пунктів — розділи й пошук показуватимуть місця лише там. «Поруч» і відстані — від вашого місцезнаходження.",
   "miniapp.location.caption": "Локація: {names}",
   "miniapp.location.done": "Готово",
   "miniapp.search.title": "Пошук місць",
@@ -1970,7 +1970,7 @@ export const en: Messages = {
     "Could not get your location — please allow location access. Showing all locations.",
   "miniapp.location.more": "{name} +{count}",
   "miniapp.location.hint":
-    "Tick one or more towns or villages — the location is used for “Nearby”, the map and distances to places. “Nearby” searches around you.",
+    "Tick one or more towns or villages — sections and search will show places only there. “Nearby” and distances are based on your location.",
   "miniapp.location.caption": "Location: {names}",
   "miniapp.location.done": "Done",
   "miniapp.search.title": "Find places",

@@ -1833,4 +1833,8 @@ body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .mic-
   .mic-waves i {
     animation: none;
   }
+  /* Без движения запись всё равно видна: статичное кольцо. */
+  .assistant-pill[data-recording] .mic-waves i:first-child {
+    opacity: 0.6;
+  }
 }
