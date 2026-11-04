@@ -1790,3 +1790,42 @@ html[data-theme="day"] .fire-flame {
 html[data-theme="day"][data-screen="home"] .home-top-row {
   padding-top: 10px;
 }
+
+/* Низкий экран (320×740 и меньше): главная уплотняется, чтобы все три ряда плиток были видны над нижней панелью. */
+@media (max-height: 760px) {
+  .modern-home {
+    gap: 6px;
+  }
+  .modern-hero {
+    gap: 6px;
+  }
+  .modern-hero-head {
+    gap: 4px;
+    padding-bottom: 2px;
+  }
+  .modern-hero-glass {
+    padding: 10px 14px;
+  }
+  .modern-hero-glass .assistant-examples {
+    margin-bottom: 0;
+  }
+  .modern-tiles {
+    --tile-h: 58px;
+  }
+  .modern-featured-grid {
+    gap: 8px;
+  }
+  .modern-featured-card {
+    gap: 4px;
+    padding: 10px 12px;
+  }
+  .modern-featured-near {
+    padding: 9px 11px;
+  }
+  .modern-featured-title {
+    font-size: 17px;
+  }
+  html[data-theme="day"][data-screen="home"] .home-top-row {
+    padding-top: 0;
+  }
+}
