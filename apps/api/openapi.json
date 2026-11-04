@@ -15835,6 +15835,11 @@
         "enum": ["car", "foot"],
         "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо"
       },
+      "AssistantSort": {
+        "type": "string",
+        "enum": ["rating"],
+        "description": "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу"
+      },
       "AssistantIntentDto": {
         "type": "object",
         "properties": {
@@ -15912,6 +15917,11 @@
             "nullable": true,
             "description": "План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо",
             "allOf": [{ "$ref": "#/components/schemas/AssistantPlanTransport" }]
+          },
+          "sort": {
+            "nullable": true,
+            "description": "Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу",
+            "allOf": [{ "$ref": "#/components/schemas/AssistantSort" }]
           }
         },
         "required": [
@@ -15987,6 +15997,12 @@
             "type": "boolean",
             "description": "По данным Google: подходит для детей или есть дитяче меню"
           },
+          "rating": {
+            "type": "number",
+            "nullable": true,
+            "description": "Рейтинг Google 1–5 (сортировка «За рейтингом»)"
+          },
+          "ratingCount": { "type": "integer", "nullable": true, "description": "Число отзывов Google" },
           "description": {
             "type": "string",
             "nullable": true,

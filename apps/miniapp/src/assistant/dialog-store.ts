@@ -16,6 +16,8 @@ export type DialogUi = {
   scrollY: number;
   /** План, уже созданный из этого ответа: повторно не создаётся, кнопка ведёт к нему. */
   planId?: string;
+  /** Порядок списка, выбранный переключателем «Ближчі / Рейтинг»; нет — как прислал сервер (intent.sort). */
+  sort?: "distance" | "rating";
 };
 
 /**
@@ -35,7 +37,8 @@ function isUi(x: unknown): x is DialogUi {
     u !== null &&
     [u.turn, u.shown, u.dayIndex, u.scrollY].every(
       (n) => typeof n === "number" && Number.isFinite(n) && n >= 0,
-    )
+    ) &&
+    (u.sort === undefined || u.sort === "distance" || u.sort === "rating")
   );
 }
 

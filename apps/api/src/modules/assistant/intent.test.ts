@@ -38,6 +38,7 @@ const valid = {
   related: [],
   scope: null,
   transport: null,
+  sort: null,
 };
 
 describe("intentTool", () => {
@@ -146,6 +147,7 @@ describe("parseIntent", () => {
       scope: null,
       scopeLocalityIds: [],
       transport: null,
+      sort: null,
     });
   });
 
@@ -160,6 +162,7 @@ describe("parseIntent", () => {
     expect(parseIntent({ ...valid, scope: "region", transport: "car" }, CODES)).toMatchObject({
       scope: null,
       transport: null,
+      sort: null,
     });
   });
 
