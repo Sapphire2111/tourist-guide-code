@@ -50,6 +50,8 @@ const TILES: readonly Tile[] = [
 /** Короткий свайп по блоку (px): меньше — касание, больше — человек листает страницу, ряд не трогаем. */
 const SWIPE_MIN = 16;
 const SWIPE_MAX = 110;
+/** Страница за время жеста сдвинулась не больше (px) — значит, листали не её, а ряд плиток. */
+const PAGE_STILL = 4;
 
 /** Прокрутка плиток на ряд вниз (1) или вверх (-1); край прокрутки ограничивает браузер, ряды держит scroll-snap. */
 function moveRow(el: HTMLElement, dir: 1 | -1): void {
@@ -72,19 +74,22 @@ function HomeTiles() {
     const el = list.current;
     if (!el) return;
     const sync = () => setMore(el.scrollTop + el.clientHeight < el.scrollHeight - 2);
-    let start: { x: number; y: number } | null = null;
+    let start: { x: number; y: number; page: number } | null = null;
     const onStart = (e: TouchEvent) => {
       const p = e.touches[0];
-      start = p && e.touches.length === 1 ? { x: p.clientX, y: p.clientY } : null;
+      start = p && e.touches.length === 1 ? { x: p.clientX, y: p.clientY, page: window.scrollY } : null;
     };
     const onEnd = (e: TouchEvent) => {
       const p = e.changedTouches[0];
       if (!start || !p) return;
       const dy = start.y - p.clientY;
       const dx = start.x - p.clientX;
+      // Жест уже листал страницу (флик) — это прокрутка страницы, ряд не трогаем.
+      const paged = Math.abs(window.scrollY - start.page) > PAGE_STILL;
       start = null;
       const size = Math.abs(dy);
-      if (size >= SWIPE_MIN && size <= SWIPE_MAX && size > Math.abs(dx)) moveRow(el, dy > 0 ? 1 : -1);
+      if (!paged && size >= SWIPE_MIN && size <= SWIPE_MAX && size > Math.abs(dx))
+        moveRow(el, dy > 0 ? 1 : -1);
     };
     sync();
     el.addEventListener("scroll", sync, { passive: true });

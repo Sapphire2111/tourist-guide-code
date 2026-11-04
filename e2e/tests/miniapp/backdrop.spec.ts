@@ -364,14 +364,16 @@ test("плитки: стрелка листает ряды, её имя и це�
   await expect(more).toBeFocused();
 });
 
-test("плитки: длинный свайп сразу и целиком листает страницу, короткий меняет ряд", async ({ page }) => {
+test("плитки: свайп и флик листают страницу, ряд не меняется; на неподвижной странице короткий свайп меняет ряд", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const list = page.getByTestId("home-sections");
   await expect(list).toBeVisible();
   await page.waitForLoadState("networkidle");
   const cdp = await page.context().newCDPSession(page);
-  const drag = async (dist: number) => {
+  const drag = async (dist: number, fling = false) => {
     const r = (await list.boundingBox())!;
     const [x, y] = [r.x + r.width / 2, r.y + 30];
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
@@ -380,9 +382,10 @@ test("плитки: длинный свайп сразу и целиком ли�
         type: "touchMove",
         touchPoints: [{ x, y: y + (dist * i) / 20 }],
       });
-      await page.waitForTimeout(16);
+      await page.waitForTimeout(fling ? 4 : 16);
     }
-    await page.waitForTimeout(120); // пауза перед отпусканием: без инерции
+    // Без паузы: отпускание на ходу. С fling — быстрый короткий рывок (шаги чаще), дальше инерция страницы.
+    if (!fling) await page.waitForTimeout(16);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await page.waitForTimeout(500);
   };
@@ -401,6 +404,16 @@ test("плитки: длинный свайп сразу и целиком ли�
   const down = await state();
   expect(up.page - down.page).toBeGreaterThan(150);
   expect(down.list).toBe(0);
+  // Флик страницы, начатый на плитках: страница едет по инерции, ряд не меняется.
+  const before = await state();
+  await drag(-80, true);
+  const flung = await state();
+  expect(flung.page - before.page).toBeGreaterThan(4);
+  expect(flung.list).toBe(0);
+  await expect(page.locator(".modern-tiles")).toHaveAttribute("data-more", "true");
+  // Неподвижная страница (листать некуда): короткий свайп меняет ряд.
+  await page.evaluate(() => (document.documentElement.style.overflow = "hidden"));
+  await page.waitForTimeout(200);
   await drag(-60);
   await expect.poll(async () => (await state()).list).toBeGreaterThan(30);
   await expect(page.locator(".modern-tiles")).toHaveAttribute("data-more", "false");

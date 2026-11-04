@@ -193,7 +193,10 @@ html[data-theme="night"] .app-backdrop-rose {
   animation: app-ember linear infinite;
 }
 /* Экономия батареи: стоят в скрытой вкладке (AppBackdrop) и под листами на весь экран — их всё равно не видно. */
-.app-embers[data-paused] i,
+.app-embers[data-paused] i {
+  animation-play-state: paused;
+}
+/* Отдельным правилом: без поддержки :has браузер отбросил бы и правило скрытой вкладки выше. */
 body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .app-embers i {
   animation-play-state: paused;
 }
