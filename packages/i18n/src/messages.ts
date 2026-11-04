@@ -1641,7 +1641,8 @@ export const uk = {
   "admin.reviews.published": "Відгук опубліковано.",
   "admin.reviews.hidden": "Відгук приховано.",
   "admin.reviews.appealDecision": "Рішення за апеляцією",
-  "admin.reviews.appealFinalHint": "Рішення за апеляцією остаточне — переглянути його буде не можна.",
+  "admin.reviews.appealFinalHint": "Рішення за апеляцією остаточне для автора оскарженого рішення.",
+  "admin.reviews.reasonGrantPartner": "Пояснення (обов'язкове: відгук буде приховано, автор його побачить)",
   "admin.reviews.reason": "Пояснення (необов'язково)",
   "admin.reviews.grant": "Задовольнити апеляцію",
   "admin.reviews.deny": "Відхилити апеляцію",
@@ -1656,7 +1657,8 @@ export const uk = {
   "admin.reviews.err.appealDecided": "Цю апеляцію вже розглянуто — дані оновлено.",
   "admin.reviews.err.nothingToDecide": "Рішення вже збігається зі станом відгуку — дані оновлено.",
   "admin.reviews.err.changed": "Стан відгуку вже змінився — дані оновлено.",
-  "admin.reviews.err.notFound": "Відгук або апеляцію не знайдено.",
+  "admin.reviews.err.notFound":
+    "Відгук або апеляцію не знайдено — можливо, модуль відгуків вимкнено. Список оновлено.",
   // Погода (модуль weather): пилюля на главной, лист прогноза, погода в «Мій план».
   "miniapp.weather.title": "Погода",
   "miniapp.weather.today": "Сьогодні",

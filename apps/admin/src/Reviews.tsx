@@ -1,5 +1,5 @@
 // Модерація відгуків (AD06, блок 10): черга (автофільтр, скарги, апеляції), картка відгуку, рішення й апеляції.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Stack, useT } from "@tg/ui";
 import { call, type ApiError, type ApiSchemas } from "./api.js";
 import { formatDate } from "./dates.js";
@@ -99,6 +99,10 @@ export function ReviewsScreen() {
   );
   const [outcome, setOutcome] = useState<Outcome>({ notice: null, error: null, id: null });
   const forbidden = result && !result.ok && result.error.status === 403;
+  // Пока список перечитывается после решения, кнопки заблокированы: повторный клик ушёл бы по устаревшей карточке.
+  const [refreshing, setRefreshing] = useState(false);
+  useEffect(() => setRefreshing(false), [result]);
+  const stale = outcome.error?.status === 409 || outcome.error?.status === 404;
   return (
     <Stack gap={3}>
       <p style={{ margin: 0 }}>{t("admin.reviews.hint")}</p>
@@ -117,6 +121,8 @@ export function ReviewsScreen() {
         </SmallButton>
       </div>
       <Notice text={outcome.notice} />
+      {/* 409/404: карточка исчезает после перечитывания, поэтому текст не привязан к ней. */}
+      {stale && <ReviewError error={outcome.error} />}
       {forbidden ? (
         <p role="alert">{t("admin.reviews.forbidden")}</p>
       ) : !result ? (
@@ -127,9 +133,13 @@ export function ReviewsScreen() {
         <ReviewList
           items={result.data.items.filter((r) => matchesFilter(r, filter))}
           outcome={outcome}
+          locked={refreshing}
           onOutcome={(o) => {
             setOutcome(o);
-            if (o.notice || o.error?.status === 409) reload();
+            if (o.notice || o.error?.status === 409 || o.error?.status === 404) {
+              setRefreshing(true);
+              reload();
+            }
           }}
         />
       )}
@@ -140,10 +150,12 @@ export function ReviewsScreen() {
 function ReviewList({
   items,
   outcome,
+  locked,
   onOutcome,
 }: {
   items: Review[];
   outcome: Outcome;
+  locked: boolean;
   onOutcome: (o: Outcome) => void;
 }) {
   const { t } = useT();
@@ -154,7 +166,12 @@ function ReviewList({
         <ReviewCard
           key={r.id}
           r={r}
-          error={outcome.id === r.id ? outcome.error : null}
+          error={
+            outcome.id === r.id && outcome.error?.status !== 409 && outcome.error?.status !== 404
+              ? outcome.error
+              : null
+          }
+          locked={locked}
           onOutcome={onOutcome}
         />
       ))}
@@ -174,10 +191,12 @@ function Stars({ rating }: { rating: number }) {
 function ReviewCard({
   r,
   error,
+  locked,
   onOutcome,
 }: {
   r: Review;
   error: ApiError | null;
+  locked: boolean;
   onOutcome: (o: Outcome) => void;
 }) {
   const { t, tDynamic, locale } = useT();
@@ -262,18 +281,27 @@ function ReviewCard({
           </section>
         )}
         <ReviewError error={error} />
-        <Decisions r={r} onOutcome={onOutcome} />
+        <Decisions r={r} locked={locked} onOutcome={onOutcome} />
       </Stack>
     </article>
   );
 }
 
-function Decisions({ r, onOutcome }: { r: Review; onOutcome: (o: Outcome) => void }) {
+function Decisions({
+  r,
+  locked,
+  onOutcome,
+}: {
+  r: Review;
+  locked: boolean;
+  onOutcome: (o: Outcome) => void;
+}) {
   const { api } = useAdmin();
   const { t } = useT();
   const [reason, setReason] = useState("");
   const [local, setLocal] = useState<string | null>(null);
-  const [busy, act] = useBusy();
+  const [pending, act] = useBusy();
+  const busy = pending || locked;
   const path = { params: { path: { id: r.id } } };
 
   if (r.ownOrganization) return <p role="note">{t("admin.reviews.err.ownOrganization")}</p>;
@@ -287,7 +315,11 @@ function Decisions({ r, onOutcome }: { r: Review; onOutcome: (o: Outcome) => voi
     if (res.ok) setReason("");
   };
 
+  // Апелляция партнёра: grant скрывает отзыв, автор увидит причину — как при «Приховати».
+  const grantNeedsReason = r.appeal?.kind === "partner";
   const decideAppeal = (decision: "grant" | "deny") => async () => {
+    if (decision === "grant" && grantNeedsReason && !reasonOf(reason))
+      return setLocal(t("admin.reviews.reasonRequired"));
     setLocal(null);
     const res = await call(
       api.POST("/admin/reviews/{id}/appeal-decision", {
@@ -315,12 +347,13 @@ function Decisions({ r, onOutcome }: { r: Review; onOutcome: (o: Outcome) => voi
             {t("admin.reviews.appealFinalHint")}
           </p>
           <Field
-            label={t("admin.reviews.reason")}
+            label={t(grantNeedsReason ? "admin.reviews.reasonGrantPartner" : "admin.reviews.reason")}
             value={reason}
             multiline
             maxLength={REASON_MAX}
             onChange={setReason}
           />
+          {local && <p role="alert">{local}</p>}
           <div style={row}>
             <SmallButton type="button" disabled={busy} onClick={() => act(decideAppeal("grant"))}>
               {t("admin.reviews.grant")}
@@ -348,7 +381,7 @@ function Decisions({ r, onOutcome }: { r: Review; onOutcome: (o: Outcome) => voi
     <form aria-label={t("admin.reviews.decision")} onSubmit={(e) => e.preventDefault()}>
       <Stack gap={1}>
         <Field
-          label={t("admin.reviews.reasonHide")}
+          label={t(canHide ? "admin.reviews.reasonHide" : "admin.reviews.reason")}
           value={reason}
           multiline
           maxLength={REASON_MAX}

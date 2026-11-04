@@ -293,7 +293,57 @@ describe("відгуки: рішення", () => {
         name: "Схвалити",
       }),
     );
-    expect(within(card(/Кафе Говерла/)).getByText(/Рішення вже збігається зі станом відгуку/)).toBeDefined();
+    expect(screen.getByText(/Рішення вже збігається зі станом відгуку/)).toBeDefined();
+  });
+
+  it("409: после перечитывания карточка выпала, а сообщение осталось на экране", async () => {
+    let posted = false;
+    const { api } = fakeApi((m, p) => {
+      if (m === "POST") {
+        posted = true;
+        return [409, envelope("CONFLICT", "errors.review.invalidDecision")];
+      }
+      if (posted && p === "/admin/reviews") return [200, { items: [] }];
+      return undefined;
+    });
+    await open(api);
+    await click(
+      within(within(card(/Кафе Говерла/)).getByRole("form", { name: "Рішення" })).getByRole("button", {
+        name: "Схвалити",
+      }),
+    );
+    expect(screen.queryByRole("article", { name: /Кафе Говерла/ })).toBeNull();
+    expect(screen.getByText("Відгуків немає.")).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toMatch(/Стан відгуку вже змінився/);
+  });
+
+  it("404 тоже перечитывает список и объясняет", async () => {
+    const { api, calls } = fakeApi((m) =>
+      m === "POST" ? [404, envelope("NOT_FOUND", "errors.notFound")] : undefined,
+    );
+    await open(api);
+    const before = calls.filter((c) => c.path === "/admin/reviews").length;
+    await click(
+      within(within(card(/Кафе Говерла/)).getByRole("form", { name: "Рішення" })).getByRole("button", {
+        name: "Схвалити",
+      }),
+    );
+    expect(calls.filter((c) => c.path === "/admin/reviews").length).toBe(before + 1);
+    expect(screen.getByRole("alert").textContent).toMatch(/модуль відгуків вимкнено/);
+  });
+
+  it("повторный клик не шлёт второй запрос, пока решение и перечитывание не закончились", async () => {
+    const { api, calls } = fakeApi((m) => (m === "POST" ? [200, REVIEW] : undefined));
+    await open(api);
+    const button = within(within(card(/Кафе Говерла/)).getByRole("form", { name: "Рішення" })).getByRole(
+      "button",
+      { name: "Схвалити" },
+    );
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await flush();
+    await flush();
+    expect(calls.filter((c) => c.method === "POST").length).toBe(1);
   });
 
   it("ownOrganization — формы решения нет, только пояснение", async () => {
@@ -317,6 +367,31 @@ describe("відгуки: апеляції", () => {
     expect(post?.path).toBe(`/admin/reviews/${APPEALED.id}/appeal-decision`);
     expect(post?.body).toEqual({ decision: "grant", reason: "Помилкове рішення" });
     expect(screen.getByText("Апеляцію задоволено: попереднє рішення скасовано.")).toBeDefined();
+  });
+
+  it("апеляція партнера: «Задовольнити» без пояснення — ошибка, с пояснением — POST grant", async () => {
+    const partner = { ...APPEALED, appeal: { ...APPEAL, kind: "partner" } };
+    const { api, calls } = fakeApi(() => undefined, [partner]);
+    await open(api);
+    const form = within(card(/Готель Карпати/)).getByRole("form", { name: "Рішення за апеляцією" });
+    await click(within(form).getByRole("button", { name: "Задовольнити апеляцію" }));
+    expect(within(form).getByRole("alert").textContent).toBe("Вкажіть причину — автор її побачить.");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    fireEvent.change(within(form).getByLabelText(/^Пояснення \(обов/), {
+      target: { value: "Відгук неправдивий" },
+    });
+    await click(within(form).getByRole("button", { name: "Задовольнити апеляцію" }));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      decision: "grant",
+      reason: "Відгук неправдивий",
+    });
+  });
+
+  it("подпись причины: у скрытого отзыва (только «Повернути») — необязательное пояснение", async () => {
+    const { api } = fakeApi(() => undefined, [{ ...REVIEW, status: "hidden" }]);
+    await open(api);
+    const form = within(card(/Кафе Говерла/)).getByRole("form", { name: "Рішення" });
+    expect(within(form).getByLabelText(/^Пояснення \(необов/)).toBeDefined();
   });
 
   it("«Відхилити апеляцію» без пояснення — тело только decision", async () => {
