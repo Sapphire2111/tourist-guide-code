@@ -42,7 +42,13 @@ const TILES: readonly Tile[] = [
   { to: sectionPath("shop"), icon: "🛍️", name: "miniapp.section.shop" },
   { to: sectionPath("fun"), icon: "🎡", name: "miniapp.home.tile.fun", aria: "miniapp.modern.fun" },
   { to: sectionPath("ski"), icon: "⛷️", name: "miniapp.section.ski" },
-  { to: "/peaks", icon: "🏔️", name: "miniapp.section.peaks" },
+  // «Пам'ятки»: каталог «Що поруч» — Природа, Пам'ятки, Вершини (#/peaks — из подраздела и из «Поруч»).
+  {
+    to: "/section/nearby",
+    icon: "🏛️",
+    name: "miniapp.home.tile.sights",
+    aria: "miniapp.home.tile.sightsAria",
+  },
   { to: sectionPath("transfer"), icon: "🚕", name: "miniapp.section.transfer" },
   { to: sectionPath("services"), icon: SERVICES_EMOJI_WIDE, name: "miniapp.section.services" },
   // Без профиля «Обране» в доке; с профилем это единственный путь на экран кроме меню.

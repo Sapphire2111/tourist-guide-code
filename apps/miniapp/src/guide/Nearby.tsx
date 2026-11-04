@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useCategoryIndex } from "./categories.js";
 import { useScreenState } from "../screen-state.js";
 import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
+import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
 import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
@@ -11,7 +12,7 @@ import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
 import { AsyncView, PlaceList, useDistance } from "./parts.js";
 import { RadiusSlider } from "./RadiusSlider.js";
-import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
+import { OWN_MAP_SECTIONS, type Category, type PlaceSummary, type HomeSection } from "./types.js";
 
 export const DEFAULT_RADIUS = 1000;
 /** Задержка запроса при смене радиуса, мс. */
@@ -31,6 +32,22 @@ export function useRadiusLabel(): (m: number) => string {
 }
 
 type NearbyResult = { list: PlaceSummary[]; radius: number };
+
+/** Подразделы «Що поруч» в фильтрах (водоспади — в «Природа»): порядок и значок по коду категории. */
+export const NEARBY_SUBS: Readonly<Record<string, string>> = { nature: "🌲", sights: "🏛️", peaks: "🏔️" };
+/** Фильтр: всё, раздел главной или подраздел «Що поруч» (`cat:<id>`). */
+type NearbyFilter = HomeSection | "all" | `cat:${string}`;
+
+/** Подразделы «Що поруч» из выборки (природа, пам'ятки, вершини), в порядке NEARBY_SUBS. */
+export function nearbySubs(list: readonly PlaceSummary[], byId: ReadonlyMap<string, Category>): Category[] {
+  const order = Object.keys(NEARBY_SUBS);
+  const found = new Map<string, Category>();
+  for (const p of list) {
+    const c = byId.get(p.categoryId);
+    if (c?.code && c.code in NEARBY_SUBS) found.set(c.id, c);
+  }
+  return [...found.values()].sort((a, b) => order.indexOf(a.code!) - order.indexOf(b.code!));
+}
 
 type Geo = { status: "idle" | "locating" | "denied" } | { status: "granted"; point: LatLng };
 
@@ -271,25 +288,35 @@ export function ModernNearbyResults({
   locating?: boolean;
   loading: boolean;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const { api } = useGuide();
   const categories = useCategoryIndex(api);
   const radiusLabel = useRadiusLabel();
   const distanceLabel = useDistance();
-  const [section, setSection] = useScreenState<HomeSection | "all">("nearby.section", "all");
+  const [section, setSection] = useScreenState<NearbyFilter>("nearby.section", "all");
   const sections = Array.from(
     new Set([
-      ...(section === "all" ? [] : [section]),
+      ...(section === "all" || section.startsWith("cat:") ? [] : [section as HomeSection]),
       // Раздел «Що поруч» — это сам экран: чип дублировал бы его (такие места видны в «Усі поруч»).
       ...list.map((p) => categories.sectionOf(p.categoryId)).filter((s) => s !== null && s !== "nearby"),
     ]),
   );
   // Стабильная ссылка: иначе карта пересоздаёт маркеры и сбрасывает охват на каждый рендер.
   // Места в списке под картой всегда идут от ближайшего к самому дальнему.
+  // Природа / Пам'ятки / Вершини — подразделы самого «Що поруч» (выбранный остаётся, даже если выборка без него).
+  const subs = nearbySubs(list, categories.byId);
+  const selectedSub = section.startsWith("cat:") ? categories.byId.get(section.slice(4)) : undefined;
+  if (selectedSub && !subs.some((c) => c.id === selectedSub.id)) subs.push(selectedSub);
   const visible = useMemo(
     () =>
       list
-        .filter((p) => section === "all" || categories.sectionOf(p.categoryId) === section)
+        .filter((p) =>
+          section === "all"
+            ? true
+            : section.startsWith("cat:")
+              ? p.categoryId === section.slice(4)
+              : categories.sectionOf(p.categoryId) === section,
+        )
         .sort(
           (a, b) =>
             (a.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.distanceMeters ?? Number.POSITIVE_INFINITY),
@@ -310,6 +337,18 @@ export function ModernNearbyResults({
               <span aria-hidden="true">✦</span>
               {t("miniapp.modern.all")}
             </button>
+            {subs.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                aria-pressed={section === `cat:${c.id}`}
+                onClick={() => setSection(`cat:${c.id}`)}
+                data-testid={`nearby-sub-${c.code}`}
+              >
+                <span aria-hidden="true">{NEARBY_SUBS[c.code!]}</span>
+                {pickLocalized(c.name, locale)}
+              </button>
+            ))}
             {sections.map((s) => (
               <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
                 <span aria-hidden="true">{SECTION_EMOJI[s] ?? SECTION_EMOJI.other}</span>

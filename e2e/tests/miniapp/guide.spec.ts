@@ -31,7 +31,7 @@ test.describe("QR отеля demoHotel01", () => {
       "#/section/shop",
       "#/section/fun",
       "#/section/ski",
-      "#/peaks",
+      "#/section/nearby",
       "#/section/transfer",
       "#/section/services",
       "#/favorites",

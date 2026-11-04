@@ -2,7 +2,7 @@
 // Порядок выдачи задаёт сервер (релевантность, реклама — по правилам C-02); клиент только помечает рекламу.
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
 import { useBackStep, useScreenState } from "../screen-state.js";
 import { loadCategories } from "./categories.js";
@@ -227,6 +227,13 @@ function CategoryPlaces({
             ))}
           </span>
         </div>
+      )}
+      {subcategories.find((c) => c.id === categoryId)?.code === "peaks" && (
+        // Подраздел «Вершини»: свой экран со сложностью, высотой и маршрутом (#/peaks).
+        <Link to="/peaks" className="kosiv-action" data-variant="ghost" data-testid="catalog-peaks">
+          <span aria-hidden="true">🏔️ </span>
+          {t("miniapp.peaks.link")}
+        </Link>
       )}
       <form role="search" onSubmit={submit} style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
         <label htmlFor="catalog-q" style={{ position: "absolute", left: -9999 }}>

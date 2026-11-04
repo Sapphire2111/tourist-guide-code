@@ -411,14 +411,14 @@ for (const [width, height, night] of [
   [320, 740, false],
   [320, 740, true],
 ] as const) {
-  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и плитки 4 в ряд, подписи без обрезки`, async ({
+  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и плитки 3 в ряд, подписи без обрезки`, async ({
     page,
   }) => {
     if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
     await page.setViewportSize({ width, height });
     await page.goto("/");
     const tiles = page.getByTestId("home-sections").getByRole("link");
-    await expect(tiles).toHaveCount(8);
+    await expect(tiles).toHaveCount(9);
     await page.evaluate(() => document.fonts.ready);
     const boxes = await tiles.evaluateAll((nodes) =>
       nodes.map((n) => {
@@ -439,20 +439,20 @@ for (const [width, height, night] of [
         };
       }),
     );
-    // Два ряда по 4 одинаковых плитки, подписи целиком внутри.
+    // Три ряда по 3 одинаковых плитки, подписи целиком внутри.
     for (const b of boxes) {
       expect(b.h).toBeGreaterThanOrEqual(44);
       expect(b.fits).toBe(true);
     }
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
     expect(new Set(boxes.map((b) => b.w)).size).toBe(1);
-    expect(new Set(boxes.map((b) => b.x)).size).toBe(4);
-    expect(new Set(boxes.map((b) => b.y)).size).toBe(2);
-    expect(new Set(boxes.slice(0, 4).map((b) => b.y)).size).toBe(1);
-    // Оба ряда видны целиком: список не обрезает плитки.
+    expect(new Set(boxes.map((b) => b.x)).size).toBe(3);
+    expect(new Set(boxes.map((b) => b.y)).size).toBe(3);
+    expect(new Set(boxes.slice(0, 3).map((b) => b.y)).size).toBe(1);
+    // Все ряды видны целиком: список не обрезает плитки.
     const edge = await page.getByTestId("home-sections").evaluate((n) => {
       const r = n.getBoundingClientRect();
-      const [first, last] = [n.querySelectorAll("a")[0]!, n.querySelectorAll("a")[7]!].map((a) =>
+      const [first, last] = [n.querySelectorAll("a")[0]!, n.querySelectorAll("a")[8]!].map((a) =>
         a.getBoundingClientRect(),
       );
       return { firstInside: first!.bottom <= r.bottom, lastInside: last!.bottom <= r.bottom + 0.5 };

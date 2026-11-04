@@ -26,6 +26,8 @@ export const CATALOG_SECTIONS = [
   "relax",
   "fun",
   "ski",
+  // «Пам'ятки» на главной: каталог корня nearby с подразделами «Природа», «Пам'ятки», «Вершини».
+  "nearby",
   "transfer",
   "services",
 ] as const;
