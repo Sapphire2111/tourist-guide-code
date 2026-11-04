@@ -854,8 +854,22 @@ export const MERGE_BLOCKING_TABLES = [
   "place_schedule_exceptions",
   "place_tags",
   "place_badge_events",
-  "place_cover_photos",
 ] as const;
+
+/**
+ * Расписание блокирует слияние, только если введено вручную. Импорт Google пишет его без своей
+ * записи в аудите (только place.import), а правка админа/партнёра (CatalogService.replaceSchedule)
+ * всегда пишет `schedule.edit` по месту. Обложки (place_cover_photos) — только google/wikimedia,
+ * их пишут автоматически, поэтому не блокируют.
+ */
+export const SCHEDULE_TABLES = ["place_schedules", "place_schedule_exceptions"] as const;
+export const MANUAL_SCHEDULE_ACTION = "schedule.edit";
+
+/** Блокирует ли строка таблицы слияние: расписание — только при ручной правке. */
+export function tableBlocksMerge(table: string, scheduleEditedManually: boolean): boolean {
+  if ((SCHEDULE_TABLES as readonly string[]).includes(table)) return scheduleEditedManually;
+  return (MERGE_BLOCKING_TABLES as readonly string[]).includes(table);
+}
 
 /** Почему слияние пропускается (в todo): главная сама уходит, не опубликована, есть блокеры осторожного режима. */
 export function mergeSkipReason(m: {
@@ -896,6 +910,18 @@ async function mergeBlockers(
     if (p) for (const why of placeMergeBlockers(p)) add(id, why);
   }
   if (!ids.length) return out;
+  const manualSchedule = new Set(
+    (
+      await trx
+        .selectFrom("audit_logs")
+        .select("entity_id")
+        .distinct()
+        .where("action", "=", MANUAL_SCHEDULE_ACTION)
+        .where("entity_type", "=", "place")
+        .where("entity_id", "in", [...ids])
+        .execute()
+    ).map((r) => r.entity_id),
+  );
   for (const table of MERGE_BLOCKING_TABLES) {
     const rows = await trx
       .selectFrom(table)
@@ -903,7 +929,9 @@ async function mergeBlockers(
       .where("place_id", "in", [...ids])
       .groupBy("place_id")
       .execute();
-    for (const r of rows) if (r.place_id) add(r.place_id, `${r.place_id}: ${table} ×${Number(r.n)}`);
+    for (const r of rows)
+      if (r.place_id && tableBlocksMerge(table, manualSchedule.has(r.place_id)))
+        add(r.place_id, `${r.place_id}: ${table} ×${Number(r.n)}`);
   }
   return out;
 }

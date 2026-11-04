@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MERGE_BLOCKING_TABLES, mergeSkipReason, pickMain, placeMergeBlockers } from "./apply.js";
+import {
+  MERGE_BLOCKING_TABLES,
+  mergeSkipReason,
+  pickMain,
+  placeMergeBlockers,
+  tableBlocksMerge,
+} from "./apply.js";
 
 describe("placeMergeBlockers", () => {
   it("место партнёра и ручное место — не сливаются автоматически; место Google — можно", () => {
@@ -16,6 +22,19 @@ describe("placeMergeBlockers", () => {
     for (const t of ["bookings", "reviews", "place_media", "place_schedules", "place_tags"])
       expect(MERGE_BLOCKING_TABLES).toContain(t);
     expect(MERGE_BLOCKING_TABLES).not.toContain("analytics_events");
+  });
+
+  it("расписание из импорта не блокирует, ручное (schedule.edit) — блокирует", () => {
+    for (const t of ["place_schedules", "place_schedule_exceptions"]) {
+      expect(tableBlocksMerge(t, false)).toBe(false);
+      expect(tableBlocksMerge(t, true)).toBe(true);
+    }
+    expect(tableBlocksMerge("bookings", false)).toBe(true);
+  });
+
+  it("обложки google/wikimedia не блокируют", () => {
+    expect(MERGE_BLOCKING_TABLES).not.toContain("place_cover_photos");
+    expect(tableBlocksMerge("place_cover_photos", false)).toBe(false);
   });
 });
 
