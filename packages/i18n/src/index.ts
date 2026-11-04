@@ -2,6 +2,7 @@
 import { en, uk, type MessageKey, type Messages } from "./messages.js";
 
 export { en, uk };
+export { isAllDay } from "./hours.js";
 export type { MessageKey, Messages };
 
 export const SUPPORTED_LOCALES = ["uk", "en"] as const;

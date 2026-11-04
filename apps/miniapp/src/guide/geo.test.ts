@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelegramLocationManager, TelegramWebApp } from "../telegram.js";
-import { canOpenLocationSettings, requestLocation, googleRouteUrl } from "./geo.js";
+import { canOpenLocationSettings, googleRouteUrl, nearestWithin, requestLocation } from "./geo.js";
 import { popupNode, type PopupData } from "./PlacesMap.js";
 
 afterEach(() => {
@@ -179,5 +179,20 @@ describe("настройки геолокации", () => {
     expect(canOpenLocationSettings(webAppWith(fakeLocationManager(), "8.0"))).toBe(true);
     expect(canOpenLocationSettings(webAppWith(fakeLocationManager(), "7.10"))).toBe(false);
     expect(canOpenLocationSettings(undefined)).toBe(false);
+  });
+});
+
+describe("nearestWithin", () => {
+  const yar = { name: "Яремче", location: { lat: 48.45, lng: 24.55 } };
+  const tat = { name: "Татарів", location: { lat: 48.35, lng: 24.58 } };
+  const none = { name: "Без точки", location: null };
+
+  it("ближайший пункт в радиусе; без координат пропускается", () => {
+    expect(nearestWithin([none, yar, tat], { lat: 48.36, lng: 24.58 }, 15_000)).toBe(tat);
+  });
+
+  it("дальше радиуса от любого пункта — null", () => {
+    expect(nearestWithin([yar, tat], { lat: 48.45, lng: 24.95 }, 15_000)).toBeNull();
+    expect(nearestWithin([], { lat: 48.45, lng: 24.55 }, 15_000)).toBeNull();
   });
 });

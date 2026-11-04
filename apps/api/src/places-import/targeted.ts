@@ -3,9 +3,10 @@
 // подходящих результатов. Места — только из ответа Google; дубли — по google place id (в прогоне и upsert в writer).
 import { readFile } from "node:fs/promises";
 import type { LonLat } from "../db/index.js";
-import { IMPORT_LOCALITIES, TARGETED_LOCALITIES, type ImportLocality } from "./config.js";
+import { IMPORT_LOCALITIES, SEARCH_ZONES, TARGETED_LOCALITIES, type ImportLocality } from "./config.js";
 import {
   GoogleRateLimitedError,
+  PlannedRequest,
   RequestLimitError,
   type GooglePlacesClient,
   type SearchTextRequest,
@@ -14,8 +15,9 @@ import {
   boundingBox,
   GOOGLE_PLACE_ID,
   haversineMeters,
+  isForeignPost,
+  localityOf,
   mapPlace,
-  nearestLocality,
   type GooglePlace,
   type MappedPlace,
 } from "./mapping.js";
@@ -160,6 +162,8 @@ export function pickResults(
       continue;
     const name = p.displayName?.text?.trim();
     if (!name) continue;
+    // Пошта: поштомати й чужі відділення (індекс/область не наші) — як у широкому імпорті.
+    if (q.category === "post" && isForeignPost(name)) continue;
     const prev = taken.get(p.id);
     if (prev) {
       out.push({ place: prev, reused: true });
@@ -167,7 +171,7 @@ export function pickResults(
     }
     const locality = q.locality
       ? ALL_LOCALITIES.find((l) => l.code === q.locality)
-      : nearestLocality({ lon, lat }, ALL_LOCALITIES);
+      : localityOf({ lon, lat }, ALL_LOCALITIES, SEARCH_ZONES);
     // Маппинг общий (контакты, график, фото, описание); категория — из запроса; пункт — заданный запросом (даже
     // вне его радиуса поиска) или ближайший; пункта нет — «на Прикарпатті», locality_id = null.
     const own: ImportLocality = {
@@ -215,6 +219,10 @@ export async function collectTargeted(
     try {
       res = await client.searchText(request);
     } catch (err) {
+      if (err instanceof PlannedRequest) {
+        outcomes.push({ query: q.query, category: q.category, found: [], missing: "оценка: нет в кэше" });
+        continue;
+      }
       if (err instanceof RequestLimitError || err instanceof GoogleRateLimitedError) {
         log(err.message);
         limitReached = true;

@@ -9,7 +9,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 4px 12px;
   border-radius: 9999px;
   border: 1.5px solid var(--app-border);

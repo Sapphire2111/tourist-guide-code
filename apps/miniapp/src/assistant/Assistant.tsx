@@ -7,7 +7,7 @@ import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
 import { useGuide } from "../guide/context.js";
-import { distanceMeters, type LatLng } from "../guide/geo.js";
+import { nearestWithin, type LatLng } from "../guide/geo.js";
 import { SortToggle, sortPlaces, type PlaceSort } from "../guide/SortToggle.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "../guide/LocationProvider.js";
 import { MapSlot, preloadMap } from "../guide/MapSlot.js";
@@ -464,21 +464,10 @@ function PlanQuestions({
   );
 }
 
-/** Ближайший к точке пункт (не дальше NEAR_LOCALITY_M) — подпись «Тільки тут (Яремче)». */
+/** Ближайший к точке пункт не дальше NEAR_LOCALITY_M — подпись «Тільки тут (Яремче)». */
 const NEAR_LOCALITY_M = 10_000;
-function nearestOption(options: readonly LocalityOption[], point: LatLng): LocalityOption | null {
-  let best: LocalityOption | null = null;
-  let bestD = NEAR_LOCALITY_M;
-  for (const o of options) {
-    if (!o.location) continue;
-    const d = distanceMeters(point, o.location);
-    if (d <= bestD) {
-      bestD = d;
-      best = o;
-    }
-  }
-  return best;
-}
+const nearestOption = (options: readonly LocalityOption[], point: LatLng) =>
+  nearestWithin(options, point, NEAR_LOCALITY_M);
 
 /** Мест в списке сразу и за нажатие «Показати ще». */
 export const PAGE_SIZE = 10;

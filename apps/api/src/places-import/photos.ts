@@ -30,6 +30,17 @@ export type PhotoStats = {
   limitReached: boolean;
 };
 
+/** Места этапа фото: при --insert-only — только вставленные этим прогоном (существующие не трогаются вовсе). */
+export function photoCandidates(
+  places: readonly MappedPlace[],
+  insertedIds: readonly string[],
+  insertOnly: boolean,
+): MappedPlace[] {
+  if (!insertOnly) return [...places];
+  const inserted = new Set(insertedIds);
+  return places.filter((p) => inserted.has(p.googlePlaceId));
+}
+
 /** Сколько фото места ещё догрузить: нужно min(2, у Google), уже есть `have`. */
 export function photosToAdd(available: number, have: number, perPlace = PHOTOS_PER_PLACE): number {
   return Math.max(0, Math.min(perPlace, available) - have);

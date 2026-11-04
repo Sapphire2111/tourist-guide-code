@@ -46,6 +46,8 @@ export type WriteStats = {
   missingExamples: string[];
   /** Места этого прогона, которые после записи не опубликованы (архив, скрыто, черновик) — реальный статус. */
   notPublished: { googlePlaceId: string; name: string; status: string }[];
+  /** google place id вставленных (новых) мест — этап фото при --insert-only берёт только их. */
+  insertedIds: string[];
 };
 
 export type WriteOptions = {
@@ -57,6 +59,11 @@ export type WriteOptions = {
   seenIds?: readonly string[];
   /** Выгрузка полная (без лимита запросов). */
   complete?: boolean;
+  /**
+   * Только новые места (дозагрузка зон, --zones-only/--insert-only): место с тем же google place id не обновляется
+   * (ON CONFLICT DO NOTHING), закрытые/отклонённые не скрываются и не архивируются.
+   */
+  insertOnly?: boolean;
   /** Населённые пункты, которые завести (по умолчанию IMPORT_LOCALITIES; точечный импорт — и TARGETED_LOCALITIES). */
   localities?: readonly ImportLocality[];
   /**
@@ -118,6 +125,7 @@ export async function writePlaces(
       missingFromGoogle: null,
       missingExamples: [],
       notPublished: [],
+      insertedIds: [],
     };
 
     const newLocalities = await trx
@@ -207,17 +215,24 @@ export async function writePlaces(
     stats.manualPlaces = Number(manual.n);
 
     for (let from = 0; from < places.length; from += BATCH) {
-      const batch = places.slice(from, from + BATCH);
-      const googleIds = batch.map((p) => p.googlePlaceId);
+      const slice = places.slice(from, from + BATCH);
       const before = new Map(
         (
           await trx
             .selectFrom("places")
             .select(["google_place_id", "category_id", "import_category_id"])
-            .where("google_place_id", "in", googleIds)
+            .where(
+              "google_place_id",
+              "in",
+              slice.map((p) => p.googlePlaceId),
+            )
             .execute()
         ).map((r) => [r.google_place_id, r]),
       );
+      // Только новые: уже известные места батча не трогаются вовсе (ни данные, ни категории, ни график).
+      const batch = options.insertOnly ? slice.filter((p) => !before.has(p.googlePlaceId)) : slice;
+      if (!batch.length) continue;
+      const googleIds = batch.map((p) => p.googlePlaceId);
       const existing = new Set(before.keys());
       for (const p of batch) {
         const b = before.get(p.googlePlaceId);
@@ -247,41 +262,48 @@ export async function writePlaces(
           })),
         )
         .onConflict((oc) =>
-          // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
-          // uk обновляет Google, переводы админки (en…) остаются.
-          oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => {
-            // Категорию ставил импорт и админка её не меняла — переразметка по новым правилам.
-            const untouched = eb("places.import_category_id", "=", eb.ref("places.category_id"));
-            return {
-              category_id: eb
-                .case()
-                .when(untouched)
-                .then(eb.ref("excluded.category_id"))
-                .else(eb.ref("places.category_id"))
-                .end(),
-              import_category_id: eb
-                .case()
-                .when(untouched)
-                // Точечный: excluded.import_category_id = NULL — место закрепляется.
-                .then(eb.ref("excluded.import_category_id"))
-                .else(eb.ref("places.import_category_id"))
-                .end(),
-              address_i18n: eb(
-                eb.fn.coalesce(eb.ref("places.address_i18n"), eb.val({} as LocalizedText)),
-                "||",
-                eb.ref("excluded.address_i18n"),
-              ),
-              location: eb.ref("excluded.location"),
-              locality_id: eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")),
-              phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
-              website: eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")),
-              verified_at: eb.ref("excluded.verified_at"),
-              last_synced_at: eb.ref("excluded.last_synced_at"),
-            };
-          }),
+          // Только новые: место, появившееся между проверкой и вставкой, не трогается.
+          options.insertOnly
+            ? oc.columns(["region_id", "google_place_id"]).doNothing()
+            : // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
+              // uk обновляет Google, переводы админки (en…) остаются.
+              oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => {
+                // Категорию ставил импорт и админка её не меняла — переразметка по новым правилам.
+                const untouched = eb("places.import_category_id", "=", eb.ref("places.category_id"));
+                return {
+                  category_id: eb
+                    .case()
+                    .when(untouched)
+                    .then(eb.ref("excluded.category_id"))
+                    .else(eb.ref("places.category_id"))
+                    .end(),
+                  import_category_id: eb
+                    .case()
+                    .when(untouched)
+                    // Точечный: excluded.import_category_id = NULL — место закрепляется.
+                    .then(eb.ref("excluded.import_category_id"))
+                    .else(eb.ref("places.import_category_id"))
+                    .end(),
+                  address_i18n: eb(
+                    eb.fn.coalesce(eb.ref("places.address_i18n"), eb.val({} as LocalizedText)),
+                    "||",
+                    eb.ref("excluded.address_i18n"),
+                  ),
+                  location: eb.ref("excluded.location"),
+                  locality_id: eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")),
+                  phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
+                  website: eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")),
+                  verified_at: eb.ref("excluded.verified_at"),
+                  last_synced_at: eb.ref("excluded.last_synced_at"),
+                };
+              }),
         )
         .returning(["id", "google_place_id", "status"])
         .execute();
+      if (options.insertOnly && rows.length !== batch.length)
+        throw new ImportWriteError(
+          "Места появились в БД во время записи (параллельный импорт?) — запись отменена, повторите",
+        );
       const placeId = new Map(rows.map((r) => [r.google_place_id!, r.id]));
       for (const r of rows)
         if (r.status !== "published")
@@ -291,7 +313,9 @@ export async function writePlaces(
             status: r.status,
           });
       stats.updated += googleIds.filter((id) => existing.has(id)).length;
-      stats.inserted += googleIds.filter((id) => !existing.has(id)).length;
+      const insertedIds = googleIds.filter((id) => !existing.has(id));
+      stats.inserted += insertedIds.length;
+      stats.insertedIds.push(...insertedIds);
 
       // Дополнительные категории импорта пересобираются (новые правила) только у мест, где основную категорию
       // ставил импорт: админка сменила категорию — набор места её, импорт его не трогает. Поставленные админкой
@@ -377,7 +401,7 @@ export async function writePlaces(
     }
 
     // Закрылись навсегда — снять с публикации (как «Приховати» в админке: suspended); архив и черновики не трогаем.
-    const closed = [...new Set(options.closedIds ?? [])];
+    const closed = options.insertOnly ? [] : [...new Set(options.closedIds ?? [])];
     for (let from = 0; from < closed.length; from += BATCH) {
       const rows = await trx
         .updateTable("places")
@@ -394,7 +418,7 @@ export async function writePlaces(
     // Уже импортированные места, которые по новым правилам не наши (метки «только пункт/бренд», поштомати, табори),
     // — в архив; только опубликованные, только если категорию ставил импорт (админка не меняла), у места нет
     // организации-партнёра и пользователи его не трогали (в журнале аудита нет действий user — как в 0020).
-    const rejected = [...new Set(options.rejectedIds ?? [])];
+    const rejected = options.insertOnly ? [] : [...new Set(options.rejectedIds ?? [])];
     for (let from = 0; from < rejected.length; from += BATCH) {
       const rows = await trx
         .updateTable("places")
@@ -423,7 +447,7 @@ export async function writePlaces(
     }
 
     // Пропавшие из выдачи — только отчёт: место могло не попасть в запросы, это не повод его скрывать.
-    if (options.complete && options.seenIds) {
+    if (options.complete && options.seenIds && !options.insertOnly) {
       const seen = new Set(options.seenIds);
       const imported = await trx
         .selectFrom("places")
@@ -443,6 +467,7 @@ export async function writePlaces(
       entityId: regionId,
       newValues: {
         source: "google",
+        ...(options.insertOnly ? { insertOnly: true } : {}),
         inserted: stats.inserted,
         updated: stats.updated,
         suspendedClosed: stats.suspendedClosed,

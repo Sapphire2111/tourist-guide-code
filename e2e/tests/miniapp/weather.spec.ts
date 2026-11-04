@@ -73,7 +73,8 @@ test.describe("погода на главной", () => {
     await page.goto("/");
     const chip = page.getByTestId("weather-chip");
     await expect(chip).toContainText("+2°");
-    await expect(chip.getByTestId("weather-place")).toHaveText("Тестовий готель");
+    await expect(chip).not.toContainText("Тестовий готель");
+    expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expect(chip).toHaveAccessibleName("Погода, Тестовий готель: Хмарно, +2°. Відкрити прогноз");
     await chip.click();
     const sheet = page.getByRole("dialog", { name: "Погода на 5 днів: Тестовий готель" });

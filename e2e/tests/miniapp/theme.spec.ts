@@ -227,7 +227,7 @@ for (const [width, height, mapHeight] of [
   });
 }
 
-test("цели нажатия: чипы категорий, пилюли радиуса и теги героя не меньше 44 px", async ({ page }) => {
+test("цели нажатия: чипы категорий, ползунок радиуса и теги героя не меньше 44 px", async ({ page }) => {
   // Видимый размер не меняется: недостающее даёт ::after (inset < 0).
   const reach = (selector: string) =>
     page.locator(selector).evaluateAll((nodes) =>
@@ -241,7 +241,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
   await page.goto("/#/nearby");
   await expect(page.locator(".modern-filters button").first()).toBeVisible();
   await animationsDone(page);
-  for (const sel of [".modern-filters button", ".modern-radius button"]) {
+  for (const sel of [".modern-filters button", ".kosiv-radius-overlay input"]) {
     const items = await reach(sel);
     expect(items.length).toBeGreaterThan(0);
     for (const i of items) expect(i.total, sel).toBeGreaterThanOrEqual(44);
@@ -449,17 +449,16 @@ for (const [width, height, night] of [
     expect(new Set(boxes.map((b) => b.x)).size).toBe(4);
     expect(new Set(boxes.map((b) => b.y)).size).toBe(2);
     expect(new Set(boxes.slice(0, 4).map((b) => b.y)).size).toBe(1);
-    // Первый ряд виден целиком, от второго — только край.
+    // Оба ряда видны целиком: список не обрезает плитки.
     const edge = await page.getByTestId("home-sections").evaluate((n) => {
       const r = n.getBoundingClientRect();
-      const [first, fifth] = [n.querySelectorAll("a")[0]!, n.querySelectorAll("a")[4]!].map((a) =>
+      const [first, last] = [n.querySelectorAll("a")[0]!, n.querySelectorAll("a")[7]!].map((a) =>
         a.getBoundingClientRect(),
       );
-      return { firstInside: first!.bottom <= r.bottom, peek: r.bottom - fifth!.top, h: fifth!.height };
+      return { firstInside: first!.bottom <= r.bottom, lastInside: last!.bottom <= r.bottom + 0.5 };
     });
     expect(edge.firstInside).toBe(true);
-    expect(edge.peek).toBeGreaterThan(10);
-    expect(edge.peek).toBeLessThan(edge.h);
+    expect(edge.lastInside).toBe(true);
     // Карточка «Що поруч зараз» — между Hero и плитками.
     const order = await page.evaluate(() => {
       const top = (id: string) => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
