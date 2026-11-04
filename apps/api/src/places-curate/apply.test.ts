@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  manualEditBlocker,
   MERGE_BLOCKING_TABLES,
   mergeSkipReason,
   pickMain,
@@ -66,5 +67,20 @@ describe("pickMain", () => {
     expect(
       pickMain([row("a", "published", 5), row("b", "published", 50), row("c", "archived", 500)]).id,
     ).toBe("b");
+  });
+});
+
+describe("manualEditBlocker", () => {
+  it("действие пользователя и чистка с названием/описанием/адресом блокируют; импорт и архив чистки — нет", () => {
+    expect(manualEditBlocker({ action: "place.edit", actor_type: "user", new_values: null })).toMatch(
+      /place\.edit/,
+    );
+    expect(
+      manualEditBlocker({ action: "place.curate", actor_type: "system", new_values: { name: "X" } }),
+    ).toMatch(/name/);
+    expect(
+      manualEditBlocker({ action: "place.curate", actor_type: "system", new_values: { status: "archived" } }),
+    ).toBeNull();
+    expect(manualEditBlocker({ action: "place.import", actor_type: "system", new_values: null })).toBeNull();
   });
 });

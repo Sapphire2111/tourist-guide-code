@@ -481,6 +481,22 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     c.archive = true;
   }
 
+  // Осторожный режим: архив без слияния (например «вне региона») — те же блокеры, что у слияния.
+  if (opts.guardMerges) {
+    const archOnly = [...changes.values()].filter((c) => c.archive && !c.mergeInto && !c.restore);
+    const archBlockers = await mergeBlockers(
+      trx,
+      archOnly.map((c) => c.id),
+      places,
+    );
+    for (const c of archOnly) {
+      const why = archBlockers.get(c.id);
+      if (!why?.length) continue;
+      c.archive = false;
+      addTodo(findingsById.get(c.id)?.[0], c.id, `архив не автоматический: ${why.join(", ")}`);
+    }
+  }
+
   // Строка «слить» у главной записи выполнена слиянием её дубля — из «не применено» убрать.
   const mains = new Set(merges.map((m) => m.main));
   for (let i = todo.length - 1; i >= 0; i--)
@@ -897,6 +913,23 @@ export function placeMergeBlockers(p: {
   return out;
 }
 
+/**
+ * Ручная правка места по записи аудита: любое действие пользователя (place.edit, schedule.edit, доп. категории…)
+ * или прошлая чистка place.curate, менявшая название/описание/адрес. Такие правки при слиянии потерялись бы.
+ */
+export function manualEditBlocker(a: {
+  action: string;
+  actor_type: string;
+  new_values: Record<string, unknown> | null;
+}): string | null {
+  if (a.actor_type === "user") return `ручная правка (${a.action})`;
+  if (a.action === CURATE_ACTION && a.new_values) {
+    const keys = ["name", "description", "address"].filter((k) => k in a.new_values!);
+    if (keys.length) return `ручная правка чисткой (${keys.join(", ")})`;
+  }
+  return null;
+}
+
 /** Почему место нельзя сливать автоматически: организация партнёра, источник не google, ссылки (таблица ×n). */
 async function mergeBlockers(
   trx: Db,
@@ -910,18 +943,34 @@ async function mergeBlockers(
     if (p) for (const why of placeMergeBlockers(p)) add(id, why);
   }
   if (!ids.length) return out;
-  const manualSchedule = new Set(
-    (
-      await trx
-        .selectFrom("audit_logs")
-        .select("entity_id")
-        .distinct()
-        .where("action", "=", MANUAL_SCHEDULE_ACTION)
-        .where("entity_type", "=", "place")
-        .where("entity_id", "in", [...ids])
-        .execute()
-    ).map((r) => r.entity_id),
-  );
+  // ParseUUIDPipe не приводит регистр — entity_id сравниваем в нижнем регистре.
+  const audits = await trx
+    .selectFrom("audit_logs")
+    .select(["entity_id", "action", "actor_type", "new_values"])
+    .where("entity_type", "=", "place")
+    .where(
+      sql<string>`lower(entity_id)`,
+      "in",
+      ids.map((i) => i.toLowerCase()),
+    )
+    .where((w) => w.or([w("actor_type", "=", "user"), w("action", "=", CURATE_ACTION)]))
+    .execute();
+  const manualSchedule = new Set<string>();
+  for (const a of audits) {
+    if (!a.entity_id) continue;
+    const id = a.entity_id.toLowerCase();
+    if (a.action === MANUAL_SCHEDULE_ACTION) manualSchedule.add(id);
+    const why = manualEditBlocker(a);
+    if (why && !out.get(id)?.some((w) => w.startsWith(`${id}: ручн`))) add(id, `${id}: ${why}`);
+  }
+  const manualExtras = await trx
+    .selectFrom("place_extra_categories")
+    .select(["place_id", (eb) => eb.fn.countAll<string>().as("n")])
+    .where("place_id", "in", [...ids])
+    .where("source", "=", "manual")
+    .groupBy("place_id")
+    .execute();
+  for (const r of manualExtras) add(r.place_id, `${r.place_id}: ручные доп. категории ×${Number(r.n)}`);
   for (const table of MERGE_BLOCKING_TABLES) {
     const rows = await trx
       .selectFrom(table)

@@ -282,6 +282,21 @@ try {
         `${JSON.stringify(report.counts)}, ссылок перенесено ${JSON.stringify(report.movedRefs)}`,
     );
     for (const l of report.leftRefs) console.log(`  осталось на дубле ${l.dup}: ${l.table} ×${l.count}`);
+    for (const f of report.scenarioFixes)
+      console.log(
+        `  пункт сценария ${f.item} (${f.scenario}): ` +
+          [
+            f.replaced ? `замена ${f.replaced.from} → ${f.replaced.to}` : null,
+            f.removedAlternatives.length ? `убраны альтернативы ${f.removedAlternatives.join(", ")}` : null,
+          ]
+            .filter(Boolean)
+            .join("; "),
+      );
+    for (const c of report.contactsMoved)
+      console.log(
+        `  контакты → ${c.name} (${c.main}) из ${c.from}: ` +
+          [c.phone && `телефон ${c.phone}`, c.website && `сайт ${c.website}`].filter(Boolean).join(", "),
+      );
     for (const t of report.todo) console.log(`  не применено: ${t.name} (${t.id}) — ${t.reason}`);
   } else console.log("\nЯвных изменений нет.");
 } catch (e) {

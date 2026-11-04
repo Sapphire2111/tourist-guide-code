@@ -127,6 +127,22 @@ describe("findDuplicatePairs", () => {
     at: north(zooA.at!, 2),
   });
 
+  it("банкомат против отделения, вложенное одно слово — не явные; банкоматы без адреса — не явные", () => {
+    const bank = place("p1", { name: "ПриватБанк", category: "banks", address: "вулиця Свободи, 5, Яремче" });
+    const atm = place("p2", {
+      name: "ПриватБанк ATM",
+      category: "banks",
+      address: "вул. Свободи, 5, Яремче",
+      at: north(bank.at!, 11),
+    });
+    expect(findDuplicatePairs([bank, atm])[0]?.verdict).toBe("disputed");
+    expect(compareNames("Карпати", "Карпати Люкс").blockers).toContain("одно название внутри другого");
+    expect(compareNames("Гуцулка", "Гуцулка Ксеня").blockers).toContain("одно название внутри другого");
+    const t1 = place("t1", { name: "Банкомат Ощадбанк", category: "banks" });
+    const t2 = place("t2", { name: "Банкомат Ощадбанк", category: "banks", at: north(t1.at!, 5) });
+    expect(findDuplicatePairs([t1, t2])[0]?.verdict).toBe("disputed");
+  });
+
   it("2 м, тот же адрес с номером, то же название, та же категория — явный", () => {
     const [p, ...rest] = findDuplicatePairs([zooA, zooB]);
     expect(rest).toEqual([]);

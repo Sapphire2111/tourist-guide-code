@@ -51,7 +51,7 @@ const STREET_PREFIX =
   /^(вулиця|вул|ул|улица|street|st|провулок|пров|переулок|пер|площа|пл|проспект|просп|урочище|ур|участок|ділянка|дорога|траса|шосе)(\.\s*|\s+)/i;
 /** «буд. 1», «будинок 5а» — номер дома; «прим. 5», «кв. 3», «офіс 2» — часть дома, не различает места. */
 const BUILDING = /^(буд|будинок|д)\.?\s*(\d.*)$/u;
-const PREMISES = /^(прим|приміщення|кв|квартира|офіс|оф|корпус|секція)(\.|\s|$)/u;
+const PREMISES = /^(прим|приміщення|кв|квартира|офіс|оф|корпус|корп|секція)(\.|\s|$)/u;
 const HOUSE_NUMBER = /^\d+\s*[\p{L}]?(\s*[/-]\s*\d+[\p{L}]?)?$/u;
 const TRAILING_NUMBER = /\s+(\d+\s*[\p{L}]?(\s*[/-]\s*\d+[\p{L}]?)?)$/u;
 
@@ -145,8 +145,12 @@ const TYPE_WORDS = new Set(
     "банкомат банкомати відділення поштомат термінал аптека таксі трансфер прокат оренда чан чани баня сауна " +
     "спа spa готель гостиница отель hotel хостел hostel садиба усадьба котедж котеджі cottage вілла villa " +
     "апартаменти apartments кафе ресторан restaurant колиба бар піцерія кавярня магазин маркет супермаркет " +
-    "ринок підйомник витяг школа музей"
+    "ринок підйомник витяг школа музей atm bankomat bankomaty отделение otdelenie viddilennia viddilennya"
   ).split(" "),
+);
+
+const KIOSK_WORDS = new Set(
+  "банкомат банкомати atm bankomat bankomaty термінал терминал поштомат почтомат".split(" "),
 );
 
 function bigrams(s: string): Map<string, number> {
@@ -211,7 +215,7 @@ export function compareNames(a: string, b: string): NameComparison {
   }
   if (x === y) return { similarity: 1, blockers };
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  if (short.includes(" ") && ` ${long} `.includes(` ${short} `)) {
+  if (` ${long} `.includes(` ${short} `)) {
     blockers.push("одно название внутри другого");
     return { similarity: 0.9, blockers };
   }
@@ -284,8 +288,15 @@ export function findDuplicatePairs(
         !(sameStreetNoNumber && sameCategory && sim >= 0.5 && d <= explicitD)
       )
         continue;
+      // Банкоматы/терминалы без адреса у обоих — одинаковые названия у разных точек сети: не явная пара.
+      const kiosk = (n: string) => nameWords(n).some((w) => KIOSK_WORDS.has(w));
+      const kioskNoAddr = (kiosk(x.p.name) || kiosk(y.p.name)) && !same;
       const explicit =
-        sameCategory && d <= explicitD && !names.blockers.length && ((same && sim >= 0.5) || sim >= 0.9);
+        !kioskNoAddr &&
+        sameCategory &&
+        d <= explicitD &&
+        !names.blockers.length &&
+        ((same && sim >= 0.5) || sim >= 0.9);
       const reason = [
         `${Math.round(d)} м`,
         same ? "адрес совпал" : sameStreetNoNumber ? "та же улица без номера" : "адрес разный/неполный",
