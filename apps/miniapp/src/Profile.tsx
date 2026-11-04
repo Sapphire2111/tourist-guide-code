@@ -4,8 +4,10 @@ import type { ApiClient } from "@tg/api-client";
 import { SUPPORTED_LOCALES, type Locale } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { clearAssistantDialog } from "./assistant/dialog-store.js";
+import { clearNavigationData } from "./back.js";
 import { messagingGranted } from "./consents.js";
 import { requestWriteAccess } from "./Entry.js";
+import { useScreenState } from "./screen-state.js";
 import type { Me } from "./session.js";
 import type { TelegramWebApp } from "./telegram.js";
 
@@ -23,7 +25,8 @@ export function Profile({
   onChange: (me: Me) => void;
 }) {
   const { t } = useT();
-  const [name, setName] = useState(me.displayName ?? "");
+  // Черновик имени переживает переход в «Мої бронювання» и обратно (только в памяти).
+  const [name, setName] = useScreenState("profile.name", me.displayName ?? "", { inMemoryOnly: true });
   const [status, setStatus] = useState<"idle" | "saved" | "error" | "noAccess">("idle");
   /** Удаление — только после второго нажатия (подтверждения). */
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -73,8 +76,11 @@ export function Profile({
   const requestData = async (kind: Kind) => {
     setConfirmDelete(false);
     const res = await api.POST("/me/privacy-requests", { body: { kind } });
-    // Запрос на удаление — локальная история ассистента вкладки тоже стирается.
-    if (kind === "delete" && !res.error) clearAssistantDialog();
+    // Запрос на удаление — локальная история ассистента и сохранённое состояние экранов вкладки тоже стираются.
+    if (kind === "delete" && !res.error) {
+      clearAssistantDialog();
+      clearNavigationData();
+    }
     done(!res.error);
     await refresh();
   };

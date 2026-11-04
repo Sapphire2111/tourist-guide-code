@@ -7,7 +7,7 @@ import { I18nProvider } from "@tg/ui";
 import { noopAnalytics } from "../guide/analytics.js";
 import { GuideProvider, noopGuideApi } from "../guide/context.js";
 import { LOCATION_STORAGE_KEY, LocationProvider } from "../guide/LocationProvider.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { consumeBack, hasBackIntercept, type TelegramWebApp } from "../telegram.js";
 import { formatTemp, WeatherChip } from "./Weather.js";
 import {
   createWeatherApi,
@@ -122,30 +122,22 @@ describe("погода на главной", () => {
     );
   });
 
-  it("«Назад» Telegram: кнопка видна, пока лист открыт, и закрывает его; смена точки не закрывает лист", async () => {
-    let onBack: (() => void) | null = null;
-    const back = {
-      show: vi.fn(),
-      hide: vi.fn(),
-      onClick: vi.fn((cb: () => void) => (onBack = cb)),
-      offClick: vi.fn(),
-    };
-    const webApp = { BackButton: back } as unknown as TelegramWebApp;
+  it("«Назад» Telegram закрывает лист (перехват для общей кнопки); смена точки не закрывает лист", async () => {
     const api = { forecast: vi.fn(async (): Promise<Forecast | null> => forecast) };
-    const { rerender } = render(tree(api, undefined, webApp));
+    const { rerender } = render(tree(api));
+    expect(hasBackIntercept()).toBe(false);
     fireEvent.click(await screen.findByTestId("weather-chip"));
-    expect(back.show).toHaveBeenCalledTimes(1);
+    expect(hasBackIntercept()).toBe(true);
     // Новая точка (сменили «Локація»): прогноз грузится — лист остаётся с прежними данными.
     api.forecast.mockImplementation(() => new Promise<Forecast | null>(() => {}));
-    rerender(tree(api, { lat: 48.34, lng: 24.57 }, webApp));
+    rerender(tree(api, { lat: 48.34, lng: 24.57 }));
     expect(api.forecast).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("dialog", { name: "Погода на 5 днів: Hotel" })).toBeTruthy();
-    // Перерисовка не перезапускает эффект листа (onClose стабилен).
-    expect(back.show).toHaveBeenCalledTimes(1);
-    act(() => onBack!());
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(back.hide).toHaveBeenCalled();
-    expect(back.offClick).toHaveBeenCalled();
+    expect(hasBackIntercept()).toBe(false);
   });
 
   describe("для какой точки прогноз", () => {
@@ -205,30 +197,33 @@ describe("погода на главной", () => {
       expect(chip.getAttribute("aria-label")).toContain("Погода, Татарів:");
     });
 
-    it("переход на город без прогноза и обратно не пересоздаёт лист: фокус на кнопке города, BackButton не мигает", async () => {
+    it("переход на город без прогноза и обратно не пересоздаёт лист: фокус на кнопке города, «Назад» не снимается", async () => {
       localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "r", ids: ["yar", "tat"] }));
-      const back = { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() };
-      const webApp = { BackButton: back } as unknown as TelegramWebApp;
       const api = {
         forecast: vi.fn(async (p: { lat: number }) => (p.lat === TAT.location.lat ? null : forecast)),
       };
-      render(located(api, null, webApp));
+      render(located(api, null));
       fireEvent.click(await screen.findByTestId("weather-chip"));
       const dialog = screen.getByRole("dialog");
+      expect(hasBackIntercept()).toBe(true);
       const tat = screen.getByRole("button", { name: "Татарів" });
       tat.focus();
       fireEvent.click(tat);
       await screen.findByText("Для «Татарів» прогнозу зараз немає.");
       expect(screen.getByRole("dialog")).toBe(dialog);
       expect(document.activeElement).toBe(tat);
+      expect(hasBackIntercept()).toBe(true);
       const yar = screen.getByRole("button", { name: "Яремче" });
       yar.focus();
       fireEvent.click(yar);
       await screen.findByRole("dialog", { name: "Погода на 5 днів: Яремче" });
       expect(screen.getByRole("dialog")).toBe(dialog);
       expect(document.activeElement).toBe(yar);
-      expect(back.show).toHaveBeenCalledTimes(1);
-      expect(back.hide).not.toHaveBeenCalled();
+      expect(hasBackIntercept()).toBe(true);
+      act(() => {
+        expect(consumeBack()).toBe(true);
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("закрытие на городе без прогноза: фокус на пилюле, та же кнопка возвращается к городу по умолчанию", async () => {

@@ -2,6 +2,7 @@
 import { useId, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
+import { useBackStep } from "../screen-state.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { useErrorText } from "../host/errors.js";
 import { orgOfPlace, useKeptAsync, usePartnerOrgs, usePartner } from "./context.js";
@@ -202,6 +203,7 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
     [api, placeId, enabled],
   );
   const [editing, setEditing] = useState<Offer | null>(null);
+  useBackStep(editing !== null, () => setEditing(null));
   const [message, setMessage] = useState<Message>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -50,6 +50,24 @@ describe("useRoute", () => {
     });
     expect(screen.getByTestId("path").textContent).toBe("/b");
   });
+
+  it("replace: без новой записи истории, state записи сохраняется, экран узнаёт о переходе", async () => {
+    function Replace() {
+      const [path, navigate] = useRoute();
+      return <Button onClick={() => navigate("/r", { replace: true })}>{path}</Button>;
+    }
+    window.history.replaceState({ mark: 1 }, "");
+    const length = window.history.length;
+    render(<Replace />);
+    await act(async () => {
+      screen.getByRole("button").click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByRole("button").textContent).toBe("/r");
+    expect(window.location.hash).toBe("#/r");
+    expect(window.history.length).toBe(length);
+    expect(window.history.state).toEqual({ mark: 1 });
+  });
 });
 
 describe("тема", () => {

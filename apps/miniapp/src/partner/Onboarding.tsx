@@ -64,7 +64,8 @@ export function PartnerOnboarding() {
               key.current = newKey();
               select({ orgId: place.organizationId, placeId: place.id });
               reloadMe();
-              navigate(`/partner/place/${place.id}`);
+              // Заменой: «Назад» не возвращает на форму, которая создала бы второе заведение.
+              navigate(`/partner/place/${place.id}`, { replace: true });
             } catch (err) {
               if (!keepsIdempotencyKey(err)) key.current = newKey();
               setMessage({ text: errorText(err, "miniapp.partner.onboarding.error"), alert: true });

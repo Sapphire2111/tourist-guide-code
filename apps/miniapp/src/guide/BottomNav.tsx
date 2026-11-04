@@ -25,6 +25,10 @@ export function BottomNav({ profile = false }: { profile?: boolean }) {
             to={i.to}
             className="kosiv-nav-item"
             aria-current={active(i.to) ? "page" : undefined}
+            // «Поруч зі мною» — та же вкладка: повторный тап не сбрасывает экран и не засоряет историю.
+            onClick={(e) => {
+              if (i.to === "/nearby" && path === "/nearby/me") e.preventDefault();
+            }}
           >
             <span className="kosiv-nav-icon" aria-hidden="true">
               {i.icon}

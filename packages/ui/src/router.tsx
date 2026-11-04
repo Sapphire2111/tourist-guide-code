@@ -22,8 +22,11 @@ export function useRoute(): [string, (to: string, opts?: { replace?: boolean }) 
     () => "/",
   );
   const navigate = useCallback((to: string, opts?: { replace?: boolean }) => {
-    if (opts?.replace) window.location.replace(`#${to}`);
-    else window.location.hash = to;
+    if (opts?.replace) {
+      // Не location.replace: он сбросил бы history.state записи (учёт истории приложения живёт в нём).
+      window.history.replaceState(window.history.state, "", `#${to}`);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    } else window.location.hash = to;
   }, []);
   return [path, navigate];
 }
