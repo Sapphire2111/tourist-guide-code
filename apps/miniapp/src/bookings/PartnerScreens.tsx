@@ -2,10 +2,11 @@
 // P05 — карточка брони с действиями (доступные переходы считает сервер по роли: allowedTransitions); ресурсы —
 // создание и правка (version, 409 versionConflict → обновить), правила доступности по дням недели, ручной статус
 // «Доступно зараз» с TTL. Телефон клиента — как отдаёт API (кассиру — нет). Экран грузится лениво.
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
+import { useBackStep, useScreenState } from "../screen-state.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { ConflictError } from "../host/types.js";
 import { orgOfPlace, useKeptAsync, usePartner } from "../partner/context.js";
@@ -70,10 +71,15 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
   const { t, locale } = useT();
   const { api, timeZone } = useBookings();
   const { abilities, gate } = useAccessGate(placeId);
-  const [day, setDay] = useState(() => today(timeZone));
-  const [resourceId, setResourceId] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [day, setDay] = useScreenState("pbooking.day", () => today(timeZone));
+  const [resourceId, setResourceId] = useScreenState("pbooking.resource", "");
+  const [openId, setOpenId] = useScreenState<string | null>("pbooking.open", null);
   const [adding, setAdding] = useState(false);
+  // Деталь брони и форма — внутри экрана: «Назад» закрывает их, а не уходит из брони.
+  useBackStep(openId !== null || adding, () => {
+    setOpenId(null);
+    setAdding(false);
+  });
   const [notice, setNotice] = useState<Message>(null);
   const ids = { day: useId(), resource: useId() };
   const [resources, reloadResources] = useKeptAsync(() => api.partnerResources(placeId), [api, placeId]);
@@ -86,6 +92,12 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
       ),
     [api, placeId, day, timeZone],
   );
+  // Брони из сохранённого открытого пункта больше нет в списке — без фантомного шага «Назад».
+  const openGone =
+    openId !== null && bookings.status === "ready" && !bookings.data.some((b) => b.id === openId);
+  useEffect(() => {
+    if (openGone) setOpenId(null);
+  }, [openGone, setOpenId]);
   if (gate || !abilities) return gate;
   const manage = abilities.manageResources;
   const open = openId && bookings.status === "ready" ? bookings.data.find((b) => b.id === openId) : undefined;
@@ -678,6 +690,7 @@ export function PartnerResources({ placeId }: { placeId: string }) {
   const { abilities, gate } = useAccessGate(placeId);
   const [state, reload] = useKeptAsync(() => api.partnerResources(placeId), [api, placeId]);
   const [editing, setEditing] = useState<{ id: string | null; part: "settings" | "rules" } | null>(null);
+  useBackStep(editing !== null, () => setEditing(null));
   const [notice, setNotice] = useState<Message>(null);
   if (gate || !abilities) return gate;
   const manage = abilities.manageResources;

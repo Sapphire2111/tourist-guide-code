@@ -132,6 +132,7 @@ export function AssistantSessionProvider({ children }: { children: ReactNode }) 
         return ui.shown === base.shown &&
           ui.dayIndex === base.dayIndex &&
           ui.scrollY === base.scrollY &&
+          ui.planId === base.planId &&
           x.ui === base
           ? x
           : { ...x, ui };

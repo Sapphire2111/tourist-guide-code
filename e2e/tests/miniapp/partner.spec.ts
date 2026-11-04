@@ -32,11 +32,14 @@ test("онбординг → редактор → отправка на моде
   await page.getByRole("radio", { name: "Готель / садиба" }).check();
   await page.getByLabel("Назва закладу").fill("Садиба «Смерека»");
   await expectNoSeriousA11yViolations(page);
+  const historyBefore = await page.evaluate(() => window.history.length);
   await page.getByRole("button", { name: "Створити заклад" }).click();
 
   // P06: черновик, незаполненные поля шаблона.
   await expect(page.getByRole("heading", { level: 1, name: "Садиба «Смерека»" })).toBeVisible();
   await expect(page.getByTestId("place-status")).toHaveText("Чернетка");
+  // Форма создания заменена: «Назад» с черновика не вернёт на неё (второе заведение).
+  expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
   await expect(page.getByTestId("missing-fields")).toHaveText(
     "Для модерації заповніть: Адреса, Телефон, Графік роботи, Фото",
   );

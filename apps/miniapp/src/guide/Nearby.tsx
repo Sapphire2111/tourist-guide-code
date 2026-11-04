@@ -2,6 +2,7 @@
 // Подпись «Поруч із вами» только при полученной геолокации, иначе «Поруч із <база>».
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useCategoryIndex } from "./categories.js";
+import { useScreenState } from "../screen-state.js";
 import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
 import { Button, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
@@ -47,7 +48,7 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   const { t, locale } = useT();
   const { webApp, base } = useGuide();
   // Карта открывается большой («full»); «Список ↓» уменьшает её и прокручивает к листу, «Розгорнути» возвращает.
-  const [mapMode, setMapMode] = useState<"full" | "split">("full");
+  const [mapMode, setMapMode] = useScreenState<"full" | "split">("nearby.mode", "full");
   const sheet = useRef<HTMLDivElement>(null);
   const modeChanged = useRef(false);
   useEffect(() => {
@@ -59,9 +60,9 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
     if (mapMode === "split") sheet.current?.scrollIntoView?.({ block: "start", behavior });
     else window.scrollTo?.({ top: 0, behavior });
   }, [mapMode]);
-  const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
+  const [radius, setRadius] = useScreenState<number>("nearby.radius", DEFAULT_RADIUS);
   /** Радиус запроса — выбранная пилюля после паузы (быстрые нажатия подряд дают один запрос). */
-  const [queryRadius, setQueryRadius] = useState<number>(DEFAULT_RADIUS);
+  const [queryRadius, setQueryRadius] = useState<number>(radius);
   useEffect(() => {
     if (radius === queryRadius) return;
     const timer = window.setTimeout(() => setQueryRadius(radius), RADIUS_DEBOUNCE_MS);
@@ -71,9 +72,17 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   useEffect(() => {
     preloadMap(locale).catch(() => undefined);
   }, [locale]);
-  const [geo, setGeo] = useState<Geo>({ status: useMyLocation ? "locating" : "idle" });
+  // Координаты устройства — только в памяти; при возврате на экран геолокация не запрашивается заново.
+  const [geo, setGeo] = useScreenState<Geo>(
+    "nearby.geo",
+    { status: useMyLocation ? "locating" : "idle" },
+    { inMemoryOnly: true },
+  );
 
+  // Запрос уже был: ушли с экрана, пока он шёл, — при возврате не спрашиваем снова без нажатия.
+  const [asked, setAsked] = useScreenState("nearby.asked", false, { inMemoryOnly: true });
   const locate = () => {
+    setAsked(true);
     setGeo({ status: "locating" });
     void requestLocation(webApp).then((point) =>
       setGeo(point ? { status: "granted", point } : { status: "denied" }),
@@ -81,7 +90,9 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
   };
   // «Що поруч зі мною зараз» с главной — запрос сразу (это и есть нажатие пользователя).
   useEffect(() => {
-    if (useMyLocation) locate();
+    if (geo.status !== "locating") return;
+    if (asked) setGeo({ status: "idle" });
+    else locate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useMyLocation]);
 
@@ -206,6 +217,7 @@ function NearbyPlaces({
         .search({ point, radius, excludeSections: OWN_MAP_SECTIONS, limit: NEARBY_LIMIT })
         .then((list) => ({ list, radius })),
     [api, point.lat, point.lng, radius],
+    { slot: "nearby.places", key: `${point.lat},${point.lng},${radius}` },
   );
   // Смена радиуса: прежний список и карта остаются до ответа (карта не пересоздаётся, тайлы не грузятся заново).
   const last = useRef<Async<NearbyResult>>(fresh);
@@ -312,7 +324,7 @@ export function ModernNearbyResults({
   const categories = useCategoryIndex(api);
   const radiusLabel = useRadiusLabel();
   const distanceLabel = useDistance();
-  const [section, setSection] = useState<HomeSection | "all">("all");
+  const [section, setSection] = useScreenState<HomeSection | "all">("nearby.section", "all");
   const sections = Array.from(
     new Set([
       ...(section === "all" ? [] : [section]),

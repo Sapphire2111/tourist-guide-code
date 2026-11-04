@@ -4,8 +4,9 @@
 // альтернативу. Экран грузится лениво (не входит в первый экран).
 import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync, useGuide } from "../guide/context.js";
+import { useBackStep, useScreenState } from "../screen-state.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError, type PlaceDetail } from "../guide/types.js";
 import { ApiCallError } from "../host/types.js";
@@ -62,14 +63,19 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const { t, locale } = useT();
   const { signedIn } = useGuide();
   const name = pickLocalized(place.name, locale);
-  const [resourceId, setResourceId] = useState(
+  const [resourceId, setResourceId] = useScreenState(
+    "booking.resource",
     () => (resources.find((r) => r.availability.availableNow) ?? resources[0])?.id ?? "",
   );
-  const [slot, setSlot] = useState<Slot | null>(null);
+  const [slot, setSlot] = useScreenState<Slot | null>("booking.slot", null);
+  // Подтверждение — только пока экран открыт: снимок статуса устарел бы, а слот в хранилище вернул бы форму.
   const [done, setDone] = useState<Booking | null>(null);
   const [notice, setNotice] = useState<Message>(null);
   // Слот «заняли» после неясного исхода прежней попытки — возможно, это наша же бронь.
   const [checkMine, setCheckMine] = useState(false);
+  // Заявка могла уйти, а исход неизвестен: без персональных данных, подсказка переживает уход с экрана и перезагрузку.
+  const [maybeOurs, setMaybeOurs] = useScreenState("booking.maybeOurs", false);
+  const [sending, setSending] = useState(false);
   const [reload, setReload] = useState(0);
   const resource = resources.find((r) => r.id === resourceId);
   const resourceLabel = useId();
@@ -111,6 +117,11 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
           </select>
         </label>
       )}
+      {(checkMine || maybeOurs) && !sending && (
+        <p data-testid="check-mine">
+          {t("miniapp.booking.checkMine")} <Link to="/bookings">{t("miniapp.booking.mine")}</Link>
+        </p>
+      )}
       {slot ? (
         <BookingForm
           place={place}
@@ -123,15 +134,17 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             setCheckMine(Boolean(maybeOurs));
             if (message) setReload((n) => n + 1);
           }}
-          onDone={setDone}
+          onAttempt={(attempt) => {
+            setSending(attempt === "sending");
+            setMaybeOurs(attempt !== "certain");
+          }}
+          onDone={(booking) => {
+            setSlot(null);
+            setDone(booking);
+          }}
         />
       ) : (
         <>
-          {checkMine && (
-            <p data-testid="check-mine">
-              {t("miniapp.booking.checkMine")} <Link to="/bookings">{t("miniapp.booking.mine")}</Link>
-            </p>
-          )}
           <SlotPicker
             key={`${resource.id}:${reload}`}
             place={place}
@@ -140,6 +153,7 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             onPick={(s) => {
               setNotice(null);
               setCheckMine(false);
+              setMaybeOurs(false);
               setSlot(s);
             }}
           />
@@ -263,6 +277,7 @@ function BookingForm({
   slot,
   canSubmit,
   onBack,
+  onAttempt,
   onDone,
 }: {
   place: PlaceDetail;
@@ -271,6 +286,8 @@ function BookingForm({
   canSubmit: boolean;
   /** Назад к слотам; message — почему (слот заняли), слоты перечитываются; maybeOurs — прежняя попытка с неясным исходом. */
   onBack: (message?: Message, maybeOurs?: boolean) => void;
+  /** Попытка отправки: идёт; исход определён; исход неизвестен (заявка могла дойти). */
+  onAttempt: (attempt: "sending" | "certain" | "uncertain") => void;
   onDone: (b: Booking) => void;
 }) {
   const { t, locale } = useT();
@@ -301,6 +318,10 @@ function BookingForm({
   const ids = { people: useId(), phone: useId(), comment: useId(), consent: useId(), name: useId() };
   const phone = normalizePhone(phoneRaw);
   const uncertain = useRef(false);
+  // Шаг формы: «Назад» — к выбору времени; пока заявка отправляется, с формы не уйти (исход ещё неизвестен).
+  useBackStep(true, () => {
+    if (!busy) onBack(undefined, uncertain.current);
+  });
   const tg = webApp as ContactWebApp | undefined;
   const user = tg?.initDataUnsafe?.user;
   const contactName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : null;
@@ -349,15 +370,18 @@ function BookingForm({
     };
     setBusy(true);
     setMessage(null);
+    onAttempt("sending");
     try {
       const created = await api.create(body, idem.keyFor(body));
       idem.settle();
+      onAttempt("certain");
       onDone(created);
     } catch (e) {
       idem.settle(e);
       setBusy(false);
       const wasUncertain = uncertain.current;
       if (keepsIdempotencyKey(e)) uncertain.current = true;
+      onAttempt(uncertain.current ? "uncertain" : "certain");
       const key = e instanceof ApiCallError ? e.messageKey : null;
       if (key === "errors.booking.slotTaken" || key === "errors.booking.slotUnavailable") {
         onBack({ text: errorText(e, "miniapp.booking.sendError"), alert: true }, wasUncertain);
@@ -407,7 +431,7 @@ function BookingForm({
             </>
           )}
         </dl>
-        <Button type="button" onClick={() => onBack()}>
+        <Button type="button" disabled={busy} onClick={() => onBack(undefined, uncertain.current)}>
           {t("miniapp.booking.changeTime")}
         </Button>
         <div>
@@ -516,6 +540,7 @@ function BookingForm({
 
 function Done({ place, booking }: { place: PlaceDetail; booking: Booking }) {
   const { t, locale } = useT();
+  const [, navigate] = useRoute();
   const { timeZone } = useBookings();
   return (
     <Stack>
@@ -532,7 +557,15 @@ function Done({ place, booking }: { place: PlaceDetail; booking: Booking }) {
           )}
         </p>
       </div>
-      <Link to="/bookings" className="kosiv-cta">
+      {/* Заменой: «Назад» из списка — не на снимок статуса и не на новую бронь того же места. */}
+      <Link
+        to="/bookings"
+        className="kosiv-cta"
+        onClick={(e) => {
+          e.preventDefault();
+          navigate("/bookings", { replace: true });
+        }}
+      >
         {t("miniapp.booking.mine")}
       </Link>
     </Stack>

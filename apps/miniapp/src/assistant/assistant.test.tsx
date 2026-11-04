@@ -10,6 +10,7 @@ import type { PlacesMapProps } from "../guide/PlacesMap.js";
 import type { GuideApi, PlaceSummary } from "../guide/types.js";
 import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
 import { takePlanPartial } from "../plan/partial-notice.js";
+import { consumeBack } from "../telegram.js";
 import { ApiCallError } from "../host/types.js";
 import { FeatureFlagsProvider } from "@tg/ui";
 import { Assistant, DIALOG_KEY } from "./Assistant.js";
@@ -24,7 +25,6 @@ import { AssistantBox } from "./AssistantBox.js";
 import { loadDialog } from "./dialog-store.js";
 import { recordMime } from "./recorder.js";
 import { AssistantSessionProvider } from "./session.js";
-import { FROM_ASSISTANT } from "../back.js";
 
 const REGION = "00000000-0000-4000-8000-0000000000a1";
 const CAFES = "00000000-0000-4000-8000-000000000102";
@@ -347,7 +347,7 @@ describe("Assistant: «Назад» из карточки", () => {
 });
 
 describe("Assistant: переход в карточку", () => {
-  it("ссылка на место из ответа — запись истории с меткой «из ассистента» (для «Назад»)", async () => {
+  it("ссылка на место из ответа — обычный переход, прокрутка ответа запомнена в диалоге", async () => {
     const api = fakeAssistant();
     render(
       <GuideProvider value={env()}>
@@ -358,9 +358,8 @@ describe("Assistant: переход в карточку", () => {
     const link = screen
       .getAllByTestId("assistant-place")[0]!
       .querySelector<HTMLAnchorElement>("a[href^='#/']")!;
-    fireEvent.click(link);
-    expect(window.location.hash).toBe(link.getAttribute("href"));
-    expect((window.history.state as Record<string, unknown>)[FROM_ASSISTANT]).toBe(true);
+    // Ссылка не перехватывается ассистентом: «Назад» идёт по общей истории (back.ts).
+    expect(fireEvent.click(link)).toBe(true);
   });
 });
 
@@ -749,7 +748,11 @@ describe("Assistant: больше мест и план", () => {
     expect(window.location.hash).toBe("#/plan/saved/plan-1");
   });
 
-  const renderWithHost = (createPlan: () => Promise<never>, updatePlan: () => Promise<never>) => {
+  const renderWithHost = (
+    createPlan: () => Promise<never>,
+    updatePlan: () => Promise<never>,
+    initialQuery: string | undefined = "план",
+  ) => {
     const host: HostEnv = {
       api: { ...noopHostApi(), createPlan, updatePlan },
       hotelPlaceId: null,
@@ -761,12 +764,44 @@ describe("Assistant: больше мест и план", () => {
       <FeatureFlagsProvider flags={{ "module.host_requests": true }}>
         <HostProvider value={host}>
           <GuideProvider value={env()}>
-            <Assistant api={fakeAssistant({ ask: async () => planResult() })} initialQuery="план" />
+            <Assistant api={fakeAssistant({ ask: async () => planResult() })} initialQuery={initialQuery} />
           </GuideProvider>
         </HostProvider>
       </FeatureFlagsProvider>,
     );
   };
+
+  it("план создан: при возврате кнопка ведёт к нему, второй не создаётся", async () => {
+    const createPlan = vi.fn(async () => ({ id: "plan-3" }) as never);
+    const updatePlan = vi.fn(async () => ({ id: "plan-3" }) as never);
+    renderWithHost(createPlan, updatePlan);
+    await flush();
+    await flush();
+    fireEvent.click(screen.getByTestId("assistant-plan-add"));
+    await flush();
+    await flush();
+    expect(createPlan).toHaveBeenCalledTimes(1);
+    // Возврат: экран смонтирован заново, диалог из хранилища.
+    cleanup();
+    window.location.hash = "#/assistant";
+    renderWithHost(createPlan, updatePlan, "");
+    await flush();
+    expect(screen.queryByTestId("assistant-plan-add")).toBeNull();
+    expect(screen.getByTestId("assistant-plan-open").getAttribute("href")).toBe("#/plan/saved/plan-3");
+    expect(createPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("пока план создаётся, «Назад» не уводит с экрана", async () => {
+    const createPlan = vi.fn(() => new Promise<never>(() => undefined));
+    renderWithHost(createPlan, vi.fn() as never);
+    await flush();
+    await flush();
+    expect(consumeBack()).toBe(false);
+    fireEvent.click(screen.getByTestId("assistant-plan-add"));
+    await flush();
+    expect(consumeBack()).toBe(true);
+    expect(createPlan).toHaveBeenCalledTimes(1);
+  });
 
   it("сбой после создания плана — открывается созданный (частичный) план, второй не создаётся", async () => {
     const createPlan = vi.fn(async () => ({ id: "plan-2" }) as never);

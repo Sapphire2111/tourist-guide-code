@@ -1,9 +1,10 @@
 // C04: раздел главной → корневая категория и её подкатегории, поиск по названию, список/карта.
 // Порядок выдачи задаёт сервер (релевантность, реклама — по правилам C-02); клиент только помечает рекламу.
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
+import { useBackStep, useScreenState } from "../screen-state.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
 import { searchAround, useLocationCaption, useLocations } from "./LocationProvider.js";
@@ -87,12 +88,18 @@ function CategoryPlaces({
   const { selected: localityIds, gps, setSheetOpen, options: localityOptions } = useLocations();
   const locationCaption = useLocationCaption();
   const rootId = root?.id;
-  const [categoryId, setCategoryId] = useState(rootId);
-  const [draft, setDraft] = useState(initialQuery);
-  const [q, setQ] = useState(initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
+  // Подраздел, запрос и вид — за записью истории: «Назад» из карточки места возвращает их как были.
+  const [savedCategory, setCategoryId] = useScreenState("catalog.category", rootId);
+  // Подраздел мог исчезнуть из справочника (другой регион после скана QR, правка каталога) — раздел целиком.
+  const categoryId =
+    savedCategory === rootId || subcategories.some((c) => c.id === savedCategory) ? savedCategory : rootId;
+  // Подраздел — ступень «Назад»: сначала к разделу целиком, затем с экрана.
+  useBackStep(categoryId !== rootId, () => setCategoryId(rootId));
+  const [draft, setDraft] = useScreenState("catalog.draft", initialQuery);
+  const [q, setQ] = useScreenState("catalog.q", initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
   // «Де жити» — карта главная (все места ночёвки сразу на карте, до STAY_MAP_MAX), список вторичен.
   const mapFirst = root?.homeSection === "stay";
-  const [view, setView] = useState<"list" | "map">(mapFirst ? "map" : "list");
+  const [view, setView] = useScreenState<"list" | "map">("catalog.view", mapFirst ? "map" : "list");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
   const point = gps ?? base?.point ?? null;
@@ -106,7 +113,7 @@ function CategoryPlaces({
   const mapCenterLabel = gps ? t("miniapp.map.me") : byLocation ? undefined : base?.name;
   // Номер отправки формы поиска: search_used — один раз на ответ именно этой отправки (не при повторе,
   // смене категории/базовой точки или отменённой загрузке). Текст запроса не отправляется (ПДн-риск).
-  const [submitId, setSubmitId] = useState(0);
+  const [submitId, setSubmitId] = useScreenState("catalog.submit", 0);
   const pendingSubmit = useRef<number | null>(null);
   const [places, retry] = useAsync(
     (signal) =>
@@ -139,6 +146,10 @@ function CategoryPlaces({
         .then(({ list, regionWide, partial }) => ({ list, regionWide, partial, submitId })),
 
     [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps],
+    {
+      slot: "catalog.places",
+      key: JSON.stringify([categoryId, q, submitId, base?.pending, point, localityIds, gps]),
+    },
   );
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;

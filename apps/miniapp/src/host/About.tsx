@@ -6,6 +6,7 @@ import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { uuidv7 } from "../guide/analytics.js";
 import { useAsync, useGuide } from "../guide/context.js";
+import { useBackStep } from "../screen-state.js";
 import { AsyncView, card, listStyle } from "../guide/parts.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { useHost } from "./context.js";
@@ -118,6 +119,8 @@ function AboutView({ module: m }: { module: HostModule }) {
   const { timeZone } = useHost();
   const requests = useFeatureFlag("module.host_requests");
   const [service, setService] = useState<HostService | null>(null);
+  // Форма заявки — внутри экрана: «Назад» закрывает её, а не уходит с «Про заклад».
+  useBackStep(service !== null, () => setService(null));
   const [sent, setSent] = useState<ServiceRequest | null>(null);
   const empty = m.sections.length === 0 && !m.wifi && !m.phone && m.services.length === 0;
   return (

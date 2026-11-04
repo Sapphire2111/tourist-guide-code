@@ -19,6 +19,8 @@ export type TelegramWebAppOptions = {
   colorScheme?: "light" | "dark";
   themeParams?: Record<string, string>;
   platform?: string;
+  /** Версия Bot API клиента (по умолчанию 8.0): старый клиент — "6.0". */
+  version?: string;
   /** Если задан — initData подписывается как настоящая (HMAC по токену бота) для будущих тестов с API. */
   botToken?: string;
 };
@@ -79,6 +81,7 @@ type InitScriptConfig = {
   colorScheme: "light" | "dark";
   themeParams: Record<string, string>;
   platform: string;
+  version: string;
 };
 
 /** Выполняется в браузере: самодостаточна, без внешних ссылок (Playwright сериализует её текст). */
@@ -130,7 +133,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
   const webApp = {
     initData: cfg.initData,
     initDataUnsafe: cfg.initDataUnsafe,
-    version: "8.0",
+    version: cfg.version,
     platform: cfg.platform,
     colorScheme: cfg.colorScheme,
     themeParams: cfg.themeParams,
@@ -140,7 +143,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
     ready: stub("ready"),
     expand: stub("expand", () => (webApp.isExpanded = true)),
     close: stub("close"),
-    isVersionAtLeast: (v: string) => Number.parseFloat(v) <= 8.0,
+    isVersionAtLeast: (v: string) => Number.parseFloat(v) <= Number.parseFloat(cfg.version),
     onEvent(event: string, cb: (payload?: unknown) => void) {
       calls.push("onEvent");
       (handlers[event] ??= []).push(cb);
@@ -193,6 +196,7 @@ export async function installTelegramWebApp(page: Page, options: TelegramWebAppO
     colorScheme: options.colorScheme ?? "light",
     themeParams: options.themeParams ?? (options.colorScheme === "dark" ? DARK_THEME : LIGHT_THEME),
     platform: options.platform ?? "android",
+    version: options.version ?? "8.0",
   });
 }
 

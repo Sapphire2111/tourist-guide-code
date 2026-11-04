@@ -12,7 +12,8 @@ import type { GuideApi, PlaceDetail } from "../guide/types.js";
 import { ApiCallError, ConflictError, NetworkError } from "../host/types.js";
 import { noopPartnerApi, PartnerProvider } from "../partner/context.js";
 import type { PartnerApi, PartnerRole } from "../partner/partner-api.js";
-import type { TelegramWebApp } from "../telegram.js";
+import { currentEntryKey, writeSlot } from "../back.js";
+import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import type { BookingsApi, PartnerBooking, PartnerResource, Resource, SlotList } from "./bookings-api.js";
 import { BookingsProvider } from "./context.js";
 import {
@@ -320,6 +321,114 @@ async function toForm() {
   fireEvent.click(screen.getByTestId("slot-pick"));
   await screen.findByTestId("booking-summary");
 }
+
+describe("C07/C08: «Назад» и повторная бронь", () => {
+  const fill = () => {
+    fireEvent.change(screen.getByLabelText("Телефон для підтвердження"), {
+      target: { value: "050 123 45 67" },
+    });
+    fireEvent.click(screen.getByTestId("phone-consent"));
+  };
+
+  it("после заявки слот не остаётся в хранилище: перезагрузка не вернёт форму на тот же слот", async () => {
+    renderWith(<BookingFlow placeId={PLACE} />, {
+      api: fakeApi({ create: vi.fn(async () => booking({ status: "pending_partner" })) }),
+    });
+    await toForm();
+    fill();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(sessionStorage.getItem("tg.nav.v1")).toContain("startsAt");
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    await screen.findByTestId("booking-done");
+    window.dispatchEvent(new Event("pagehide"));
+    const stored = JSON.parse(sessionStorage.getItem("tg.nav.v1")!) as { slots: Record<string, unknown> }[];
+    expect(stored.at(-1)!.slots["booking.slot"]).toBeNull();
+  });
+
+  it("подтверждение → «Мої бронювання» заменой: снимка статуса в истории нет", async () => {
+    renderWith(<BookingFlow placeId={PLACE} />, {
+      api: fakeApi({ create: vi.fn(async () => booking({ status: "pending_partner" })) }),
+    });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    const link = within(document.body).getByRole("link", { name: "Мої бронювання" });
+    const length = window.history.length;
+    await act(async () => fireEvent.click(link));
+    expect(window.location.hash).toBe("#/bookings");
+    expect(window.history.length).toBe(length);
+  });
+
+  it("пока заявка отправляется, «Назад» и «Змінити час» не снимают форму; неясный исход не теряется", async () => {
+    let fail: (e: unknown) => void = () => undefined;
+    const create = vi.fn(() => new Promise<never>((_, reject) => (fail = reject)));
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(create).toHaveBeenCalledTimes(1);
+    const change = screen.getByRole("button", { name: "Змінити час" }) as HTMLButtonElement;
+    expect(change.disabled).toBe(true);
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    expect(screen.getByTestId("booking-summary")).toBeTruthy();
+
+    await act(async () => fail(new NetworkError()));
+    act(() => {
+      expect(consumeBack()).toBe(true);
+    });
+    // Форма снята, но исход неизвестен: подсказка проверить «Мої бронювання».
+    expect(screen.queryByTestId("booking-summary")).toBeNull();
+    expect(await screen.findByTestId("check-mine")).toBeTruthy();
+  });
+
+  it("ушли, пока заявка отправлялась: при возврате подсказка проверить брони; определённый отказ — без неё", async () => {
+    window.history.replaceState(null, "", "#/book/x");
+    const create = vi.fn(() => new Promise<never>(() => undefined));
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(screen.queryByTestId("check-mine")).toBeNull();
+    window.location.hash = "#/help";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    cleanup();
+    const before = window.location.hash;
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.hash).not.toBe(before));
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    expect(await screen.findByTestId("check-mine")).toBeTruthy();
+    cleanup();
+    sessionStorage.clear();
+  });
+
+  it("определённый отказ сервера — подсказки нет", async () => {
+    const create = vi.fn(async () => {
+      throw new ApiCallError(400, null);
+    });
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("check-mine")).toBeNull();
+  });
+
+  it("брони из сохранённого открытого пункта нет в списке — без фантомного шага «Назад»", async () => {
+    writeSlot(currentEntryKey(), "pbooking.open", "gone");
+    renderWith(<PartnerBookings placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [partnerResource()]),
+        partnerBookings: vi.fn(async () => []),
+      }),
+    });
+    await screen.findByRole("heading", { level: 1 });
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(consumeBack()).toBe(false);
+  });
+});
 
 describe("C07/C08: бронирование", () => {
   it("занятый слот недоступен для выбора", async () => {
