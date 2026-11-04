@@ -193,10 +193,8 @@ test.describe("окно маркера", () => {
     await page.locator('.gm-fake-marker[role="button"]').nth(1).dispatchEvent("click");
     await expect(popup).toHaveCount(1);
     await expect(popup.locator("strong")).not.toHaveText(first!);
-    await page
-      .getByRole("group", { name: "Категорії місць поруч" })
-      .getByRole("button", { name: "Усі поруч" })
-      .click();
+    await page.getByTestId("nearby-filter").click();
+    await page.getByRole("dialog").getByRole("radio", { name: "Шукати все" }).click();
     await page.getByRole("slider", { name: "Радіус пошуку" }).fill("4");
     await expect(popup).toHaveCount(0);
   });

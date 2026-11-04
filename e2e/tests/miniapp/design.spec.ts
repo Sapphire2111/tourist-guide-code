@@ -42,10 +42,8 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
   await expect(radius).toHaveAttribute("aria-valuetext", "500 м");
   await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 500 м");
   await expect(page.getByRole("searchbox")).toHaveCount(0);
-  await page
-    .getByRole("group", { name: "Категорії місць поруч" })
-    .getByRole("button", { name: "Де поїсти", exact: true })
-    .click();
+  await page.getByTestId("nearby-filter").click();
+  await page.getByRole("dialog").getByRole("radio", { name: "Де поїсти", exact: true }).click();
   await expect(page.getByTestId("place-item")).toHaveCount(2);
   // «Список ↓»: карта 465 → 310 px, лист в зоне видимости; фильтры сохраняются.
   const frame = page.locator(".modern-map-stage");
@@ -53,11 +51,7 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
   await page.getByRole("button", { name: "Список ↓" }).click();
   await expect(frame).toHaveCSS("height", "310px");
   await expect(page.getByTestId("nearby-status")).toBeInViewport();
-  await expect(
-    page
-      .getByRole("group", { name: "Категорії місць поруч" })
-      .getByRole("button", { name: "Де поїсти", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("nearby-filter")).toContainText("Де поїсти");
   await expect(page.getByRole("link", { name: "Маршрут", exact: true }).first()).toHaveAttribute(
     "href",
     /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=/,
@@ -109,7 +103,7 @@ test("modern narrow screen retains working list", async ({ page }) => {
     x: chips.x + chips.width / 2,
     y: chips.y - 3,
   });
-  expect(hit).toContain("Усі поруч");
+  expect(hit).toContain("Шукати все");
 });
 test.describe("without map provider", () => {
   test.use({ googleMaps: false });

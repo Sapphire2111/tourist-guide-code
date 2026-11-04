@@ -11,6 +11,7 @@ import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js"
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
 import { AsyncView, PlaceList, useDistance } from "./parts.js";
+import { SubcategorySelect } from "./SubcategorySelect.js";
 import { RadiusSlider } from "./RadiusSlider.js";
 import { OWN_MAP_SECTIONS, type Category, type PlaceSummary, type HomeSection } from "./types.js";
 
@@ -332,29 +333,28 @@ export function ModernNearbyResults({
           {onRadius && (
             <RadiusSlider value={selectedRadius} onChange={(m) => m !== null && onRadius(m)} overlay />
           )}
-          <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
-            <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
-              <span aria-hidden="true">✦</span>
-              {t("miniapp.modern.all")}
-            </button>
-            {subs.map((c) => (
-              <button
-                type="button"
-                key={c.id}
-                aria-pressed={section === `cat:${c.id}`}
-                onClick={() => setSection(`cat:${c.id}`)}
-                data-testid={`nearby-sub-${c.code}`}
-              >
-                <span aria-hidden="true">{NEARBY_SUBS[c.code!]}</span>
-                {pickLocalized(c.name, locale)}
-              </button>
-            ))}
-            {sections.map((s) => (
-              <button type="button" key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
-                <span aria-hidden="true">{SECTION_EMOJI[s] ?? SECTION_EMOJI.other}</span>
-                {t(`miniapp.section.${s}`)}
-              </button>
-            ))}
+          <div className="modern-filters">
+            <SubcategorySelect
+              title={t("miniapp.modern.filters")}
+              testId="nearby-filter"
+              options={[
+                { id: "all", label: t("miniapp.subcategory.all"), icon: "✦" },
+                ...subs.map((c) => ({
+                  id: `cat:${c.id}`,
+                  label: pickLocalized(c.name, locale),
+                  icon: NEARBY_SUBS[c.code!],
+                })),
+                ...sections.map((x) => ({
+                  id: x,
+                  label: t(`miniapp.section.${x}`),
+                  icon: SECTION_EMOJI[x] ?? SECTION_EMOJI.other,
+                })),
+                // Справочник категорий ещё грузится: сохранённый подраздел виден как выбранный, а не «Шукати все».
+                ...(section.startsWith("cat:") && !selectedSub ? [{ id: section, label: "…" }] : []),
+              ]}
+              value={section}
+              onChange={(id) => setSection(id as NearbyFilter)}
+            />
           </div>
         </div>
         <div className="modern-map-panel">

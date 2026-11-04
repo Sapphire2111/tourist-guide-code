@@ -4,8 +4,8 @@ import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
 import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { interceptBack } from "../telegram.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
+import { useSheet } from "./use-sheet.js";
 import "./location.css";
 
 export function LocationChip() {
@@ -60,38 +60,7 @@ function LocationSheet({ onClose }: { onClose: () => void }) {
   const { t, locale } = useT();
   const { options, selected, setSelected, gps, gpsBusy, gpsFailed, selectGps } = useLocations();
   const sheetRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const sheet = sheetRef.current;
-    (
-      sheet?.querySelector<HTMLElement>("input:checked") ?? sheet?.querySelector<HTMLElement>("input")
-    )?.focus();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const releaseBack = interceptBack(onClose);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Tab" && sheetRef.current) {
-        const items = [...sheetRef.current.querySelectorAll<HTMLElement>("input, button")];
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      releaseBack();
-      opener?.focus();
-    };
-  }, [onClose]);
+  useSheet(sheetRef, onClose);
   const toggle = (id: string) =>
     setSelected(
       selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id].slice(0, LOCATION_MAX),

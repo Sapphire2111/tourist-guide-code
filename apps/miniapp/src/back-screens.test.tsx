@@ -57,7 +57,7 @@ describe("Catalog при возврате", () => {
     await mount(search as never);
     expect(search).toHaveBeenCalled();
     expect((search.mock.calls.at(-1) as unknown as [{ categoryId: string }])[0].categoryId).toBe(ROOT);
-    expect(screen.getByRole("button", { name: "Усі" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("subcategory-select").textContent).toContain("Шукати все");
   });
 
   it("сохранённый подраздел есть — применяется", async () => {
@@ -65,7 +65,7 @@ describe("Catalog при возврате", () => {
     const search = vi.fn(async () => []);
     await mount(search as never);
     expect((search.mock.calls.at(-1) as unknown as [{ categoryId: string }])[0].categoryId).toBe(SUB);
-    expect(screen.getByRole("button", { name: "Кав'ярні" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("subcategory-select").textContent).toContain("Кав'ярні");
   });
 });
 

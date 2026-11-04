@@ -24,6 +24,7 @@ import {
   type PeakSort,
 } from "./peak-list.js";
 import type { Peak, PeakDifficulty } from "./types.js";
+import { SubcategorySelect } from "./SubcategorySelect.js";
 import "./peaks.css";
 
 /** Код подкатегории «Вершини» (api: places-import/peaks.ts). */
@@ -121,27 +122,18 @@ export function PeakList({ places }: { places: PeakPlace[] }) {
   const shown = sortPeaks(filterPeaks(places, filters.includes(filter) ? filter : "all"), sort);
   return (
     <Stack>
-      <div role="group" aria-label={t("miniapp.peaks.filter")} className="peak-chips">
-        {filters.map((f) => (
-          <button
-            key={f}
-            type="button"
-            className="kosiv-toggle peak-toggle"
-            aria-pressed={f === filter}
-            data-testid={`peak-filter-${f}`}
-            onClick={() => setFilter(f)}
-          >
-            {f === "all" ? (
-              t("miniapp.peaks.filter.all")
-            ) : (
-              <>
-                <span className="peak-shape" data-shape={f} aria-hidden="true" />
-                {t(`miniapp.peaks.difficulty.${f}` as MessageKey)}
-              </>
-            )}
-          </button>
-        ))}
-      </div>
+      <SubcategorySelect
+        title={t("miniapp.peaks.filter")}
+        testId="peak-filter"
+        options={filters.map((f) => ({
+          id: f,
+          label:
+            f === "all" ? t("miniapp.peaks.filter.all") : t(`miniapp.peaks.difficulty.${f}` as MessageKey),
+          icon: f === "all" ? undefined : <span className="peak-shape" data-shape={f} />,
+        }))}
+        value={filters.includes(filter) ? filter : "all"}
+        onChange={(f) => setFilter(f as PeakFilter)}
+      />
       <div role="group" aria-label={t("miniapp.peaks.sort")} className="peak-chips">
         {SORTS.filter((s) => s !== "distance" || hasDistance).map((s) => (
           <button

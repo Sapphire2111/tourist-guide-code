@@ -78,19 +78,19 @@ html[data-theme="night"] {
   border: 2px dashed currentColor;
   box-sizing: border-box;
 }
-.peak-toggle .peak-shape[data-shape="easy"] {
+.peak-shape[data-shape="easy"] {
   color: var(--peak-easy);
 }
-.peak-toggle .peak-shape[data-shape="moderate"] {
+.peak-shape[data-shape="moderate"] {
   color: var(--peak-moderate);
 }
-.peak-toggle .peak-shape[data-shape="hard"] {
+.peak-shape[data-shape="hard"] {
   color: var(--peak-hard);
 }
-.peak-toggle .peak-shape[data-shape="expert"] {
+.peak-shape[data-shape="expert"] {
   color: var(--peak-expert);
 }
-.peak-toggle .peak-shape[data-shape="unknown"] {
+.peak-shape[data-shape="unknown"] {
   color: var(--peak-unknown);
 }
 

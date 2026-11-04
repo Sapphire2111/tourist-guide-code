@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { pickSub } from "./subcategory-test-utils.js";
 import { createApiClient, type ApiSchemas } from "@tg/api-client";
 import { clientAnalyticsBatchSchema } from "@tg/shared";
 import { createAnalytics, uuidv7, type Analytics } from "./analytics.js";
@@ -167,7 +168,7 @@ describe("каталог C04", () => {
       expect.objectContaining({ categoryId: STAY, max: STAY_MAP_MAX, signal: expect.any(AbortSignal) }),
     );
     expect(signals[0]!.aborted).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Готелі" }));
+    pickSub("Готелі");
     await flush();
     expect(search).toHaveBeenLastCalledWith(
       expect.objectContaining({ categoryId: HOTELS, max: STAY_MAP_MAX }),
@@ -191,7 +192,7 @@ describe("каталог C04", () => {
     expect(screen.getAllByTestId("badge-ad")).toHaveLength(1);
     expect(screen.getAllByTestId("badge-recommended")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Кав'ярні" }));
+    pickSub("Кав'ярні");
     await flush();
     expect(analytics.track).toHaveBeenCalledWith("category_opened", { categoryId: CAFE });
 
@@ -205,7 +206,7 @@ describe("каталог C04", () => {
     });
     expect(analytics.track).toHaveBeenCalledWith("search_used", { categoryId: CAFE, resultCount: 2 });
     // Смена подкатегории после поиска — новый запрос, но не новое search_used.
-    fireEvent.click(screen.getByRole("button", { name: "Усі" }));
+    pickSub("Шукати все");
     await flush();
     expect(analytics.track.mock.calls.filter(([e]) => e === "search_used")).toHaveLength(1);
   });
@@ -235,10 +236,13 @@ describe("каталог C04", () => {
     await flush();
     // Заголовок — «Пам'ятки», а не «Що поруч» (тот ключ — у карты и экрана «Поруч»).
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Пам'ятки");
-    for (const name of ["Природа", "Пам'ятки", "Вершини"])
-      expect(screen.getByRole("button", { name })).toBeTruthy();
+    fireEvent.click(screen.getByTestId("subcategory-select"));
+    for (const name of ["Шукати все", "Природа", "Пам'ятки", "Вершини"])
+      expect(within(screen.getByRole("dialog")).getByRole("radio", { name })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByTestId("catalog-peaks")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Вершини" }));
+    pickSub("Вершини");
     await flush();
     expect(env.api.search).toHaveBeenLastCalledWith(expect.objectContaining({ categoryId: "pk" }));
     expect(screen.getByTestId("catalog-peaks").getAttribute("href")).toBe("#/peaks");
