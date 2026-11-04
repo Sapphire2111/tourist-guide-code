@@ -498,8 +498,7 @@ html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
   display: none;
 }
 html[data-design="modern"] .wx-chip {
-  min-height: 36px;
-  max-width: 178px;
+  min-height: 44px;
   padding: 3px 10px;
   gap: 5px;
   background-color: var(--pill-bg);
@@ -508,14 +507,6 @@ html[data-design="modern"] .wx-chip {
   border-radius: 9999px;
   box-shadow: 0 4px 12px rgb(7 21 16 / 18%);
   font-size: 13px;
-}
-.wx-chip-place {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-  font-size: 12px;
 }
 .wx-places {
   display: flex;
