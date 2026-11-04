@@ -19,14 +19,39 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
   // Одна сетка 2×4 одинаковых плиток; тон — шахматным порядком (тёмные: кофейный и изумрудный, светлые: крем и мята).
   // «Допомога» — кнопка со щитом в верхней полосе (Chrome.tsx), не плитка.
   const tiles = [
-    { section: "stay", label: t("miniapp.section.stay"), tone: "emerald" },
-    { section: "eat", label: t("miniapp.modern.eat"), tone: "cream" },
-    { section: "relax", label: t("miniapp.modern.relax"), tone: "mint" },
-    { section: "shop", label: t("miniapp.section.shop"), tone: "coffee" },
-    { section: "fun", label: t("miniapp.modern.fun"), tone: "emerald" },
-    { section: "ski", label: t("miniapp.section.ski"), tone: "cream" },
-    { section: "transfer", label: t("miniapp.section.transfer"), tone: "mint" },
-    { section: "services", label: t("miniapp.section.services"), tone: "coffee" },
+    {
+      section: "stay",
+      label: t("miniapp.section.stay"),
+      hint: t("miniapp.section.stayHint"),
+      tone: "emerald",
+    },
+    { section: "eat", label: t("miniapp.modern.eat"), hint: t("miniapp.section.eatHint"), tone: "cream" },
+    {
+      section: "relax",
+      label: t("miniapp.modern.relax"),
+      hint: t("miniapp.section.relaxHint"),
+      tone: "mint",
+    },
+    {
+      section: "shop",
+      label: t("miniapp.section.shop"),
+      hint: t("miniapp.section.shopHint"),
+      tone: "coffee",
+    },
+    { section: "fun", label: t("miniapp.modern.fun"), hint: t("miniapp.section.funHint"), tone: "emerald" },
+    { section: "ski", label: t("miniapp.section.ski"), hint: t("miniapp.section.skiHint"), tone: "cream" },
+    {
+      section: "transfer",
+      label: t("miniapp.section.transfer"),
+      hint: t("miniapp.section.transferHint"),
+      tone: "mint",
+    },
+    {
+      section: "services",
+      label: t("miniapp.section.services"),
+      hint: t("miniapp.section.servicesHint"),
+      tone: "coffee",
+    },
   ] as const;
   return (
     <section className="modern-home" aria-labelledby="sections-title">
@@ -58,14 +83,16 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
       </Link>
       <nav aria-labelledby="sections-title">
         <ul className="modern-intentions" data-testid="home-sections">
-          {tiles.map(({ section, label, tone }) => (
+          {tiles.map(({ section, label, hint, tone }) => (
             <li key={section}>
               <Link to={sectionPath(section)} className="modern-intention" data-tone={tone}>
                 {ICONS[section]}
                 <span>
                   {label}
-                  {section === "stay" && (
-                    <small data-testid="tile-hint-stay">{t("miniapp.section.stayHint")}</small>
+                  {section === "stay" ? (
+                    <small data-testid="tile-hint-stay">{hint}</small>
+                  ) : (
+                    <small aria-hidden="true">{hint}</small>
                   )}
                 </span>
                 {ICONS.arrow}
