@@ -616,7 +616,8 @@ html[data-design="modern"] .modern-hero h2#sections-title {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 14px 12px;
+  /* Поля не меньше выхода колец микрофона (.mic-waves, до ~10 px), иначе overflow срезает их. */
+  padding: 14px;
   border-radius: 24px;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -798,77 +799,22 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   color: var(--f-sub);
 }
 
-/* Плитки: 4 в ряд, остальные ряды — внутри блока, ряд за рядом: стрелка, короткий свайп, фокус клавиатуры. Виден край
-   следующего ряда. overflow: hidden, а не auto: нативная прокрутка съедала бы весь жест ради ~40 px хода, а так свайп
-   по блоку сразу и всегда листает страницу (HomeSections.tsx). */
+/* Плитки: 4 в ряд, все ряды видны целиком (HomeSections.tsx). */
 .modern-tiles {
-  position: relative;
   --tile-h: 64px;
   --tile-gap: 6px;
-  --tile-peek: 22px;
 }
 .modern-intentions {
   list-style: none;
-  box-sizing: content-box;
-  height: calc(var(--tile-h) + var(--tile-gap) + var(--tile-peek));
-  margin: -3px;
-  padding: 3px;
+  margin: 0;
+  padding: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: var(--tile-h);
   gap: var(--tile-gap);
-  overflow: hidden;
-  scrollbar-width: none;
-  scroll-snap-type: y mandatory;
-  scroll-padding: 3px 0;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-}
-.modern-intentions::-webkit-scrollbar {
-  display: none;
 }
 .modern-intentions > li {
   min-width: 0;
-  scroll-snap-align: start;
-}
-.modern-tiles[data-more="true"] .modern-intentions {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
-}
-.modern-tiles[data-more="false"] .modern-intentions {
-  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
-  mask-image: linear-gradient(to top, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
-}
-/* Стрелка: 30×18 на виду, цель 44×44 за счёт ::after. Внизу — следующий ряд, в конце — вверху и назад. */
-.modern-tiles-more {
-  position: absolute;
-  left: 50%;
-  bottom: -2px;
-  z-index: 1;
-  box-sizing: border-box;
-  width: 30px;
-  height: 18px;
-  margin: 0 0 0 -15px;
-  padding: 0;
-  border: 1px solid rgb(246 174 45 / 45%);
-  border-radius: 9999px;
-  background: #16382b
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8'%3E%3Cpath d='M1.5 1.5l5.5 5 5.5-5' fill='none' stroke='%23F6AE2D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
-    center no-repeat;
-  cursor: pointer;
-}
-.modern-tiles-more::after {
-  content: "";
-  position: absolute;
-  inset: -13px -7px;
-}
-.modern-tiles[data-more="false"] .modern-tiles-more {
-  top: -2px;
-  bottom: auto;
-  transform: rotate(180deg);
-}
-html[data-design="modern"] .modern-tiles-more:focus-visible {
-  outline-color: #f6ae2d;
 }
 .modern-intention {
   height: 100%;

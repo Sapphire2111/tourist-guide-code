@@ -210,7 +210,7 @@ describe("таблица типов → категорий", () => {
       expect(known.has(code), code).toBe(true);
   });
 
-  it("корень «Сервіси» — в seed без подкатегорий, подкатегории заводит импорт", () => {
+  it("корень «Послуги» — в seed без подкатегорий, подкатегории заводит импорт", () => {
     const services = SEED_CATEGORIES.find((c) => c.code === "services")!;
     expect(services.home).toBe("services");
     expect(IMPORT_EXTRA_CATEGORIES.filter((c) => c.parent === "services").map((c) => c.code)).toEqual([
