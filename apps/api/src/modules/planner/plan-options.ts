@@ -92,8 +92,8 @@ const SLOT_CATEGORIES: Record<PlanSlot, readonly string[]> = {
     "souvenirs",
     "markets",
   ],
-  // «Для дорослих» (боулінг, караоке, клуби) — вечером и только без детей (adultsOnly).
-  evening: ["restaurants", "kolyby", "chany", "spa", "cafes", "adult-fun"],
+  // «Для дорослих» (боулінг, караоке, клуби) и «Бари» — вечером и только без детей (adultsOnly).
+  evening: ["restaurants", "kolyby", "chany", "spa", "cafes", "bars", "adult-fun"],
   // Под крышей: музеи, кафе, ресторации, чаны и SPA, сувенирные лавки; аттракционы — только с тегом «У дощ».
   rain: ["museums", "cafes", "restaurants", "kolyby", "chany", "spa", "souvenirs", "stores"],
 };
@@ -103,11 +103,19 @@ const KIDS_FIRST = new Set(["kids", "museums", "entertainment", "nature", "sight
 
 const L = "\\p{L}";
 const word = (src: string) => new RegExp(`(^|[^${L}])(${src})([^${L}]|$)`, "iu");
-const WATERFALL_RE = /водоспад|waterfall/iu;
-/** Бар, паб, винний чи коктейль-бар — у Google это тип bar/pub, у нас категория cafes (mapping.ts). */
+/** Водоспад за назвою Google; «Вдсп», «вдсп.» — скорочення на мітках карти (як NATURE_NAME у mapping.ts). */
+const WATERFALL_RE = /водоспад|waterfall|(^|[^\p{L}])вдсп(?!\p{L})/iu;
+/**
+ * Бар за назвою для категорії «Кафе»: паб, пивна, винний чи коктейль-бар, кальянна, лаунж. Імпорт (mapping.ts) кладе
+ * Google bar/pub/wine_bar/cocktail_bar/hookah_bar і кафе з «кальян/lounge/паб» у назві в «Бари» (bars); тут — решта
+ * кафе з барною назвою («Пивний бар» з типом cafe).
+ */
 const BAR_RE = word(
-  "бар|bar|паб|pub|пивн\\p{L}*|beer|винн\\p{L}*|wine|cocktail|коктейль\\p{L}*|lounge|лаунж",
+  "бар|bar|паб|pub|пивн\\p{L}*|beer|винн\\p{L}*|wine|cocktail|коктейль\\p{L}*|lounge|лаунж|кальян\\p{L}*|hookah|shisha",
 );
+/** «Кава-бар», «суші-бар», «фреш-бар», «десерт-бар» — кафе, а не бар (не «тільки дорослим» і не лише ввечері). */
+const FOOD_BAR_RE =
+  /(кав\p{L}*|coffee|кофе|espresso|еспресо|суші|суши|sushi|фреш\p{L}*|fresh|смузі|smoothie|салат\p{L}*|salad|десерт\p{L}*|dessert|морозив\p{L}*|молочн\p{L}*|milk|сніданк\p{L}*|breakfast|веган\p{L}*|vegan|чай\p{L}*|tea)[\s-]*(бар|bar)(?!\p{L})/iu;
 /** Ночная жизнь — не для детей в любой категории. */
 const NIGHTLIFE_RE = /нічн\p{L}*\s+клуб|night\s*club|кальян|hookah|стрип|strip/iu;
 /** ТРЦ/ТЦ — под крышей; прочие магазины в «якщо дощ» не предлагаем. */
@@ -116,11 +124,13 @@ const MALL_RE = word("трц|тц|mall|торгов\\p{L}*\\s+центр");
 export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKind {
   if ((p.category === "nature" || p.category === "sights") && p.names.some((n) => WATERFALL_RE.test(n)))
     return "waterfall";
-  if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n))) return "bar";
+  // «Бари» (bars) — бар по категории импорта; кафе — по названию.
+  if (p.category === "bars") return "bar";
+  if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n) && !FOOD_BAR_RE.test(n))) return "bar";
   return p.category;
 }
 
-/** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
+/** Не для детей: бары (категория «Бари» и кафе-бары), ночная жизнь и «Для дорослих» (категория и название). */
 export function adultsOnly(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
   return (
     categoriesOf(p).includes("adult-fun") ||
@@ -144,6 +154,8 @@ function reasonOf(slot: PlanSlot, category: string): OptionReason {
   switch (category) {
     case "cafes":
       return slot === "morning" ? "breakfast" : "evening_out";
+    case "bars":
+      return "evening_out";
     case "restaurants":
     case "kolyby":
       return slot === "evening" ? "dinner" : "lunch";
@@ -187,6 +199,8 @@ function slotCategory(p: CatalogPlace, slot: PlanSlot): string {
 }
 
 function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
+  // Бар («Бари» или кафе-бар) — только вечером: не сніданок, не обід и не «якщо дощ».
+  if (placeKind(p) === "bar") return slot === "evening";
   const cats = categoriesOf(p);
   if (slot !== "rain") return cats.some((c) => SLOT_CATEGORIES[slot].includes(c));
   if (p.tags.includes("rainy-day")) return true;

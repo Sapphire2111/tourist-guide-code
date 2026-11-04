@@ -290,3 +290,44 @@ describe("«Вершини» в плане", () => {
     expect(ids("winter")).not.toContain(P(1));
   });
 });
+
+describe("«Бари» в плане", () => {
+  it("категория bars — бар и «тільки дорослим»; кафе-бар — по названию (и кальянна), кава-бар — кафе", () => {
+    expect(placeKind({ category: "bars", names: ["Гуцул Паб"] })).toBe("bar");
+    expect(adultsOnly({ category: "bars", names: ["Винотека"] })).toBe(true);
+    expect(placeKind({ category: "cafes", names: ["Кальянна Дим"] })).toBe("bar");
+    expect(placeKind({ category: "cafes", names: ["Кава-бар «Зерно»"] })).toBe("cafes");
+    expect(placeKind({ category: "cafes", names: ["Coffee bar"] })).toBe("cafes");
+    expect(placeKind({ category: "cafes", names: ["Суші бар Токіо"] })).toBe("cafes");
+    expect(adultsOnly({ category: "cafes", names: ["Кава-бар"] })).toBe(false);
+  });
+
+  it("бар — только вечером (причина evening_out); утром, днём и «якщо дощ» — нет; с детьми — нет", () => {
+    const places = [
+      place(1, "bars", 100, { names: ["Pub 21"] }),
+      place(2, "cafes", 150, { names: ["Пивний бар"] }),
+      place(3, "cafes", 200),
+      place(4, "restaurants", 200),
+    ];
+    for (const slot of ["morning", "afternoon", "rain"] as const) {
+      const ids = slotOptions(slot, BASE, places, car, new Set()).map((o) => o.placeId);
+      expect(ids).not.toContain(P(1));
+      expect(ids).not.toContain(P(2));
+    }
+    const evening = slotOptions("evening", BASE, places, car, new Set());
+    expect(evening.find((o) => o.placeId === P(1))).toMatchObject({ kind: "bar", reason: "evening_out" });
+    expect(evening.map((o) => o.placeId)).toContain(P(2));
+    const withKids = slotOptions("evening", BASE, places, kids, new Set()).map((o) => o.placeId);
+    expect(withKids).not.toContain(P(1));
+    expect(withKids).not.toContain(P(2));
+  });
+});
+
+describe("«Вдсп» — водоспад", () => {
+  it("скорочення «Вдсп»/«вдсп.» у назві — водоспад; слово з «вдсп» усередині — ні", () => {
+    expect(placeKind({ category: "nature", names: ["Вдсп Женецький Гук"] })).toBe("waterfall");
+    expect(placeKind({ category: "sights", names: ["вдсп.Капливець"] })).toBe("waterfall");
+    expect(placeKind({ category: "nature", names: ["Твдсп"] })).toBe("nature");
+    expect(placeKind({ category: "stores", names: ["Вдсп"] })).toBe("stores");
+  });
+});

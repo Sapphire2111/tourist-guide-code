@@ -297,6 +297,39 @@ describe("проверка сценария", () => {
   });
 });
 
+describe("«Вершини» и «Бари» в сценариях", () => {
+  const turkul = place("peaks", "Туркул", 600);
+  const pub = place("bars", "Гуцул Паб", 900);
+
+  it("кандидаты: вершина и бар — пункты плана; бар — не с детьми; вершина — не зимой", () => {
+    expect(fitsBrief(turkul, brief("peak"))).toBe(true);
+    expect(fitsBrief(turkul, brief("peak", { seasons: ["winter"] }))).toBe(false);
+    expect(fitsBrief(pub, brief("romantic"))).toBe(true);
+    expect(fitsBrief(pub, brief("kids"))).toBe(false);
+    expect(pub.kind).toBe("bar");
+    expect(pub.adultsOnly).toBe(true);
+  });
+
+  it("вершина — лише зранку, бар — лише ввечері", () => {
+    const set = setOf([turkul, lunch, pub]);
+    const errs = (r: { errors: string[] }) => r.errors.join(" | ");
+    const late = validateScenario(
+      brief("peak"),
+      set,
+      scenario([item("p2", "11:30", 75), item("p1", "13:00", 240), item("p3", "18:30", 90)]),
+    );
+    expect(errs(late)).toMatch(/вершина — лише зранку/);
+    expect(errs(late)).not.toMatch(/бар — лише ввечері/);
+    const day = validateScenario(
+      brief("peak"),
+      set,
+      scenario([item("p1", "08:00", 240), item("p3", "13:00", 60), item("p2", "14:30", 75)]),
+    );
+    expect(errs(day)).toMatch(/бар — лише ввечері/);
+    expect(errs(day)).not.toMatch(/вершина — лише зранку/);
+  });
+});
+
 describe("генерация", () => {
   const set = setOf([probii, lunch, chan]);
   const good = scenario([item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)]);

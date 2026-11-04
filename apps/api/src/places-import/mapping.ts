@@ -989,8 +989,8 @@ const AMENITY_TAGS: Readonly<Record<string, string>> = {
   vegetarian: "vegetarian",
 };
 /**
- * Під дахом — «У дощ»: музеї, SPA, чани й сауни, заклади харчування. Без барів: планувальник ловить «тільки дорослим»
- * лише в кафе (BAR_RE) — бар з «У дощ» потрапив би в план з дітьми.
+ * Під дахом — «У дощ»: музеї, SPA, чани й сауни, заклади харчування. Без барів: бар у плані — лише ввечері й не з дітьми
+ * (plan-options: placeKind «bar», adultsOnly), а не запасний варіант «якщо дощ».
  */
 const RAINY_DAY_CATEGORIES: ReadonlySet<string> = new Set([
   "museums",

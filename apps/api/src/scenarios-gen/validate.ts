@@ -34,6 +34,10 @@ export const DAY_ACTIVE_MAX_MIN = 13 * 60;
 export const BIG_MIN = 240;
 /** Большой поход начинается не позже, хв от полуночи (10:00). */
 export const BIG_START_MAX = 10 * 60;
+/** «Вершини» — лише зранку (як «Мій план»: ранок — до 12:00): старт сходження раніше, хв від полуночі. */
+export const PEAK_START_MAX = 12 * 60;
+/** Бар (категорія «Бари» чи кафе-бар) — лише ввечері (як «Мій план»: вечір — від 17:00), хв від полуночі. */
+export const BAR_START_MIN = 17 * 60;
 /** Без авто — между соседними пунктами не дальше, м по прямой. */
 export const FOOT_HOP_MAX_M = 2_500;
 /** На авто — не дальше, м по прямой. */
@@ -313,6 +317,12 @@ export function validateScenario(b: Brief, set: CandidateSet, gen: GenScenario):
             `${it.ref} (${place.name}): похід ${minutes} хв має починатися до 10:00, а не о ${fromMin(at)}`,
           );
       }
+      if (place.category === "peaks" && at >= PEAK_START_MAX)
+        errors.push(
+          `${it.ref} (${place.name}): вершина — лише зранку (старт до 12:00), а не о ${fromMin(at)}`,
+        );
+      if (place.kind === "bar" && at < BAR_START_MIN)
+        errors.push(`${it.ref} (${place.name}): бар — лише ввечері (від 17:00), а не о ${fromMin(at)}`);
       const isMeal = (MEAL_CATEGORIES as readonly string[]).includes(place.category);
       if (isMeal) meal = true;
       if (isMeal && at >= LUNCH_WINDOW.from && at <= LUNCH_WINDOW.to) lunch = true;

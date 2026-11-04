@@ -13,6 +13,8 @@ export const INDOOR_CATEGORIES = ["museums", ...MEAL_CATEGORIES, ...RELAX_CATEGO
 /** Категории, из которых строится день (сервисы — аптеки, такси, АЗС — не пункты плана). */
 const PLAN_CATEGORIES = new Set([
   "nature",
+  // «Вершини» — лише зранку (validate: PEAK_START_MAX), як у «Мій план».
+  "peaks",
   "sights",
   "museums",
   "excursions",
@@ -27,6 +29,8 @@ const PLAN_CATEGORIES = new Set([
   "gear-rental",
   ...MEAL_CATEGORIES,
   ...RELAX_CATEGORIES,
+  // «Бари» — лише ввечері (validate: BAR_START_MIN) і не з дітьми (adultsOnly).
+  "bars",
   "markets",
   "souvenirs",
 ]);
