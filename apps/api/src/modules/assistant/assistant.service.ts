@@ -111,6 +111,10 @@ export type AssistantQuery = {
   answer?: boolean;
 };
 
+/** Названное место: кандидатов по названию в регионе и сколько из них показать первыми. */
+const NAMED_CANDIDATES = 40;
+const NAMED_MAX = 5;
+
 /** Кандидатов на категорию и пункт при поиске в населённом пункте. */
 const CANDIDATES_WITH_LOCALITY = 50;
 
@@ -216,6 +220,57 @@ function nameTier(p: PlaceSummaryDto, query: string): number {
     .map((n) => n.toLocaleLowerCase("uk"));
   if (names.some((n) => n.startsWith(q))) return 0;
   return names.some((n) => n.includes(q)) ? 1 : 2;
+}
+
+/** Апострофы (’ ʼ ` ') — один знак: «Хом'як» = «Хомʼяк». */
+const normName = (s: string) => s.toLocaleLowerCase("uk").replace(/[’ʼ`'‘]/g, "'");
+/** Родовое слово в названии («водоспад Гук», «гора Говерла») — не обязательно: в каталоге «Говерла» без «гора». */
+const GENERIC_STEMS = new Set([
+  "водоспад",
+  "гор",
+  "вершин",
+  "озер",
+  "урочищ",
+  "скел",
+  "печер",
+  "річк",
+  "перевал",
+  "полонин",
+  "хребет",
+]);
+/** Служебные слова запроса — не часть названия. */
+const STOP_STEMS = new Set(["біл", "від", "через", "під", "над", "для"]);
+/** Окончания падежей (uk): «Гуку» → «гук», «Женецького» → «женецьк», «Говерлу» → «говерл». */
+const ENDING_RE = /(ого|ому|ими|ій|ої|ою|ий|ом|ам|ах|ів|у|ю|а|я|і|и|е|й|ь)$/u;
+
+/** Основы слов названия для поиска без учёта падежа: обязательные (не родовые), не короче 3 букв. */
+export function nameStems(query: string): string[] {
+  const words = stemWords(query);
+  const required = words.filter((w) => !GENERIC_STEMS.has(w));
+  return [...new Set(required.length ? required : words)];
+}
+
+/** Родовые слова запроса («водоспад», «гора»): с ними — предпочтительнее (водоспад Гук, а не гора Гук). */
+function genericStems(query: string): string[] {
+  return [...new Set(stemWords(query).filter((w) => GENERIC_STEMS.has(w)))];
+}
+
+function stemWords(query: string): string[] {
+  return normName(query)
+    .split(/[^\p{L}']+/u)
+    .filter(Boolean)
+    .map((w) => {
+      const stem = w.length >= 4 ? w.replace(ENDING_RE, "") : w;
+      return stem.length >= 3 ? stem : w;
+    })
+    .filter((w) => w.length >= 3 && !STOP_STEMS.has(w));
+}
+
+/** Название содержит все основы запроса. */
+function nameHasStems(p: PlaceSummaryDto, stems: readonly string[]): boolean {
+  return Object.values(p.name).some(
+    (n) => typeof n === "string" && stems.every((s) => normName(n).includes(s)),
+  );
 }
 
 /** По рейтингу Google (больше отзывов — выше при равном), без рейтинга — в конце; иначе — порядок как был. */
@@ -468,6 +523,29 @@ export class AssistantService {
     return { found: page.items, relevance: new Map(matches.map((m) => [m.id, m.score])), notes };
   }
 
+  /** Места по названию во всём регионе (без категории, пункта и радиуса), падеж не важен: «Женецького Гуку». */
+  private async byName(
+    regionId: string,
+    query: string,
+    origin: LonLat | undefined,
+  ): Promise<PlaceSummaryDto[]> {
+    const stems = nameStems(query);
+    if (!stems.length) return [];
+    // В ILIKE — самая длинная основа без апострофа (его написание в каталоге разное), остальное — проверкой здесь.
+    const probe = stems.flatMap((s) => s.split("'")).sort((a, b) => b.length - a.length)[0]!;
+    if (probe.length < 3) return [];
+    const page = await this.guide.search(regionId, {
+      origin,
+      text: probe,
+      limit: NAMED_CANDIDATES,
+      offset: 0,
+    });
+    const matched = page.items.filter((p) => nameHasStems(p, stems));
+    const generic = genericStems(query);
+    const exact = generic.length ? matched.filter((p) => nameHasStems(p, generic)) : [];
+    return (exact.length ? exact : matched).slice(0, NAMED_MAX);
+  }
+
   /** Места каталога по намерению: поиск по категориям или ключевым словам, фильтры и порядок, описания из обогащения. */
   private async select(
     regionId: string,
@@ -528,6 +606,25 @@ export class AssistantService {
       notes.push(...k.notes);
     }
 
+    // Названное место («водоспад Гук», «Говерла») — по названию во всём регионе, без пункта и радиуса: вершины и
+    // водопады вне населённых пунктов (locality_id null) иначе отсекает выбор «Локація» или радиус.
+    let named = new Set<string>();
+    let namedInSection = new Set<string>();
+    if (intent.nameQuery && !isKnownKeyword(intent.nameQuery)) {
+      const byName = await this.byName(regionId, intent.nameQuery, origin);
+      if (byName.length) {
+        const sections = new Set(this.sectionsOf(intent.categories, catalog));
+        const inSection = (p: PlaceSummaryDto) =>
+          sections.has(catalog.rootOf.get(p.categoryId) ?? p.categoryId);
+        // Своего раздела («водоспад» — природа) — выше таксі «…Водоспад Гук Трансфер».
+        const sorted = [...byName.filter(inSection), ...byName.filter((p) => !inSection(p))];
+        named = new Set(sorted.map((p) => p.id));
+        namedInSection = new Set(byName.filter(inSection).map((p) => p.id));
+        found = [...sorted, ...found.filter((p) => !named.has(p.id))];
+        if (relevance) relevance = new Map([...relevance, ...sorted.map((p, i) => [p.id, 100 - i] as const)]);
+      }
+    }
+
     if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
     if (intent.openNow) {
       const open = found.filter((p) => p.openNow === true);
@@ -561,7 +658,12 @@ export class AssistantService {
     const ordered = intent.kind === "places";
     if (ordered && intent.sort === "rating") found = byRating(found, enrichment);
     else if (ordered && origin) {
-      const tier = (p: PlaceSummaryDto) => (intent.nameQuery ? nameTier(p, intent.nameQuery) : 0);
+      // Найденные по названию (основы слов) — выше совпавших только по адресу.
+      // Своего раздела — выше (водоспад, а не таксі «…Водоспад Гук»); внутри — начало названия, затем расстояние.
+      const tier = (p: PlaceSummaryDto) =>
+        intent.nameQuery
+          ? (named.has(p.id) ? (namedInSection.has(p.id) ? 0 : 1) : 2) + nameTier(p, intent.nameQuery) / 10
+          : 0;
       found = [...found].sort(
         (a, b) => tier(a) - tier(b) || (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity),
       );
@@ -581,6 +683,12 @@ export class AssistantService {
       items = [...items.filter((i) => i.kidsFriendly), ...items.filter((i) => !i.kidsFriendly)];
 
     if (intent.kind === "tour") {
+      // Экскурсия к названному месту — оно среди остановок.
+      if (named.size)
+        items = [
+          ...items.filter((i) => named.has(i.place.id)),
+          ...items.filter((i) => !named.has(i.place.id)),
+        ];
       const stops = items.slice(0, ASSISTANT_TOUR_STOPS).map((i) => ({ ...i, location: i.place.location }));
       const { ordered, lengthMeters } = orderRoute(stops, origin);
       return {

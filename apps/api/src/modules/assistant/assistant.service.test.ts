@@ -7,7 +7,13 @@ import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto, ScheduleRows } from "../guide/index.js";
 import type { AssistantRepository, KeywordQuery, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
-import { AssistantService, describe as describePlace, shorten, wantsBest } from "./assistant.service.js";
+import {
+  AssistantService,
+  describe as describePlace,
+  nameStems,
+  shorten,
+  wantsBest,
+} from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
@@ -99,6 +105,7 @@ type SearchArg = {
   categoryId?: string;
   ids?: readonly string[];
   radius?: number;
+  text?: string;
 };
 
 function setup(
@@ -1338,5 +1345,70 @@ describe("describe / shorten", () => {
     expect(s.length).toBeLessThanOrEqual(100);
     expect(s.endsWith(".")).toBe(true);
     expect(shorten("слово ".repeat(40), 50).endsWith("…")).toBe(true);
+  });
+});
+
+describe("названное место вне населённых пунктов (водоспад Гук, вершины)", () => {
+  const huk = place(40, {
+    name: { uk: "Водоспад Женецький Гук" },
+    categoryId: NATURE,
+    distanceMeters: 38_000,
+  });
+  const taxi = place(41, {
+    name: { uk: "Таксі Татарів Заросляк Говерла Водоспад Гук Трансфер" },
+    categoryId: TAXI,
+    distanceMeters: 2000,
+  });
+  const mountHuk = place(42, { name: { uk: "Гора Гук" }, categoryId: NATURE, distanceMeters: 500 });
+  const hoverla = place(43, { name: { uk: "Говерла" }, categoryId: NATURE, distanceMeters: 45_000 });
+  const khomiak = place(44, { name: { uk: "Хомʼяк" }, categoryId: NATURE, distanceMeters: 41_000 });
+  const brebeneskul = place(45, {
+    name: { uk: "гора Бребенескул" },
+    categoryId: NATURE,
+    distanceMeters: 60_000,
+  });
+  const nearby = place(46, { name: { uk: "Водоспад Пробій" }, categoryId: NATURE, distanceMeters: 300 });
+  const all = [huk, taxi, mountHuk, hoverla, khomiak, brebeneskul, nearby];
+  // Как каталог: ILIKE по названию, радиус, пункт (у вершин и водопадов locality_id null — «Локація» их отсекает).
+  const run = (text: string, over: Partial<AssistantIntent>, kind: "places" | "tour" = "places") => {
+    const { service } = setup({
+      searchAt: (s) =>
+        all.filter(
+          (p) =>
+            (!s.text || p.name.uk!.toLocaleLowerCase("uk").includes(s.text.toLocaleLowerCase("uk"))) &&
+            (s.radius === undefined || (p.distanceMeters ?? 0) <= s.radius) &&
+            (!s.categoryId || s.categoryId === NATURE || p.categoryId === s.categoryId),
+        ),
+      placeLocality: { [nearby.id]: YAREMCHE },
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ kind, categories: ["nature"], ...over })))),
+      },
+    });
+    return service
+      .query(REGION, USER, ask(text, { origin: YAREMCHE_AT, localityIds: [YAREMCHE] }))
+      .then((r) => r.items.map((i) => i.place.name.uk));
+  };
+
+  it("«екскурсія на водоспад Гук» — экскурсия к нему, хотя он вне выбранного пункта и далеко", async () => {
+    const names = await run("зроби мені екскурсію на водоспад Гук", { nameQuery: "водоспад Гук" }, "tour");
+    expect(names).toContain("Водоспад Женецький Гук");
+    expect(names).not.toContain("Гора Гук");
+  });
+
+  it("«водоспад Гук», «Женецький Гук», «як дістатися до Женецького Гуку» — водоспад первым (выше таксі)", async () => {
+    for (const nameQuery of ["водоспад Гук", "Женецький Гук", "Женецького Гуку"])
+      expect((await run(`де ${nameQuery}`, { nameQuery }))[0]).toBe("Водоспад Женецький Гук");
+  });
+
+  it("вершины без пункта: Говерла, Хом'як (другой апостроф), Бребенескул (падеж)", async () => {
+    expect((await run("гора Говерла", { nameQuery: "гора Говерла" }))[0]).toBe("Говерла");
+    expect((await run("екскурсія на Хом'як", { nameQuery: "Хом'як" }))[0]).toBe("Хомʼяк");
+    expect((await run("на Бребенескула", { nameQuery: "Бребенескула" }))[0]).toBe("гора Бребенескул");
+  });
+
+  it("nameStems: падеж и родовые слова", () => {
+    expect(nameStems("Женецького Гуку")).toEqual(["женецьк", "гук"]);
+    expect(nameStems("водоспад Гук")).toEqual(["гук"]);
+    expect(nameStems("гора Говерла")).toEqual(["говерл"]);
   });
 });
