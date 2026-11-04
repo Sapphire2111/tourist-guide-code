@@ -37,7 +37,8 @@ function isUi(x: unknown): x is DialogUi {
     u !== null &&
     [u.turn, u.shown, u.dayIndex, u.scrollY].every(
       (n) => typeof n === "number" && Number.isFinite(n) && n >= 0,
-    )
+    ) &&
+    (u.sort === undefined || u.sort === "distance" || u.sort === "rating")
   );
 }
 

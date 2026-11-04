@@ -46,6 +46,7 @@ export function sortPlaces<T>(
   sort: PlaceSort,
   of: (x: T) => { distanceMeters: number | null; rating?: number | null; ratingCount?: number | null },
 ): T[] {
+  // Та же формула, что у серверного byRating (apps/api/src/modules/assistant/assistant.service.ts).
   const score = (x: T) => {
     const r = of(x);
     return r.rating == null ? -Infinity : r.rating + 0.01 * Math.log10(1 + (r.ratingCount ?? 0));

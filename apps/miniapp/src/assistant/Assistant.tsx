@@ -203,8 +203,8 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
             onShown={(shown) => setUi({ shown })}
             dayIndex={ui?.dayIndex ?? 0}
             onDay={(dayIndex) => setUi({ dayIndex })}
-            sort={ui?.sort ?? (result.intent.sort === "rating" ? "rating" : "distance")}
-            onSort={point ? (sort) => setUi({ sort }) : null}
+            sort={ui?.sort ?? null}
+            onSort={point && !result.intent.nameQuery ? (sort) => setUi({ sort }) : null}
           />
         )}
         {result && questions.length === 0 && result.intent.suggestions.length > 0 && (
@@ -487,8 +487,9 @@ function ResultView({
   onShown: (n: number) => void;
   dayIndex: number;
   onDay: (i: number) => void;
-  sort: PlaceSort;
-  /** Нет точки туриста — переключателя нет («Ближчі» без точки смысла не имеет). */
+  /** Выбор переключателя; null — пользователь не выбирал, список в серверном порядке (с уровнем tier). */
+  sort: PlaceSort | null;
+  /** Нет точки или поиск по названию — переключателя нет; нет туриста — переключателя нет («Ближчі» без точки смысла не имеет). */
   onSort: ((sort: PlaceSort) => void) | null;
 }) {
   const { t } = useT();
@@ -498,16 +499,20 @@ function ResultView({
   const tour = result.intent.kind === "tour";
   // Список «знайди» — в выбранном порядке (без нового запроса); экскурсия — порядок маршрута. Карта — тот же порядок.
   const sortable = !tour && !result.plan && onSort !== null && result.items.length > 1;
+  // Сервер уже упорядочил по intent.sort с учётом tier (найденные по названию — первыми): пересортировываем,
+  // только когда пользователь выбрал другой порядок переключателем.
+  const serverSort: PlaceSort = result.intent.sort === "rating" ? "rating" : "distance";
+  const shownSort = sort ?? serverSort;
   const items = useMemo(
     () =>
-      sortable
+      sortable && sort !== null && sort !== serverSort
         ? sortPlaces(result.items, sort, (i) => ({
             ...i.place,
             rating: i.rating,
             ratingCount: i.ratingCount,
           }))
         : result.items,
-    [result, sort, sortable],
+    [result, sort, sortable, serverSort],
   );
   // Тот же массив между рендерами — карта не перестраивает маркеры при каждом рендере экрана.
   const places = useMemo(() => items.map((i) => i.place), [items]);
@@ -539,8 +544,8 @@ function ResultView({
         </p>
       )}
       {sortable && onSort && (
-        <div className="sort-row" style={{ justifyContent: "flex-end" }}>
-          <SortToggle value={sort} onChange={onSort} />
+        <div className="sort-row sort-row--end">
+          <SortToggle value={shownSort} onChange={onSort} />
         </div>
       )}
       <MapSlot places={places} center={base?.point ?? null} centerLabel={base?.name} route={tour} />

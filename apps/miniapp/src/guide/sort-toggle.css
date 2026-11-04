@@ -63,3 +63,6 @@
   gap: 8px;
   min-height: 44px;
 }
+.sort-row--end {
+  justify-content: flex-end;
+}

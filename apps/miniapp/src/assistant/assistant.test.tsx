@@ -200,6 +200,37 @@ describe("Assistant: диалог", () => {
     );
   });
 
+  it("серверный порядок (tier: найденные по названию первыми) сохраняется, пока переключатель не тронут", async () => {
+    const far = result();
+    far.items.reverse(); // сервер: дальнее место первым — не совпадает с порядком по расстоянию
+    const api = fakeAssistant({ ask: async () => far });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="кав'ярня" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    const names = () => screen.getAllByTestId("assistant-place").map((p) => p.textContent);
+    expect(names()[0]).toContain("Місце 2");
+    expect(screen.getByTestId("sort-distance").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("поиск по названию — без переключателя, порядок сервера", async () => {
+    const named = result({ intent: intent({ nameQuery: "водоспад Гук" }) });
+    named.items.reverse();
+    const api = fakeAssistant({ ask: async () => named });
+    render(
+      <GuideProvider value={env()}>
+        <Assistant api={api} initialQuery="де водоспад Гук?" />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.queryByTestId("sort-toggle")).toBeNull();
+    expect(screen.getAllByTestId("assistant-place")[0]!.textContent).toContain("Місце 2");
+  });
+
   it("выбор «Локація» уходит в запрос (localityIds); вход по QR — без выбора туриста", async () => {
     const YAREMCHE = "00000000-0000-4000-8000-000000000301";
     const TATARIV = "00000000-0000-4000-8000-000000000302";
