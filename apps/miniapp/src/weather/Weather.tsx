@@ -1,6 +1,6 @@
-// Погода на главной (флаг module.weather): компактная пилюля «иконка +2°» рядом с «Локація» в обоих дизайнах;
+// Погода на главной (флаг module.weather): компактная пилюля «иконка +2°» без названия места рядом с «Локація» в обоих дизайнах;
 // нажатие — лист с прогнозом на 5 днів (день тижня, іконка, мін/макс, опади, вітер), попередження зверху, підпис
-// джерела. Точка — моє місцезнаходження, вибраний пункт, заклад QR або перший пункт регіону; її назва — на пілюлі й у
+// джерела. Точка — моє місцезнаходження, вибраний пункт, заклад QR або перший пункт регіону; її назва — в aria-label пілюлі й у
 // заголовку листа. Кілька вибраних пунктів — перемикач міст у листі: прогноз міста запитується лише при виборі, сервер
 // віддає готовий знімок пункту (localities), тож квота джерела майже не змінюється. Немає прогнозу — нічого.
 // Іконка — Google (через прокси нашого api) з alt з опису, при Open-Meteo — своя за погодою.
@@ -9,7 +9,7 @@ import { useT } from "@tg/ui";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useAsync, useGuide } from "../guide/context.js";
-import type { LatLng } from "../guide/geo.js";
+import { nearestWithin, type LatLng } from "../guide/geo.js";
 import { useLocations } from "../guide/LocationProvider.js";
 import { interceptBack } from "../telegram.js";
 import type { Forecast, WeatherApi, WeatherCondition, WeatherSource, WeatherWarning } from "./weather-api.js";
@@ -120,18 +120,27 @@ export function WarningList({ warnings, testId }: { warnings: readonly WeatherWa
   );
 }
 
+/** Дальше этого от любого пункта региона GPS-точка остаётся «Поруч із вами». */
+const GPS_LOCALITY_M = 15_000;
+
 /** Точка прогноза и её настоящее название. */
 export type WeatherPlace = { id: string; point: LatLng; name: string };
 
 /**
- * Точки погоды главной: моє місцезнаходження («Поруч із вами») → вибрані пункти (кожен зі своєю назвою) → заклад QR
+ * Точки погоды главной: моє місцезнаходження (ближайший пункт региона до 15 км, иначе «Поруч із вами») → вибрані пункти (кожен зі своєю назвою) → заклад QR
  * (назва закладу) → перший пункт регіону. Первая — по умолчанию; больше одной — только при нескольких выбранных.
  */
 export function useWeatherPlaces(): WeatherPlace[] {
   const { t, locale } = useT();
   const { gps, selected, options } = useLocations();
   const { base } = useGuide();
-  if (gps) return [{ id: "gps", point: gps, name: t("miniapp.weather.nearYou") }];
+  if (gps) {
+    // Название ближайшего пункта региона (данные уже загружены, без геокодера); далеко от всех — «Поруч із вами».
+    const near = nearestWithin(options ?? [], gps, GPS_LOCALITY_M);
+    return [
+      { id: "gps", point: gps, name: near ? pickLocalized(near.name, locale) : t("miniapp.weather.nearYou") },
+    ];
+  }
   const named = (options ?? []).flatMap((o) =>
     o.location ? [{ id: o.id, point: o.location, name: pickLocalized(o.name, locale) }] : [],
   );
@@ -141,7 +150,7 @@ export function useWeatherPlaces(): WeatherPlace[] {
   return named.slice(0, 1);
 }
 
-/** Пилюля погоды на главной; нет точки или прогноза — ничего (без пустого места). */
+/** Пилюля погоды на главной: значок и t°; название места — в aria-label и в листе по нажатию. Нет точки или прогноза — ничего. */
 export function WeatherChip({ api }: { api: WeatherApi }) {
   const places = useWeatherPlaces();
   const [pickedId, setPickedId] = useState<string | null>(null);
@@ -251,9 +260,6 @@ function ChipButton({
         size={22}
       />
       {temp && <span className="wx-chip-temp">{temp}</span>}
-      <span className="wx-chip-place" data-testid="weather-place">
-        {chip.name}
-      </span>
       {danger && (
         <span className="wx-chip-alert" aria-hidden="true">
           ⚠️

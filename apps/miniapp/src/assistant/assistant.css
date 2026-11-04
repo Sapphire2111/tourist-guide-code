@@ -70,31 +70,6 @@
   opacity: 0.55;
   cursor: default;
 }
-/* Запись: пульсирующее кольцо вокруг кнопки. */
-.assistant-pill[data-recording] .assistant-action::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 9999px;
-  border: 3px solid var(--app-accent, #b4532a);
-  animation: assistant-pulse 1.2s ease-out infinite;
-}
-@keyframes assistant-pulse {
-  from {
-    transform: scale(0.9);
-    opacity: 0.9;
-  }
-  to {
-    transform: scale(1.25);
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .assistant-pill[data-recording] .assistant-action::after {
-    animation: none;
-    opacity: 0.8;
-  }
-}
 .assistant-status {
   margin: 0;
   padding: 0 16px;

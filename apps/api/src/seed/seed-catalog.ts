@@ -111,7 +111,7 @@ export const SEED_CATEGORIES: readonly {
   {
     // Подкатегории (ремонт техніки, зв'язок, автомийки…) заводит импорт мест из Google (IMPORT_EXTRA_CATEGORIES).
     code: "services",
-    name: { uk: "Сервіси", en: "Services" },
+    name: { uk: "Послуги", en: "Services" },
     icon: "wrench",
     home: "services",
     sortOrder: 65,

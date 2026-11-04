@@ -82,6 +82,25 @@ export function distanceMeters(a: LatLng, b: LatLng): number {
   return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
+/** Ближайший к точке элемент с координатами, не дальше maxMeters; нет такого — null. */
+export function nearestWithin<T extends { location?: LatLng | null }>(
+  items: readonly T[],
+  point: LatLng,
+  maxMeters: number,
+): T | null {
+  let best: T | null = null;
+  let bestD = maxMeters;
+  for (const o of items) {
+    if (!o.location) continue;
+    const d = distanceMeters(point, o.location);
+    if (d <= bestD) {
+      bestD = d;
+      best = o;
+    }
+  }
+  return best;
+}
+
 /**
  * Единая ссылка всех кнопок «Маршрут» (список, карточка места, окно маркера): Google Карты, открываются снаружи
  * приложения. Точку старта определяет сам Google (местоположение устройства), способ передвижения выбирает турист.
