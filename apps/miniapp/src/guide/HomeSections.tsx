@@ -87,13 +87,9 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
             <li key={section}>
               <Link to={sectionPath(section)} className="modern-intention" data-tone={tone}>
                 {ICONS[section]}
-                <span>
+                <span data-hint={section === "stay" ? undefined : hint}>
                   {label}
-                  {section === "stay" ? (
-                    <small data-testid="tile-hint-stay">{hint}</small>
-                  ) : (
-                    <small aria-hidden="true">{hint}</small>
-                  )}
+                  {section === "stay" && <small data-testid="tile-hint-stay">{hint}</small>}
                 </span>
                 {ICONS.arrow}
               </Link>
