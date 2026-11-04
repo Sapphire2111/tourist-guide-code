@@ -33,6 +33,36 @@ export const SEARCH_FIELD_MASK = [
   "nextPageToken",
 ].join(",");
 
+/**
+ * Набор полей Text Search — он же SKU (у каждого своя бесплатная месячная квота): full — Enterprise + Atmosphere
+ * (editorialSummary), enterprise — без описания (телефон, сайт, часы, рейтинг), pro — без них (название, адрес, точка,
+ * типы, статус, фото). Описание Google потом добирает places:enrich (Place Details).
+ */
+export type SearchFields = "full" | "enterprise" | "pro";
+const ATMOSPHERE_FIELDS = ["places.editorialSummary"];
+const ENTERPRISE_FIELDS = [
+  "places.internationalPhoneNumber",
+  "places.websiteUri",
+  "places.regularOpeningHours.periods",
+  "places.rating",
+  "places.userRatingCount",
+];
+export const SEARCH_FIELD_MASKS: Readonly<Record<SearchFields, string>> = {
+  full: SEARCH_FIELD_MASK,
+  enterprise: SEARCH_FIELD_MASK.split(",")
+    .filter((f) => !ATMOSPHERE_FIELDS.includes(f))
+    .join(","),
+  pro: SEARCH_FIELD_MASK.split(",")
+    .filter((f) => !ATMOSPHERE_FIELDS.includes(f) && !ENTERPRISE_FIELDS.includes(f))
+    .join(","),
+};
+/** Какие кэшированные ответы годятся маске (по порядку): своя, более полные; full — ещё и enterprise. */
+const SEARCH_FIELDS_FALLBACK: Readonly<Record<SearchFields, readonly SearchFields[]>> = {
+  full: ["full", "enterprise"],
+  enterprise: ["enterprise", "full"],
+  pro: ["pro", "full", "enterprise"],
+};
+
 export type SearchTextRequest = {
   textQuery: string;
   languageCode: string;
@@ -122,6 +152,8 @@ export type GoogleClientOptions = {
   cacheDir: string;
   /** Предел запросов к Google за прогон (ответы из кэша не считаются). */
   maxRequests: number;
+  /** Набор полей Text Search (SKU), по умолчанию full. */
+  searchFields?: SearchFields;
   fetch?: typeof fetch;
   /** Таймаут одного запроса, мс. */
   timeoutMs?: number;
@@ -346,28 +378,47 @@ export class GooglePlacesClient {
     }
   }
 
-  private searchFile(body: SearchTextRequest): string {
-    return path.join(this.options.cacheDir, `search-${hash(JSON.stringify(body))}.json`);
+  /** Файл ответа для маски (full — прежнее имя файла, кэш прошлых прогонов остаётся действительным). */
+  private searchFileFor(body: SearchTextRequest, fields: SearchFields): string {
+    const key = fields === "full" ? JSON.stringify(body) : `${fields}|${JSON.stringify(body)}`;
+    return path.join(this.options.cacheDir, `search-${hash(key)}.json`);
   }
 
-  searchText(body: SearchTextRequest): Promise<SearchTextResponse> {
-    return this.cached(this.searchFile(body), "search", isSearchResponse, async (key) => {
-      const res = await this.googleFetch(`${API}/places:searchText`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": SEARCH_FIELD_MASK,
-        },
-        body: JSON.stringify(body),
-      });
-      return this.json(res, "searchText", isSearchResponse);
-    });
+  /**
+   * Text Search: ответ и маска, с которой он получен (`fields`: своя или более полная/запасная из кэша — порядок
+   * SEARCH_FIELDS_FALLBACK; full принимает и enterprise, без описания).
+   */
+  async searchText(body: SearchTextRequest): Promise<SearchTextResponse & { fields: SearchFields }> {
+    const own = this.options.searchFields ?? "full";
+    const order = SEARCH_FIELDS_FALLBACK[own];
+    const from = { index: 0 };
+    const res = await this.cached(
+      order.map((f) => this.searchFileFor(body, f)),
+      "search",
+      isSearchResponse,
+      async (key) => {
+        const r = await this.googleFetch(`${API}/places:searchText`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": key,
+            "X-Goog-FieldMask": SEARCH_FIELD_MASKS[own],
+          },
+          body: JSON.stringify(body),
+        });
+        return this.json(r, "searchText", isSearchResponse);
+      },
+      from,
+    );
+    return { ...res, fields: order[from.index]! };
   }
 
-  /** Убрать ответ из кэша (страница, чей токен следующей страницы устарел). */
-  async forgetSearch(body: SearchTextRequest): Promise<void> {
-    await rm(this.searchFile(body), { force: true });
+  /**
+   * Убрать ответ из кэша (страница, чей токен следующей страницы устарел): только файл маски `fields` — тот, из
+   * которого ответ прочитан (searchText().fields); ответы с другой маской остаются.
+   */
+  async forgetSearch(body: SearchTextRequest, fields: SearchFields): Promise<void> {
+    await rm(this.searchFileFor(body, fields), { force: true });
   }
 
   /**
@@ -460,20 +511,30 @@ export class GooglePlacesClient {
     this.requests[kind]++;
   }
 
+  /**
+   * `files` — файл ответа и запасные (тот же запрос с другой маской полей); новый ответ пишется в первый. `from.index`
+   * — из какого файла списка ответ (0 — свой или свежий из Google).
+   */
   private async cached<T>(
-    file: string,
+    files: string | readonly string[],
     kind: keyof GooglePlacesClient["requests"],
     valid: (v: unknown) => v is T,
     load: (apiKey: string) => Promise<T>,
+    from: { index: number } = { index: 0 },
   ): Promise<T> {
-    try {
-      const data: unknown = JSON.parse(await readFile(file, "utf8"));
-      if (valid(data)) {
-        this.cacheHits++;
-        return data;
+    const list = typeof files === "string" ? [files] : files;
+    const file = list[0]!;
+    for (const [i, f] of list.entries()) {
+      try {
+        const data: unknown = JSON.parse(await readFile(f, "utf8"));
+        if (valid(data)) {
+          this.cacheHits++;
+          from.index = i;
+          return data;
+        }
+      } catch {
+        // нет в кэше (или файл испорчен) — следующий файл или запрос
       }
-    } catch {
-      // нет в кэше (или файл испорчен) — запрос
     }
     if (this.options.planOnly) {
       this.planned[kind]++;
@@ -490,6 +551,7 @@ export class GooglePlacesClient {
     if (sku && this.options.quota && !(await this.options.quota(sku)))
       throw new MonthlyLimitError(`Исчерпан месячный предел Google (${sku})`);
     this.take(kind);
+    from.index = 0;
     const data = await load(key);
     await mkdir(this.options.cacheDir, { recursive: true });
     await writeFile(file, JSON.stringify(data));

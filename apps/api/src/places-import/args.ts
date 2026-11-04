@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { StorageEnv } from "@tg/media";
 import { databaseHost } from "../seed/guard.js";
+import type { SearchFields } from "./google-client.js";
 
 export type ImportArgs = {
   /** Код региона (regions.code), куда писать. */
@@ -21,6 +22,16 @@ export type ImportArgs = {
   queriesFile: string | undefined;
   /** Точечный импорт: `--query "текст=категория"` (можно несколько). */
   queries: string[];
+  /** Набор полей Text Search (SKU Google): full | enterprise | pro. */
+  fields: SearchFields;
+  /** Широкий импорт только по зонам поиска (SEARCH_ZONES), без кругов пунктов; пишет только новые места. */
+  zonesOnly: boolean;
+  /** Писать только новые места: существующие (тот же google place id) не трогать, не скрывать и не архивировать. */
+  insertOnly: boolean;
+  /** Широкий импорт: свои запросы вместо IMPORT_QUERIES (`--search "Нова пошта відділення"`, можно несколько). */
+  searches: string[];
+  /** Оценка без запросов к Google и без записи: сколько Text Search мимо кэша понадобится (первые страницы). */
+  plan: boolean;
 };
 
 export class ImportArgsError extends Error {
@@ -42,6 +53,11 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
     report: undefined,
     queriesFile: undefined,
     queries: [],
+    fields: "full",
+    zonesOnly: false,
+    insertOnly: false,
+    searches: [],
+    plan: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const raw = argv[i]!;
@@ -76,6 +92,27 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
       case "--query":
         args.queries.push(value());
         break;
+      case "--search":
+        args.searches.push(value());
+        break;
+      case "--fields": {
+        const v = value();
+        if (v !== "full" && v !== "enterprise" && v !== "pro")
+          throw new ImportArgsError("places:import-google: --fields — full, enterprise или pro");
+        args.fields = v;
+        break;
+      }
+      case "--plan":
+        args.plan = true;
+        args.dryRun = true;
+        break;
+      case "--zones-only":
+        args.zonesOnly = true;
+        args.insertOnly = true;
+        break;
+      case "--insert-only":
+        args.insertOnly = true;
+        break;
       case "--max-requests": {
         const n = Number(value());
         if (!Number.isSafeInteger(n) || n < 0)
@@ -87,6 +124,16 @@ export function parseImportArgs(argv: readonly string[]): ImportArgs {
         throw new ImportArgsError(`places:import-google: неизвестный аргумент ${name}`);
     }
   }
+  if ((args.zonesOnly || args.searches.length) && (args.queriesFile || args.queries.length))
+    throw new ImportArgsError(
+      "places:import-google: --zones-only/--search — широкий импорт, несовместимы с --queries-file/--query",
+    );
+  // Дешёвая маска без телефона/часов/отзывов в обычной записи обновила бы существующие места бедными данными (и
+  // правила, которым нужны эти поля) — только для новых мест или без записи.
+  if (args.fields !== "full" && !args.insertOnly && !args.dryRun)
+    throw new ImportArgsError(
+      "places:import-google: --fields enterprise|pro — только с --insert-only/--zones-only (или --dry-run/--plan)",
+    );
   if (args.dryRun && args.photos)
     throw new ImportArgsError(
       "places:import-google: --photos пишет в БД и хранилище — несовместим с --dry-run",
