@@ -159,11 +159,15 @@ async function start(authenticated = false, grants: Grant[] = [], selectedRegion
 }
 
 describe("HTTP планировщика", () => {
-  it("создание и «Інший варіант»: обязателен Idempotency-Key; повтор с тем же ключом — тот же ответ без вызова", async () => {
+  it("создание и «Інший варіант»: Idempotency-Key необязателен (без него — как раньше); с ключом повтор — тот же ответ без вызова", async () => {
     const { raw, service } = await start(true);
-    const missing = await raw().post("/me/plan").send({ regionId: REGION }).expect(400);
-    expect(missing.body.error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
-    await raw().post(`/me/plan/${PLAN}/regenerate`).send({ regionId: REGION }).expect(400);
+    // Без ключа — как раньше (старые клиенты): выполняется каждый раз.
+    await raw().post("/me/plan").send({ regionId: REGION }).expect(201);
+    await raw().post("/me/plan").send({ regionId: REGION }).expect(201);
+    expect(service.createPlan).toHaveBeenCalledTimes(2);
+    service.createPlan.mockClear();
+    await raw().post(`/me/plan/${PLAN}/regenerate`).send({ regionId: REGION }).expect(200);
+    service.regeneratePlan.mockClear();
     const key = randomUUID();
     await raw().post("/me/plan").set("Idempotency-Key", key).send({ regionId: REGION, days: 2 }).expect(201);
     const again = await raw()

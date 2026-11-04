@@ -461,8 +461,6 @@ export async function installBlock5Mock(
       if (path === "/me/plan" && method === "GET")
         return json(route, { items: state.plans.map((p) => ({ ...p, options: [] })) });
       if (path === "/me/plan" && method === "POST") {
-        // Как @Idempotent на сервере: без ключа — 400.
-        if (!req.headers()["idempotency-key"]) return error(route, 400, "IDEMPOTENCY_KEY_REQUIRED");
         const custom = !body.scenarioId;
         const ai = custom && state.aiPlanner && body.ai !== false;
         // «Claude думает» — видно ожидание «Складаємо план…».

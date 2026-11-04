@@ -13639,11 +13639,11 @@ export interface operations {
   createMyPlan: {
     parameters: {
       query?: never;
-      header: {
+      header?: {
         /** @description Correlation id; иначе генерируется */
         "X-Request-Id"?: string;
-        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
-        "Idempotency-Key": string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора */
+        "Idempotency-Key"?: string;
       };
       path?: never;
       cookie?: never;
@@ -13744,11 +13744,11 @@ export interface operations {
   regenerateMyPlan: {
     parameters: {
       query?: never;
-      header: {
+      header?: {
         /** @description Correlation id; иначе генерируется */
         "X-Request-Id"?: string;
-        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
-        "Idempotency-Key": string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора */
+        "Idempotency-Key"?: string;
       };
       path: {
         id: string;

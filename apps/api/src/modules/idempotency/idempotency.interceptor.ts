@@ -78,7 +78,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();
 
-    const key = parseIdempotencyKey(req.headers[IDEMPOTENCY_KEY_HEADER]);
+    const raw = req.headers[IDEMPOTENCY_KEY_HEADER];
+    // Необязательный ключ (@Idempotent({ optional: true })): заголовка нет — обработчик как обычно.
+    if (options.optional && raw === undefined)
+      return lastValueFrom(next.handle(), { defaultValue: undefined });
+    const key = parseIdempotencyKey(raw);
     if (key === undefined) throw new ApiError("IDEMPOTENCY_KEY_REQUIRED");
     const actor = idempotencyActor(req) ?? (options.allowAnonymous ? ANONYMOUS_ACTOR : undefined);
     if (actor === undefined)

@@ -10,6 +10,11 @@ export type IdempotentOptions = {
    * По умолчанию false — запрос без актора отклоняется (500, ошибка конфигурации эндпоинта).
    */
   allowAnonymous?: boolean;
+  /**
+   * Ключ необязателен: без заголовка обработчик выполняется как обычно (без защиты от повтора), с ключом — как
+   * всегда. Для эндпоинтов, где старые клиенты ключ не шлют. По умолчанию false — без ключа 400.
+   */
+  optional?: boolean;
 };
 
 export const IDEMPOTENT_METADATA = "tg:idempotent";
@@ -31,12 +36,19 @@ export function Idempotent(options: IdempotentOptions = {}): MethodDecorator & C
       `@Idempotent: ttlSeconds должен быть целым >= ${MIN_IDEMPOTENCY_TTL_SECONDS}, получено ${ttlSeconds}`,
     );
   const allowAnonymous = options.allowAnonymous ?? false;
+  const optional = options.optional ?? false;
   return applyDecorators(
-    SetMetadata(IDEMPOTENT_METADATA, { ttlSeconds, allowAnonymous } satisfies Required<IdempotentOptions>),
+    SetMetadata(IDEMPOTENT_METADATA, {
+      ttlSeconds,
+      allowAnonymous,
+      optional,
+    } satisfies Required<IdempotentOptions>),
     ApiHeader({
       name: "Idempotency-Key",
-      required: true,
-      description: "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
+      required: !optional,
+      description:
+        "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ" +
+        (optional ? "; без ключа — без защиты от повтора" : ""),
       schema: { type: "string", minLength: 1, maxLength: 255 },
     }),
   );

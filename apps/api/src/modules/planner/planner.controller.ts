@@ -128,7 +128,8 @@ export class UserPlansController {
 
   @Post()
   // Живой план — десятки секунд: повтор после таймаута с тем же ключом не создаёт второй план и не тратит лимит.
-  @Idempotent()
+  // Ключ необязателен: старые клиенты Mini App (из кэша) шлют без него — работают как раньше.
+  @Idempotent({ optional: true })
   // Запрос к Claude — вне транзакции запроса (сервис входит в регион короткими транзакциями) — для любых ролей.
   @WithoutTenantContext()
   @ApiOperation({
@@ -160,7 +161,8 @@ export class UserPlansController {
 
   @Post(":id/regenerate")
   @HttpCode(200)
-  @Idempotent()
+  // Ключ необязателен: старые клиенты Mini App (из кэша) шлют без него — работают как раньше.
+  @Idempotent({ optional: true })
   @WithoutTenantContext()
   @ApiOperation({
     operationId: "regenerateMyPlan",

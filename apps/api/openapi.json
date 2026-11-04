@@ -7826,8 +7826,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
-            "required": true,
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора",
+            "required": false,
             "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
           }
         ],
@@ -7927,8 +7927,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
-            "required": true,
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора",
+            "required": false,
             "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
           }
         ],
