@@ -93,7 +93,7 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
       <div className="modern-hero" data-testid="modern-hero">
         <div className="modern-hero-head">
           <span className="modern-hero-kicker" aria-hidden="true">
-            {theme === "day" ? `☀ ${t("miniapp.home.heroKickerDay")}` : `✨ ${t("miniapp.home.heroKicker")}`}
+            {theme === "day" ? `☀️ ${t("miniapp.home.heroKickerDay")}` : `✨ ${t("miniapp.home.heroKicker")}`}
           </span>
           <h2 id="sections-title">{t("miniapp.modern.title")}</h2>
         </div>

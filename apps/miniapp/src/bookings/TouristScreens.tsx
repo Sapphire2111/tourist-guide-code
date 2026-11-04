@@ -189,13 +189,14 @@ function SlotPicker({
   const a = resource.availability;
   return (
     <>
-      <p data-testid="booking-availability">
-        {a.availableNow
-          ? a.source === "manual" && a.manualExpiresAt
+      {/* Нет свободного слота сейчас — подписи нет: функции «Уточнити доступність» пока нет. */}
+      {a.availableNow && (
+        <p data-testid="booking-availability">
+          {a.source === "manual" && a.manualExpiresAt
             ? t("miniapp.booking.availableManual", { time: localTime(a.manualExpiresAt, timeZone) })
-            : t("miniapp.booking.availableNow")
-          : t("miniapp.place.checkAvailability")}
-      </p>
+            : t("miniapp.booking.availableNow")}
+        </p>
+      )}
       {resource.description && <p className="kosiv-muted">{pickLocalized(resource.description, locale)}</p>}
       <Live message={notice} testId="slots-notice" />
       <AsyncView state={state} retry={retry} errorText={t("miniapp.booking.slotsError")}>

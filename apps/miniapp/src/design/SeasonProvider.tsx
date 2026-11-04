@@ -29,7 +29,7 @@ function safe(call: () => void): void {
  * Цвета окна Telegram под тему. Фон — Bot API 6.1+; шапка цветом #RRGGBB — 6.9+ (до 6.9 принимает только
  * ключи bg_color/secondary_bg_color и бросает исключение); нижняя панель — 7.10+. Браузер — без вызовов.
  */
-export function syncTelegramColors(webApp: TelegramWebApp | undefined, theme: Theme = "day"): void {
+export function syncTelegramColors(webApp: TelegramWebApp | undefined, theme: Theme = "night"): void {
   if (!webApp) return;
   const at = (v: string) => !webApp.isVersionAtLeast || webApp.isVersionAtLeast(v);
   const { header, bottom } = WINDOW_COLORS[theme];

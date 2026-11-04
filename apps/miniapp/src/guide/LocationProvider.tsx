@@ -86,15 +86,15 @@ const LocationContext = createContext<LocationState>({
   chosen: true,
 });
 
-/** mode "all" — турист сам выбрал «Усі локації»: GPS по умолчанию не включается. */
-type Stored = { regionId: string; ids: string[]; mode?: "all" };
+/** mode "all" — турист сам выбрал «Усі локації» (GPS по умолчанию не включается); "gps" — «Моє місцезнаходження». */
+type Stored = { regionId: string; ids: string[]; mode?: "all" | "gps" };
 
-function readMode(regionId: string | null): boolean {
+function readMode(regionId: string | null, mode: "all" | "gps" = "all"): boolean {
   if (!regionId) return false;
   try {
     const raw = window.localStorage.getItem(LOCATION_STORAGE_KEY);
     const v = raw ? (JSON.parse(raw) as Partial<Stored>) : null;
-    return v?.regionId === regionId && v.mode === "all";
+    return v?.regionId === regionId && v.mode === mode;
   } catch {
     return false;
   }
@@ -113,11 +113,11 @@ function readStored(regionId: string | null): string[] {
   }
 }
 
-function store(regionId: string | null, ids: readonly string[], explicitAll = false): void {
+function store(regionId: string | null, ids: readonly string[], mode?: "all" | "gps"): void {
   try {
-    if (!regionId || (ids.length === 0 && !explicitAll)) window.localStorage.removeItem(LOCATION_STORAGE_KEY);
+    if (!regionId || (ids.length === 0 && !mode)) window.localStorage.removeItem(LOCATION_STORAGE_KEY);
     else if (ids.length === 0)
-      window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId, ids, mode: "all" }));
+      window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId, ids, mode }));
     else window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId, ids }));
   } catch {
     // Не сохранилось — выбор действует до закрытия.
@@ -145,6 +145,8 @@ export function LocationProvider({
   const [picked, setPicked] = useState(false);
   const webApp = guide?.webApp;
   const [explicitAll, setExplicitAll] = useState(() => readMode(regionId));
+  // Турист сам выбирал «Моє місцезнаходження» (сохранено): считается выбором и после перезапуска.
+  const [savedGps, setSavedGps] = useState(() => readMode(regionId, "gps"));
   const [point, setPoint] = useState<LatLng | null>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [gpsFailed, setGpsFailed] = useState<"denied" | "outside" | null>(null);
@@ -167,6 +169,7 @@ export function LocationProvider({
   useEffect(() => {
     setIds(readStored(regionId));
     setExplicitAll(readMode(regionId));
+    setSavedGps(readMode(regionId, "gps"));
     if (!api || !regionId) {
       setList({ status: "error" });
       return;
@@ -216,7 +219,8 @@ export function LocationProvider({
     (next: readonly string[]) => {
       const clean = [...new Set(next)].slice(0, LOCATION_MAX);
       // Пустой выбор — явное «Усі локації»: GPS по умолчанию больше не включается.
-      store(regionId, clean, true);
+      store(regionId, clean, "all");
+      setSavedGps(false);
       setIds(clean);
       setExplicitAll(clean.length === 0);
       setPoint(null);
@@ -239,9 +243,13 @@ export function LocationProvider({
       if (mine !== attempt.current) return;
       setGpsBusy(false);
       const inside = p && optionsRef.current ? inRegion(p, optionsRef.current) : null;
-      if (p && inside !== false) setPoint(p);
-      else {
+      if (p && inside !== false) {
+        setPoint(p);
+        store(regionId, [], "gps");
+        setSavedGps(true);
+      } else {
         // Отказ, нет точки или точка вне региона: откат на «Усі локації» (в хранилище не пишем — не явный выбор).
+        setSavedGps(false);
         setPoint(null);
         setGpsFailed(p ? "outside" : "denied");
       }
@@ -275,8 +283,9 @@ export function LocationProvider({
     selected.length === 0 && !explicitAll && !(venueEntry && !picked) && options && options.length >= 2
       ? point
       : null;
-  // Явный выбор: в этом сеансе или сохранённый (пункты / «Усі локації»); вход по QR заведения сбрасывает его.
-  const chosen = picked || (!venueEntry && (ids.length > 0 || explicitAll));
+  // Локация определена: вход по QR (её задаёт заведение), явный выбор в сеансе или сохранённый (пункты, «Усі локації»,
+  // «Моє місцезнаходження») либо автоматическая точка устройства — призыв «Оберіть локацію» не нужен.
+  const chosen = venueEntry || picked || ids.length > 0 || explicitAll || savedGps || gps !== null;
   const value = useMemo(
     () => ({
       options,

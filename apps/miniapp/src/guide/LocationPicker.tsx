@@ -2,16 +2,30 @@
 // Выбор применяется сразу; лист закрывают «Готово», Escape, тап по фону и «Назад» Telegram.
 import { pickLocalized } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { interceptBack } from "../telegram.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "./LocationProvider.js";
 import "./location.css";
 
+const PULSE_KEY = "tg.locPulse";
+
+/** Пульсация призыва — один раз за сеанс (sessionStorage), а не при каждом монтировании чипа. */
+function takePulse(): boolean {
+  try {
+    if (window.sessionStorage.getItem(PULSE_KEY)) return false;
+    window.sessionStorage.setItem(PULSE_KEY, "1");
+  } catch {
+    // Хранилище недоступно — пульсация при монтировании.
+  }
+  return true;
+}
+
 export function LocationChip() {
   const { t } = useT();
   const { options, gps, chosen, sheetOpen: open, setSheetOpen: setOpen } = useLocations();
   const names = useLocationNames();
+  const [pulse] = useState(() => !chosen && takePulse());
   // Пунктов с местами меньше двух — выбирать нечего.
   if (!options || options.length < 2) return null;
   const label =
@@ -32,6 +46,7 @@ export function LocationChip() {
         data-testid="location-chip"
         data-all={names.length === 0 && !gps ? "true" : undefined}
         data-unpicked={chosen ? undefined : "true"}
+        data-pulse={pulse ? "true" : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t("miniapp.location.title")}: ${label}`}
