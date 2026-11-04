@@ -111,6 +111,10 @@ export type AssistantQuery = {
   answer?: boolean;
 };
 
+/** Названное место: кандидатов по названию в регионе и сколько из них показать первыми. */
+const NAMED_CANDIDATES = 40;
+const NAMED_MAX = 5;
+
 /** Кандидатов на категорию и пункт при поиске в населённом пункте. */
 const CANDIDATES_WITH_LOCALITY = 50;
 
@@ -175,6 +179,129 @@ export function keywordRank(
     0.3 * Math.log10(1 + (ratingCount ?? 0)) -
     (distanceMeters === null ? 0 : (distanceMeters / 1000) * 0.2)
   );
+}
+
+/** Явная просьба о лучших по рейтингу: «найкращий», «з найвищим рейтингом», «топ», «лучший». */
+export function wantsBest(text: string): boolean {
+  return BEST_RE.test(text);
+}
+
+const NOT_LETTER = String.raw`(?:^|$|[^\p{L}])`;
+/** «найкращий», «кращі», «найпопулярніші», «за рейтингом», «з найвищим рейтингом», «топ», best / top rated. Голое
+ * «рейтинг» («з рейтингом від 4») — не порядок. */
+const BEST_RE = new RegExp(
+  [
+    "найкращ",
+    "найліпш",
+    "найпопулярніш",
+    "лучш",
+    String.raw`самы\S*\s+популярн`,
+    String.raw`за\s+рейтинг`,
+    String.raw`по\s+рейтинг`,
+    String.raw`найвищ\S*\s+рейтинг`,
+    String.raw`високи\S*\s+рейтинг`,
+    String.raw`высок\S*\s+рейтинг`,
+    // «краще» без места («мені краще недороге», «що краще») — не порядок.
+    `${NOT_LETTER}кращ(?:ий|а|і|их)${NOT_LETTER}`,
+    `${NOT_LETTER}топ${NOT_LETTER}`,
+    `${NOT_LETTER}best${NOT_LETTER}`,
+    String.raw`(?:top|high|highest|best)[-\s]?rated`,
+  ].join("|"),
+  "iu",
+);
+
+/** Уточнение того же поиска: те же категории, ключевые слова, название. */
+function sameSearch(a: AssistantIntent, b: AssistantIntent): boolean {
+  const eq = (x: readonly string[], y: readonly string[]) =>
+    x.length === y.length && [...x].sort().join("|") === [...y].sort().join("|");
+  return eq(a.categories, b.categories) && eq(a.keywords, b.keywords) && a.nameQuery === b.nameQuery;
+}
+
+/** «ближчі», «поруч» — снова от ближайшего (сброс «найкращих» из прошлого запроса). */
+const NEAR_RE = /ближч|ближе|ближайш|поруч|поблизу|недалеко|рядом|nearest|closer|nearby/iu;
+
+/** Совпадение названия с nameQuery: начало названия — 0, внутри — 1, нет (по адресу, по описанию) — 2. */
+function nameTier(p: PlaceSummaryDto, query: string): number {
+  const q = query.toLocaleLowerCase("uk");
+  const names = Object.values(p.name)
+    .filter((n): n is string => typeof n === "string")
+    .map((n) => n.toLocaleLowerCase("uk"));
+  if (names.some((n) => n.startsWith(q))) return 0;
+  return names.some((n) => n.includes(q)) ? 1 : 2;
+}
+
+/** Апострофы (’ ʼ ` ') — один знак: «Хом'як» = «Хомʼяк». */
+const normName = (s: string) => s.toLocaleLowerCase("uk").replace(/[’ʼ`'‘]/g, "");
+/** Родовое слово в названии («водоспад Гук», «гора Говерла») — не обязательно: в каталоге «Говерла» без «гора». */
+const GENERIC_STEMS = new Set([
+  "водоспад",
+  "гор",
+  "вершин",
+  "озер",
+  "урочищ",
+  "скел",
+  "печер",
+  "річк",
+  "перевал",
+  "полонин",
+  "хребет",
+  // «озеро» — окончание «-о» не срезается; русские родовые.
+  "озеро",
+  "водопад",
+  "скал",
+]);
+/** Служебные слова запроса — не часть названия. */
+const STOP_STEMS = new Set(["біл", "від", "через", "під", "над", "для"]);
+/** Окончания падежей (uk): «Гуку» → «гук», «Женецького» → «женецьк», «Говерлу» → «говерл». */
+const ENDING_RE = /(ого|ому|ими|ій|ої|ою|ий|ом|ам|ах|ів|у|ю|а|я|і|и|е|й|ь)$/u;
+
+/** Основы слов названия для поиска без учёта падежа: обязательные (не родовые), не короче 3 букв. */
+export function nameStems(query: string): string[] {
+  const words = stemWords(query);
+  const required = words.filter((w) => !GENERIC_STEMS.has(w));
+  return [...new Set(required.length ? required : words)];
+}
+
+/** Родовые слова запроса («водоспад», «гора»): с ними — предпочтительнее (водоспад Гук, а не гора Гук). */
+function genericStems(query: string): string[] {
+  return [...new Set(stemWords(query).filter((w) => GENERIC_STEMS.has(w)))];
+}
+
+function stemWords(query: string): string[] {
+  return normName(query)
+    .split(/[^\p{L}]+/u)
+    .filter(Boolean)
+    .map((w) => {
+      const stem = w.length >= 4 ? w.replace(ENDING_RE, "") : w;
+      return stem.length >= 3 ? stem : w;
+    })
+    .filter((w) => w.length >= 3 && !STOP_STEMS.has(w));
+}
+
+/** Название содержит все основы запроса. */
+export function nameHasStems(p: PlaceSummaryDto, stems: readonly string[]): boolean {
+  // Короткая основа («гук», «бук») — только с начала слова: не «Чугуківка», не «Буковель» для «бук» внутри слова.
+  const tests = stems.map((s) =>
+    s.length < 5 ? new RegExp(`${NOT_LETTER}${s}`, "u") : { test: (n: string) => n.includes(s) },
+  );
+  return Object.values(p.name).some((n) => {
+    if (typeof n !== "string") return false;
+    const name = normName(n);
+    return tests.every((t) => t.test(name));
+  });
+}
+
+/** По рейтингу Google (больше отзывов — выше при равном), без рейтинга — в конце; иначе — порядок как был. */
+function byRating(
+  found: readonly PlaceSummaryDto[],
+  enrichment: ReadonlyMap<string, Enrichment>,
+  tier: (p: PlaceSummaryDto) => number = () => 0,
+): PlaceSummaryDto[] {
+  const score = (p: PlaceSummaryDto) => {
+    const g = enrichment.get(p.id)?.google;
+    return g?.rating == null ? -Infinity : g.rating + 0.01 * Math.log10(1 + (g.ratingCount ?? 0));
+  };
+  return [...found].sort((a, b) => tier(a) - tier(b) || score(b) - score(a));
 }
 
 /** Вес совпадения по связанным понятиям в keywordRank: подъём, а не замена рейтинга (одно упоминание — +0.4). */
@@ -336,6 +463,13 @@ export class AssistantService {
       localityCenter: localityRows.find((l) => l.id === localityIds[0])?.location ?? undefined,
     };
     if (intent.kind === "plan") return this.plan(regionId, userId, intent, catalog, scope);
+    // «Найкращі» — по рейтингу; уточнение («а дешевші?») сохраняет порядок прошлого запроса, «ближчі» — сбрасывает.
+    // «Поруч/ближче» — главнее «кращ»; прежний порядок переносится только в уточнение того же поиска (те же
+    // категории и слова), новая тема («де аптека») — от ближайшего.
+    if (NEAR_RE.test(q.text)) intent.sort = null;
+    else if (wantsBest(q.text)) intent.sort = "rating";
+    else if (q.previous?.sort === "rating" && sameSearch(q.previous, intent)) intent.sort = "rating";
+    else if (q.previous && !sameSearch(q.previous, intent)) intent.sort = null;
     return this.select(regionId, intent, catalog, scope);
   }
 
@@ -389,6 +523,9 @@ export class AssistantService {
         // Без категорий одно упоминание в отзыве (отель, где «замовляли суші») не считается.
         minScore: sections.length ? 1 : 2,
         limit: KEYWORD_CANDIDATES,
+        // Список «знайди» с точкой — кандидаты ближайшие из релевантных (иначе LIMIT отсёк бы ближние со слабым
+        // совпадением); экскурсия и «найкращі» — самые релевантные.
+        order: scope.origin && intent.kind === "places" && intent.sort !== "rating" ? "distance" : "score",
       });
     let matches = await run(radius);
     if (matches.length < WIDEN_BELOW && radius !== undefined && intent.radiusMeters === null) {
@@ -406,6 +543,29 @@ export class AssistantService {
       offset: 0,
     });
     return { found: page.items, relevance: new Map(matches.map((m) => [m.id, m.score])), notes };
+  }
+
+  /** Места по названию во всём регионе (без категории, пункта и радиуса), падеж не важен: «Женецького Гуку». */
+  private async byName(
+    regionId: string,
+    query: string,
+    origin: LonLat | undefined,
+  ): Promise<PlaceSummaryDto[]> {
+    const stems = nameStems(query);
+    if (!stems.length) return [];
+    // В ILIKE — самая длинная основа (каталог сравнивает названия без апострофов), остальные — проверкой здесь.
+    const probe = [...stems].sort((a, b) => b.length - a.length)[0]!;
+    if (probe.length < 3) return [];
+    const page = await this.guide.search(regionId, {
+      origin,
+      text: probe,
+      limit: NAMED_CANDIDATES,
+      offset: 0,
+    });
+    const matched = page.items.filter((p) => nameHasStems(p, stems));
+    const generic = genericStems(query);
+    const exact = generic.length ? matched.filter((p) => nameHasStems(p, generic)) : [];
+    return (exact.length ? exact : matched).slice(0, NAMED_MAX);
   }
 
   /** Места каталога по намерению: поиск по категориям или ключевым словам, фильтры и порядок, описания из обогащения. */
@@ -468,6 +628,25 @@ export class AssistantService {
       notes.push(...k.notes);
     }
 
+    // Названное место («водоспад Гук», «Говерла») — по названию во всём регионе, без пункта и радиуса: вершины и
+    // водопады вне населённых пунктов (locality_id null) иначе отсекает выбор «Локація» или радиус.
+    let named = new Set<string>();
+    let namedInSection = new Set<string>();
+    if (intent.nameQuery && !isKnownKeyword(intent.nameQuery)) {
+      const byName = await this.byName(regionId, intent.nameQuery, origin);
+      if (byName.length) {
+        const sections = new Set(this.sectionsOf(intent.categories, catalog));
+        const inSection = (p: PlaceSummaryDto) =>
+          sections.has(catalog.rootOf.get(p.categoryId) ?? p.categoryId);
+        // Своего раздела («водоспад» — природа) — выше таксі «…Водоспад Гук Трансфер».
+        const sorted = [...byName.filter(inSection), ...byName.filter((p) => !inSection(p))];
+        named = new Set(sorted.map((p) => p.id));
+        namedInSection = new Set(byName.filter(inSection).map((p) => p.id));
+        found = [...sorted, ...found.filter((p) => !named.has(p.id))];
+        if (relevance) relevance = new Map([...relevance, ...sorted.map((p, i) => [p.id, 100 - i] as const)]);
+      }
+    }
+
     if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
     if (intent.openNow) {
       const open = found.filter((p) => p.openNow === true);
@@ -495,6 +674,22 @@ export class AssistantService {
       );
       found = [...found].sort((a, b) => rank.get(b.id)! - rank.get(a.id)!);
     }
+    // Порядок списка «знайди» — от ближайшего к дальнему от точки туриста (релевантность — только отбор кандидатов);
+    // названное место (nameQuery) — сначала совпавшие по названию. «Найкращі» — по рейтингу Google. Экскурсия —
+    // остановки по релевантности (порядок обхода — orderRoute). Без точки — прежний порядок.
+    const ordered = intent.kind === "places";
+    // Найденные по названию (основы слов) — выше совпавших только по адресу (и при «найкращі»).
+    // Своего раздела — выше (водоспад, а не таксі «…Водоспад Гук»); внутри — начало названия.
+    const tier = (p: PlaceSummaryDto) =>
+      intent.nameQuery
+        ? (named.has(p.id) ? (namedInSection.has(p.id) ? 0 : 1) : 2) + nameTier(p, intent.nameQuery) / 10
+        : 0;
+    if (ordered && intent.sort === "rating") found = byRating(found, enrichment, tier);
+    else if (ordered && origin) {
+      found = [...found].sort(
+        (a, b) => tier(a) - tier(b) || (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity),
+      );
+    }
     let items: AssistantPlaceDto[] = found.map((place) => this.placeDto(place, enrichment.get(place.id)));
     if (intent.priceMin !== null || intent.priceMax !== null) {
       const min = intent.priceMin ?? 0;
@@ -504,11 +699,18 @@ export class AssistantService {
       if (priced.length) items = priced;
       else if (items.length) notes.push("price_unknown");
     }
-    // «З дітьми» — не фильтр (данные о детях есть не у всех мест): подходящие — первыми.
-    if (intent.withKids)
+    // «З дітьми» — не фильтр (данные о детях есть не у всех мест). С точкой — порядок строго по расстоянию (метка
+    // в карточке), без точки — подходящие первыми.
+    if (intent.withKids && !(ordered && origin))
       items = [...items.filter((i) => i.kidsFriendly), ...items.filter((i) => !i.kidsFriendly)];
 
     if (intent.kind === "tour") {
+      // Экскурсия к названному месту — оно среди остановок.
+      if (named.size)
+        items = [
+          ...items.filter((i) => named.has(i.place.id)),
+          ...items.filter((i) => !named.has(i.place.id)),
+        ];
       const stops = items.slice(0, ASSISTANT_TOUR_STOPS).map((i) => ({ ...i, location: i.place.location }));
       const { ordered, lengthMeters } = orderRoute(stops, origin);
       return {
@@ -597,6 +799,8 @@ export class AssistantService {
       place,
       priceLevel: e?.google?.priceLevel ?? null,
       kidsFriendly: kidsFriendly(e),
+      rating: e?.google?.rating ?? null,
+      ratingCount: e?.google?.ratingCount ?? null,
       description: d.text,
       descriptionSource: d.source,
       descriptionUrl: d.url,
@@ -1042,6 +1246,7 @@ function clarifyIntent(previous: AssistantIntent | null, allowed: ReadonlySet<st
     scope: kind === "plan" ? (previous?.scope ?? null) : null,
     scopeLocalityIds: kind === "plan" ? (previous?.scopeLocalityIds ?? []) : [],
     transport: kind === "plan" ? (previous?.transport ?? null) : null,
+    sort: previous?.sort ?? null,
   };
 }
 

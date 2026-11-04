@@ -321,6 +321,8 @@ describe("PlannerAi: пределы, сессия, стоимость", () => {
   const ai = (messages: PlanAiMessages | null, config = {}) => {
     const s = new PlannerAi({} as never, config, messages);
     vi.spyOn(s, "catalog").mockResolvedValue(catalog);
+    // Постоянный seed: случайный менял выборку кандидатов, и тесты пределов изредка падали.
+    s.seed = () => 7;
     return s;
   };
   const input = { ...params(), avoid: undefined } as Omit<PlanAiParams, "seed" | "avoid">;
@@ -344,6 +346,7 @@ describe("PlannerAi: пределы, сессия, стоимость", () => {
   it("«мало мест» — правиловый план без запроса и без списания предела", async () => {
     const { messages, create } = mock(goodPlan);
     const s = new PlannerAi({} as never, { userDailyLimit: 1 }, messages);
+    s.seed = () => 7;
     const spy = vi.spyOn(s, "catalog").mockResolvedValue({ ...catalog, places: [probii] });
     expect(await s.generate("u", region, input)).toEqual({ ok: false, reason: "no_candidates" });
     expect(await s.generate("u", region, input)).toEqual({ ok: false, reason: "no_candidates" });

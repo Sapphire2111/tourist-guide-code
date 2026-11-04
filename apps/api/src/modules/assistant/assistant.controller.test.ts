@@ -127,6 +127,7 @@ describe("POST /assistant/query", () => {
         scope: null,
         scopeLocalityIds: [],
         transport: null,
+        sort: null,
       },
       localityIds: [LOCALITY],
       answer: false,
@@ -146,10 +147,17 @@ describe("POST /assistant/query", () => {
       scope: "localities",
       scopeLocalityIds: [LOCALITY],
       transport: "foot",
+      sort: "rating",
     };
     await http().post("/assistant/query").send({ regionId: REGION, text: "з дітьми", previous }).expect(200);
     expect(service.query).toHaveBeenCalledWith(REGION, USER, expect.objectContaining({ previous }));
-    for (const bad of [{ dayParts: ["night"] }, { scope: "world" }, { transport: "bike" }, { days: 8 }])
+    for (const bad of [
+      { dayParts: ["night"] },
+      { sort: "price" },
+      { scope: "world" },
+      { transport: "bike" },
+      { days: 8 },
+    ])
       await http()
         .post("/assistant/query")
         .send({ regionId: REGION, text: "з дітьми", previous: { ...previous, ...bad } })
