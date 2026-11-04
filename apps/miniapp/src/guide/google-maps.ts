@@ -83,10 +83,12 @@ export type PooledMap = { div: HTMLDivElement; map: google.maps.Map; busy: boole
 const pool: PooledMap[] = [];
 let warnedDemo = false;
 
-/** Свободная карта из пула (её узел — в host) или новая. Вид (центр/масштаб) задаёт вызывающий. */
-export function acquireMap(l: MapsLibs, host: HTMLElement): PooledMap {
+/**
+ * Свободная карта из пула (её узел — в host) или новая. Вид (центр/масштаб) задаёт вызывающий.
+ * Тема передаётся аргументом, а не читается из data-theme: атрибут ставит эффект ThemeProvider (родителя) — позже эффектов детей.
+ */
+export function acquireMap(l: MapsLibs, host: HTMLElement, night: boolean): PooledMap {
   // Схема карты задаётся только при создании: тема «Ніч» — своя карта в пуле (новая загрузка лишь при смене темы).
-  const night = document.documentElement.dataset.theme === "night";
   let item = pool.find((p) => !p.busy && p.night === night);
   if (!item) {
     if (import.meta.env?.PROD && mapsConfig().mapId === DEMO_MAP_ID && !warnedDemo) {

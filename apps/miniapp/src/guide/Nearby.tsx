@@ -357,6 +357,7 @@ export function ModernNearbyResults({
             me={me}
             closestId={closest?.id}
             legend={false}
+            floating
             overlay={
               closest && (
                 <div className="modern-map-spot" data-map-inset="bottom">
@@ -390,7 +391,12 @@ export function ModernNearbyResults({
         <div className="modern-results-head">
           <div>
             <p className="modern-results-kicker">
-              <span aria-hidden="true">🔥</span> {t("miniapp.modern.sortKicker")}
+              <span aria-hidden="true">🔥</span>{" "}
+              {me
+                ? t("miniapp.modern.sortKicker")
+                : baseTag
+                  ? t("miniapp.modern.sortKickerBase", { base: baseTag })
+                  : t("miniapp.modern.sortKicker")}
             </p>
             <p role="status" className="modern-results-count" data-testid="nearby-status">
               {loading

@@ -8,6 +8,7 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useRoute, useT } from "@tg/ui";
 import { SECTION_EMOJI } from "../design/Ornament.js";
+import { useTheme } from "../design/ThemeProvider.js";
 import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
 import type { LatLng } from "./geo.js";
@@ -44,6 +45,8 @@ export type PlacesMapProps = {
   centerTag?: string;
   /** false — без легенды под картой («Поруч»: значок категории уже на капсуле маркера). */
   legend?: boolean;
+  /** Карта-сцена («Поруч»): оранжевый круг радиуса, кнопки масштаба посередине справа. Не зависит от того, есть ли плашка. */
+  floating?: boolean;
 };
 
 /** Группа маркера: раздел главной категории места или «Інше». */
@@ -64,6 +67,10 @@ export const MARKER_COLORS: Record<MarkerGroup, string> = {
   other: "#57534e",
 };
 const BASE_COLOR = "#111827";
+/** Линия маршрута: тёмный пунктир на светлой карте, светлый — на тёмной («Ніч»). */
+export const ROUTE_COLOR = { day: BASE_COLOR, night: "#fde68a" } as const;
+/** Подложка до загрузки тайлов. */
+export const MAP_BACKDROP = { day: "#e5e3df", night: "#0e231b" } as const;
 
 /** Значки групп: контур 24×24 (stroke белым по цвету группы). Константы, не пользовательские данные. */
 const MARKER_ICONS: Record<MarkerGroup, string> = {
@@ -184,8 +191,11 @@ export default function PlacesMap({
   overlay,
   centerTag,
   legend = true,
+  floating = false,
 }: PlacesMapProps) {
   const { t, locale } = useT();
+  // Тема — из контекста, а не из DOM: data-theme ставится эффектом ThemeProvider, то есть после эффектов детей.
+  const night = useTheme().theme === "night";
   const [, navigate] = useRoute();
   const { api } = useGuide();
   const index = useCategoryIndex(api);
@@ -194,6 +204,8 @@ export default function PlacesMap({
   const [map, setMap] = useState<PooledMap | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
   const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
+  /** Установка вида под текущий размер карты (задаёт эффект маркеров); вызывается и при смене размера контейнера. */
+  const applyView = useRef<(() => void) | null>(null);
   // Тексты подписи читаются при открытии: смена языка не требует пересоздавать маркеры.
   const tRef = useRef(t);
   tRef.current = t;
@@ -219,12 +231,12 @@ export default function PlacesMap({
     };
   }, []);
 
-  const floating = Boolean(overlay);
   // Карта из пула — одна на экран; при уходе возвращается в пул (новой платной загрузки не будет).
+  // Смена темы на открытом экране — другая карта из пула (схема задаётся при создании), маркеры строятся на ней заново.
   const libs = state.status === "ready" ? state.libs : null;
   useEffect(() => {
     if (!libs || !el.current) return;
-    const item = acquireMap(libs, el.current);
+    const item = acquireMap(libs, el.current, night);
     const info = new libs.maps.InfoWindow();
     infoRef.current = info;
     const o = overlays.current;
@@ -238,7 +250,7 @@ export default function PlacesMap({
       setMap(null);
       releaseMap(item);
     };
-  }, [libs]);
+  }, [libs, night]);
 
   // Карточка поверх низа карты закрыла бы кнопки масштаба (по умолчанию справа внизу) — на этом экране они посередине справа.
   useEffect(() => {
@@ -305,7 +317,12 @@ export default function PlacesMap({
             clickable: false,
             icons: [
               {
-                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.8, strokeColor: BASE_COLOR, scale: 3 },
+                icon: {
+                  path: "M 0,-1 0,1",
+                  strokeOpacity: 0.8,
+                  strokeColor: night ? ROUTE_COLOR.night : ROUTE_COLOR.day,
+                  scale: 3,
+                },
                 offset: "0",
                 repeat: "12px",
               },
@@ -363,9 +380,7 @@ export default function PlacesMap({
     // Вид — в следующем кадре: карта из пула только что вставлена в новый узел, сначала она должна увидеть его
     // размер (resize), иначе fitBounds посчитает границы по старому (или нулевому) размеру.
     const core = libs.core;
-    o.frame = requestAnimationFrame(() => {
-      o.frame = null;
-      core.event.trigger(m, "resize");
+    const view = () => {
       if (points > 1) {
         // fitBounds без предела: приближение ограничиваем один раз после подгонки (пользователь может приблизить сам).
         o.listeners.push(
@@ -381,6 +396,12 @@ export default function PlacesMap({
         m.setCenter({ lat: 48.45, lng: 24.55 });
         m.setZoom(12);
       }
+    };
+    applyView.current = view;
+    o.frame = requestAnimationFrame(() => {
+      o.frame = null;
+      core.event.trigger(m, "resize");
+      view();
     });
     // Тексты подписей, справочник и navigate — через ref (читаются при открытии; перекраска — ниже).
   }, [
@@ -396,7 +417,34 @@ export default function PlacesMap({
     route,
     closestId,
     floating,
+    night,
   ]);
+
+  // Размер окна карты изменился («Список ↓» / «Розгорнути», поворот, низкий экран): карте сообщается новый размер и
+  // границы подгоняются заново — с актуальными отступами под панели (они читаются в момент подгонки). Пауза 120 мс —
+  // чтобы не подгонять на каждом кадре анимации высоты.
+  useEffect(() => {
+    const host = el.current;
+    if (!libs || !map || !host || typeof ResizeObserver === "undefined") return;
+    let w = host.clientWidth;
+    let h = host.clientHeight;
+    let timer: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (Math.abs(host.clientWidth - w) < 2 && Math.abs(host.clientHeight - h) < 2) return;
+      w = host.clientWidth;
+      h = host.clientHeight;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        libs.core.event.trigger(map.map, "resize");
+        applyView.current?.();
+      }, 120);
+    });
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [libs, map]);
 
   // Значок «Ви тут»: перестраивается только он и круг точности (карта, маркеры мест и границы не трогаются).
   const meLat = me?.lat;
@@ -461,7 +509,14 @@ export default function PlacesMap({
     ...new Set(places.filter((p) => p.location).map((p) => markerGroup(index.sectionOf(p.categoryId)))),
   ];
 
-  if (state.status === "error") return <p role="alert">{t("miniapp.map.error")}</p>;
+  // Карта не загрузилась: заглушка, а плашка с ближайшим местом и маршрутом остаётся (список рядом тоже).
+  if (state.status === "error")
+    return (
+      <>
+        <p role="alert">{t("miniapp.map.error")}</p>
+        {overlay}
+      </>
+    );
 
   // Карта дублирует список рядом: маркеры — не единственный путь к месту (клавиатура и чтение с экрана — список).
   return (
@@ -473,7 +528,12 @@ export default function PlacesMap({
           aria-label={t("miniapp.map.label")}
           aria-busy={map ? undefined : true}
           data-testid="places-map"
-          style={{ height: 260, borderRadius: "var(--radius)", overflow: "hidden", background: "#e5e3df" }}
+          style={{
+            height: 260,
+            borderRadius: "var(--radius)",
+            overflow: "hidden",
+            background: night ? MAP_BACKDROP.night : MAP_BACKDROP.day,
+          }}
         />
         {overlay}
       </div>

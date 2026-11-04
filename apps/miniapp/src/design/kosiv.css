@@ -847,6 +847,13 @@ html[data-season] :focus-visible {
   flex-direction: column;
   gap: 2px;
   font-size: 0.875rem;
+  /* InfoWindow Google всегда белый (и в «Ніч»): цвета заданы явно, не наследуются от темы приложения.
+     Контраст на #ffffff: название 16,7:1, категория 9,7:1, ссылка 6,7:1. */
+  background-color: #ffffff;
+  color: #1c1917;
+}
+.kosiv-map-popup strong {
+  color: #1c1917;
 }
 .kosiv-map-popup span {
   color: #44403c;

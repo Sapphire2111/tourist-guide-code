@@ -24,6 +24,8 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await page.getByTestId("menu-btn").click();
+  // Сначала лист открылся, потом проверка отсутствия: иначе toHaveCount(0) проходит до появления листа.
+  await expect(page.getByRole("dialog", { name: "Меню" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Дизайн інтерфейсу" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page

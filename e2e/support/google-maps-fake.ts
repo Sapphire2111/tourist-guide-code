@@ -32,9 +32,13 @@ function fakeGoogleMaps() {
     node: HTMLElement;
     zoom = 12;
     center: unknown = null;
-    constructor(div: HTMLElement) {
+    constructor(div: HTMLElement, opts?: { colorScheme?: string }) {
       this.node = document.createElement("div");
       this.node.className = "gm-fake-map";
+      // Схема, с которой «создана» карта (LIGHT/DARK): тесты проверяют, что смена темы даёт карту нужной схемы.
+      this.node.dataset.colorScheme = opts?.colorScheme ?? "";
+      this.node.dataset.fitCount = "0";
+      this.node.dataset.resizeCount = "0";
       this.node.style.cssText =
         "position:relative;box-sizing:border-box;width:100%;height:100%;background:#e5e3df;overflow:hidden;padding:24px 0 0 24px";
       div.appendChild(this.node);
@@ -61,6 +65,11 @@ function fakeGoogleMaps() {
     // фейк без проекции раскладывает маркеры потоком, поэтому отступ сверху/слева применяется как padding узла.
     fitBounds(_b: unknown, padding?: number | { top?: number; left?: number }) {
       const p = typeof padding === "number" ? { top: padding, left: padding } : padding;
+      // Сколько раз и с каким верхним/нижним отступом подгонялись границы (проверка подгонки при смене размера).
+      this.node.dataset.fitCount = String(Number(this.node.dataset.fitCount) + 1);
+      this.node.dataset.fitPaddingTop = String(p?.top ?? 0);
+      this.node.dataset.fitPaddingBottom = String((p as { bottom?: number } | undefined)?.bottom ?? 0);
+      this.node.dataset.fitHeight = String(this.node.clientHeight);
       if (!scatter()) this.node.style.padding = `${p?.top ?? 0}px 0 0 ${p?.left ?? 0}px`;
     }
     setCenter(c: unknown) {
@@ -170,7 +179,15 @@ function fakeGoogleMaps() {
     }
   }
 
-  const event = { addListenerOnce: () => ({ remove() {} }), trigger() {}, removeListener() {} };
+  const event = {
+    addListenerOnce: () => ({ remove() {} }),
+    // trigger(map, "resize"): считаем — карта получила новый размер.
+    trigger(m: unknown, name: string) {
+      const host = hostOf(m);
+      if (host && name === "resize") host.dataset.resizeCount = String(Number(host.dataset.resizeCount) + 1);
+    },
+    removeListener() {},
+  };
   const libs: Record<string, unknown> = {
     core: { LatLngBounds, event, ControlPosition: { RIGHT_CENTER: 8, RIGHT_BOTTOM: 12 } },
     maps: {
