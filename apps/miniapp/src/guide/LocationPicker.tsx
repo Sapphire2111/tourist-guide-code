@@ -28,14 +28,19 @@ export function LocationChip() {
         type="button"
         className="loc-chip"
         data-testid="location-chip"
+        data-all={names.length === 0 && !gps ? "true" : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t("miniapp.location.title")}: ${label}`}
         onClick={() => setOpen(true)}
       >
-        <span aria-hidden="true">📍</span>
+        <span className="loc-chip-pin" aria-hidden="true">
+          📍
+        </span>
         <span className="loc-chip-text">{label}</span>
-        <span aria-hidden="true">▾</span>
+        <span className="loc-chip-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
     </>
   );

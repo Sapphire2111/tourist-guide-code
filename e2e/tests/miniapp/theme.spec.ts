@@ -1,6 +1,7 @@
 // Тема «День» / «Ніч»: переключатель в меню, хранение в localStorage (tg.theme), первый кадр сразу в своей теме.
 import type { Page } from "@playwright/test";
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
+import { animationsDone } from "../../support/animations.js";
 import { apiMockState } from "../../support/api-mock.js";
 import { installAssistantMock } from "../../support/assistant-mock.js";
 import { bookingDto, installBookingsMock, PARTNER_PLACE } from "../../support/bookings-mock.js";
@@ -164,13 +165,18 @@ test("смена темы на открытом «Поруч»: карта по�
   await page.locator('.gm-fake-marker[role="button"]').first().click();
   const popup = page.locator(".kosiv-map-popup");
   await expect(popup).toBeVisible();
-  for (const sel of ["strong", "span", "a"]) {
+  for (const sel of ["strong", ".kosiv-map-popup-titles span", "a.kosiv-map-popup-open"]) {
     const color = await popup
       .locator(sel)
       .first()
       .evaluate((n) => getComputedStyle(n).color);
     expect(contrastOf(color, "rgb(255, 255, 255)"), sel).toBeGreaterThanOrEqual(4.5);
   }
+  // «Маршрут» — белый текст на своей заливке.
+  const route = await popup
+    .locator("a.kosiv-map-popup-route")
+    .evaluate((n) => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor] as const);
+  expect(contrastOf(route[0], route[1])).toBeGreaterThanOrEqual(4.5);
   // Обратно в «День» — снова светлая схема.
   const menu2 = await openMenu(page);
   await menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }).click();
@@ -200,16 +206,24 @@ for (const [width, height, mapHeight] of [
   [320, 740, 461],
   [320, 568, 412],
 ] as const) {
-  test(`«Поруч» ${width}×${height}: окно карты ${mapHeight} px, плашка над навигацией`, async ({ page }) => {
+  test(`«Поруч» ${width}×${height}: окно карты ${mapHeight} px, плашки ближайшего нет`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.goto("/#/nearby");
     await expect(page.getByTestId("places-map")).toBeVisible();
-    await expect(page.locator(".modern-map-spot")).toBeVisible();
+    await animationsDone(page);
     const box = (await page.getByTestId("places-map").boundingBox())!;
     expect(Math.round(box.height)).toBe(mapHeight);
-    const spot = (await page.locator(".modern-map-spot").boundingBox())!;
-    const nav = (await page.locator(".kosiv-nav").boundingBox())!;
-    expect(spot.y + spot.height).toBeLessThanOrEqual(nav.y);
+    await expect(page.locator(".modern-map-spot")).toHaveCount(0);
+    // Отступы границ: снизу — только логотип Google; сверху — фактическая высота панели и запас.
+    const map = page.locator(".gm-fake-map");
+    await expect(map).toHaveAttribute("data-fit-padding-bottom", "40");
+    const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
+    const expected = Math.ceil(panel.y + panel.height - box.y - 0.01) + 16;
+    await expect(map).toHaveAttribute("data-fit-padding-top", String(expected));
+    // Значение устойчиво: после анимации замер не меняется.
+    await page.waitForTimeout(100);
+    const again = (await page.locator('[data-map-inset="top"]').boundingBox())!;
+    expect(again.y + again.height).toBe(panel.y + panel.height);
   });
 }
 
@@ -226,6 +240,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
     );
   await page.goto("/#/nearby");
   await expect(page.locator(".modern-filters button").first()).toBeVisible();
+  await animationsDone(page);
   for (const sel of [".modern-filters button", ".modern-radius button"]) {
     const items = await reach(sel);
     expect(items.length).toBeGreaterThan(0);
@@ -235,6 +250,7 @@ test("цели нажатия: чипы категорий, пилюли рад�
   expect(chip[0]!.h).toBe(34);
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
+  await animationsDone(page);
   const tags = await reach(".modern-hero-glass .kosiv-tag");
   if (tags.length) {
     for (const i of tags) expect(i.total).toBeGreaterThanOrEqual(44);
@@ -278,14 +294,17 @@ test("пустая live-область голоса на главной оста
   await expect(status).toHaveCSS("display", "block");
 });
 
-test("карта не загрузилась: плашка с ближайшим местом остаётся над заглушкой", async ({ page }) => {
+test("карта не загрузилась: заглушка без плашки, маршруты — в списке", async ({ page }) => {
   await page.addInitScript(() => {
     const g = (window as unknown as { google: { maps: { importLibrary: () => Promise<never> } } }).google;
     g.maps.importLibrary = () => Promise.reject(new Error("net"));
   });
   await page.goto("/#/nearby");
   await expect(page.getByRole("alert").filter({ hasText: "Карту не вдалося завантажити" })).toBeVisible();
-  await expect(page.locator(".modern-map-spot")).toBeVisible();
+  await expect(page.locator(".modern-map-spot")).toHaveCount(0);
+  await expect(
+    page.getByTestId("place-item").first().getByRole("link", { name: "Маршрут", exact: true }),
+  ).toBeVisible();
 });
 
 test("«Ніч»: контраст на «Про заклад» и ассистенте", async ({ page }) => {
@@ -381,7 +400,7 @@ for (const [width, height, night] of [
   [320, 740, false],
   [320, 740, true],
 ] as const) {
-  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: сетка из 8 одинаковых плиток в 2 колонки, подписи без обрезки`, async ({
+  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и горизонтальная карусель из 8 категорий`, async ({
     page,
   }) => {
     if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
@@ -393,30 +412,24 @@ for (const [width, height, night] of [
     const boxes = await tiles.evaluateAll((nodes) =>
       nodes.map((n) => {
         const r = n.getBoundingClientRect();
-        const text = n.querySelector("span")!;
+        const text = n.querySelector(".modern-intention-label")!;
         return {
           x: Math.round(r.x),
           y: Math.round(r.y),
           w: Math.round(r.width),
           h: Math.round(r.height),
-          clipped: n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1,
-          textRight: text.getBoundingClientRect().right <= r.right - 8,
           fits: text.scrollWidth <= text.clientWidth + 1,
         };
       }),
     );
-    // Одинаковая высота 104–112 px, две колонки одной ширины, широких плиток нет.
+    // Горизонтальная карусель: все 8 плиток в один ряд (одинаковые y и h), подписи без обрезки.
     for (const b of boxes) {
-      expect(b.h).toBeGreaterThanOrEqual(104);
-      expect(b.h).toBeLessThanOrEqual(112);
-      expect(b.clipped).toBe(false);
+      expect(b.h).toBeGreaterThanOrEqual(44);
       expect(b.fits).toBe(true);
     }
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
-    expect(new Set(boxes.map((b) => b.x)).size).toBe(2);
-    expect(new Set(boxes.map((b) => b.w)).size).toBe(1);
-    // Кнопка «Що поруч зі мною зараз» — между Hero и плитками.
-    // Одним замером: пока читаем, раскладка не должна успеть сдвинуться.
+    expect(new Set(boxes.map((b) => b.y)).size).toBe(1);
+    // Карточка «Що поруч зараз» — между Hero и горизонтальной каруселью.
     const order = await page.evaluate(() => {
       const top = (id: string) => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
       const first = document.querySelector('[data-testid="home-sections"] a')!.getBoundingClientRect();
@@ -429,7 +442,7 @@ for (const [width, height, night] of [
     });
     expect(order.nearTop).toBeGreaterThan(order.heroTop);
     expect(order.nearBottom).toBeLessThanOrEqual(order.tilesTop);
-    await expect(page.getByTestId("tile-hint-stay")).toBeVisible();
+    await expect(page.getByTestId("tile-hint-stay")).toBeAttached();
     await expectNoSeriousA11yViolations(page);
   });
 }

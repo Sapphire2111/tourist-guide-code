@@ -47,6 +47,26 @@ describe("стили, которые нельзя ломать", () => {
     return /(?:^|[\s;])color:\s*(#[0-9a-f]{6})/i.exec(block)?.[1] ?? "";
   };
 
+  it("действия окна маркера: «Маршрут» белым на заливке, «Відкрити картку» на белом — контраст >= 4,5:1", () => {
+    const route = ".kosiv-map-popup .kosiv-map-popup-actions a.kosiv-map-popup-route";
+    expect(contrast(color(route), "#b83d18")).toBeGreaterThanOrEqual(4.5);
+    expect(css).toMatch(/a\.kosiv-map-popup-route \{[^}]*background-color: #b83d18/);
+    const open = ".kosiv-map-popup .kosiv-map-popup-actions a.kosiv-map-popup-open";
+    expect(contrast(color(open), "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("кольцо фокуса в окне маркера: цвет не от темы, контраст >= 3:1 на белом; × и подпись — белое внутри узла", () => {
+    const ring =
+      /html\[data-season\] \.kosiv-map-popup :focus-visible \{\s*outline: 2\.5px solid (#[0-9a-f]{6})/.exec(
+        css,
+      );
+    expect(contrast(ring![1]!, "#ffffff")).toBeGreaterThanOrEqual(3);
+    for (const sel of [".kosiv-map-popup-credit a", ".kosiv-map-popup-close"]) {
+      const block = css.slice(css.indexOf(`${sel}:focus-visible`));
+      expect(block.slice(0, block.indexOf("}"))).toMatch(/outline-color: #ffffff;\s*outline-offset: -/);
+    }
+  });
+
   it("подпись маркера: все цвета заданы явно, контраст на белом InfoWindow >= 4,5:1", () => {
     for (const sel of [
       ".kosiv-map-popup",

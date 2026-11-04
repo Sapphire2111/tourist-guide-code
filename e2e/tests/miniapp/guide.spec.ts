@@ -22,19 +22,20 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     await page.keyboard.press("Escape");
-    // modern: одна сетка из восьми разделов (без «Що поруч» — он в кнопке под Hero и в нижней навигации), «Про заклад» — карточка заведения.
+    // modern (Concept B): 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + горизонтальная карусель из 8 категорий.
     const intentions = page.getByTestId("home-sections").getByRole("link");
-    await expect(intentions).toHaveText([
-      /^Де жити/,
-      "Де поїсти",
-      "Відпочити та зігрітися",
-      "Де купити",
-      "Розваги та враження",
-      "Гірські лижі",
-      "Авто",
-      "Сервіси",
+    await expect(intentions).toHaveCount(8);
+    expect(await intentions.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual([
+      "#/section/relax",
+      "#/section/fun",
+      "#/section/shop",
+      "#/section/transfer",
+      "#/section/stay",
+      "#/section/ski",
+      "#/section/services",
+      "#/section/eat",
     ]);
-    // «Допомога» — кнопка со щитом в верхней полосе, а не плитка.
+    // «Допомога» — кнопка 112 в верхней полосе, а не плитка.
     await expect(intentions.filter({ hasText: "Допомога" })).toHaveCount(0);
     await expect(page.getByTestId("app-top").getByRole("link", { name: "Допомога" })).toHaveAttribute(
       "href",
@@ -182,7 +183,10 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("badge-open")).toBeVisible();
     await expect(page.getByRole("img", { name: "Фото: Кав'ярня «Смерека»" })).toBeVisible();
     await expect(page.getByTestId("place-call")).toHaveAttribute("href", "tel:+380501112233");
-    await expect(page.getByTestId("place-route")).toHaveAttribute("href", /openstreetmap\.org\/directions/);
+    await expect(page.getByTestId("place-route")).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=48.4512,24.5612",
+    );
     await expectNoSeriousA11yViolations(page);
 
     // Ссылки не уводят со страницы в тесте: tel: и внешний маршрут перехватываем.
@@ -263,7 +267,8 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч: Тестовий готель");
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const state = apiMockState.get(page)!;
-    expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "500" });
+    expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "1000" });
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
     await expect(page.getByTestId("place-item").first().getByTestId("place-category")).toBeVisible();
     const card = page.getByTestId("place-item").first();
     await expect(card).toHaveCSS("border-top-style", "solid");

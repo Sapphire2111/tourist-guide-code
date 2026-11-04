@@ -54,6 +54,8 @@ function injectScript(language?: string): Promise<void> {
     };
     const params = new URLSearchParams({ key, v: "weekly", loading: "async", callback: READY_CALLBACK });
     if (language) params.set("language", language);
+    // Регион Украины: иначе Google берёт регион по умолчанию (в запросах тайлов было US) — подписи и границы для Украины.
+    params.set("region", "UA");
     const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
     script.async = true;

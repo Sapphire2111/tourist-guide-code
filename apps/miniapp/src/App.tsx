@@ -295,7 +295,17 @@ function HomeAssistant(props: RoutesProps) {
   const [, navigate] = useRoute();
   const { regionId } = useGuide();
   const api = useAssistantApi(props);
-  if (!regionId || !props.session) return null;
+  if (!regionId || !props.session) {
+    return (
+      <div className="assistant" aria-hidden="true">
+        <div className="assistant-pill">
+          <span className="assistant-pill-icon">🎙️</span>
+          <input type="search" readOnly tabIndex={-1} placeholder="Натисни на ватру або напиши запит…" />
+          <span className="assistant-action">🔥</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <Feature flag="module.assistant">
       <AssistantBox api={api} examples onSubmit={(q) => navigate(`/assistant?q=${encodeURIComponent(q)}`)} />
@@ -328,7 +338,6 @@ function Home(props: RoutesProps) {
     <>
       <Welcome user={user} session={session} retryContext={retryContext} />
       <div className="home-loc-row">
-        <LocationChip />
         <HomeWeather {...props} />
       </div>
       {session && !hasRequiredConsents(session.me) && (
@@ -794,7 +803,12 @@ function Shell({
   return (
     <>
       <NativeBack webApp={webApp} />
-      <AppTop path={path} profile={profile} scan={scanControl} />
+      <AppTop
+        path={path}
+        profile={profile}
+        scan={scanControl}
+        location={path === "/" ? <LocationChip /> : undefined}
+      />
       <div className="kosiv-content" ref={content}>
         {routes}
       </div>

@@ -58,6 +58,7 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     categoryId: dto.categoryId,
     address: dto.address ?? null,
     location: dto.location ? { lat: dto.location.lat, lng: dto.location.lon } : null,
+    googlePlaceId: (dto as { googlePlaceId?: string | null }).googlePlaceId ?? null,
     distanceMeters: dto.distanceMeters,
     cover: photoOf(dto.cover) ?? coverPhotoOf((dto as Partial<SummaryDto>).coverPhoto),
     openNow: dto.openNow,

@@ -2,7 +2,7 @@
 import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
 import { Button, Link, useT } from "@tg/ui";
-import { routeUrl, type LatLng } from "./geo.js";
+import { googleRouteUrl } from "./geo.js";
 import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
 import { useCategoryIndex } from "./categories.js";
 import { useMaybeGuide, type Async } from "./context.js";
@@ -119,6 +119,21 @@ export function useDistance(): (meters: number | null) => string | null {
   };
 }
 
+/** Текст подписи обложки: и для CoverCredit, и для окна маркера на карте (там DOM без React). */
+export function coverCreditText(
+  credit: NonNullable<Photo["credit"]>,
+  t: ReturnType<typeof useT>["t"],
+): string {
+  const names = credit.authors.map((a) => a.name).join(", ");
+  return credit.source === "wikimedia"
+    ? names
+      ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
+      : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
+    : names
+      ? t("miniapp.place.googleCover", { name: names })
+      : t("miniapp.place.googleCoverNoAuthor");
+}
+
 /** Обложка места: фото (декор — название рядом) или керамическая подложка с иконкой. */
 /** Подпись обложки из Google/Wikimedia: автор (и лицензия Commons) — обязательна. */
 export function CoverCredit({
@@ -129,15 +144,7 @@ export function CoverCredit({
   className?: string;
 }) {
   const { t } = useT();
-  const names = credit.authors.map((a) => a.name).join(", ");
-  const text =
-    credit.source === "wikimedia"
-      ? names
-        ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
-        : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
-      : names
-        ? t("miniapp.place.googleCover", { name: names })
-        : t("miniapp.place.googleCoverNoAuthor");
+  const text = coverCreditText(credit, t);
   return (
     <span className={className} data-testid="cover-credit">
       {/* Commons: подпись ведёт на страницу файла (автор, лицензия и её текст). */}
@@ -174,13 +181,11 @@ export function PlaceSummaryCard({
   as: Tag = "li",
   distanceFrom,
   quickRoute = false,
-  routeFrom,
 }: {
   place: PlaceSummary;
   /** Откуда расстояние, если не от пользователя/заведения: «від центру Яремче». */
   distanceFrom?: string;
   quickRoute?: boolean;
-  routeFrom?: LatLng | null;
   layout?: "row" | "tile";
   testId?: string;
   as?: "li" | "div";
@@ -223,7 +228,7 @@ export function PlaceSummaryCard({
         {quickRoute && place.location && (
           <ExtLink
             className="modern-route"
-            href={routeUrl(place.location, routeFrom)}
+            href={googleRouteUrl(place.location, place.googlePlaceId)}
             onOpen={() => guide?.analytics.track("route_clicked", { placeId: place.id })}
           >
             <span aria-hidden="true">🧭</span>
@@ -240,24 +245,16 @@ export function PlaceList({
   testId = "place-list",
   distanceFrom,
   quickRoute = false,
-  routeFrom,
 }: {
   places: PlaceSummary[];
   testId?: string;
   distanceFrom?: string;
   quickRoute?: boolean;
-  routeFrom?: LatLng | null;
 }) {
   return (
     <ul data-testid={testId} style={listStyle}>
       {places.map((p) => (
-        <PlaceSummaryCard
-          key={p.id}
-          place={p}
-          distanceFrom={distanceFrom}
-          quickRoute={quickRoute}
-          routeFrom={routeFrom}
-        />
+        <PlaceSummaryCard key={p.id} place={p} distanceFrom={distanceFrom} quickRoute={quickRoute} />
       ))}
     </ul>
   );
