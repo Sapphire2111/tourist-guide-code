@@ -128,11 +128,23 @@ describe("buildPlan", () => {
     expect(winter.days[0]!.parts[0]!.stops[0]!.placeId).toBe(ski.id);
   });
 
-  it("«Вершини»: сходження зранку як огляд (see, пів дня); взимку вершин у плані немає", () => {
+  it("«Вершини»: сходження першим пунктом ранку (see, пів дня); вдень і ввечері — ні; взимку — ні", () => {
     const peak = c("peaks", 1, { rating: 5 });
     const summer = buildPlan([peak, c("restaurants", 2)], opts({ parts: ["morning"], month: 7 }));
     const stop = summer.days[0]!.parts[0]!.stops[0]!;
-    expect(stop).toMatchObject({ placeId: peak.id, role: "see", durationMin: 210 });
+    expect(stop).toMatchObject({ placeId: peak.id, role: "see", durationMin: 240 });
+    const ids = (plan: ReturnType<typeof buildPlan>) =>
+      plan.days[0]!.parts.flatMap((p) => p.stops.map((s) => s.placeId));
+    const later = [peak, c("nature", 1.5), c("restaurants", 2), c("chany", 2.5)];
+    expect(ids(buildPlan(later, opts({ parts: ["afternoon"], month: 7 })))).not.toContain(peak.id);
+    expect(ids(buildPlan(later, opts({ parts: ["afternoon", "evening"], month: 7 })))).not.toContain(peak.id);
+    // «Що робити ввечері» (тільки вечір, з 17:00) — без підйому на вершину.
+    const eveningOnly = buildPlan(
+      [peak, c("entertainment", 1.5), c("restaurants", 2)],
+      opts({ parts: ["evening"], month: 7 }),
+    );
+    expect(ids(eveningOnly)).not.toContain(peak.id);
+    expect(ids(eveningOnly).length).toBeGreaterThan(0);
     const winter = buildPlan([peak, c("nature", 1.5)], opts({ parts: ["morning"], month: 1 }));
     expect(winter.days[0]!.parts.flatMap((p) => p.stops.map((s) => s.placeId))).not.toContain(peak.id);
   });

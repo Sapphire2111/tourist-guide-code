@@ -119,6 +119,10 @@ try {
         `Добавлено (вписать googlePlaceId в peaks.ts): ${stats.inserted.map((i) => `${i.slug}=${i.googlePlaceId} «${i.name}»`).join("; ")}`,
       );
     if (stats.notFound.length) console.log(`Google не нашёл: ${stats.notFound.join(", ")}`);
+    if (stats.nameMatched.length)
+      console.log(
+        `Найдено только по названию — НЕ изменено (проверить и вписать googlePlaceId в peaks.ts): ${stats.nameMatched.map((m) => `${m.slug}=${m.googlePlaceId ?? "—"} «${m.name}» [${m.category}]`).join("; ")}`,
+      );
     if (missing.length) console.log(`Без места в регионе: ${missing.join(", ")}`);
     if (write)
       console.log(

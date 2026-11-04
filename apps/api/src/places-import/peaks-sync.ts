@@ -1,8 +1,11 @@
 // CLI peaks:sync (раздел «Вершини»): места вершин из peaks.ts в каталоге региона. Без дублей: место ищется по
-// google_place_id из peaks.ts, затем по названию в радиусе MATCH_RADIUS_M от вершины (любая категория). Недостающие —
-// точечным Text Search (по одному запросу, только вставка: найденное Google место, которое уже есть в регионе, не
-// обновляется). Найденные — в подкатегорию peaks адресно (UPDATE по id); обложка — файл Wikimedia Commons из peaks.ts
-// (с автором и лицензией), если обложки нет или она из Google / без автора. Одна запись аудита на прогон.
+// google_place_id из peaks.ts, затем по названию в радиусе MATCH_RADIUS_M от вершины — только природа/пам'ятки/
+// активности/вершины, без жилья, еды и сервисов в названии (NOT_PEAK_RE). Найденное по названию НЕ меняется (ни
+// категория, ни обложка) — только в отчёт: id вписать в peaks.ts вручную. Недостающие — точечным Text Search (по
+// одному запросу, только вставка: найденное Google место, которое уже есть в регионе, не обновляется). Места по id и
+// вставленные — в подкатегорию peaks адресно (UPDATE по id); обложка — файл Wikimedia Commons из peaks.ts (с автором и
+// лицензией), если обложки нет или она из Google / без автора. Изменения и аудит — одной транзакцией (обложки
+// скачиваются до неё).
 import { sql, type Expression } from "kysely";
 import { point, regionContext, withinMeters, withTenant, type Db, type Geometry } from "../db/index.js";
 import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit/index.js";
@@ -14,6 +17,26 @@ import { haversineMeters, type MappedPlace } from "./mapping.js";
 import { PEAKS, PEAKS_CATEGORY_CODE, type PeakData } from "./peaks.js";
 import { collectTargeted, type TargetedQuery } from "./targeted.js";
 import { CATEGORY_NAMES, findRegionId, writePlaces } from "./writer.js";
+
+/** Запасной поиск по названию — только в этих категориях (не отель «Драгобрат», не колиба «Говерла»). */
+export const NAME_MATCH_CATEGORIES = ["nature", "sights", "active", PEAKS_CATEGORY_CODE];
+/** Жильё, еда, сервисы, музеи, лыжная инфраструктура и туры в названии — не сама вершина. */
+export const NOT_PEAK_RE = new RegExp(
+  "(^|[^\\p{L}])(" +
+    [
+      "готел\\p{L}*|hotel\\p{L}*|садиб\\p{L}*|котедж\\p{L}*|cottage\\p{L}*|хостел\\p{L}*|hostel\\p{L}*",
+      "апарт\\p{L}*|apart\\p{L}*|резорт\\p{L}*|resort\\p{L}*|курорт\\p{L}*|база|villa|вілла|віла",
+      "колиб\\p{L}*|ресторан\\p{L}*|restaurant\\p{L}*|кафе|cafe|бар|bar|піцер\\p{L}*",
+      "прокат\\p{L}*|rent\\p{L}*|магазин\\p{L}*|shop\\p{L}*|spa|спа|чан\\p{L}*|музе\\p{L}*|museum",
+      "підйомник\\p{L}*|витяг\\p{L}*|lift|трас\\p{L}*|ski|лиж\\p{L}*|тур|тури|tour\\p{L}*",
+    ].join("|") +
+    ")([^\\p{L}]|$)",
+  "iu",
+);
+
+/** Название подходит вершине: совпадает с search.match и не жильё/еда/сервис. */
+export const peakNameMatches = (peak: PeakData, name: string): boolean =>
+  Boolean(peak.search?.match.test(name)) && !NOT_PEAK_RE.test(name);
 
 /** Место «той же вершины» — не дальше, м (точка Google и Wikidata расходятся на сотни метров). */
 export const MATCH_RADIUS_M = 1_500;
@@ -82,7 +105,7 @@ export function pickNewPeakPlaces(
     const hit = found.find(
       (p) =>
         !used.has(p.googlePlaceId) &&
-        peak.search!.match.test(p.name) &&
+        peakNameMatches(peak, p.name) &&
         haversineMeters(p.at, peak.location) <= SEARCH_RADIUS_M,
     );
     if (!hit || existingGoogleIds.has(hit.googlePlaceId)) continue;
@@ -92,8 +115,16 @@ export function pickNewPeakPlaces(
   return out;
 }
 
-/** Места вершин в регионе: по google_place_id из peaks.ts, иначе по названию рядом с вершиной. */
-export async function planPeaks(db: Db, regionId: string): Promise<PeakPlan[]> {
+/**
+ * Места вершин в регионе: по google_place_id из peaks.ts (или из extraIds — вставленные в этом прогоне), иначе по
+ * названию рядом с вершиной (NAME_MATCH_CATEGORIES, peakNameMatches — только для отчёта).
+ */
+export async function planPeaks(
+  db: Db,
+  regionId: string,
+  extraIds: ReadonlyMap<string, string> = new Map(),
+): Promise<PeakPlan[]> {
+  const idOf = (p: PeakData) => p.googlePlaceId ?? extraIds.get(p.slug) ?? null;
   return withTenant(db, regionContext(regionId), async (trx) => {
     const base = () =>
       trx
@@ -109,8 +140,9 @@ export async function planPeaks(db: Db, regionId: string): Promise<PeakPlan[]> {
           "place_cover_photos.source as cover_source",
           sql<string | null>`place_cover_photos.author_attributions->0->>'name'`.as("cover_author"),
         ])
+        .where("places.region_id", "=", regionId)
         .where("places.status", "!=", "archived");
-    const ids = PEAKS.flatMap((p) => (p.googlePlaceId ? [p.googlePlaceId] : []));
+    const ids = PEAKS.flatMap((p) => idOf(p) ?? []);
     const byId = new Map(
       (ids.length ? await base().where("places.google_place_id", "in", ids).execute() : []).map((r) => [
         r.google_place_id!,
@@ -119,7 +151,8 @@ export async function planPeaks(db: Db, regionId: string): Promise<PeakPlan[]> {
     );
     const plans: PeakPlan[] = [];
     for (const peak of PEAKS) {
-      const known = peak.googlePlaceId ? byId.get(peak.googlePlaceId) : undefined;
+      const id = idOf(peak);
+      const known = id ? byId.get(id) : undefined;
       if (known) {
         plans.push({ peak, place: known, matchedBy: "google_place_id" });
         continue;
@@ -127,6 +160,7 @@ export async function planPeaks(db: Db, regionId: string): Promise<PeakPlan[]> {
       const near = peak.search
         ? (
             (await base()
+              .where("categories.code", "in", NAME_MATCH_CATEGORIES)
               .where((eb) =>
                 withinMeters(
                   eb.ref("places.location") as Expression<Geometry>,
@@ -135,7 +169,7 @@ export async function planPeaks(db: Db, regionId: string): Promise<PeakPlan[]> {
                 ),
               )
               .execute()) as ExistingPlace[]
-          ).filter((r) => peak.search!.match.test(r.name))
+          ).filter((r) => peakNameMatches(peak, r.name))
         : [];
       plans.push({ peak, place: near[0] ?? null, matchedBy: near[0] ? "name" : null });
     }
@@ -150,6 +184,14 @@ export type SyncStats = {
   notFound: string[];
   categoryCreated: boolean;
   recategorized: { slug: string; placeId: string; from: string }[];
+  /** Найдено только по названию — не изменено; проверить и вписать googlePlaceId в peaks.ts. */
+  nameMatched: {
+    slug: string;
+    placeId: string;
+    name: string;
+    category: string;
+    googlePlaceId: string | null;
+  }[];
   covers: { slug: string; status: "written" | "kept" | "none" | "skipped" | "failed"; detail?: string }[];
 };
 
@@ -160,6 +202,7 @@ async function ensureCategory(db: Db, regionId: string): Promise<boolean> {
     const root = await trx
       .selectFrom("categories")
       .select("id")
+      .where("region_id", "=", regionId)
       .where("code", "=", def.parent)
       .where("parent_id", "is", null)
       .executeTakeFirst();
@@ -229,10 +272,12 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
     notFound: [],
     categoryCreated: false,
     recategorized: [],
+    nameMatched: nameMatchedOf(plans),
     covers: [],
   };
 
-  // 1. Недостающие — Google Text Search, только вставка.
+  // 1. Недостающие — Google Text Search (вставка — ниже, в транзакции записи).
+  let fresh: { peak: PeakData; place: MappedPlace }[] = [];
   const queries = searchQueries(plans);
   if (deps.importMissing && queries.length) {
     const res = await collectTargeted(
@@ -247,66 +292,50 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
         await trx
           .selectFrom("places")
           .select("google_place_id")
+          .where("region_id", "=", regionId)
           .where("google_place_id", "is not", null)
           .execute()
       ).map((r) => r.google_place_id!),
     );
-    const fresh = pickNewPeakPlaces(res.places, queries, new Set(existing));
+    fresh = pickNewPeakPlaces(res.places, queries, new Set(existing));
     const freshSlugs = new Set(fresh.map((f) => f.peak.slug));
     stats.notFound = queries.filter((q) => !freshSlugs.has(q.peak.slug)).map((q) => q.peak.slug);
     for (const f of fresh)
       stats.inserted.push({ slug: f.peak.slug, googlePlaceId: f.place.googlePlaceId, name: f.place.name });
-    if (deps.write && fresh.length) {
-      // Только новые места (pinCategory: категория запроса закреплена — общий импорт её не переразметит).
-      await writePlaces(
-        deps.db,
-        deps.regionCode,
-        // Название — из peaks.ts (Вікіпедія): у Google бывает латиницей («Hora Kukul»).
-        fresh.map((f) => ({ ...f.place, name: f.peak.name.uk })),
-        new Date(),
-        { pinCategory: true },
-      );
-      // Новые места находятся по названию рядом (их id ещё нет в peaks.ts — вписать по отчёту).
-      plans = await planPeaks(deps.db, regionId);
-    }
   }
+  const freshIds = new Map(fresh.map((f) => [f.peak.slug, f.place.googlePlaceId]));
+  /** Меняем только место по id из peaks.ts или вставленное сейчас; найденное по названию — нет. */
+  const touchable = (p: PeakPlan) => isTouchable(p, freshIds);
+  const skipDetail = (p: PeakPlan) => (p.place ? "найдено по названию — не меняем" : "места нет");
 
   if (!deps.write) {
-    for (const p of plans)
+    for (const p of plans) {
+      const needs = touchable(p) && needsCommonsCover(p.place, p.peak);
       stats.covers.push({
         slug: p.peak.slug,
-        status: !p.place ? "skipped" : needsCommonsCover(p.place, p.peak) ? "none" : "kept",
-        detail: !p.place ? "места нет" : needsCommonsCover(p.place, p.peak) ? "будет записана" : undefined,
+        status: !touchable(p) ? "skipped" : needs ? "none" : "kept",
+        detail: !touchable(p) ? skipDetail(p) : needs ? "будет записана" : undefined,
       });
+    }
     return { plans, stats };
   }
 
-  // 2. Подкатегория и перенос мест в неё (адресно, по id).
-  stats.categoryCreated = await ensureCategory(deps.db, regionId);
-  await withTenant(deps.db, regionContext(regionId), async (trx) => {
-    const cat = await trx
-      .selectFrom("categories")
-      .select("id")
-      .where("code", "=", PEAKS_CATEGORY_CODE)
-      .executeTakeFirstOrThrow();
-    for (const p of plans) {
-      if (!p.place || p.place.category_code === PEAKS_CATEGORY_CODE) continue;
-      await trx.updateTable("places").set({ category_id: cat.id }).where("id", "=", p.place.id).execute();
-      stats.recategorized.push({ slug: p.peak.slug, placeId: p.place.id, from: p.place.category_code });
-    }
-  });
-
-  // 3. Обложки Commons.
+  // 2. Обложки Commons — скачиваются до транзакции (сеть не держит транзакцию открытой).
+  const covers = new Map<string, { cover: Cover; detail: string }>();
   for (const p of plans) {
-    if (!deps.covers || !p.place) {
-      stats.covers.push({ slug: p.peak.slug, status: "skipped", detail: !p.place ? "места нет" : undefined });
+    if (!deps.covers || !touchable(p)) {
+      stats.covers.push({
+        slug: p.peak.slug,
+        status: "skipped",
+        detail: !touchable(p) ? skipDetail(p) : undefined,
+      });
       continue;
     }
     if (!needsCommonsCover(p.place, p.peak)) {
       stats.covers.push({
         slug: p.peak.slug,
         status: p.peak.commonsFile ? "kept" : "none",
-        detail: p.place.cover_source ?? "нет файла Commons",
+        detail: p.place?.cover_source ?? "нет файла Commons",
       });
       continue;
     }
@@ -327,12 +356,7 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
         stats.covers.push({ slug: p.peak.slug, status: "failed", detail: "не скачалась" });
         continue;
       }
-      await writeCoverById(deps.db, regionId, p.place.id, cover);
-      stats.covers.push({
-        slug: p.peak.slug,
-        status: "written",
-        detail: `${image.author} · ${image.license}`,
-      });
+      covers.set(p.peak.slug, { cover, detail: `${image.author} · ${image.license}` });
     } catch (err) {
       stats.covers.push({
         slug: p.peak.slug,
@@ -342,8 +366,49 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
     }
   }
 
-  await withTenant(deps.db, regionContext(regionId), (trx) =>
-    new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS).record(trx, {
+  // 3. Запись — одна транзакция: подкатегория, вставка, перенос в peaks, обложки и аудит (вложенные withTenant с тем
+  // же регионом идут в этой же транзакции).
+  plans = await withTenant(deps.db, regionContext(regionId), async (trx) => {
+    stats.categoryCreated = await ensureCategory(deps.db, regionId);
+    if (fresh.length)
+      // Только новые места (pinCategory: категория запроса закреплена — общий импорт её не переразметит).
+      await writePlaces(
+        deps.db,
+        deps.regionCode,
+        // Название — из peaks.ts (Вікіпедія): у Google бывает латиницей («Hora Kukul»).
+        fresh.map((f) => ({ ...f.place, name: f.peak.name.uk })),
+        new Date(),
+        { pinCategory: true },
+      );
+    // Вставленные находятся по своему id Google (вписать в peaks.ts по отчёту).
+    const after = fresh.length ? await planPeaks(deps.db, regionId, freshIds) : plans;
+    const cat = await trx
+      .selectFrom("categories")
+      .select("id")
+      .where("region_id", "=", regionId)
+      .where("code", "=", PEAKS_CATEGORY_CODE)
+      .executeTakeFirstOrThrow();
+    for (const p of after) {
+      if (p.matchedBy !== "google_place_id" || !p.place || p.place.category_code === PEAKS_CATEGORY_CODE)
+        continue;
+      await trx
+        .updateTable("places")
+        .set({ category_id: cat.id })
+        .where("region_id", "=", regionId)
+        .where("id", "=", p.place.id)
+        .execute();
+      stats.recategorized.push({ slug: p.peak.slug, placeId: p.place.id, from: p.place.category_code });
+    }
+    for (const [slug, { cover, detail }] of covers) {
+      const place = after.find((p) => p.peak.slug === slug && p.matchedBy === "google_place_id")?.place;
+      if (!place) {
+        stats.covers.push({ slug, status: "failed", detail: "места нет после вставки" });
+        continue;
+      }
+      await writeCoverById(deps.db, regionId, place.id, cover);
+      stats.covers.push({ slug, status: "written", detail });
+    }
+    await new AuditService(DEFAULT_AUDIT_PII_RETENTION_DAYS).record(trx, {
       actor: { type: "system" },
       action: "place.peaks_sync",
       entityType: "region",
@@ -352,10 +417,33 @@ export async function syncPeaks(deps: SyncDeps): Promise<{ plans: PeakPlan[]; st
         categoryCreated: stats.categoryCreated,
         inserted: stats.inserted,
         recategorized: stats.recategorized,
+        nameMatched: stats.nameMatched.map((m) => ({ slug: m.slug, placeId: m.placeId })),
         coversWritten: stats.covers.filter((c) => c.status === "written").map((c) => c.slug),
       },
       reason: "peaks:sync",
-    }),
-  );
+    });
+    return after;
+  });
   return { plans, stats };
 }
+
+/** Найденные только по названию — в отчёт (не меняются). */
+export function nameMatchedOf(plans: readonly PeakPlan[]): SyncStats["nameMatched"] {
+  return plans.flatMap((p) =>
+    p.place && p.matchedBy === "name"
+      ? [
+          {
+            slug: p.peak.slug,
+            placeId: p.place.id,
+            name: p.place.name,
+            category: p.place.category_code,
+            googlePlaceId: p.place.google_place_id,
+          },
+        ]
+      : [],
+  );
+}
+
+/** Место можно менять (категория, обложка): найдено по id из peaks.ts или вставлено в этом прогоне. */
+export const isTouchable = (p: PeakPlan, freshIds: ReadonlyMap<string, string> = new Map()): boolean =>
+  p.matchedBy === "google_place_id" || freshIds.has(p.peak.slug);

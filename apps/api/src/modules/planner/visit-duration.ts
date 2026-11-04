@@ -312,12 +312,15 @@ const ACTIVITY_BY_NAME: readonly { re: RegExp; minutes: number }[] = [
   { re: /оглядов|viewpoint|краєвид/iu, minutes: 30 },
 ];
 
+/** Вершина без известного маршрута, хв: одно значение для «Мій план» и плана ассистента. */
+export const PEAK_NO_ROUTE_MIN = 240;
+
 /** По категории (код подкатегории): типичное время на месте, хв. */
 export const CATEGORY_MINUTES: Readonly<Record<string, number>> = {
   sights: 40,
   nature: 75,
-  // Вершина без известного маршрута (LANDMARKS) — сходження на пів дня.
-  peaks: 240,
+  // Вершина без известного маршрута (LANDMARKS) — сходження на пів дня (и в плане ассистента).
+  peaks: PEAK_NO_ROUTE_MIN,
   museums: 60,
   excursions: 240,
   active: 120,

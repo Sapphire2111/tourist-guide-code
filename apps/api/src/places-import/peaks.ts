@@ -294,7 +294,7 @@ export const PEAKS: readonly PeakData[] = [
     warnings: [WINTER_GUIDE],
     sources: [wiki("Ребра (гора)", 48946251), ZAROSLYAK_SOURCE, wd("Q683191")],
     commonsFile: "Rebra ukr.jpg",
-    search: { query: "гора Ребра Чорногора", match: /ребр/i },
+    search: { query: "гора Ребра Чорногора", match: /(^|[^\p{L}])ребр[аио]?([^\p{L}]|$)/iu },
   },
   {
     slug: "shpytsi",
@@ -468,7 +468,7 @@ export const PEAKS: readonly PeakData[] = [
     warnings: [],
     sources: [wiki("Довбушанка (гора)", 47886535), wd("Q4163961")],
     commonsFile: "Горы 408.jpg",
-    search: { query: "гора Довбушанка", match: /довбуш/i },
+    search: { query: "гора Довбушанка", match: /довбушанк/iu },
   },
   {
     slug: "yavirnyk-horhan",
@@ -568,7 +568,7 @@ export const PEAKS: readonly PeakData[] = [
     warnings: [],
     sources: [wiki("Драгобрат (гора)", 43141112), wiki("Драгобрат (курорт)", 48969784), wd("Q81828")],
     commonsFile: "Svydovec, Drahobrat, Gorgany.jpg",
-    search: { query: "гора Драгобрат вершина", match: /драгобрат|жандарм/i },
+    search: { query: "гора Драгобрат вершина", match: /(гора|вершина|mount)\s+драгобрат|жандарм/iu },
   },
   {
     slug: "stih",
@@ -586,7 +586,7 @@ export const PEAKS: readonly PeakData[] = [
     warnings: [],
     sources: [wiki("Стіг (Свидовець)", 48970686), wd("Q4442697")],
     commonsFile: "Svidovec2.JPG",
-    search: { query: "гора Стіг Свидовець", match: /стіг|стог|стуг/i },
+    search: { query: "гора Стіг Свидовець", match: /(^|[^\p{L}])(стіг|стог|стуг)([^\p{L}]|$)/iu },
   },
 ];
 

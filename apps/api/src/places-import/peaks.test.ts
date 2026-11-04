@@ -10,7 +10,16 @@ import {
   totalHours,
   type PeakRoute,
 } from "./peaks.js";
-import { needsCommonsCover, pickNewPeakPlaces, searchQueries, type ExistingPlace } from "./peaks-sync.js";
+import {
+  isTouchable,
+  NAME_MATCH_CATEGORIES,
+  nameMatchedOf,
+  needsCommonsCover,
+  peakNameMatches,
+  pickNewPeakPlaces,
+  searchQueries,
+  type ExistingPlace,
+} from "./peaks-sync.js";
 
 const route = (over: Partial<PeakRoute>): PeakRoute => ({
   start: { uk: "Старт", en: "Start" },
@@ -141,5 +150,41 @@ describe("peaks:sync — вибір", () => {
     expect(
       pickNewPeakPlaces([mapped("y", "гора Туркул")], q, new Set()).map((x) => x.place.googlePlaceId),
     ).toEqual(["y"]);
+  });
+
+  it("назва: жильё, еда, сервисы и курорт с именем вершины — не вершина; строгие совпадения", () => {
+    const drahobrat = PEAKS.find((p) => p.slug === "drahobrat")!;
+    const stih = PEAKS.find((p) => p.slug === "stih")!;
+    const dovbushanka = PEAKS.find((p) => p.slug === "dovbushanka")!;
+    expect(peakNameMatches(drahobrat, "Готель Драгобрат")).toBe(false);
+    expect(peakNameMatches(drahobrat, "Драгобрат")).toBe(false);
+    expect(peakNameMatches(drahobrat, "Гора Драгобрат")).toBe(true);
+    expect(peakNameMatches(drahobrat, "Жандарм")).toBe(true);
+    expect(peakNameMatches(turkul, "гора Туркул")).toBe(true);
+    expect(peakNameMatches(turkul, "Колиба Туркул")).toBe(false);
+    expect(peakNameMatches(turkul, "Садиба «Туркул»")).toBe(false);
+    expect(peakNameMatches(stih, "Гора Стіг")).toBe(true);
+    expect(peakNameMatches(stih, "Стогнання")).toBe(false);
+    expect(peakNameMatches(dovbushanka, "Музей Довбуша")).toBe(false);
+    expect(peakNameMatches(dovbushanka, "Довбушанка")).toBe(true);
+    expect(NAME_MATCH_CATEGORIES).not.toContain("hotels");
+    expect(NAME_MATCH_CATEGORIES).toContain("nature");
+  });
+
+  it("найдено по названию — только в отчёт, не меняется; по id и вставленное — меняется", () => {
+    const byName = {
+      peak: turkul,
+      place: existing({ id: "p1", name: "гора Туркул" }),
+      matchedBy: "name" as const,
+    };
+    const byId = { peak: hoverla, place: existing({ id: "p2" }), matchedBy: "google_place_id" as const };
+    expect(isTouchable(byName)).toBe(false);
+    expect(isTouchable(byId)).toBe(true);
+    expect(isTouchable({ peak: turkul, place: null, matchedBy: null }, new Map([["turkul", "g"]]))).toBe(
+      true,
+    );
+    expect(nameMatchedOf([byName, byId])).toEqual([
+      expect.objectContaining({ slug: "turkul", placeId: "p1", name: "гора Туркул" }),
+    ]);
   });
 });

@@ -13,13 +13,19 @@ import {
   type WikipediaClient,
 } from "./wikipedia.js";
 
-/** Категории режима: пам'ятки, природа, музеи, ринки. */
-export const WIKIMEDIA_CATEGORIES: ReadonlySet<string> = new Set(["sights", "nature", "museums", "markets"]);
+/** Категории режима: пам'ятки, природа, вершины, музеи, ринки. */
+export const WIKIMEDIA_CATEGORIES: ReadonlySet<string> = new Set([
+  "sights",
+  "nature",
+  "peaks",
+  "museums",
+  "markets",
+]);
 
-/** Природа: точка места и координаты статьи о вершине или хребте расходятся сильнее — до 3 км. */
+/** Природа и вершины: точка места и координаты статьи о вершине или хребте расходятся сильнее — до 3 км. */
 export const WIKI_RADIUS_NATURE_M = 3000;
 export const wikiRadius = (categoryCode: string) =>
-  categoryCode === "nature" ? WIKI_RADIUS_NATURE_M : WIKI_RADIUS_M;
+  categoryCode === "nature" || categoryCode === "peaks" ? WIKI_RADIUS_NATURE_M : WIKI_RADIUS_M;
 
 /** Предел в geosearch режима: в радиусе 3 км у города статей много, нужная не должна выпасть. */
 const GEOSEARCH_LIMIT = 100;
@@ -120,6 +126,7 @@ const CATEGORY_KINDS: Readonly<Record<string, readonly Kind[]>> = {
     "lake",
     "cave",
   ],
+  peaks: ["relief"],
   museums: ["museum"],
   markets: ["market"],
 };
