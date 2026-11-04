@@ -383,6 +383,38 @@ describe("C07/C08: «Назад» и повторная бронь", () => {
     expect(await screen.findByTestId("check-mine")).toBeTruthy();
   });
 
+  it("ушли, пока заявка отправлялась: при возврате подсказка проверить брони; определённый отказ — без неё", async () => {
+    window.history.replaceState(null, "", "#/book/x");
+    const create = vi.fn(() => new Promise<never>(() => undefined));
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(screen.queryByTestId("check-mine")).toBeNull();
+    window.location.hash = "#/help";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    cleanup();
+    const before = window.location.hash;
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.hash).not.toBe(before));
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    expect(await screen.findByTestId("check-mine")).toBeTruthy();
+    cleanup();
+    sessionStorage.clear();
+  });
+
+  it("определённый отказ сервера — подсказки нет", async () => {
+    const create = vi.fn(async () => {
+      throw new ApiCallError(400, null);
+    });
+    renderWith(<BookingFlow placeId={PLACE} />, { api: fakeApi({ create }) });
+    await toForm();
+    fill();
+    await act(async () => fireEvent.click(screen.getByTestId("booking-submit")));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("check-mine")).toBeNull();
+  });
+
   it("брони из сохранённого открытого пункта нет в списке — без фантомного шага «Назад»", async () => {
     writeSlot(currentEntryKey(), "pbooking.open", "gone");
     renderWith(<PartnerBookings placeId={PLACE} />, {

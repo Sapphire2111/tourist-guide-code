@@ -22,6 +22,8 @@ type Entry = {
   slots: Record<string, unknown>;
   /** Ссылка приложения, по которой ушли с экрана: при возврате фокус — на неё. */
   focusHref?: string;
+  /** Какая она по счёту среди ссылок с тем же адресом (на экране их может быть несколько). */
+  focusOrdinal?: number;
 };
 type Stamp = { idx: number; key: string };
 type Memo = { key: string; data: unknown; at: number };
@@ -32,7 +34,7 @@ let counter = 0;
 /** Нижняя запись, до которой реально можно дойти назад: браузер отбрасывает старые (в Chromium — сверх 50). */
 let floor = 0;
 /** Ссылка, на которую вернуть фокус после возврата на экран. */
-let pendingFocus: string | undefined;
+let pendingFocus: { href: string; ordinal: number } | undefined;
 /** Значения вне sessionStorage: координаты устройства, данные списков. */
 const volatile = new Map<string, Map<string, unknown>>();
 const memos = new Map<string, Map<string, Memo>>();
@@ -207,9 +209,18 @@ function sync(): Entry {
   }
   entry.hash = hash;
   index = stamp.idx;
-  pendingFocus = entry.focusHref;
+  // Дошли ниже «нижней» записи: таймер сработал ложно (медленный возврат) — история есть.
+  if (stamp.idx < floor) floor = 0;
+  pendingFocus = entry.focusHref ? { href: entry.focusHref, ordinal: entry.focusOrdinal ?? 0 } : undefined;
   restoreScroll(entry.scroll);
   return entry;
+}
+
+/** Ссылки экрана с этим адресом, в порядке документа. */
+export function sameHrefLinks(href: string | undefined): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("main a[href]")].filter(
+    (a) => a.getAttribute("href") === href,
+  );
 }
 
 /** Обычный клик по ссылке приложения: без записи на тот же адрес, и шаг назад вместо A→B→A→B. */
@@ -225,6 +236,7 @@ function onDocumentClick(e: MouseEvent): void {
     return;
   }
   from.focusHref = a.getAttribute("href") ?? undefined;
+  from.focusOrdinal = Math.max(0, sameHrefLinks(from.focusHref).indexOf(a));
   // Двойной тап: возврат по первому ещё не случился — второй не уводит на шаг дальше.
   if (backPending()) {
     e.preventDefault();
@@ -338,10 +350,10 @@ export function parentOf(path: string): string {
   return "/";
 }
 
-/** Повторное нажатие, пока возврат по истории не случился (адрес тот же), — не уводит на шаг дальше (из Mini App). */
-const GUARD_MS = 1000;
 /** Сколько ждать возврата: браузер отбросил запись — history.back() молчит, кнопка не должна быть мёртвой. */
-export const BACK_TIMEOUT_MS = 500;
+export const BACK_TIMEOUT_MS = 1200;
+/** Повторное нажатие, пока возврат по истории не случился (адрес тот же), — не уводит на шаг дальше (из Mini App). */
+const GUARD_MS = BACK_TIMEOUT_MS;
 let backingUntil = 0;
 let backingFrom: string | null = null;
 let backTimer: ReturnType<typeof setTimeout> | undefined;
@@ -393,10 +405,10 @@ export function goBack(
 }
 
 /** Ссылка, с которой ушли с экрана, если на него вернулись (один раз). */
-export function takeReturnFocus(): string | undefined {
-  const href = pendingFocus;
+export function takeReturnFocus(): { href: string; ordinal: number } | undefined {
+  const target = pendingFocus;
   pendingFocus = undefined;
-  return href;
+  return target;
 }
 
 /** Фокус на заголовок экрана без прокрутки; false — заголовка ещё нет. */
@@ -416,6 +428,7 @@ export function clearNavigationData(): void {
     if (!e) return;
     e.slots = {};
     delete e.focusHref;
+    delete e.focusOrdinal;
     if (i !== index) e.hash = "";
   });
   volatile.clear();

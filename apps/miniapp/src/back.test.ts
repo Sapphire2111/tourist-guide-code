@@ -154,6 +154,29 @@ describe("лимит истории браузера", () => {
     expect(navigate).toHaveBeenCalledWith("/plan/saved", { replace: true });
   });
 
+  it("таймер сработал ложно, затем возврат всё же случился — дальше снова по истории", async () => {
+    initNavigation();
+    push("#/a");
+    push("#/b");
+    push("#/c");
+    vi.useFakeTimers();
+    const silent = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const navigate = vi.fn();
+    goBack(navigate);
+    vi.advanceTimersByTime(BACK_TIMEOUT_MS);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    silent.mockRestore();
+    // Запоздавший возврат: запись ниже «нижней».
+    await waitPop(() => window.history.back());
+    expect(window.location.hash).toBe("#/b");
+    navigate.mockClear();
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    goBack(navigate);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("быстрый возврат и новый заход на тот же адрес — не считается «молчанием» history.back()", async () => {
     initNavigation();
     push("#/plan");
@@ -251,8 +274,26 @@ describe("ссылки приложения", () => {
     expect(takeReturnFocus()).toBeUndefined();
     await waitPop(() => window.history.back());
     expect(currentEntryKey()).toBeTruthy();
-    expect(takeReturnFocus()).toBe("#/b");
+    expect(takeReturnFocus()).toEqual({ href: "#/b", ordinal: 0 });
     expect(takeReturnFocus()).toBeUndefined();
+  });
+
+  it("несколько ссылок с одним адресом: запоминается порядковый номер нажатой", async () => {
+    initNavigation();
+    push("#/a");
+    const main = document.createElement("main");
+    main.innerHTML = '<a id="l1" href="#/b">1</a><a id="l2" href="#/b">2</a>';
+    document.body.append(main);
+    const a = main.querySelector<HTMLAnchorElement>("#l2")!;
+    const stop = (e: Event) => e.preventDefault();
+    document.addEventListener("click", stop);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    document.removeEventListener("click", stop);
+    main.remove();
+    push("#/b");
+    await waitPop(() => window.history.back());
+    expect(currentEntryKey()).toBeTruthy();
+    expect(takeReturnFocus()).toEqual({ href: "#/b", ordinal: 1 });
   });
 
   it("другая ссылка и клик с модификатором — обычный переход", () => {

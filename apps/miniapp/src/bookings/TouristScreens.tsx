@@ -73,6 +73,9 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const [notice, setNotice] = useState<Message>(null);
   // Слот «заняли» после неясного исхода прежней попытки — возможно, это наша же бронь.
   const [checkMine, setCheckMine] = useState(false);
+  // Заявка могла уйти, а исход неизвестен: без персональных данных, подсказка переживает уход с экрана и перезагрузку.
+  const [maybeOurs, setMaybeOurs] = useScreenState("booking.maybeOurs", false);
+  const [sending, setSending] = useState(false);
   const [reload, setReload] = useState(0);
   const resource = resources.find((r) => r.id === resourceId);
   const resourceLabel = useId();
@@ -114,6 +117,11 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
           </select>
         </label>
       )}
+      {(checkMine || maybeOurs) && !sending && (
+        <p data-testid="check-mine">
+          {t("miniapp.booking.checkMine")} <Link to="/bookings">{t("miniapp.booking.mine")}</Link>
+        </p>
+      )}
       {slot ? (
         <BookingForm
           place={place}
@@ -126,6 +134,10 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             setCheckMine(Boolean(maybeOurs));
             if (message) setReload((n) => n + 1);
           }}
+          onAttempt={(attempt) => {
+            setSending(attempt === "sending");
+            setMaybeOurs(attempt !== "certain");
+          }}
           onDone={(booking) => {
             setSlot(null);
             setDone(booking);
@@ -133,11 +145,6 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
         />
       ) : (
         <>
-          {checkMine && (
-            <p data-testid="check-mine">
-              {t("miniapp.booking.checkMine")} <Link to="/bookings">{t("miniapp.booking.mine")}</Link>
-            </p>
-          )}
           <SlotPicker
             key={`${resource.id}:${reload}`}
             place={place}
@@ -146,6 +153,7 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
             onPick={(s) => {
               setNotice(null);
               setCheckMine(false);
+              setMaybeOurs(false);
               setSlot(s);
             }}
           />
@@ -269,6 +277,7 @@ function BookingForm({
   slot,
   canSubmit,
   onBack,
+  onAttempt,
   onDone,
 }: {
   place: PlaceDetail;
@@ -277,6 +286,8 @@ function BookingForm({
   canSubmit: boolean;
   /** Назад к слотам; message — почему (слот заняли), слоты перечитываются; maybeOurs — прежняя попытка с неясным исходом. */
   onBack: (message?: Message, maybeOurs?: boolean) => void;
+  /** Попытка отправки: идёт; исход определён; исход неизвестен (заявка могла дойти). */
+  onAttempt: (attempt: "sending" | "certain" | "uncertain") => void;
   onDone: (b: Booking) => void;
 }) {
   const { t, locale } = useT();
@@ -359,15 +370,18 @@ function BookingForm({
     };
     setBusy(true);
     setMessage(null);
+    onAttempt("sending");
     try {
       const created = await api.create(body, idem.keyFor(body));
       idem.settle();
+      onAttempt("certain");
       onDone(created);
     } catch (e) {
       idem.settle(e);
       setBusy(false);
       const wasUncertain = uncertain.current;
       if (keepsIdempotencyKey(e)) uncertain.current = true;
+      onAttempt(uncertain.current ? "uncertain" : "certain");
       const key = e instanceof ApiCallError ? e.messageKey : null;
       if (key === "errors.booking.slotTaken" || key === "errors.booking.slotUnavailable") {
         onBack({ text: errorText(e, "miniapp.booking.sendError"), alert: true }, wasUncertain);

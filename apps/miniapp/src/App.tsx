@@ -32,7 +32,7 @@ import {
 import { createAssistantApi, type AssistantApi } from "./assistant/assistant-api.js";
 import { AssistantBox } from "./assistant/AssistantBox.js";
 import { AssistantSessionProvider } from "./assistant/session.js";
-import { focusScreenHeading, initNavigation, pressBack, takeReturnFocus } from "./back.js";
+import { focusScreenHeading, initNavigation, pressBack, sameHrefLinks, takeReturnFocus } from "./back.js";
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
@@ -428,12 +428,11 @@ function useFocusHeading(path: string) {
       return;
     }
     // Возврат на экран: фокус на ссылку, с которой ушли; её ещё нет (данные грузятся) — заголовок, затем ссылка.
-    const href = takeReturnFocus();
+    const target = takeReturnFocus();
     const focusLink = () => {
-      if (!href) return false;
-      const link = [...document.querySelectorAll<HTMLElement>("main a[href]")].find(
-        (a) => a.getAttribute("href") === href,
-      );
+      if (!target) return false;
+      const links = sameHrefLinks(target.href);
+      const link = links[target.ordinal] ?? links[0];
       link?.focus({ preventScroll: true });
       return Boolean(link);
     };

@@ -426,10 +426,7 @@ test.describe("лимит истории и партнёр", () => {
     await expect(page).toHaveURL(/#\/section\/eat$/);
     await press(page);
     await expect(page.getByTestId("home-sections")).toBeVisible();
-    // Не toBeFocused: он требует document.hasFocus(), а при параллельных вкладках окно может быть не в фокусе.
-    await expect
-      .poll(() => page.evaluate(() => document.activeElement?.getAttribute("href")))
-      .toBe("#/section/eat");
+    await expect(link).toBeFocused();
   });
 });
 
