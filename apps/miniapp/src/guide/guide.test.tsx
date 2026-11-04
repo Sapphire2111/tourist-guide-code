@@ -97,7 +97,7 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("modern: 4 намерения и 6 служебных разделов; «Про заклад» — только при QR заведения (C-13)", () => {
+  it("modern: одна сетка из 8 разделов (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
     const { env } = setup();
     const view = (hasVenue: boolean) => (
       <GuideProvider value={env}>
@@ -105,19 +105,25 @@ describe("главная C02", () => {
       </GuideProvider>
     );
     const { rerender } = render(view(true));
-    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(4);
+    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(8);
     const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
     expect(href("Де поїсти")).toBe("#/section/eat");
-    expect(href("Що поруч")).toBe("#/nearby");
+    expect(screen.queryByRole("link", { name: "Що поруч" })).toBeNull();
+    expect(href(/Що поруч зі мною зараз/)).toBe("#/nearby/me");
     expect(href("Відпочити та зігрітися")).toBe("#/section/relax");
     expect(href("Розваги та враження")).toBe("#/section/fun");
-    const more = within(screen.getByRole("navigation", { name: "Ще для вашої подорожі" }));
-    expect(more.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
-      "#/section/transfer",
-      "#/section/shop",
-      "#/help",
+    expect(
+      within(screen.getByTestId("home-sections"))
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href")),
+    ).toEqual([
       "#/section/stay",
+      "#/section/eat",
+      "#/section/relax",
+      "#/section/shop",
+      "#/section/fun",
       "#/section/ski",
+      "#/section/transfer",
       "#/section/services",
     ]);
     expect(href(/Про заклад/)).toBe("#/about");

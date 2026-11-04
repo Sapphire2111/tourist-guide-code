@@ -18,7 +18,7 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
   await expect(page.getByTestId("venue-summary")).toBeAttached();
   await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
-  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(4);
+  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(8);
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({ path: testInfo.outputPath("implemented-modern-home.png"), fullPage: false });
   await page.reload();
@@ -84,7 +84,10 @@ test("modern narrow screen retains working list", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Що хочеться сьогодні?" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expectNoSeriousA11yViolations(page);
-  await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
+  await page
+    .getByRole("navigation", { name: "Основна навігація" })
+    .getByRole("link", { name: "Поруч", exact: true })
+    .click();
   await expect(page.getByTestId("place-item").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   // На 320 px панель поверх карты — два ряда без наезда, цели радиуса и категорий не меньше 44 px.
@@ -114,7 +117,10 @@ test.describe("without map provider", () => {
   test.use({ googleMaps: false });
   test("list remains available", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
+    await page
+      .getByRole("navigation", { name: "Основна навігація" })
+      .getByRole("link", { name: "Поруч", exact: true })
+      .click();
     await expect(page.getByTestId("map-unavailable")).toBeVisible();
     await expect(page.getByTestId("place-item").first()).toBeVisible();
     await page.getByRole("button", { name: "Список ↓" }).click();
