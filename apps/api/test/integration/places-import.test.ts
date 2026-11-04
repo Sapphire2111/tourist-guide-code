@@ -235,6 +235,49 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     expect(again.tagsWritten).toBe(0);
   });
 
+  it("ручная чистка (place.curate от system) и использование: импорт не меняет категорию, пункт, статус и не архивирует", async () => {
+    const t = new Date();
+    // Главная запись Booking после чистки: категория и пункт поправлены, импорт её не трогает и не архивирует.
+    await writePlaces(appDb, "test-region", [place("gCur1", { categoryCode: "hotels" })], t);
+    await sql(
+      `UPDATE places SET category_id = (SELECT id FROM categories WHERE code = 'sadyby' AND region_id = places.region_id),
+         locality_id = (SELECT id FROM localities WHERE code = 'tatariv' AND region_id = places.region_id)
+       WHERE google_place_id = 'gCur1'`,
+    );
+    await sql(
+      `INSERT INTO audit_logs (actor_type, region_id, action, entity_type, entity_id)
+       SELECT 'system', region_id, 'place.curate', 'place', id::text FROM places WHERE google_place_id = 'gCur1'`,
+    );
+    // Место в избранном у пользователя — не архивируется, хоть и «не наше».
+    await writePlaces(appDb, "test-region", [place("gFav1")], t);
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO favorites (region_id, user_id, place_id)
+       SELECT region_id, $1, id FROM places WHERE google_place_id = 'gFav1'`,
+      [user],
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [place("gCur1", { categoryCode: "hotels", localityCode: "yaremche" })],
+      t,
+      { rejectedIds: ["gCur1", "gFav1"] },
+    );
+    expect(r.archivedRejected).toBe(0);
+    expect(r.recategorized).toBe(0);
+    const row = async (id: string) =>
+      (
+        await sql(
+          `SELECT p.status, c.code AS category, l.code AS locality FROM places p
+           JOIN categories c ON c.id = p.category_id LEFT JOIN localities l ON l.id = p.locality_id
+           WHERE p.google_place_id = $1`,
+          [id],
+        )
+      ).rows[0];
+    expect(await row("gCur1")).toEqual({ status: "published", category: "sadyby", locality: "tatariv" });
+    expect((await row("gFav1")).status).toBe("published");
+  });
+
   it("CHECK: google_place_id только у source = google; уникален в регионе", async () => {
     await expect(sql("UPDATE places SET google_place_id = 'x1' WHERE source = 'manual'")).rejects.toThrow(
       /places_google_source_consistent/,

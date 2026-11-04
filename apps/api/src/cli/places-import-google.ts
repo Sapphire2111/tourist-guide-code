@@ -17,7 +17,13 @@ import { ImportArgsError, parseImportArgs, photoStorageEnv } from "../places-imp
 import { collect } from "../places-import/collect.js";
 import { GooglePlacesClient } from "../places-import/google-client.js";
 import { importPhotos, photoCandidates } from "../places-import/photos.js";
-import { CATEGORY_NAMES, googlePlaceIds, ImportWriteError, writePlaces } from "../places-import/writer.js";
+import {
+  CATEGORY_NAMES,
+  googlePlaceIds,
+  ImportWriteError,
+  publishedGoogleIds,
+  writePlaces,
+} from "../places-import/writer.js";
 import {
   ALL_LOCALITIES,
   collectTargeted,
@@ -49,7 +55,19 @@ try {
   if (args.queriesFile || args.queries.length) {
     await runTargeted(args, client, storage);
   } else {
+    // Опубликованные места региона (кроме --dry-run): при свёртке дублей остаётся уже опубликованная запись.
+    let publishedIds: Set<string> | undefined;
+    const dbUrl = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
+    if (!args.dryRun && !args.plan && dbUrl) {
+      const db = createDatabase({ connectionString: dbUrl, maxConnections: 1 });
+      try {
+        publishedIds = await publishedGoogleIds(db, args.region);
+      } finally {
+        await db.destroy();
+      }
+    }
     const { places, stats, closedIds, rejectedIds, seenIds } = await collect(client, {
+      ...(publishedIds ? { publishedIds } : {}),
       categoryNames: CATEGORY_NAMES,
       log: console.log,
       zonesOnly: args.zonesOnly,
@@ -85,6 +103,11 @@ try {
       `Типы Google без категории: ${JSON.stringify(Object.fromEntries(sortedEntries(stats.unmappedTypes)))}`,
     );
     console.log(`Демо-мест в seed (не трогаются импортом): ${SEED_PLACES.length}.`);
+    if (stats.withoutAddressComponents)
+      console.log(
+        `ВНИМАНИЕ: у ${stats.withoutAddressComponents} мест нет addressComponents (ответы кэша до 04.11.2026) — пункт ` +
+          "по расстоянию до центра. Для пункта по адресу Google — прогон с новым каталогом кэша (--cache).",
+      );
 
     if (!args.dryRun) {
       const url = process.env.DATABASE_URL?.trim() || process.env.DATABASE_MIGRATION_URL?.trim();
@@ -110,7 +133,8 @@ try {
             `${written.archivedRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
         );
         console.log(
-          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; дублей свёрнуто: ${stats.skipped.duplicate}.`,
+          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; номеров Booking в архив: ` +
+            `${stats.skipped.duplicate}, прочих дублей не записано: ${stats.duplicatesSkipped}.`,
         );
         if (storage) {
           const ids = await googlePlaceIds(db, written.regionId);
