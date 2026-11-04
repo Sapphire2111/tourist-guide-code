@@ -6,7 +6,7 @@ import { AuditService, DEFAULT_AUDIT_PII_RETENTION_DAYS } from "../modules/audit
 import { scheduleProblems } from "../modules/catalog/index.js";
 import { SEED_CATEGORIES } from "../seed/seed-catalog.js";
 import { IMPORT_EXTRA_CATEGORIES, IMPORT_LOCALITIES, type ImportLocality } from "./config.js";
-import type { MappedPlace } from "./mapping.js";
+import { tagsForPlace, type MappedPlace } from "./mapping.js";
 
 export class ImportWriteError extends Error {
   override readonly name = "ImportWriteError";
@@ -35,6 +35,8 @@ export type WriteStats = {
   suspendedIds: string[];
   /** Дополнительных категорий от импорта записано (place_extra_categories, source = import). */
   extraCategoriesWritten: number;
+  /** Связей место — тег добавлено (tagsForPlace: категория и удобства Google). */
+  tagsWritten: number;
   /** Места импорта, переразмеченные новыми правилами (категорию ставил импорт, админка не меняла). */
   recategorized: number;
   /** Места импорта, которые по новым правилам не наши (collect.rejectedIds), — в архив, если админка не трогала. */
@@ -122,6 +124,7 @@ export async function writePlaces(
       archivedRejected: 0,
       archivedIds: [],
       extraCategoriesWritten: 0,
+      tagsWritten: 0,
       missingFromGoogle: null,
       missingExamples: [],
       notPublished: [],
@@ -200,6 +203,13 @@ export async function writePlaces(
     }
     const categoryId = new Map(
       (await trx.selectFrom("categories").select(["id", "code"]).execute()).map((r) => [r.code, r.id]),
+    );
+    // Теги региона (seed): нет тега с кодом — связь не пишется (новых тегов импорт не заводит).
+    const tagId = new Map(
+      (await trx.selectFrom("tags").select(["id", "code"]).where("active", "=", true).execute()).map((r) => [
+        r.code,
+        r.id,
+      ]),
     );
     for (const p of places)
       if (!categoryId.has(p.categoryCode))
@@ -373,6 +383,51 @@ export async function writePlaces(
         stats.extraCategoriesWritten += written.length;
       }
 
+      // Теги (tagsForPlace): по категории и удобствам Google (place_enrichments.google.amenities — их пишет
+      // places:enrich). Только добавляются (ON CONFLICT DO NOTHING) и только местам, которые пользователи не трогали
+      // (в аудите нет действий user — админка могла снять тег): теги админки импорт не меняет.
+      if (tagId.size) {
+        const taggable = await trx
+          .selectFrom("places")
+          .leftJoin("place_enrichments as e", "e.place_id", "places.id")
+          .select(["places.id", "places.google_place_id", "e.google"])
+          .where(
+            "places.id",
+            "in",
+            batch.map((p) => placeId.get(p.googlePlaceId)!),
+          )
+          .whereRef("places.import_category_id", "=", "places.category_id")
+          .where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom("audit_logs as a")
+                  .select(eb.lit(1).as("one"))
+                  .where("a.entity_type", "=", "place")
+                  .where("a.actor_type", "=", "user")
+                  .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
+              ),
+            ),
+          )
+          .execute();
+        const byGoogleId = new Map(batch.map((p) => [p.googlePlaceId, p]));
+        const tagRows = taggable.flatMap((r) => {
+          const p = byGoogleId.get(r.google_place_id!)!;
+          return tagsForPlace(p.categoryCode, r.google?.amenities ?? [], p.name)
+            .filter((code) => tagId.has(code))
+            .map((code) => ({ region_id: regionId, place_id: r.id, tag_id: tagId.get(code)! }));
+        });
+        if (tagRows.length) {
+          const written = await trx
+            .insertInto("place_tags")
+            .values(tagRows)
+            .onConflict((oc) => oc.columns(["place_id", "tag_id"]).doNothing())
+            .returning("place_id")
+            .execute();
+          stats.tagsWritten += written.length;
+        }
+      }
+
       // График: заменяется целиком только у мест, где Google отдал непустой график, прошедший правила каталога
       // (scheduleProblems — те же, что у админки). Нет графика или он плохой — существующий не трогается; плохая
       // строка не доходит до INSERT и не откатывает всю транзакцию.
@@ -474,6 +529,7 @@ export async function writePlaces(
         suspendedIds: stats.suspendedIds,
         recategorized: stats.recategorized,
         extraCategoriesWritten: stats.extraCategoriesWritten,
+        tagsWritten: stats.tagsWritten,
         archivedRejected: stats.archivedRejected,
         archivedIds: stats.archivedIds,
         schedulesRejected: stats.schedulesRejected,

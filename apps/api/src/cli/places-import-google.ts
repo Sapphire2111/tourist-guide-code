@@ -109,6 +109,9 @@ try {
             `${written.schedulesRejected}; переразмечено ${written.recategorized}, в архив (не наши по новым правилам) ` +
             `${written.archivedRejected}; пропали из выдачи Google (только отчёт): ${written.missingFromGoogle ?? "не считалось — выгрузка неполная"}.`,
         );
+        console.log(
+          `Тегов добавлено (категория и удобства Google): ${written.tagsWritten}; дублей свёрнуто: ${stats.skipped.duplicate}.`,
+        );
         if (storage) {
           const ids = await googlePlaceIds(db, written.regionId);
           const photos = await importPhotos(

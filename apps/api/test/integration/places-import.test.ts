@@ -167,6 +167,74 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     expect(seedAfter).toEqual(seedBefore);
   });
 
+  it("seed: «Вершини» й «Бари» заведены (nearby, eat); повторный seed не дублирует", async () => {
+    await seedCatalog(ownerDb, base.regions);
+    const rows = (
+      await sql(
+        `SELECT c.code, p.code AS parent FROM categories c JOIN categories p ON p.id = c.parent_id
+         JOIN regions r ON r.id = c.region_id
+         WHERE r.code = 'test-region' AND c.code IN ('peaks', 'bars') ORDER BY c.code`,
+      )
+    ).rows;
+    expect(rows).toEqual([
+      { code: "bars", parent: "eat" },
+      { code: "peaks", parent: "nearby" },
+    ]);
+  });
+
+  it("теги (tagsForPlace): по категории и удобствам Google; только добавляются; места с действиями пользователя — нет", async () => {
+    const t = new Date();
+    const ids = ["gTag1", "gTag2", "gTag3"];
+    await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gTag1"),
+        place("gTag2", { categoryCode: "nature", week: null }),
+        place("gTag3", { categoryCode: "nature", week: null }),
+      ],
+      t,
+    );
+    await sql(
+      `INSERT INTO place_enrichments (region_id, place_id, google)
+       SELECT region_id, id, '{"amenities":["good_for_children","dogs_allowed","parking_free","wheelchair_entrance"]}'::jsonb
+       FROM places WHERE google_place_id = ANY($1)`,
+      [ids],
+    );
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO audit_logs (actor_type, actor_user_id, region_id, action, entity_type, entity_id)
+       SELECT 'user', $1, region_id, 'place.update', 'place', id::text FROM places WHERE google_place_id = 'gTag3'`,
+      [user],
+    );
+    const r = await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gTag1"),
+        place("gTag2", { categoryCode: "nature", week: null }),
+        place("gTag3", { categoryCode: "nature", week: null }),
+      ],
+      t,
+    );
+    const tags = async (id: string) =>
+      (
+        await sql(
+          `SELECT t.code FROM place_tags pt JOIN tags t ON t.id = pt.tag_id JOIN places p ON p.id = pt.place_id
+           WHERE p.google_place_id = $1 ORDER BY t.code`,
+          [id],
+        )
+      ).rows.map((x) => x.code);
+    expect(await tags("gTag1")).toEqual(["kids", "parking", "pets", "rainy-day"]);
+    expect(await tags("gTag2")).toEqual(["kids", "parking", "pets"]);
+    expect(await tags("gTag3")).toEqual([]);
+    // Первый прогон: «У дощ» ресторану; второй — удобства (по 3 у gTag1 и gTag2).
+    expect(r.tagsWritten).toBe(6);
+    // Повтор — ничего нового (ON CONFLICT DO NOTHING).
+    const again = await writePlaces(appDb, "test-region", [place("gTag1")], t);
+    expect(again.tagsWritten).toBe(0);
+  });
+
   it("CHECK: google_place_id только у source = google; уникален в регионе", async () => {
     await expect(sql("UPDATE places SET google_place_id = 'x1' WHERE source = 'manual'")).rejects.toThrow(
       /places_google_source_consistent/,
