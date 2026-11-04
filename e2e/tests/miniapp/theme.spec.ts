@@ -164,13 +164,18 @@ test("смена темы на открытом «Поруч»: карта по�
   await page.locator('.gm-fake-marker[role="button"]').first().click();
   const popup = page.locator(".kosiv-map-popup");
   await expect(popup).toBeVisible();
-  for (const sel of ["strong", "span", "a"]) {
+  for (const sel of ["strong", ".kosiv-map-popup-titles span", "a.kosiv-map-popup-open"]) {
     const color = await popup
       .locator(sel)
       .first()
       .evaluate((n) => getComputedStyle(n).color);
     expect(contrastOf(color, "rgb(255, 255, 255)"), sel).toBeGreaterThanOrEqual(4.5);
   }
+  // «Маршрут» — белый текст на своей заливке.
+  const route = await popup
+    .locator("a.kosiv-map-popup-route")
+    .evaluate((n) => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor] as const);
+  expect(contrastOf(route[0], route[1])).toBeGreaterThanOrEqual(4.5);
   // Обратно в «День» — снова светлая схема.
   const menu2 = await openMenu(page);
   await menu2.getByRole("group", { name: "Тема оформлення" }).getByRole("button", { name: "День" }).click();
@@ -200,16 +205,21 @@ for (const [width, height, mapHeight] of [
   [320, 740, 461],
   [320, 568, 412],
 ] as const) {
-  test(`«Поруч» ${width}×${height}: окно карты ${mapHeight} px, плашка над навигацией`, async ({ page }) => {
+  test(`«Поруч» ${width}×${height}: окно карты ${mapHeight} px, плашки ближайшего нет`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.goto("/#/nearby");
     await expect(page.getByTestId("places-map")).toBeVisible();
-    await expect(page.locator(".modern-map-spot")).toBeVisible();
     const box = (await page.getByTestId("places-map").boundingBox())!;
     expect(Math.round(box.height)).toBe(mapHeight);
-    const spot = (await page.locator(".modern-map-spot").boundingBox())!;
-    const nav = (await page.locator(".kosiv-nav").boundingBox())!;
-    expect(spot.y + spot.height).toBeLessThanOrEqual(nav.y);
+    await expect(page.locator(".modern-map-spot")).toHaveCount(0);
+    // Отступы границ: снизу — только логотип Google; сверху — фактическая высота панели и запас.
+    const map = page.locator(".gm-fake-map");
+    await expect(map).toHaveAttribute("data-fit-padding-bottom", "40");
+    const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
+    await expect(map).toHaveAttribute(
+      "data-fit-padding-top",
+      String(Math.ceil(panel.y + panel.height - box.y) + 16),
+    );
   });
 }
 
@@ -278,14 +288,17 @@ test("пустая live-область голоса на главной оста
   await expect(status).toHaveCSS("display", "block");
 });
 
-test("карта не загрузилась: плашка с ближайшим местом остаётся над заглушкой", async ({ page }) => {
+test("карта не загрузилась: заглушка без плашки, маршруты — в списке", async ({ page }) => {
   await page.addInitScript(() => {
     const g = (window as unknown as { google: { maps: { importLibrary: () => Promise<never> } } }).google;
     g.maps.importLibrary = () => Promise.reject(new Error("net"));
   });
   await page.goto("/#/nearby");
   await expect(page.getByRole("alert").filter({ hasText: "Карту не вдалося завантажити" })).toBeVisible();
-  await expect(page.locator(".modern-map-spot")).toBeVisible();
+  await expect(page.locator(".modern-map-spot")).toHaveCount(0);
+  await expect(
+    page.getByTestId("place-item").first().getByRole("link", { name: "Маршрут", exact: true }),
+  ).toBeVisible();
 });
 
 test("«Ніч»: контраст на «Про заклад» и ассистенте", async ({ page }) => {

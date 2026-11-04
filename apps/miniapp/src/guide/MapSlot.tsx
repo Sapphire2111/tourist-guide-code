@@ -86,12 +86,9 @@ export function MapSlot(props: PlacesMapProps) {
   const { t } = useT();
   if (!available())
     return (
-      <>
-        <p role="note" className="kosiv-muted" data-testid="map-unavailable">
-          {t("miniapp.map.unavailable")}
-        </p>
-        {props.overlay}
-      </>
+      <p role="note" className="kosiv-muted" data-testid="map-unavailable">
+        {t("miniapp.map.unavailable")}
+      </p>
     );
   return <LazyMap {...props} />;
 }
@@ -100,14 +97,7 @@ function LazyMap(props: PlacesMapProps) {
   const { t } = useT();
   const [PlacesMap] = useState(() => currentLazyMap());
   return (
-    <MapBoundary
-      fallback={
-        <>
-          <p role="alert">{t("miniapp.map.error")}</p>
-          {props.overlay}
-        </>
-      }
-    >
+    <MapBoundary fallback={<p role="alert">{t("miniapp.map.error")}</p>}>
       <Suspense fallback={<p role="status">{t("miniapp.guide.loading")}</p>}>
         <PlacesMap {...props} />
       </Suspense>

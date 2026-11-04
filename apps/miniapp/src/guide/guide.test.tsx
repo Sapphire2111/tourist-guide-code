@@ -305,7 +305,7 @@ describe("«Що поруч» C05", () => {
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч: Тестовий готель");
     expect(env.api.search).toHaveBeenCalledWith({
       point: env.base!.point,
-      radius: 500,
+      radius: 1000,
       excludeSections: ["stay"],
       limit: 50,
     });
@@ -327,7 +327,7 @@ describe("«Що поруч» C05", () => {
     expect(screen.getByTestId("nearby-caption").textContent).toBe("Поруч із вами");
     expect(env.api.search).toHaveBeenCalledWith({
       point: { lat: 48.1, lng: 24.1 },
-      radius: 500,
+      radius: 1000,
       excludeSections: ["stay"],
       limit: 50,
     });
@@ -352,8 +352,9 @@ describe("«Що поруч»: пилюли радиуса и категория
       "5 км",
       "10 км",
     ]);
-    expect(pills.getByRole("button", { name: "500 м" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 500 м");
+    // По умолчанию 1 км: пилюля, подпись и запрос согласованы.
+    expect(pills.getByRole("button", { name: "1 км" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 1 км");
     // Категория места из справочника под названием.
     expect(screen.getAllByTestId("place-category")[0]!.textContent).toBe("Кав'ярні");
     const calls = vi.mocked(env.api.search).mock.calls.length;
@@ -361,7 +362,7 @@ describe("«Що поруч»: пилюли радиуса и категория
     fireEvent.click(pills.getByRole("button", { name: "10 км" }));
     expect(screen.getByTestId("radius-value").textContent).toBe("Радіус ≤ 10 км");
     expect(pills.getByRole("button", { name: "10 км" }).getAttribute("aria-pressed")).toBe("true");
-    expect(pills.getByRole("button", { name: "500 м" }).getAttribute("aria-pressed")).toBe("false");
+    expect(pills.getByRole("button", { name: "1 км" }).getAttribute("aria-pressed")).toBe("false");
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls);
     await act(async () => new Promise((r) => setTimeout(r, 400)));
     expect(vi.mocked(env.api.search).mock.calls.length).toBe(calls + 1);
@@ -430,24 +431,6 @@ describe("«Що поруч»: шапка и плашка ближайшего",
     await act(async () => answer?.({ coords: { latitude: 48.1, longitude: 24.1 } }));
     await flush();
     expect(screen.queryByTestId("nearby-locate")).toBeNull();
-  });
-
-  it("плашка: ссылка на место и отдельная ссылка маршрута, без вложенности", async () => {
-    const { env } = setup();
-    const { container } = render(
-      <GuideProvider value={env}>
-        <Nearby useMyLocation={false} />
-      </GuideProvider>,
-    );
-    await flush();
-    const spot = container.querySelector(".modern-map-spot");
-    if (!spot) return expect.unreachable("плашка не показана");
-    const links = within(spot as HTMLElement).getAllByRole("link");
-    expect(links).toHaveLength(2);
-    expect(links[0]!.getAttribute("href")).toMatch(/^#\/place\//);
-    expect(links[1]!.getAttribute("aria-label")).toMatch(/^Маршрут: /);
-    expect(links[0]!.querySelector("a")).toBeNull();
-    expect(links[1]!.closest(".modern-map-spot-main")).toBeNull();
   });
 });
 

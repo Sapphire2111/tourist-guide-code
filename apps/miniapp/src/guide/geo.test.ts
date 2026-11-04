@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelegramLocationManager, TelegramWebApp } from "../telegram.js";
-import { canOpenLocationSettings, requestLocation } from "./geo.js";
-import { popupNode } from "./PlacesMap.js";
+import { canOpenLocationSettings, requestLocation, googleRouteUrl } from "./geo.js";
+import { popupNode, type PopupData } from "./PlacesMap.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -66,12 +66,111 @@ describe("геолокация через Telegram LocationManager", () => {
   });
 });
 
+const popupData = (over: Partial<PopupData> = {}): PopupData => ({
+  name: "Смерека",
+  category: "Кафе",
+  id: "p1",
+  icon: "📍",
+  coverAlt: "Фото: Смерека",
+  openText: "Відкрити картку",
+  routeText: "Маршрут",
+  routeLabel: "Маршрут: Смерека",
+  routeHref: "https://www.google.com/maps/dir/?api=1&destination=48.45,24.56",
+  closeText: "Закрити",
+  navigate: () => undefined,
+  openExternal: () => undefined,
+  onRoute: () => undefined,
+  onClose: () => undefined,
+  ...over,
+});
+
 describe("подписи карты", () => {
   it("название места — текст, не HTML", () => {
     const evil = '<img src=x onerror="alert(1)">';
-    const node = popupNode(evil, evil, "id", "Відкрити", () => undefined);
+    const node = popupNode(
+      popupData({ name: evil, category: evil, distance: evil, creditText: evil, cover: null }),
+    );
     expect(node.querySelector("img")).toBeNull();
     expect(node.querySelector("strong")?.textContent).toBe(evil);
+  });
+
+  it("с обложкой: alt и подпись автора — текст; единственная картинка — обложка", () => {
+    const evil = '<img src=x onerror="alert(1)">';
+    const node = popupNode(
+      popupData({
+        name: evil,
+        coverAlt: evil,
+        creditText: evil,
+        cover: {
+          url: "https://api.example/places/p1/cover",
+          alt: null,
+          credit: { authors: [], license: null, sourceUrl: null, source: "google" },
+        },
+      }),
+    );
+    const imgs = node.querySelectorAll("img");
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0]!.getAttribute("src")).toBe("https://api.example/places/p1/cover");
+    expect(imgs[0]!.alt).toBe(evil);
+    expect(imgs[0]!.getAttribute("loading")).toBe("lazy");
+    expect(node.querySelector('[data-testid="cover-credit"]')?.textContent).toBe(evil);
+    expect(node.dataset.cover).toBe("photo");
+    expect(node.querySelector(".kosiv-map-popup-icon")).toBeNull();
+  });
+
+  it("обложка не загрузилась: картинка и подпись убраны, значок раздела вместо них", () => {
+    const node = popupNode(
+      popupData({
+        creditText: "Фото: Автор",
+        cover: {
+          url: "https://api.example/c",
+          alt: null,
+          credit: { authors: [], license: null, sourceUrl: null, source: "google" },
+        },
+      }),
+    );
+    node.querySelector("img")!.dispatchEvent(new Event("error"));
+    expect(node.querySelector("img")).toBeNull();
+    expect(node.querySelector('[data-testid="cover-credit"]')).toBeNull();
+    expect(node.dataset.cover).toBe("none");
+    expect(node.querySelector(".kosiv-map-popup-icon")?.textContent).toBe("📍");
+  });
+
+  it("подпись Wikimedia — ссылка на страницу файла через openExternal", () => {
+    const openExternal = vi.fn();
+    const node = popupNode(
+      popupData({
+        openExternal,
+        creditText: "Автор, CC BY-SA",
+        cover: {
+          url: "https://api.example/c",
+          alt: null,
+          credit: {
+            authors: [],
+            license: "CC BY-SA",
+            sourceUrl: "https://commons.wikimedia.org/wiki/File:x.jpg",
+            source: "wikimedia",
+          },
+        },
+      }),
+    );
+    node.querySelector<HTMLAnchorElement>('[data-testid="cover-credit"] a')!.click();
+    expect(openExternal).toHaveBeenCalledWith(
+      expect.any(Event),
+      "https://commons.wikimedia.org/wiki/File:x.jpg",
+    );
+  });
+});
+
+describe("маршрут в Google Картах", () => {
+  it("координаты назначения, без travelmode и точки старта; place id — если есть", () => {
+    expect(googleRouteUrl({ lat: 48.45, lng: 24.56 })).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=48.45,24.56",
+    );
+    expect(googleRouteUrl({ lat: 48.45, lng: 24.56 }, "ChIJ x&y")).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=48.45,24.56&destination_place_id=ChIJ%20x%26y",
+    );
+    expect(googleRouteUrl({ lat: 1, lng: 2 }, null)).not.toContain("destination_place_id");
   });
 });
 

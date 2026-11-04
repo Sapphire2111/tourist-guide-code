@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { indexCategories, loadCategories } from "./categories.js";
-import { markerGroup, popupNode } from "./PlacesMap.js";
+import { markerGroup, popupNode, type PopupData } from "./PlacesMap.js";
 import type { GuideApi } from "./types.js";
 
 const cats = [
@@ -8,6 +8,24 @@ const cats = [
   { id: "cafe", parentId: "eat", name: { uk: "Кафе" }, homeSection: null },
   { id: "x", parentId: null, name: { uk: "Пам'ятки" }, homeSection: null },
 ];
+
+const popupData = (over: Partial<PopupData> = {}): PopupData => ({
+  name: "Смерека",
+  category: "Кафе",
+  id: "p1",
+  icon: "📍",
+  coverAlt: "Фото: Смерека",
+  openText: "Відкрити картку",
+  routeText: "Маршрут",
+  routeLabel: "Маршрут: Смерека",
+  routeHref: "https://www.google.com/maps/dir/?api=1&destination=48.45,24.56",
+  closeText: "Закрити",
+  navigate: () => undefined,
+  openExternal: () => undefined,
+  onRoute: () => undefined,
+  onClose: () => undefined,
+  ...over,
+});
 
 describe("справочник категорий", () => {
   it("раздел подкатегории — по корню; неизвестная — null", () => {
@@ -34,10 +52,10 @@ describe("справочник категорий", () => {
 
   it("подпись маркера — только текст (без HTML из названия), ссылка ведёт в карточку", () => {
     const navigate = vi.fn();
-    const node = popupNode('<img src=x onerror="1">', "Кафе", "p1", "Відкрити картку", navigate);
+    const node = popupNode(popupData({ name: '<img src=x onerror="1">', navigate }));
     expect(node.querySelector("img")).toBeNull();
     expect(node.textContent).toContain("Кафе");
-    node.querySelector("a")!.click();
+    node.querySelector<HTMLAnchorElement>("a.kosiv-map-popup-open")!.click();
     expect(navigate).toHaveBeenCalledWith("/place/p1");
   });
 });

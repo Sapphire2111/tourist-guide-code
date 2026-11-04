@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ json: { status: "ok" }, headers: { "access-control-allow-origin": "*" } }),
   );
 });
-test("modern home (legacy saved choice ignored), nearby search/map/list", async ({ page }, testInfo) => {
+test("modern home (legacy saved choice ignored), nearby filters/map/list", async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem("tg.design", "original"));
   await page.goto("/");
   await expect(page.getByTestId("venue-summary")).toBeAttached();
@@ -35,18 +35,19 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
   await expect(page.getByTestId("nearby-caption")).toContainText("Тестовий готель");
   await expect(page.getByTestId("places-map")).toBeVisible();
   const radius = page.getByRole("group", { name: "Радіус" });
-  await radius.getByRole("button", { name: "1 км" }).click();
+  // По умолчанию 1 км; поля поиска на экране нет.
   await expect(radius.getByRole("button", { name: "1 км" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
   await radius.getByRole("button", { name: "500 м" }).click();
-  const search = page.getByRole("searchbox", { name: "Знайти місце" });
+  await expect(radius.getByRole("button", { name: "500 м" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 500 м");
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
   await page
     .getByRole("group", { name: "Категорії місць поруч" })
     .getByRole("button", { name: "Де поїсти", exact: true })
     .click();
-  await search.fill("Смерека");
-  await expect(page.getByTestId("place-item")).toHaveCount(1);
-  // «Список ↓»: карта 465 → 310 px, лист в зоне видимости; фильтры и запрос сохраняются.
+  await expect(page.getByTestId("place-item")).toHaveCount(2);
+  // «Список ↓»: карта 465 → 310 px, лист в зоне видимости; фильтры сохраняются.
   const frame = page.locator(".modern-map-stage");
   expect((await frame.boundingBox())!.height).toBe(465);
   await page.getByRole("button", { name: "Список ↓" }).click();
@@ -57,8 +58,7 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
       .getByRole("group", { name: "Категорії місць поруч" })
       .getByRole("button", { name: "Де поїсти", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(search).toHaveValue("Смерека");
-  await expect(page.getByRole("link", { name: "Маршрут", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Маршрут", exact: true }).first()).toHaveAttribute(
     "href",
     /openstreetmap.org\/directions/,
   );
@@ -67,9 +67,6 @@ test("modern home (legacy saved choice ignored), nearby search/map/list", async 
     path: testInfo.outputPath("implemented-modern-nearby-list.png"),
     fullPage: true,
   });
-  await search.fill("немає такого місця");
-  await expect(page.getByTestId("nearby-empty")).toBeVisible();
-  await page.getByRole("button", { name: "Скинути фільтри" }).click();
   await page.getByRole("button", { name: "Розгорнути" }).click();
   await expect(frame).toHaveCSS("height", "465px");
   await expect(page.getByTestId("places-map")).toBeVisible();
@@ -90,22 +87,23 @@ test("modern narrow screen retains working list", async ({ page }) => {
     .click();
   await expect(page.getByTestId("place-item").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  // На 320 px панель поверх карты — два ряда без наезда, цели радиуса и категорий не меньше 44 px.
+  // На 320 px панель поверх карты — два компактных ряда без наезда, цели радиуса и категорий не меньше 44 px.
   // Замер одним вызовом: экран ещё может доезжать анимацией появления.
-  const { search, radius, chips } = await page.evaluate(() => {
+  const { track, radius, chips } = await page.evaluate(() => {
     const box = (s: string) => {
       const b = document.querySelector(s)!.getBoundingClientRect();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     };
     return {
-      search: box(".modern-search"),
+      track: box(".modern-radius-track"),
       radius: box(".modern-radius"),
       chips: box(".modern-filters button"),
     };
   });
-  expect(search.y).toBe(radius.y);
-  expect(radius.x).toBeGreaterThanOrEqual(search.x + search.width);
-  expect(chips.y).toBeGreaterThanOrEqual(search.y + search.height);
+  expect(Math.round(track.height)).toBeLessThanOrEqual(34);
+  expect(chips.y).toBeGreaterThanOrEqual(track.y + track.height);
+  // Ряд радиуса (капсула и цели 44 px) целиком над видимым чипом.
+  expect(chips.y).toBeGreaterThanOrEqual(radius.y + radius.height);
   // Расширение цели — псевдоэлемент: точка выше видимой пилюли всё ещё попадает в неё.
   const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent, {
     x: chips.x + chips.width / 2,

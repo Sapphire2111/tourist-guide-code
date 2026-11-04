@@ -86,7 +86,17 @@ function fakeGoogleMaps() {
     getZoom() {
       return this.zoom;
     }
-    setOptions() {}
+    setOptions(o?: { zoomControl?: boolean }) {
+      if (o?.zoomControl !== undefined) this.node.dataset.zoomControl = String(o.zoomControl);
+    }
+    // Настоящая карта двигает окно вместе с собой: фейк сдвигает открытое окно на столько же и считает вызовы.
+    panBy(dx: number, dy: number) {
+      this.node.dataset.panCount = String(Number(this.node.dataset.panCount ?? 0) + 1);
+      const info = this.node.querySelector<HTMLElement>(":scope > .gm-fake-info");
+      if (!info) return;
+      info.style.left = `${parseFloat(info.style.left) - dx}px`;
+      info.style.top = `${parseFloat(info.style.top) - dy}px`;
+    }
     getProjection() {
       return null;
     }
@@ -161,18 +171,36 @@ function fakeGoogleMaps() {
 
   class InfoWindow {
     node = document.createElement("div");
-    constructor() {
+    private ready: (() => void)[] = [];
+    private closed: (() => void)[] = [];
+    constructor(o?: { headerDisabled?: boolean }) {
       this.node.className = "gm-fake-info";
-      this.node.style.cssText = "position:absolute;left:8px;top:8px;background:#fff;padding:8px";
+      this.node.dataset.headerDisabled = String(o?.headerDisabled === true);
+      this.node.style.cssText = "position:absolute;left:8px;top:8px;background:#fff;z-index:1";
     }
     setContent(c: HTMLElement) {
       this.node.replaceChildren(c);
     }
+    addListener(name: string, f: () => void) {
+      if (name === "domready") this.ready.push(f);
+      if (name === "close") this.closed.push(f);
+      return {
+        remove: () => {
+          this.ready = this.ready.filter((x) => x !== f);
+          this.closed = this.closed.filter((x) => x !== f);
+        },
+      };
+    }
     open(o: { map?: unknown }) {
+      // Как настоящее окно: появляется на прежнем месте относительно маркера, сдвиг — забота приложения.
+      this.node.style.left = "8px";
+      this.node.style.top = "8px";
       hostOf(o.map)?.appendChild(this.node);
+      setTimeout(() => this.ready.forEach((f) => f()), 0);
     }
     close() {
       this.node.remove();
+      this.closed.forEach((f) => f());
     }
   }
 

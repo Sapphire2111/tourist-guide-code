@@ -47,6 +47,14 @@ describe("стили, которые нельзя ломать", () => {
     return /(?:^|[\s;])color:\s*(#[0-9a-f]{6})/i.exec(block)?.[1] ?? "";
   };
 
+  it("действия окна маркера: «Маршрут» белым на заливке, «Відкрити картку» на белом — контраст >= 4,5:1", () => {
+    const route = ".kosiv-map-popup .kosiv-map-popup-actions a.kosiv-map-popup-route";
+    expect(contrast(color(route), "#b83d18")).toBeGreaterThanOrEqual(4.5);
+    expect(css).toMatch(/a\.kosiv-map-popup-route \{[^}]*background-color: #b83d18/);
+    const open = ".kosiv-map-popup .kosiv-map-popup-actions a.kosiv-map-popup-open";
+    expect(contrast(color(open), "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("подпись маркера: все цвета заданы явно, контраст на белом InfoWindow >= 4,5:1", () => {
     for (const sel of [
       ".kosiv-map-popup",

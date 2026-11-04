@@ -119,6 +119,21 @@ export function useDistance(): (meters: number | null) => string | null {
   };
 }
 
+/** Текст подписи обложки: и для CoverCredit, и для окна маркера на карте (там DOM без React). */
+export function coverCreditText(
+  credit: NonNullable<Photo["credit"]>,
+  t: ReturnType<typeof useT>["t"],
+): string {
+  const names = credit.authors.map((a) => a.name).join(", ");
+  return credit.source === "wikimedia"
+    ? names
+      ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
+      : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
+    : names
+      ? t("miniapp.place.googleCover", { name: names })
+      : t("miniapp.place.googleCoverNoAuthor");
+}
+
 /** Обложка места: фото (декор — название рядом) или керамическая подложка с иконкой. */
 /** Подпись обложки из Google/Wikimedia: автор (и лицензия Commons) — обязательна. */
 export function CoverCredit({
@@ -129,15 +144,7 @@ export function CoverCredit({
   className?: string;
 }) {
   const { t } = useT();
-  const names = credit.authors.map((a) => a.name).join(", ");
-  const text =
-    credit.source === "wikimedia"
-      ? names
-        ? t("miniapp.place.wikiImage", { author: names, license: credit.license ?? "" })
-        : t("miniapp.place.wikiImageNoAuthor", { license: credit.license ?? "" })
-      : names
-        ? t("miniapp.place.googleCover", { name: names })
-        : t("miniapp.place.googleCoverNoAuthor");
+  const text = coverCreditText(credit, t);
   return (
     <span className={className} data-testid="cover-credit">
       {/* Commons: подпись ведёт на страницу файла (автор, лицензия и её текст). */}

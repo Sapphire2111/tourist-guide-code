@@ -90,6 +90,15 @@ export function routeUrl(to: LatLng, from?: LatLng | null): string {
   return `https://www.openstreetmap.org/directions?route=${src}%3B${dst}`;
 }
 
+/**
+ * Маршрут в Google Картах из окна маркера: точку старта определяет сам Google (местоположение устройства), способ
+ * передвижения выбирает турист. Координаты устройства в ссылку не передаются.
+ */
+export function googleRouteUrl(to: LatLng, placeId?: string | null): string {
+  const base = `https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}`;
+  return placeId ? `${base}&destination_place_id=${encodeURIComponent(placeId)}` : base;
+}
+
 /** Доступ к геолокации уже выдан (без диалога разрешения): Telegram LocationManager или Permissions API браузера. */
 async function isAccessGranted(webApp?: TelegramWebApp): Promise<boolean> {
   const lm = webApp?.LocationManager;

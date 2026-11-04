@@ -1,22 +1,21 @@
 // C05 «Що поруч»: места в радиусе от базовой точки (QR) или — по нажатию и с разрешения — от устройства.
 // Подпись «Поруч із вами» только при полученной геолокации, иначе «Поруч із <база>».
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { pickLocalized } from "@tg/i18n";
 import { useCategoryIndex } from "./categories.js";
 import { ICONS, SECTION_EMOJI } from "../design/Ornament.js";
-import { Button, Link, useT } from "@tg/ui";
+import { Button, useT } from "@tg/ui";
 import { useAsync, useGuide } from "./context.js";
-import { canOpenLocationSettings, requestLocation, routeUrl, type LatLng } from "./geo.js";
+import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js";
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
-import { AsyncView, ExtLink, PlaceList, useDistance } from "./parts.js";
+import { AsyncView, PlaceList, useDistance } from "./parts.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
 
 /** Пилюли радиуса, м, поверх карты (эталон «Що поруч»). */
 export const RADIUS_PILLS = [300, 500, 1000, 3000, 5000, 10_000] as const;
 export const RADIUS_MIN = RADIUS_PILLS[0];
 export const RADIUS_MAX = RADIUS_PILLS[RADIUS_PILLS.length - 1]!;
-export const DEFAULT_RADIUS = 500;
+export const DEFAULT_RADIUS = 1000;
 /** Задержка запроса при смене радиуса, мс. */
 export const RADIUS_DEBOUNCE_MS = 350;
 /** Значение вне шага — ближайшая пилюля (границы уже внутри набора). */
@@ -232,7 +231,10 @@ function NearbyPlaces({
   );
 }
 
-/** Капсула радиуса поверх карты: пилюли прокручиваются, активная видна сразу. */
+/**
+ * Капсула радиуса поверх карты — по размеру содержимого. Не помещается: ряд прокручивается, активная пилюля видна сразу,
+ * край со скрытыми значениями затухает (data-more). Внешний узел выше капсулы: в него укладываются цели нажатия 44 px.
+ */
 function RadiusPills({ value, onChange }: { value: number; onChange: (m: number) => void }) {
   const { t } = useT();
   const label = useRadiusLabel();
@@ -240,18 +242,41 @@ function RadiusPills({ value, onChange }: { value: number; onChange: (m: number)
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;
+    if (!el) return;
+    const mark = () => {
+      const start = el.scrollLeft > 1;
+      const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      el.dataset.more = start && end ? "both" : start ? "start" : end ? "end" : "none";
+    };
+    mark();
+    el.addEventListener("scroll", mark, { passive: true });
+    // Ширина меняется и после загрузки шрифта, и при повороте экрана.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(mark);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", mark);
+      observer?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    const el = box.current;
     const pill = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!el || !pill) return;
-    // Видна с начала ряда — без прокрутки, как на эталоне; иначе активная у левого края (без обрезка «00 м»).
-    el.scrollLeft = pill.offsetLeft + pill.offsetWidth + 3 <= el.clientWidth ? 0 : pill.offsetLeft - 3;
+    const view = el.getBoundingClientRect();
+    const rect = pill.getBoundingClientRect();
+    const left = rect.left - view.left + el.scrollLeft;
+    // Видна с начала ряда — без прокрутки; иначе по центру, чтобы рядом были видны соседние значения.
+    el.scrollLeft = left + rect.width <= el.clientWidth ? 0 : left - (el.clientWidth - rect.width) / 2;
   }, [active]);
   return (
     <div ref={box} className="modern-radius" role="group" aria-label={t("miniapp.nearby.radius")}>
-      {RADIUS_PILLS.map((m) => (
-        <button type="button" key={m} aria-pressed={m === active} onClick={() => onChange(m)}>
-          {label(m)}
-        </button>
-      ))}
+      <div className="modern-radius-track">
+        {RADIUS_PILLS.map((m) => (
+          <button type="button" key={m} aria-pressed={m === active} onClick={() => onChange(m)}>
+            {label(m)}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -282,17 +307,17 @@ export function ModernNearbyResults({
   me: LatLng | null;
   loading: boolean;
 }) {
-  const { t, locale } = useT();
-  const { api, analytics } = useGuide();
+  const { t } = useT();
+  const { api } = useGuide();
   const categories = useCategoryIndex(api);
   const radiusLabel = useRadiusLabel();
   const distanceLabel = useDistance();
-  const [query, setQuery] = useState("");
   const [section, setSection] = useState<HomeSection | "all">("all");
   const sections = Array.from(
     new Set([
       ...(section === "all" ? [] : [section]),
-      ...list.map((p) => categories.sectionOf(p.categoryId)).filter((s) => s !== null),
+      // Раздел «Що поруч» — это сам экран: чип дублировал бы его (такие места видны в «Усі поруч»).
+      ...list.map((p) => categories.sectionOf(p.categoryId)).filter((s) => s !== null && s !== "nearby"),
     ]),
   );
   // Стабильная ссылка: иначе карта пересоздаёт маркеры и сбрасывает охват на каждый рендер.
@@ -300,39 +325,20 @@ export function ModernNearbyResults({
   const visible = useMemo(
     () =>
       list
-        .filter(
-          (p) =>
-            (section === "all" || categories.sectionOf(p.categoryId) === section) &&
-            `${pickLocalized(p.name, locale)} ${p.address ? pickLocalized(p.address, locale) : ""}`
-              .toLocaleLowerCase(locale)
-              .includes(query.trim().toLocaleLowerCase(locale)),
-        )
+        .filter((p) => section === "all" || categories.sectionOf(p.categoryId) === section)
         .sort(
           (a, b) =>
             (a.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.distanceMeters ?? Number.POSITIVE_INFINITY),
         ),
-    [list, section, query, categories, locale],
+    [list, section, categories],
   );
   const closest = visible[0];
-  const closestSection = closest ? categories.sectionOf(closest.categoryId) : null;
   const closestDist = closest ? distanceLabel(closest.distanceMeters) : null;
   return (
     <div className="modern-nearby-results">
       <div className="modern-map-stage">
         <div className="modern-map-overlay" data-map-inset="top">
-          <div className="modern-toolbar">
-            <label className="modern-search">
-              {ICONS.search}
-              <input
-                type="search"
-                value={query}
-                aria-label={t("miniapp.modern.search")}
-                placeholder={t("miniapp.modern.search")}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            {onRadius && <RadiusPills value={selectedRadius} onChange={onRadius} />}
-          </div>
+          {onRadius && <RadiusPills value={selectedRadius} onChange={onRadius} />}
           <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
             <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
               <span aria-hidden="true">✦</span>
@@ -358,32 +364,6 @@ export function ModernNearbyResults({
             closestId={closest?.id}
             legend={false}
             floating
-            overlay={
-              closest && (
-                <div className="modern-map-spot" data-map-inset="bottom">
-                  <Link to={`/place/${encodeURIComponent(closest.id)}`} className="modern-map-spot-main">
-                    <span className="modern-map-spot-icon" aria-hidden="true">
-                      {SECTION_EMOJI[closestSection ?? "other"] ?? SECTION_EMOJI.other}
-                    </span>
-                    <span className="modern-map-spot-body">
-                      {closestDist && <span className="modern-map-spot-dist">{closestDist}</span>}
-                      <span className="modern-map-spot-title">{pickLocalized(closest.name, locale)}</span>
-                    </span>
-                  </Link>
-                  {closest.location && (
-                    <ExtLink
-                      className="modern-map-spot-route"
-                      href={routeUrl(closest.location, me ?? base)}
-                      label={t("miniapp.modern.routeTo", { name: pickLocalized(closest.name, locale) })}
-                      onOpen={() => analytics.track("route_clicked", { placeId: closest.id })}
-                    >
-                      <span aria-hidden="true">🧭</span>
-                      {t("miniapp.modern.route")}
-                    </ExtLink>
-                  )}
-                </div>
-              )
-            }
           />
         </div>
       </div>
@@ -420,15 +400,8 @@ export function ModernNearbyResults({
                 ? t("miniapp.nearby.emptyRadius", { r: radiusLabel(radius) })
                 : t("miniapp.modern.noMatches")}
             </p>
-            {(query || section !== "all") && (
-              <Button
-                onClick={() => {
-                  setQuery("");
-                  setSection("all");
-                }}
-              >
-                {t("miniapp.modern.reset")}
-              </Button>
+            {section !== "all" && (
+              <Button onClick={() => setSection("all")}>{t("miniapp.modern.reset")}</Button>
             )}
           </div>
         )}

@@ -263,7 +263,8 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч: Тестовий готель");
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const state = apiMockState.get(page)!;
-    expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "500" });
+    expect(state.searches.at(-1)).toMatchObject({ lat: "48.45", lng: "24.56", radius: "1000" });
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
     await expect(page.getByTestId("place-item").first().getByTestId("place-category")).toBeVisible();
     const card = page.getByTestId("place-item").first();
     await expect(card).toHaveCSS("border-top-style", "solid");

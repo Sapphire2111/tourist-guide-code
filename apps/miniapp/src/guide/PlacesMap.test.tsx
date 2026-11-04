@@ -21,6 +21,10 @@ const calls = vi.hoisted(() => ({
   polylines: 0,
   clusterAdds: 0,
   info: [] as HTMLElement[],
+  infoOptions: [] as unknown[],
+  infoOpen: 0,
+  infoClose: 0,
+  pans: [] as [number, number][],
   fail: false,
   authFailed: false,
   authListeners: [] as (() => void)[],
@@ -89,16 +93,29 @@ vi.mock("./google-maps.js", async (orig) => {
         setCenter() {}
         setZoom() {}
         setOptions() {}
+        panBy(x: number, y: number) {
+          calls.pans.push([x, y]);
+        }
         getZoom() {
           return 12;
         }
       },
       InfoWindow: class {
+        constructor(o?: unknown) {
+          calls.infoOptions.push(o);
+        }
         setContent(n: HTMLElement) {
           calls.info.push(n);
         }
-        open() {}
-        close() {}
+        addListener() {
+          return { remove: () => undefined };
+        }
+        open() {
+          calls.infoOpen++;
+        }
+        close() {
+          calls.infoClose++;
+        }
       },
       Circle: class extends Overlay {
         fillOpacity?: number;
@@ -166,6 +183,10 @@ beforeEach(() => {
     polylines: 0,
     clusterAdds: 0,
     info: [],
+    infoOptions: [],
+    infoOpen: 0,
+    infoClose: 0,
+    pans: [],
     fail: false,
     authFailed: false,
     authListeners: [],
@@ -193,9 +214,10 @@ const place = (id: string, name = id): PlaceSummary => ({
   adLabel: null,
 });
 
+const track = vi.fn();
 const e: GuideEnv = {
   api: { categories: vi.fn(async () => Promise.reject(new Error("net"))) } as unknown as GuideApi,
-  analytics: { track: () => undefined } as unknown as GuideEnv["analytics"],
+  analytics: { track } as unknown as GuideEnv["analytics"],
   base: null,
   regionId: "r",
   signedIn: false,
@@ -289,6 +311,61 @@ describe("PlacesMap (Google Maps)", () => {
     const box = calls.info.at(-1)!;
     expect(box.querySelector("strong")?.textContent).toBe(evil);
     expect(box.querySelector("img")).toBeNull();
+    // Заголовок Google отключён: своя кнопка закрытия; автосдвиг — свой, с учётом панели над картой.
+    expect(calls.infoOptions.at(-1)).toEqual({ headerDisabled: true, disableAutoPan: true });
+  });
+
+  it("окно маркера: «Маршрут» в Google Карты и «Відкрити картку»; в браузере обычная ссылка", async () => {
+    track.mockClear();
+    const p = { ...place("a", "Смерека"), googlePlaceId: "ChIJ/x" };
+    render(wrap(<PlacesMap places={[p]} center={null} />));
+    await flush();
+    act(() => calls.markers[0]!.click!());
+    const box = calls.info.at(-1)!;
+    const route = box.querySelector<HTMLAnchorElement>("a.kosiv-map-popup-route")!;
+    expect(route.getAttribute("href")).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=48.45,24.56&destination_place_id=ChIJ%2Fx",
+    );
+    expect(route.textContent).toBe("Маршрут");
+    expect(route.getAttribute("aria-label")).toBe("Маршрут: Смерека");
+    expect(route.target).toBe("_blank");
+    expect(route.rel).toContain("noopener");
+    expect(route.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))).toBe(true);
+    expect(track).toHaveBeenCalledWith("route_clicked", { placeId: "a" });
+    expect(box.querySelector("a.kosiv-map-popup-open")?.getAttribute("href")).toBe("#/place/a");
+    expect(box.textContent).toContain("100 м");
+  });
+
+  it("окно маркера в Telegram: маршрут — через openLink, без перехода в WebView", async () => {
+    const openLink = vi.fn();
+    const env = { ...e, webApp: { openLink } } as unknown as GuideEnv;
+    render(
+      <I18nProvider locale="uk">
+        <GuideProvider value={env}>
+          <PlacesMap places={[place("a")]} center={null} />
+        </GuideProvider>
+      </I18nProvider>,
+    );
+    await flush();
+    act(() => calls.markers[0]!.click!());
+    const route = calls.info.at(-1)!.querySelector<HTMLAnchorElement>("a.kosiv-map-popup-route")!;
+    expect(route.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))).toBe(false);
+    expect(openLink).toHaveBeenCalledWith("https://www.google.com/maps/dir/?api=1&destination=48.45,24.56");
+  });
+
+  it("кнопка закрытия закрывает окно; другое место — то же окно с новым содержимым", async () => {
+    render(wrap(<PlacesMap places={[place("a"), place("b")]} center={null} />));
+    await flush();
+    act(() => calls.markers[0]!.click!());
+    act(() => calls.markers[1]!.click!());
+    // Одно окно на карту (InfoWindow создан один раз): второе нажатие заменяет содержимое.
+    expect(calls.infoOptions).toHaveLength(1);
+    expect(calls.info.at(-1)!.querySelector("strong")?.textContent).toBe("b");
+    const closed = calls.infoClose;
+    const close = calls.info.at(-1)!.querySelector<HTMLButtonElement>(".kosiv-map-popup-close")!;
+    expect(close.getAttribute("aria-label")).toBe("Закрити");
+    close.click();
+    expect(calls.infoClose).toBe(closed + 1);
   });
 
   it("смена темы на открытом экране — карта нужной схемы, маркеры и круг на месте", async () => {
@@ -437,9 +514,9 @@ describe("PlacesMap (Google Maps)", () => {
     }
   });
 
-  it("режим сцены задаёт проп floating, а не наличие плашки", async () => {
+  it("режим сцены задаёт проп floating", async () => {
     const center = { lat: 48.45, lng: 24.56 };
-    const view = render(wrap(<PlacesMap places={[]} center={center} radius={500} overlay={<i>plate</i>} />));
+    const view = render(wrap(<PlacesMap places={[]} center={center} radius={500} />));
     await flush();
     expect(calls.circles.at(-1)?.strokeColor).toBe("#1d4ed8");
     view.rerender(wrap(<PlacesMap places={[]} center={center} radius={500} floating />));
@@ -479,13 +556,6 @@ describe("PlacesMap (Google Maps)", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("API не загрузился — плашка с ближайшим местом остаётся над заглушкой", async () => {
-    calls.fail = true;
-    const view = render(wrap(<PlacesMap places={[place("a")]} center={null} overlay={<i>plate</i>} />));
-    await flush();
-    expect(view.getByText("plate")).toBeDefined();
   });
 
   it("API не загрузился — сообщение, список рядом остаётся", async () => {
