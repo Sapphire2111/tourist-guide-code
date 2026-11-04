@@ -151,7 +151,11 @@ describe("погода на главной", () => {
   describe("для какой точки прогноз", () => {
     const YAR = { id: "yar", name: { uk: "Яремче" }, placeCount: 3, location: { lat: 48.45, lng: 24.55 } };
     const TAT = { id: "tat", name: { uk: "Татарів" }, placeCount: 2, location: { lat: 48.35, lng: 24.58 } };
-    const located = (api: WeatherApi, base: { name: string; point: { lat: number; lng: number } } | null) => (
+    const located = (
+      api: WeatherApi,
+      base: { name: string; point: { lat: number; lng: number } } | null,
+      webApp?: TelegramWebApp,
+    ) => (
       <I18nProvider locale="uk">
         <GuideProvider
           value={{
@@ -160,6 +164,7 @@ describe("погода на главной", () => {
             base,
             regionId: "r",
             signedIn: false,
+            webApp,
           }}
         >
           <LocationProvider>
@@ -198,6 +203,50 @@ describe("погода на главной", () => {
         "true",
       );
       expect(chip.getAttribute("aria-label")).toContain("Погода, Татарів:");
+    });
+
+    it("переход на город без прогноза и обратно не пересоздаёт лист: фокус на кнопке города, BackButton не мигает", async () => {
+      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "r", ids: ["yar", "tat"] }));
+      const back = { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() };
+      const webApp = { BackButton: back } as unknown as TelegramWebApp;
+      const api = {
+        forecast: vi.fn(async (p: { lat: number }) => (p.lat === TAT.location.lat ? null : forecast)),
+      };
+      render(located(api, null, webApp));
+      fireEvent.click(await screen.findByTestId("weather-chip"));
+      const dialog = screen.getByRole("dialog");
+      const tat = screen.getByRole("button", { name: "Татарів" });
+      tat.focus();
+      fireEvent.click(tat);
+      await screen.findByText("Для «Татарів» прогнозу зараз немає.");
+      expect(screen.getByRole("dialog")).toBe(dialog);
+      expect(document.activeElement).toBe(tat);
+      const yar = screen.getByRole("button", { name: "Яремче" });
+      yar.focus();
+      fireEvent.click(yar);
+      await screen.findByRole("dialog", { name: "Погода на 5 днів: Яремче" });
+      expect(screen.getByRole("dialog")).toBe(dialog);
+      expect(document.activeElement).toBe(yar);
+      expect(back.show).toHaveBeenCalledTimes(1);
+      expect(back.hide).not.toHaveBeenCalled();
+    });
+
+    it("закрытие на городе без прогноза: фокус на пилюле, та же кнопка возвращается к городу по умолчанию", async () => {
+      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify({ regionId: "r", ids: ["yar", "tat"] }));
+      const api = {
+        forecast: vi.fn(async (p: { lat: number }) => (p.lat === TAT.location.lat ? null : forecast)),
+      };
+      render(located(api, null));
+      const chip = await screen.findByTestId("weather-chip");
+      fireEvent.click(chip);
+      fireEvent.click(screen.getByRole("button", { name: "Татарів" }));
+      await screen.findByText("Для «Татарів» прогнозу зараз немає.");
+      fireEvent.click(screen.getByRole("button", { name: "Закрити прогноз" }));
+      expect(document.activeElement).toBe(chip);
+      await act(async () => {});
+      expect(screen.getByTestId("weather-chip")).toBe(chip);
+      expect(document.activeElement).toBe(chip);
+      expect(chip.getAttribute("aria-label")).toContain("Погода, Яремче:");
     });
 
     it("у выбранного города нет прогноза: сообщение и переключатель; после закрытия пилюля возвращается", async () => {

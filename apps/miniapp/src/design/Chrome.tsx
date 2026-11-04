@@ -143,7 +143,7 @@ export function AppTop({
       <button
         ref={button}
         type="button"
-        className="kosiv-menu-btn modern-vatra-btn"
+        className="kosiv-menu-btn"
         aria-label={t("miniapp.menu.open")}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -171,7 +171,7 @@ export function AppTop({
       {home && scan && (
         <button
           type="button"
-          className="kosiv-menu-btn modern-qr-pill"
+          className="modern-qr-pill"
           aria-label={t("miniapp.scan.open")}
           data-testid="scan-btn"
           onClick={scan.start}
@@ -181,12 +181,8 @@ export function AppTop({
         </button>
       )}
       <Link to="/help" className="modern-help" aria-label={t("miniapp.top.help")} data-testid="help-112">
-        <span className="modern-sos-icon" aria-hidden="true">
-          🆘
-        </span>
-        <b className="modern-sos-num" aria-hidden="true">
-          112
-        </b>
+        <span aria-hidden="true">🆘</span>
+        <b aria-hidden="true">112</b>
       </Link>
       {open && (
         <div

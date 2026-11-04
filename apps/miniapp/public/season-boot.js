@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars -- catch (e): старые WebView (до ES2019) не знают catch без привязки. */
 // Сезон темы до загрузки бандла: data-season на <html> (по месяцу или сохранённому выбору) и цвета окна Telegram —
 // первый кадр уже в цветах сезона. Отдельный файл, а не inline: CSP сайта не разрешает inline-скрипты.
-// Логика — как в src/design/season.ts (readSeason, WINDOW_COLORS); менять вместе.
+// Логика — как в src/design/season.ts (readSeason) и theme.ts (WINDOW_COLORS); менять вместе.
 (function () {
   document.documentElement.setAttribute("data-design", "modern");
   var m = new Date().getMonth();
@@ -24,15 +24,8 @@
     // Хранилище недоступно — «День».
   }
   document.documentElement.setAttribute("data-theme", theme);
-  var colors = {
-    winter: ["#F8F9FA", "#FFFFFF"],
-    spring: ["#FBF9F5", "#FFFFFF"],
-    summer: ["#FDFBF6", "#FFFFFF"],
-    autumn: ["#FAF5EE", "#FFFDF9"],
-  }[season];
-  // Ночь — как NIGHT_WINDOW_COLORS (theme.ts) и --top-bg; день — шапка как DAY_HEADER_COLOR и --bar-sky (верх неба картинки).
-  if (theme === "night") colors = ["#091913", "#071510"];
-  else colors[1] = "#FDE8D0";
+  // [шапка, низ]: верх неба и низ картинки фона, как WINDOW_COLORS (theme.ts).
+  var colors = theme === "night" ? ["#071510", "#1D1612"] : ["#FDE8D0", "#16382B"];
   var tg = window.Telegram && window.Telegram.WebApp;
   if (!tg || tg.platform === "unknown") return;
   var at = function (v) {
@@ -40,13 +33,18 @@
   };
   // Каждый вызов отдельно: отказ одного (старый клиент) не отменяет другой. Шапка цветом #RRGGBB — с Bot API 6.9.
   try {
-    if (at("6.1") && tg.setBackgroundColor) tg.setBackgroundColor(colors[0]);
+    if (at("6.1") && tg.setBackgroundColor) tg.setBackgroundColor(colors[1]);
   } catch (e) {
     // Старый клиент — стандартный фон окна.
   }
   try {
-    if (at("6.9") && tg.setHeaderColor) tg.setHeaderColor(colors[1]);
+    if (at("6.9") && tg.setHeaderColor) tg.setHeaderColor(colors[0]);
   } catch (e) {
     // Старый клиент — стандартная шапка.
+  }
+  try {
+    if (at("7.10") && tg.setBottomBarColor) tg.setBottomBarColor(colors[1]);
+  } catch (e) {
+    // Старый клиент — стандартная нижняя панель.
   }
 })();

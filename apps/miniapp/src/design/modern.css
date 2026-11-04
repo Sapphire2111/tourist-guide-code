@@ -29,9 +29,8 @@ html[data-design="modern"] {
   --top-bg: #0e271d;
   --top-text: #ffffff;
   --top-muted: #a8c7bb;
-  /* Верхня смуга: колір неба картинки, щоб зливатися з ним; контент ковзає під нею. */
+  /* Верхня смуга: суцільний колір неба картинки — зливається з ним, контент під нею не просвічує. */
   --bar-sky: #fde8d0;
-  --bar-bg: rgb(253 232 208 / 97%);
   --bar-text: #16382b;
   --bar-muted: #36574a;
   --bar-accent: #9e3616;
@@ -69,7 +68,7 @@ html[data-design="modern"] {
   --tile-bg: rgb(255 255 255 / 88%);
   --tile-border: #ffffff;
   --tile-text: #16382b;
-  --dock-bg: rgb(255 255 255 / 94%);
+  --dock-bg: #ffffff;
   --dock-border: #ffffff;
   --dock-text: #36574a;
   --dock-active: #b83d18;
@@ -84,8 +83,6 @@ html[data-design="modern"] {
   --sheet-border: #e2d9c5;
   --fire: #c2521a;
   --art-far: #1e4e3a;
-  --art-mist: #ffffff;
-  --art-mist-o: 0.25;
   --ember-a: #f26419;
   --ember-b: #e06d2b;
   --ember-c: #f6ae2d;
@@ -128,8 +125,9 @@ html[data-design="modern"][data-screen] body {
   content: "";
   position: absolute;
   inset: 0;
+  /* Центр выше края: у самого низа цвет равен низу картинки и нижней панели Telegram (theme.ts), шва нет. */
   background-image: radial-gradient(
-    120% 36% at 50% 100%,
+    120% 26% at 50% 80%,
     rgb(242 100 25 / 18%),
     rgb(246 174 45 / 5%) 60%,
     transparent 100%
@@ -148,7 +146,7 @@ html[data-theme="night"] .app-backdrop {
 }
 html[data-theme="night"] .app-backdrop::after {
   background-image: radial-gradient(
-    120% 36% at 50% 100%,
+    120% 26% at 50% 80%,
     rgb(242 100 25 / 20%),
     rgb(246 174 45 / 7%) 60%,
     transparent 100%
@@ -180,7 +178,7 @@ html[data-theme="night"] .app-backdrop-rose {
   height: 52px;
   opacity: 0.75;
 }
-/* Іскри: лише transform і opacity у власних шарах; у прихованій вкладці браузер анімацію зупиняє сам. */
+/* Іскри: лише transform і opacity; шари браузер створює сам на час анімації, will-change не потрібен. */
 .app-embers {
   position: absolute;
   inset: 0;
@@ -192,8 +190,12 @@ html[data-theme="night"] .app-backdrop-rose {
   background-color: var(--ember-a);
   box-shadow: 0 0 5px 1px var(--ember-glow);
   opacity: 0;
-  will-change: transform, opacity;
   animation: app-ember linear infinite;
+}
+/* Экономия батареи: стоят в скрытой вкладке (AppBackdrop) и под листами на весь экран — их всё равно не видно. */
+.app-embers[data-paused] i,
+body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .app-embers i {
+  animation-play-state: paused;
 }
 .app-embers i:nth-child(3n) {
   background-color: var(--ember-c);
@@ -249,7 +251,7 @@ html[data-design="modern"] .kosiv-top {
   padding-bottom: 4px;
   padding-left: 12px;
   padding-right: 12px;
-  background-color: var(--bar-bg);
+  background-color: var(--bar-sky);
   color: var(--bar-text);
 }
 html[data-design="modern"] .kosiv-top .kosiv-menu-btn {
@@ -574,6 +576,16 @@ html[data-screen="home"] .home-loc-row:not(:has(.wx-chip)) {
   gap: 6px;
   padding: 2px 8px clamp(58px, 10vh, 92px);
 }
+/* Над героем карточка (согласия, вход персонала, сбой контекста): заголовок съехал на лес — у него своя сплошная подложка. */
+html[data-screen="home"] .kosiv-content > :is(.kosiv-panel, .kosiv-cta) ~ .modern-home .modern-hero-head,
+html[data-screen="home"] .home-top-row:has(.kosiv-welcome button) ~ .modern-home .modern-hero-head {
+  --sky-text: var(--card-text);
+  --sky-shadow: none;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background-color: var(--card-solid);
+  box-shadow: var(--card-shadow);
+}
 .modern-hero-kicker {
   display: inline-flex;
   align-items: center;
@@ -803,8 +815,9 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   color: var(--f-sub);
 }
 
-/* Плитки: 4 в ряд, остальные — прокрутка по вертикали внутри блока, ряд за рядом. Виден край следующего ряда и стрелка.
-   overscroll-behavior не задан специально: на границах прокрутка переходит к странице. */
+/* Плитки: 4 в ряд, остальные ряды — внутри блока, ряд за рядом: стрелка, короткий свайп, фокус клавиатуры. Виден край
+   следующего ряда. overflow: hidden, а не auto: нативная прокрутка съедала бы весь жест ради ~40 px хода, а так свайп
+   по блоку сразу и всегда листает страницу (HomeSections.tsx). */
 .modern-tiles {
   position: relative;
   --tile-h: 64px;
@@ -821,8 +834,7 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: var(--tile-h);
   gap: var(--tile-gap);
-  overflow: hidden auto;
-  overscroll-behavior: auto;
+  overflow: hidden;
   scrollbar-width: none;
   scroll-snap-type: y mandatory;
   scroll-padding: 3px 0;
@@ -840,21 +852,40 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
   mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
 }
-.modern-tiles[data-more="true"]::after {
-  content: "";
+.modern-tiles[data-more="false"] .modern-intentions {
+  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
+  mask-image: linear-gradient(to top, #000 calc(100% - 26px), rgb(0 0 0 / 15%));
+}
+/* Стрелка: 30×18 на виду, цель 44×44 за счёт ::after. Внизу — следующий ряд, в конце — вверху и назад. */
+.modern-tiles-more {
   position: absolute;
   left: 50%;
   bottom: -2px;
+  z-index: 1;
+  box-sizing: border-box;
   width: 30px;
   height: 18px;
-  margin-left: -15px;
+  margin: 0 0 0 -15px;
+  padding: 0;
+  border: 1px solid rgb(246 174 45 / 45%);
   border-radius: 9999px;
-  pointer-events: none;
   background: #16382b
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8'%3E%3Cpath d='M1.5 1.5l5.5 5 5.5-5' fill='none' stroke='%23F6AE2D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     center no-repeat;
-  border: 1px solid rgb(246 174 45 / 45%);
-  box-sizing: border-box;
+  cursor: pointer;
+}
+.modern-tiles-more::after {
+  content: "";
+  position: absolute;
+  inset: -13px -7px;
+}
+.modern-tiles[data-more="false"] .modern-tiles-more {
+  top: -2px;
+  bottom: auto;
+  transform: rotate(180deg);
+}
+html[data-design="modern"] .modern-tiles-more:focus-visible {
+  outline-color: #f6ae2d;
 }
 .modern-intention {
   height: 100%;
@@ -905,6 +936,9 @@ html[data-screen="home"] .kosiv-meta-block {
   padding: 10px 12px;
   gap: 2px;
   font-size: 0.8125rem;
+}
+html[data-screen="home"] .kosiv-meta-block:empty {
+  display: none;
 }
 html[data-screen="home"] .kosiv-meta-block h2 {
   margin: 0;
@@ -1023,10 +1057,6 @@ html[data-screen="nearby"] .kosiv-content {
 .modern-nearby-art path:nth-child(2) {
   fill: #123124;
   opacity: 0.55;
-}
-.modern-nearby-art ellipse {
-  fill: var(--art-mist);
-  opacity: var(--art-mist-o);
 }
 .modern-nearby-titles {
   position: relative;
@@ -1625,9 +1655,7 @@ html[data-design="modern"] .pc-action {
     animation: none;
     opacity: 0.6;
     transform: translate3d(var(--sway), calc(var(--rise) * -0.45), 0);
-    will-change: auto;
   }
-  .modern-nearby-art ellipse,
   .modern-locate[aria-busy="true"] svg,
   .modern-map-stage .kosiv-pin-base::before {
     animation: none;
@@ -1663,7 +1691,6 @@ html[data-theme="night"] {
   --top-bg: #071510;
   --top-muted: #a8c7bb;
   --bar-sky: #071510;
-  --bar-bg: rgb(7 21 16 / 97%);
   --bar-text: #f5efe6;
   --bar-muted: #a8c7bb;
   --bar-accent: #f6ae2d;
@@ -1712,8 +1739,6 @@ html[data-theme="night"] {
   --sheet-bg: #0f241c;
   --sheet-border: rgb(246 174 45 / 30%);
   --fire: #c2521a;
-  --art-mist: #f6ae2d;
-  --art-mist-o: 0.08;
   --ember-a: #f26419;
   --ember-b: #f6ae2d;
   --ember-c: #fde68a;

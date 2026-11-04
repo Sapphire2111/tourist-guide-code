@@ -6,7 +6,7 @@
 // Іконка — Google (через прокси нашого api) з alt з опису, при Open-Meteo — своя за погодою.
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useAsync, useGuide } from "../guide/context.js";
 import type { LatLng } from "../guide/geo.js";
@@ -143,8 +143,6 @@ export function useWeatherPlaces(): WeatherPlace[] {
 
 /** Пилюля погоды на главной; нет точки или прогноза — ничего (без пустого места). */
 export function WeatherChip({ api }: { api: WeatherApi }) {
-  const { t } = useT();
-  const text = useConditionText();
   const places = useWeatherPlaces();
   const [pickedId, setPickedId] = useState<string | null>(null);
   const place = places.find((p) => p.id === pickedId) ?? places[0] ?? null;
@@ -164,79 +162,104 @@ export function WeatherChip({ api }: { api: WeatherApi }) {
   const button = useRef<HTMLButtonElement>(null);
   // Пока грузится прогноз для новой точки — прежний (открытый лист не пропадает и не мигает).
   const [last, setLast] = useState<{ forecast: Forecast | null; name: string } | null>(null);
+  // Последний настоящий прогноз: пилюля под листом и на время возврата к городу по умолчанию (фокусу есть куда вернуться).
+  const [good, setGood] = useState<{ forecast: Forecast; name: string } | null>(null);
   useEffect(() => {
-    if (state.status === "ready") setLast(state.data);
-    else if (state.status === "error") setLast(null);
+    if (state.status === "ready") {
+      setLast(state.data);
+      const { forecast, name } = state.data;
+      if (forecast?.days[0]) setGood({ forecast, name });
+    } else if (state.status === "error") setLast(null);
   }, [state]);
   // Стабильная ссылка: эффект листа (фокус, Escape, «Назад») не перезапускается на каждый рендер.
   const close = useCallback(() => {
     setOpen(false);
     button.current?.focus();
   }, []);
-  const loading = state.status === "loading";
-  const loaded = state.status === "ready" ? state.data : loading ? last : null;
+  // Город уже сменился, а результат ещё прежний (useAsync начнёт загрузку после рендера) — это тоже загрузка.
+  const stale = state.status === "ready" && state.data.name !== placeName;
+  const loading = state.status === "loading" || stale;
+  const loaded = state.status === "ready" && !stale ? state.data : loading ? last : null;
   const f = loaded?.forecast ?? null;
   const shownName = loaded?.name ?? placeName;
   const today = f?.days[0];
   // Лист закрыт на городе без прогноза: пилюля вернётся к городу по умолчанию, а не исчезнет.
-  const stuck = !open && pickedId !== null && state.status === "ready" && !today;
+  const stuck = !open && pickedId !== null && state.status === "ready" && !stale && !today;
   useEffect(() => {
     if (stuck) setPickedId(null);
   }, [stuck]);
-  // В открытом листе город без прогноза — сообщение и переключатель, а не исчезновение листа.
-  if (!today && !(open && places.length > 1)) return null;
-  const sheet = open && (
-    <WeatherSheet
-      forecast={f && today ? f : null}
-      place={shownName}
-      places={places}
-      pickedId={place?.id ?? null}
-      pending={loading ? placeName : null}
-      onPick={setPickedId}
-      onClose={close}
-    />
+  // Пилюля: прогноз точки, а если его нет — последний настоящий, пока лист открыт или идёт возврат после закрытия.
+  const chip = today ? { forecast: f!, name: shownName } : open || stuck || loading ? good : null;
+  // Лист всегда на одном месте дерева: смена города с прогнозом на город без него его не пересоздаёт.
+  return (
+    <>
+      {chip && <ChipButton chip={chip} button={button} open={open} onOpen={() => setOpen(true)} />}
+      {open && (
+        <WeatherSheet
+          forecast={f && today ? f : null}
+          place={shownName}
+          places={places}
+          pickedId={place?.id ?? null}
+          pending={loading ? placeName : null}
+          onPick={setPickedId}
+          onClose={close}
+        />
+      )}
+    </>
   );
-  if (!f || !today) return <>{sheet}</>;
-  const now = f.current;
+}
+
+function ChipButton({
+  chip,
+  button,
+  open,
+  onOpen,
+}: {
+  chip: { forecast: Forecast; name: string };
+  button: RefObject<HTMLButtonElement | null>;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const { t } = useT();
+  const text = useConditionText();
+  const now = chip.forecast.current;
+  const today = chip.forecast.days[0]!;
   const temp = formatTemp(now?.temperature ?? today.temperatureMax);
   const condition = now?.condition ?? today.condition;
   const label = text(now ?? today);
   const danger = today.warnings.length > 0;
   return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        className="wx-chip"
-        data-testid="weather-chip"
-        data-danger={danger || undefined}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={t("miniapp.weather.openAt", {
-          place: shownName,
-          summary: [label, temp].filter(Boolean).join(", "),
-        })}
-        onClick={() => setOpen(true)}
-      >
-        <WeatherIcon
-          condition={condition}
-          iconUrl={now?.iconUrl ?? today.iconUrl}
-          label=""
-          night={now?.isDay === false}
-          size={22}
-        />
-        {temp && <span className="wx-chip-temp">{temp}</span>}
-        <span className="wx-chip-place" data-testid="weather-place">
-          {shownName}
+    <button
+      ref={button}
+      type="button"
+      className="wx-chip"
+      data-testid="weather-chip"
+      data-danger={danger || undefined}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-label={t("miniapp.weather.openAt", {
+        place: chip.name,
+        summary: [label, temp].filter(Boolean).join(", "),
+      })}
+      onClick={onOpen}
+    >
+      <WeatherIcon
+        condition={condition}
+        iconUrl={now?.iconUrl ?? today.iconUrl}
+        label=""
+        night={now?.isDay === false}
+        size={22}
+      />
+      {temp && <span className="wx-chip-temp">{temp}</span>}
+      <span className="wx-chip-place" data-testid="weather-place">
+        {chip.name}
+      </span>
+      {danger && (
+        <span className="wx-chip-alert" aria-hidden="true">
+          ⚠️
         </span>
-        {danger && (
-          <span className="wx-chip-alert" aria-hidden="true">
-            ⚠️
-          </span>
-        )}
-      </button>
-      {sheet}
-    </>
+      )}
+    </button>
   );
 }
 
@@ -372,35 +395,37 @@ export function WeatherSheet({
           </div>
         )}
         {!forecast && !pending && <p>{t("miniapp.weather.noForecast", { place })}</p>}
-        <ul className="wx-days" data-testid="weather-days">
-          {(forecast?.days ?? []).map((d, i) => {
-            const label = text(d);
-            const max = formatTemp(d.temperatureMax);
-            const min = formatTemp(d.temperatureMin);
-            return (
-              <li key={d.date} className="wx-day">
-                <span className="wx-day-name">
-                  {i === 0 ? t("miniapp.weather.today") : weekday(d.date, locale)}
-                </span>
-                <WeatherIcon condition={d.condition} iconUrl={d.iconUrl} label={label} size={28} />
-                <span className="wx-day-temp">
-                  {max && <strong>{max}</strong>}
-                  {min && <span className="wx-muted"> / {min}</span>}
-                </span>
-                <span className="wx-day-meta">
-                  {d.precipitationProbabilityMax !== null && (
-                    <span>
-                      {t("miniapp.weather.precip", { p: Math.round(d.precipitationProbabilityMax) })}
-                    </span>
-                  )}
-                  {d.windSpeedMax !== null && (
-                    <span>{t("miniapp.weather.wind", { v: Math.round(d.windSpeedMax) })}</span>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        {forecast && (
+          <ul className="wx-days" data-testid="weather-days">
+            {forecast.days.map((d, i) => {
+              const label = text(d);
+              const max = formatTemp(d.temperatureMax);
+              const min = formatTemp(d.temperatureMin);
+              return (
+                <li key={d.date} className="wx-day">
+                  <span className="wx-day-name">
+                    {i === 0 ? t("miniapp.weather.today") : weekday(d.date, locale)}
+                  </span>
+                  <WeatherIcon condition={d.condition} iconUrl={d.iconUrl} label={label} size={28} />
+                  <span className="wx-day-temp">
+                    {max && <strong>{max}</strong>}
+                    {min && <span className="wx-muted"> / {min}</span>}
+                  </span>
+                  <span className="wx-day-meta">
+                    {d.precipitationProbabilityMax !== null && (
+                      <span>
+                        {t("miniapp.weather.precip", { p: Math.round(d.precipitationProbabilityMax) })}
+                      </span>
+                    )}
+                    {d.windSpeedMax !== null && (
+                      <span>{t("miniapp.weather.wind", { v: Math.round(d.windSpeedMax) })}</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
         {forecast && <WeatherAttribution source={forecast.source} />}
       </div>
     </div>,

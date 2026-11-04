@@ -129,7 +129,7 @@ for (const [width, height] of [
 
 test("фон не двигается при прокрутке, блоки двигаются", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("home-sections")).toBeVisible();
+  await expect(page.getByTestId("home-place").first()).toBeAttached();
   const read = () =>
     page.evaluate(() => ({
       bd: document.querySelector('[data-testid="app-backdrop"]')!.getBoundingClientRect().top,
@@ -275,15 +275,8 @@ test("плитки: все 8 доступны клавиатурой, фокус
     scrollY: n.scrollHeight > n.clientHeight + 1,
     snap: getComputedStyle(n).scrollSnapType,
     overflow: getComputedStyle(n).overflowY,
-    overscroll: getComputedStyle(n).overscrollBehaviorY,
   }));
-  expect(box).toEqual({
-    scrollX: false,
-    scrollY: true,
-    snap: "y mandatory",
-    overflow: "auto",
-    overscroll: "auto",
-  });
+  expect(box).toEqual({ scrollX: false, scrollY: true, snap: "y mandatory", overflow: "hidden" });
   await links.first().focus();
   const hrefs: (string | null)[] = [];
   for (let i = 0; i < 8; i++) {
@@ -343,26 +336,179 @@ test("плитки: имена для скринридера и цель не м
   ]);
 });
 
-test("плитки: на границе прокрутка колесом уходит странице, не заедает", async ({ page }) => {
+test("плитки: стрелка листает ряды, её имя и цель 44 px; работает с клавиатуры", async ({ page }) => {
+  await page.goto("/");
+  const list = page.getByTestId("home-sections");
+  const more = page.getByTestId("tiles-more");
+  const tiles = page.locator(".modern-tiles");
+  await expect(more).toHaveAccessibleName("Показати наступний ряд розділів");
+  await expect(more).toHaveAttribute("aria-controls", "home-tiles");
+  const reach = await more.evaluate((n) => {
+    const r = n.getBoundingClientRect();
+    const a = getComputedStyle(n, "::after");
+    return {
+      w: r.width - parseFloat(a.left) - parseFloat(a.right),
+      h: r.height - parseFloat(a.top) - parseFloat(a.bottom),
+    };
+  });
+  expect(reach.w).toBeGreaterThanOrEqual(44);
+  expect(reach.h).toBeGreaterThanOrEqual(44);
+  await more.click();
+  await expect(tiles).toHaveAttribute("data-more", "false");
+  await expect.poll(() => list.evaluate((n) => n.scrollTop)).toBeGreaterThan(30);
+  await expect(more).toHaveAccessibleName("Показати попередній ряд розділів");
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(tiles).toHaveAttribute("data-more", "true");
+  await expect.poll(() => list.evaluate((n) => n.scrollTop)).toBe(0);
+  await expect(more).toBeFocused();
+});
+
+test("плитки: длинный свайп сразу и целиком листает страницу, короткий меняет ряд", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const list = page.getByTestId("home-sections");
   await expect(list).toBeVisible();
   await page.waitForLoadState("networkidle");
-  await list.scrollIntoViewIfNeeded();
-  const box = (await list.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + 20);
-  // Дойти до конца блока.
-  await list.evaluate((n) => n.scrollTo({ top: n.scrollHeight }));
+  const cdp = await page.context().newCDPSession(page);
+  const drag = async (dist: number) => {
+    const r = (await list.boundingBox())!;
+    const [x, y] = [r.x + r.width / 2, r.y + 30];
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 20; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + (dist * i) / 20 }],
+      });
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(120); // пауза перед отпусканием: без инерции
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(500);
+  };
+  const state = () =>
+    page.evaluate(() => ({
+      page: Math.round(window.scrollY),
+      list: Math.round(document.querySelector('[data-testid="home-sections"]')!.scrollTop),
+    }));
+  await expect(page.getByTestId("home-place").first()).toBeAttached();
+  const start = await state();
+  await drag(-200);
+  const up = await state();
+  expect(up.page - start.page).toBeGreaterThan(150); // первый же жест — странице
+  expect(up.list).toBe(0);
+  await drag(200);
+  const down = await state();
+  expect(up.page - down.page).toBeGreaterThan(150);
+  expect(down.list).toBe(0);
+  await drag(-60);
+  await expect.poll(async () => (await state()).list).toBeGreaterThan(30);
   await expect(page.locator(".modern-tiles")).toHaveAttribute("data-more", "false");
-  const start = await page.evaluate(() => window.scrollY);
-  await page.waitForTimeout(150);
-  await expect
-    .poll(async () => {
-      await page.mouse.wheel(0, 200);
-      return page.evaluate(() => window.scrollY);
-    })
-    .toBeGreaterThan(start);
+  await drag(60);
+  await expect.poll(async () => (await state()).list).toBe(0);
+});
+
+// ---- Полосы, заголовок, служебное, пауза искр ----
+
+for (const dark of [false, true]) {
+  test(`верхняя полоса и док${dark ? " «Ніч»" : " «День»"}: сплошные, контент не просвечивает`, async ({
+    page,
+  }) => {
+    if (dark) await night(page);
+    await page.goto("/");
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    const css = await page.evaluate(() => {
+      const top = getComputedStyle(document.querySelector('[data-testid="app-top"]')!);
+      const nav = getComputedStyle(document.querySelector('[data-testid="bottom-nav"]')!);
+      return {
+        top: top.backgroundColor,
+        nav: nav.backgroundColor,
+        filter: top.backdropFilter,
+        transform: top.transform,
+      };
+    });
+    expect(css.top).toMatch(/^rgb\(/);
+    expect(css.nav).toMatch(/^rgb\(/);
+    expect(css.filter).toBe("none");
+    expect(css.transform).toBe("none");
+  });
+
+  test(`новый пользователь${dark ? " «Ніч»" : " «День»"}: заголовок читаем над лесом, a11y`, async ({
+    page,
+  }) => {
+    apiMockState.get(page)!.consents = [];
+    if (dark) await night(page);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Вітаємо!" })).toBeVisible();
+    const title = page.locator("#sections-title");
+    await expect(title).toBeVisible();
+    const pair = await title.evaluate((n) => ({
+      fg: getComputedStyle(n).color,
+      bg: getComputedStyle(n.closest(".modern-hero-head")!).backgroundColor,
+    }));
+    expect(pair.bg).toMatch(/^rgb\(/); // сплошная подложка, не прозрачная
+    const lum = (c: string) => {
+      const [r, g, b] = /rgb\((\d+), (\d+), (\d+)/
+        .exec(c)!
+        .slice(1)
+        .map((v) => {
+          const x = Number(v) / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        }) as [number, number, number];
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const [hi, lo] = [lum(pair.fg), lum(pair.bg)].sort((a, b) => b - a) as [number, number];
+    expect((hi + 0.05) / (lo + 0.05)).toBeGreaterThanOrEqual(4.5);
+    await expectNoSeriousA11yViolations(page);
+  });
+}
+
+test("служебный блок: туристу нет, /health не запрашивается; у персонала есть", async ({ page }) => {
+  const health: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/health") health.push(r.url());
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("home-place").first()).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator(".kosiv-meta-block")).toHaveCount(0);
+  expect(health).toEqual([]);
+  apiMockState.get(page)!.staff = true;
+  await page.reload();
+  await expect(page.getByTestId("staff-link")).toBeVisible();
+  await expect(page.getByTestId("health")).toHaveText("Сервер працює");
+  await expect(page.getByTestId("role")).toBeVisible();
+  expect(health.length).toBeGreaterThan(0);
+});
+
+test("искры на паузе под листом на весь экран и в скрытой вкладке", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("home-sections")).toBeVisible();
+  const states = () =>
+    page
+      .getByTestId("app-embers")
+      .locator("i")
+      .evaluateAll((nodes) => [...new Set(nodes.map((n) => n.getAnimations()[0]!.playState))]);
+  expect(await states()).toEqual(["running"]);
+  await page.getByTestId("menu-btn").click();
+  await expect(page.getByRole("dialog", { name: "Меню" })).toBeVisible();
+  await expect.poll(states).toEqual(["paused"]);
+  await page.keyboard.press("Escape");
+  await expect.poll(states).toEqual(["running"]);
+  const visibility = (v: string) =>
+    page.evaluate((state) => {
+      Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, v);
+  await visibility("hidden");
+  await expect.poll(states).toEqual(["paused"]);
+  await visibility("visible");
+  await expect.poll(states).toEqual(["running"]);
+  // Свайпы не сворачивают приложение: вызов на старте.
+  const calls = await page.evaluate(
+    () => (window as unknown as { __telegramCalls?: string[] }).__telegramCalls ?? [],
+  );
+  expect(calls).toContain("disableVerticalSwipes");
 });
 
 // ---- Нижняя навигация, 112, функции главной ----
@@ -424,7 +570,9 @@ test("главная: всё видно на месте — заголовки, 
   await places.scrollIntoViewIfNeeded();
   await expect(places).toBeVisible();
   await expect(page.getByTestId("home-place").first()).toBeVisible();
-  await expect(page.getByTestId("health")).toBeVisible();
+  // Служебное туристу не показываем.
+  await expect(page.getByTestId("health")).toHaveCount(0);
+  await expect(page.getByTestId("role")).toHaveCount(0);
 });
 
 test("заголовок на небе: не пересекается с контуром вершин", async ({ page }) => {

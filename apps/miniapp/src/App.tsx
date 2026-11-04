@@ -315,6 +315,9 @@ function Home(props: RoutesProps) {
   const { t } = useT();
   const { staff } = useHost();
   const partnerOrgs = usePartnerOrgs();
+  // Роль и состояние сервера — служебные: только разработка и персонал, туристу не показываем и /health не запрашиваем.
+  const diagnostics = import.meta.env.DEV || staff === "yes";
+  const partner = role === "partner" || partnerOrgs.length > 0;
   return (
     <>
       <div className="home-top-row">
@@ -344,18 +347,20 @@ function Home(props: RoutesProps) {
         }
       />
       <HomePlaces />
-      <div className="kosiv-meta-block">
-        <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
-        {(role === "partner" || partnerOrgs.length > 0) && (
-          // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
-          <Feature flag="module.partner_cabinet">
-            <Link to="/partner" data-testid="partner-link">
-              {t("miniapp.partner.open")}
-            </Link>
-          </Feature>
-        )}
-        <Health api={api} />
-      </div>
+      {(diagnostics || partner) && (
+        <div className="kosiv-meta-block">
+          {diagnostics && <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>}
+          {partner && (
+            // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
+            <Feature flag="module.partner_cabinet">
+              <Link to="/partner" data-testid="partner-link">
+                {t("miniapp.partner.open")}
+              </Link>
+            </Feature>
+          )}
+          {diagnostics && <Health api={api} />}
+        </div>
+      )}
     </>
   );
 }

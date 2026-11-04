@@ -1,3 +1,4 @@
+import { apiMockState } from "../../support/api-mock.js";
 import { DEFAULT_TELEGRAM_USER, telegramCalls } from "../../support/telegram-webapp.js";
 import { expect, test } from "../../support/fixtures.js";
 
@@ -10,18 +11,29 @@ test("Mini App в Telegram: пользователь, тема, ready/expand, с
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeVisible();
   await expect(page.getByTestId("tg-user")).toHaveText(`Вітаємо, ${DEFAULT_TELEGRAM_USER.first_name}!`);
-  await expect(page.getByTestId("role")).toHaveText("Режим: гість");
-  await expect(page.getByTestId("health")).toHaveText("Сервер працює");
-  expect(await telegramCalls(page)).toEqual(expect.arrayContaining(["ready", "expand"]));
+  // Роль и статус api — служебные: в боевой сборке туристу не показываются (у персонала — ниже).
+  await expect(page.getByTestId("role")).toHaveCount(0);
+  await expect(page.getByTestId("health")).toHaveCount(0);
+  expect(await telegramCalls(page)).toEqual(
+    expect.arrayContaining(["ready", "expand", "disableVerticalSwipes"]),
+  );
   const bg = await page.evaluate(() =>
     document.documentElement.style.getPropertyValue("--tg-theme-bg-color"),
   );
   expect(bg).toBe("#ffffff");
 });
 
+test("персонал: роль и статус api (связка фронт → api и CORS)", async ({ page }) => {
+  apiMockState.get(page)!.staff = true;
+  await page.goto("/");
+  await expect(page.getByTestId("role")).toHaveText("Режим: гість");
+  await expect(page.getByTestId("health")).toHaveText("Сервер працює");
+});
+
 test("партнёр: кабинет и нативная BackButton", async ({ page }) => {
   await page.goto("/?role=partner");
-  await expect(page.getByTestId("role")).toHaveText("Режим: партнер");
+  await expect(page.getByTestId("role")).toHaveCount(0);
+  await expect(page.getByTestId("partner-link")).toBeVisible();
   await page.getByRole("link", { name: "Кабінет партнера" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeVisible();
   expect(await telegramCalls(page)).toEqual(

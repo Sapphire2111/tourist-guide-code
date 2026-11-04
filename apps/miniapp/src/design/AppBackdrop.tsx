@@ -2,8 +2,9 @@
 // один раз, при переходах не пересоздаётся; скроллятся только блоки поверх него. «Ніч» — Концепт Б «Мольфарська Ватра»,
 // «День» — рассвет Концепта А (светлое небо, туман). Какая из картинок видна — решает CSS по data-theme (до первого
 // кадра, season-boot.js). Передний хребет продолжается до низа экрана градиентом от своего цвета (modern.css), без шва.
-// Искры — только CSS: transform и opacity, без обновлений React; при «уменьшить движение» стоят (modern.css).
-import { memo, type CSSProperties } from "react";
+// Искры — только CSS: transform и opacity, без обновлений React; при «уменьшить движение» стоят, в скрытой вкладке и под
+// листами на весь экран — на паузе (modern.css).
+import { memo, useEffect, useRef, type CSSProperties } from "react";
 
 /** Смереки переднего хребта рассвета: x, основание y, масштаб. */
 const SPRUCES: readonly (readonly [number, number, number])[] = [
@@ -68,6 +69,14 @@ function emberStyle([left, from, size, duration, delay, sway, drift, rise]: (typ
 }
 
 export const AppBackdrop = memo(function AppBackdrop() {
+  // Скрытая вкладка (свёрнутый Telegram): искры на паузе. Атрибут — напрямую, без обновления React.
+  const embers = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sync = () => embers.current?.toggleAttribute("data-paused", document.visibilityState === "hidden");
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
   return (
     <div className="app-backdrop" data-testid="app-backdrop" aria-hidden="true">
       <svg
@@ -162,7 +171,7 @@ export const AppBackdrop = memo(function AppBackdrop() {
         <circle cx="50" cy="50" r="6" fill="#FDE68A" stroke="#B83D18" strokeWidth="1.5" />
       </svg>
 
-      <div className="app-embers" data-testid="app-embers">
+      <div ref={embers} className="app-embers" data-testid="app-embers">
         {EMBERS.map((e, i) => (
           <i key={i} style={emberStyle(e)} />
         ))}

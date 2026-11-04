@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { canScanQr, scanQr, type TelegramWebApp } from "./telegram.js";
+import { canScanQr, scanQr, type TelegramWebApp, initTelegram } from "./telegram.js";
 
 type Handler = (p?: { data?: string }) => void;
 function fake(version = "7.0", over: Partial<TelegramWebApp> = {}) {
@@ -108,5 +108,27 @@ describe("сканер QR Telegram", () => {
     const { app } = fake();
     void scanQr(app, "😀".repeat(70));
     expect(app.showScanQrPopup).toHaveBeenCalledWith({ text: "😀".repeat(64) });
+  });
+});
+
+describe("старт в Telegram: вертикальные свайпы", () => {
+  it("Bot API 7.7+: отключаются один раз", () => {
+    const disableVerticalSwipes = vi.fn();
+    initTelegram(fake("7.7", { disableVerticalSwipes }).app);
+    expect(disableVerticalSwipes).toHaveBeenCalledTimes(1);
+  });
+  it("старый клиент: не вызывается, приложение разворачивается как раньше", () => {
+    const disableVerticalSwipes = vi.fn();
+    const { app } = fake("7.6", { disableVerticalSwipes });
+    initTelegram(app);
+    expect(disableVerticalSwipes).not.toHaveBeenCalled();
+    expect(app.expand).toHaveBeenCalled();
+  });
+  it("нет метода или клиент его отверг: старт не падает", () => {
+    expect(() => initTelegram(fake("8.0").app)).not.toThrow();
+    const throwing = vi.fn(() => {
+      throw new Error("unsupported");
+    });
+    expect(() => initTelegram(fake("8.0", { disableVerticalSwipes: throwing }).app)).not.toThrow();
   });
 });

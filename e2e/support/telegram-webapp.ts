@@ -139,6 +139,7 @@ function telegramInitScript(cfg: InitScriptConfig): void {
     viewportStableHeight: window.innerHeight,
     ready: stub("ready"),
     expand: stub("expand", () => (webApp.isExpanded = true)),
+    disableVerticalSwipes: stub("disableVerticalSwipes"),
     close: stub("close"),
     isVersionAtLeast: (v: string) => Number.parseFloat(v) <= 8.0,
     onEvent(event: string, cb: (payload?: unknown) => void) {

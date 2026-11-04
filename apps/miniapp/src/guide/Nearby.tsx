@@ -102,7 +102,6 @@ export function Nearby({ useMyLocation }: { useMyLocation: boolean }) {
         <svg className="modern-nearby-art" viewBox="0 0 400 90" preserveAspectRatio="none" aria-hidden="true">
           <path d="M0 75 L55 28 L115 58 L195 14 L270 55 L335 24 L400 52 L400 90 L0 90 Z" />
           <path d="M0 82 L85 45 L165 70 L255 36 L345 68 L400 48 L400 90 L0 90 Z" />
-          <ellipse cx="200" cy="76" rx="170" ry="12" />
         </svg>
         <div className="modern-nearby-titles">
           <span className="modern-nearby-badge" aria-hidden="true">

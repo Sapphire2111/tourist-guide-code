@@ -1,6 +1,4 @@
-import { DAY_HEADER_COLOR } from "./theme.js";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { WINDOW_COLORS } from "./theme.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Analytics } from "../guide/analytics.js";
@@ -19,14 +17,7 @@ import {
 } from "../guide/LocationProvider.js";
 import { HOME_PLACES, HomePlaces, SeasonTags } from "./HomeParts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
-import {
-  readSeason,
-  saveSeason,
-  seasonOfMonth,
-  SEASON_STORAGE_KEY,
-  SEASONS,
-  WINDOW_COLORS,
-} from "./season.js";
+import { readSeason, saveSeason, seasonOfMonth, SEASON_STORAGE_KEY } from "./season.js";
 import { SeasonProvider, syncTelegramColors } from "./SeasonProvider.js";
 
 afterEach(() => {
@@ -73,20 +64,6 @@ describe("сезон", () => {
   });
 
   // Пути — от каталога пакета (vitest запускается в apps/miniapp).
-  it("палитра окна совпадает с токенами index.html и season-boot.js", () => {
-    const html = readFileSync(path.resolve("index.html"), "utf8").toLowerCase();
-    const boot = readFileSync(path.resolve("public/season-boot.js"), "utf8").toLowerCase();
-    for (const s of SEASONS) {
-      const block = html.split(s === "summer" ? '[data-season="summer"] {' : `[data-season="${s}"] {`)[1]!;
-      const vars = block.slice(0, block.indexOf("}"));
-      expect(vars).toContain(`--app-bg: ${WINDOW_COLORS[s].bg.toLowerCase()};`);
-      expect(vars).toContain(`--app-surface: ${WINDOW_COLORS[s].surface.toLowerCase()};`);
-      expect(boot).toContain(
-        `${s}: ["${WINDOW_COLORS[s].bg.toLowerCase()}", "${WINDOW_COLORS[s].surface.toLowerCase()}"]`,
-      );
-    }
-  });
-
   it("переключатель: data-season, цвета окна Telegram и сохранение выбора", () => {
     const webApp = {
       ready: vi.fn(),
@@ -102,13 +79,13 @@ describe("сезон", () => {
         <SeasonSwitcher />
       </SeasonProvider>,
     );
-    // Шапка окна «День» — верх неба картинки, не зависит от сезона: сливается с верхней полосой.
-    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(DAY_HEADER_COLOR);
+    // Цвета окна — по картинке фона и теме, сезон их не меняет: шапка — небо, низ окна и нижняя панель — низ картинки.
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.header);
     expect(screen.getByRole("button", { name: "Осінь" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Зима" }));
     expect(document.documentElement.getAttribute("data-season")).toBe("winter");
-    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.winter.bg);
-    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.winter.surface);
+    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
+    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
     expect(JSON.parse(localStorage.getItem(SEASON_STORAGE_KEY)!).season).toBe("winter");
   });
 
@@ -721,8 +698,8 @@ describe("цвета окна Telegram по версии", () => {
 
   it("Bot API 6.5: фон — да, шапка цветом #RRGGBB (6.9+) и нижняя панель (7.10+) — нет", () => {
     const webApp = app("6.5");
-    syncTelegramColors(webApp, "winter");
-    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.winter.bg);
+    syncTelegramColors(webApp, "day");
+    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.day.bottom);
     expect(webApp.setHeaderColor).not.toHaveBeenCalled();
     expect(webApp.setBottomBarColor).not.toHaveBeenCalled();
   });
@@ -733,9 +710,9 @@ describe("цвета окна Telegram по версии", () => {
         throw new Error("WebAppHeaderColorKeyInvalid");
       }),
     });
-    syncTelegramColors(webApp, "spring");
-    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.spring.bg);
-    expect(webApp.setBottomBarColor).toHaveBeenCalledWith(WINDOW_COLORS.spring.surface);
+    syncTelegramColors(webApp, "night");
+    expect(webApp.setBackgroundColor).toHaveBeenCalledWith(WINDOW_COLORS.night.bottom);
+    expect(webApp.setBottomBarColor).toHaveBeenCalledWith(WINDOW_COLORS.night.bottom);
   });
 });
 
