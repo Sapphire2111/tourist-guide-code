@@ -197,7 +197,7 @@ test.describe("окно маркера", () => {
       .getByRole("group", { name: "Категорії місць поруч" })
       .getByRole("button", { name: "Усі поруч" })
       .click();
-    await page.getByRole("group", { name: "Радіус" }).getByRole("button", { name: "3 км" }).click();
+    await page.getByRole("slider", { name: "Радіус пошуку" }).fill("4");
     await expect(popup).toHaveCount(0);
   });
 
@@ -331,10 +331,10 @@ test.describe("кнопки «Маршрут» вне окна маркера: G
   });
 });
 
-test.describe("капсула радиуса", () => {
+test.describe("ползунок радиуса", () => {
   for (const width of [320, 390] as const) {
     for (const night of [false, true]) {
-      test(`${width} px${night ? " «Ніч»" : ""}: капсула 34 px по содержимому, цели 44 px без наезда на чипы`, async ({
+      test(`${width} px${night ? " «Ніч»" : ""}: подпись, значение 1 км, зона касания 44 px без наезда на чипы`, async ({
         page,
       }) => {
         if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
@@ -342,74 +342,24 @@ test.describe("капсула радиуса", () => {
         await page.goto("/#/nearby");
         await expect(page.getByTestId("places-map")).toBeVisible();
         await animationsDone(page);
-        const radius = page.getByRole("group", { name: "Радіус" });
-        await expect(radius.getByRole("button")).toHaveText([
-          "300 м",
-          "500 м",
-          "1 км",
-          "3 км",
-          "5 км",
-          "10 км",
-        ]);
-        const track = (await page.locator(".modern-radius-track").boundingBox())!;
-        expect(Math.round(track.height)).toBeLessThanOrEqual(34);
-        expect(Math.round(track.height)).toBeGreaterThanOrEqual(32);
-        const font = await radius
-          .getByRole("button")
-          .first()
-          .evaluate((n) => parseFloat(getComputedStyle(n).fontSize));
-        expect(font).toBeGreaterThanOrEqual(12);
-        // По содержимому: на 390 px капсула не тянется на весь ряд.
-        const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
-        if (width === 390) expect(track.width).toBeLessThan(panel.width);
-        // Цели: кнопка + псевдоэлемент = 44 px; нижний край цели радиуса не заходит на цель чипа.
-        // Замер одним вызовом: экран ещё может доезжать анимацией появления.
-        const { reach, chip } = await page.evaluate(() => {
-          const pill = document.querySelector(".modern-radius button")!;
-          const r = pill.getBoundingClientRect();
-          const a = getComputedStyle(pill, "::after");
+        const slider = page.getByRole("slider", { name: "Радіус пошуку" });
+        await expect(slider).toHaveAttribute("aria-valuetext", "1 км");
+        await expect(page.getByTestId("radius-slider-value")).toHaveText("1 км");
+        const capsule = (await page.locator(".kosiv-radius-overlay").boundingBox())!;
+        expect(Math.round(capsule.height)).toBeLessThanOrEqual(34);
+        const input = (await slider.boundingBox())!;
+        expect(Math.round(input.height)).toBeGreaterThanOrEqual(44);
+        const chip = await page.evaluate(() => {
           const c = document.querySelector(".modern-filters button")!;
-          return {
-            reach: { top: r.top + parseFloat(a.top), bottom: r.bottom - parseFloat(a.bottom) },
-            chip: c.getBoundingClientRect().top + parseFloat(getComputedStyle(c, "::after").top),
-          };
+          return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c, "::after").top);
         });
-        expect(reach.bottom - reach.top).toBeGreaterThanOrEqual(44);
-        expect(reach.bottom).toBeLessThanOrEqual(chip);
-        // Точка в расширении цели (над видимой пилюлей) попадает в кнопку, а карта вне капсулы не перекрыта.
-        const box = (await radius.getByRole("button", { name: "300 м" }).boundingBox())!;
-        const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent, {
-          x: box.x + box.width / 2,
-          y: box.y - 4,
-        });
-        expect(hit).toBe("300 м");
+        expect(input.y + input.height).toBeLessThanOrEqual(chip);
         // Панель над картой: не больше 92 px от верха окна карты.
+        const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
         const map = (await page.getByTestId("places-map").boundingBox())!;
         expect(panel.y + panel.height - map.y).toBeLessThanOrEqual(92);
         await expectNoSeriousA11yViolations(page);
       });
     }
   }
-
-  test("320 px: ряд прокручивается к активной, край показывает, что есть ещё", async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 740 });
-    await page.goto("/#/nearby");
-    await expect(page.getByTestId("places-map")).toBeVisible();
-    const radius = page.getByRole("group", { name: "Радіус" });
-    await page.evaluate(() => document.fonts.ready);
-    // Значения не помещаются — виден признак «есть ещё» справа. Активная 1 км видна без прокрутки.
-    await expect(radius).toHaveAttribute("data-more", "end");
-    expect(await radius.evaluate((n) => n.scrollLeft)).toBe(0);
-    expect(await radius.evaluate((n) => getComputedStyle(n).maskImage)).toContain("linear-gradient");
-    const pill = radius.getByRole("button", { name: "10 км" });
-    await pill.click();
-    await expect(pill).toHaveAttribute("aria-pressed", "true");
-    await expect(radius).toHaveAttribute("data-more", "start");
-    const view = (await radius.boundingBox())!;
-    const active = (await pill.boundingBox())!;
-    expect(active.x).toBeGreaterThanOrEqual(view.x);
-    expect(active.x + active.width).toBeLessThanOrEqual(view.x + view.width + 1);
-    await radius.getByRole("button", { name: "300 м" }).click();
-    await expect(radius).toHaveAttribute("data-more", "end");
-  });
 });

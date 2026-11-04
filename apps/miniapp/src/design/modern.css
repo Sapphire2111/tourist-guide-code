@@ -1195,72 +1195,8 @@ html[data-design="modern"] .modern-map-panel [data-testid="places-map"] {
   z-index: 5;
   pointer-events: none;
 }
-/* Капсула радіуса — за розміром вмісту; поза нею карта лишається доступною для жестів. */
-.modern-radius {
-  position: relative;
-  box-sizing: border-box;
-  display: flex;
-  width: fit-content;
-  max-width: 100%;
-  height: 44px;
-  padding: 5px 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  pointer-events: auto;
-}
-/* Є приховані значення — край згасає: видно, що ряд прокручується. */
-.modern-radius[data-more="end"] {
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-}
-.modern-radius[data-more="start"] {
-  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
-}
-.modern-radius[data-more="both"] {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-}
-.modern-radius-track {
-  box-sizing: border-box;
-  flex: none;
-  display: flex;
-  gap: 1px;
-  height: 34px;
-  padding: 2px;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 2px 4px rgb(15 34 26 / 14%);
-}
-.modern-radius::-webkit-scrollbar,
 .modern-filters::-webkit-scrollbar {
   display: none;
-}
-.modern-radius button {
-  flex: none;
-  position: relative;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--glass-text);
-  font: 800 12.5px/1 var(--font-body);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.modern-radius button[aria-pressed="true"] {
-  background-color: var(--fire);
-  color: #ffffff;
-}
-/* Цілі дотику 44 px при візуальній висоті як на еталоні: невидиме розширення кнопки. */
-.modern-radius button::after {
-  content: "";
-  position: absolute;
-  inset: -8px 0;
 }
 .modern-filters button::after {
   content: "";
@@ -1747,12 +1683,6 @@ html[data-theme="night"] .modern-map-stage {
   background-color: #0e231b;
   border-color: rgb(246 174 45 / 35%);
   box-shadow: 0 8px 30px rgb(0 0 0 / 60%);
-}
-html[data-theme="night"] .modern-radius button {
-  color: #a8c7bb;
-}
-html[data-theme="night"] .modern-radius button[aria-pressed="true"] {
-  color: #ffffff;
 }
 html[data-theme="night"] .modern-filters button {
   background-color: rgb(11 29 22 / 80%);

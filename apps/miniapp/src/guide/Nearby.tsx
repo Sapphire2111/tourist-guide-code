@@ -10,23 +10,13 @@ import { canOpenLocationSettings, requestLocation, type LatLng } from "./geo.js"
 import type { Async } from "./context.js";
 import { MapSlot, preloadMap } from "./MapSlot.js";
 import { AsyncView, PlaceList, useDistance } from "./parts.js";
+import { RadiusSlider } from "./RadiusSlider.js";
 import { OWN_MAP_SECTIONS, type PlaceSummary, type HomeSection } from "./types.js";
 
-/** Пилюли радиуса, м, поверх карты (эталон «Що поруч»). */
-export const RADIUS_PILLS = [300, 500, 1000, 3000, 5000, 10_000] as const;
-export const RADIUS_MIN = RADIUS_PILLS[0];
-export const RADIUS_MAX = RADIUS_PILLS[RADIUS_PILLS.length - 1]!;
 export const DEFAULT_RADIUS = 1000;
 /** Задержка запроса при смене радиуса, мс. */
 export const RADIUS_DEBOUNCE_MS = 350;
-/** Значение вне шага — ближайшая пилюля (границы уже внутри набора). */
-export function snapRadius(m: number): number {
-  return RADIUS_PILLS.reduce<number>(
-    (best, p) => (Math.abs(p - m) < Math.abs(best - m) ? p : best),
-    DEFAULT_RADIUS,
-  );
-}
-/** Не больше стольких ближайших мест на 10 км (сервер сортирует по расстоянию). */
+/** Не больше стольких ближайших мест в радиусе (до 20 км) (сервер сортирует по расстоянию). */
 export const NEARBY_LIMIT = 50;
 /** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
 export const DEVICE_MAX_ZOOM = 14;
@@ -242,56 +232,6 @@ function NearbyPlaces({
   );
 }
 
-/**
- * Капсула радиуса поверх карты — по размеру содержимого. Не помещается: ряд прокручивается, активная пилюля видна сразу,
- * край со скрытыми значениями затухает (data-more). Внешний узел выше капсулы: в него укладываются цели нажатия 44 px.
- */
-function RadiusPills({ value, onChange }: { value: number; onChange: (m: number) => void }) {
-  const { t } = useT();
-  const label = useRadiusLabel();
-  const active = snapRadius(value);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const mark = () => {
-      const start = el.scrollLeft > 1;
-      const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-      el.dataset.more = start && end ? "both" : start ? "start" : end ? "end" : "none";
-    };
-    mark();
-    el.addEventListener("scroll", mark, { passive: true });
-    // Ширина меняется и после загрузки шрифта, и при повороте экрана.
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(mark);
-    observer?.observe(el);
-    return () => {
-      el.removeEventListener("scroll", mark);
-      observer?.disconnect();
-    };
-  }, []);
-  useEffect(() => {
-    const el = box.current;
-    const pill = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
-    if (!el || !pill) return;
-    const view = el.getBoundingClientRect();
-    const rect = pill.getBoundingClientRect();
-    const left = rect.left - view.left + el.scrollLeft;
-    // Видна с начала ряда — без прокрутки; иначе по центру, чтобы рядом были видны соседние значения.
-    el.scrollLeft = left + rect.width <= el.clientWidth ? 0 : left - (el.clientWidth - rect.width) / 2;
-  }, [active]);
-  return (
-    <div ref={box} className="modern-radius" role="group" aria-label={t("miniapp.nearby.radius")}>
-      <div className="modern-radius-track">
-        {RADIUS_PILLS.map((m) => (
-          <button type="button" key={m} aria-pressed={m === active} onClick={() => onChange(m)}>
-            {label(m)}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** Фильтры применяются к одной загруженной выборке: карта и список всегда согласованы. */
 export function ModernNearbyResults({
   list,
@@ -349,7 +289,7 @@ export function ModernNearbyResults({
     <div className="modern-nearby-results">
       <div className="modern-map-stage">
         <div className="modern-map-overlay" data-map-inset="top">
-          {onRadius && <RadiusPills value={selectedRadius} onChange={onRadius} />}
+          {onRadius && <RadiusSlider value={selectedRadius} onChange={onRadius} overlay />}
           <div className="modern-filters" role="group" aria-label={t("miniapp.modern.filters")}>
             <button type="button" aria-pressed={section === "all"} onClick={() => setSection("all")}>
               <span aria-hidden="true">✦</span>

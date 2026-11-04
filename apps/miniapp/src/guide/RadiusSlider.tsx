@@ -20,12 +20,15 @@ export function RadiusSlider({
   value,
   onChange,
   valueText,
+  overlay = false,
 }: {
   /** Радиус, м; null — не задан (ползунок стоит на максимуме). */
   value: number | null;
   onChange: (m: number) => void;
   /** Текст вместо числа (радиус не задан: «Усі місця»). */
   valueText?: string;
+  /** Поверх карты («Поруч»): стеклянная капсула. */
+  overlay?: boolean;
 }) {
   const { t } = useT();
   const id = useId();
@@ -33,7 +36,10 @@ export function RadiusSlider({
   const idx = value === null ? RADIUS_STEPS.length - 1 : stepIndex(value);
   const text = valueText ?? label(RADIUS_STEPS[idx]!);
   return (
-    <div className="kosiv-radius-slider" data-testid="radius-slider">
+    <div
+      className={overlay ? "kosiv-radius-slider kosiv-radius-overlay" : "kosiv-radius-slider"}
+      data-testid="radius-slider"
+    >
       <label htmlFor={id}>{t("miniapp.catalog.radius")}</label>
       <input
         id={id}
