@@ -132,7 +132,7 @@ export const SEED_CATEGORIES: readonly {
 
 /**
  * Подкатегории импорта (IMPORT_EXTRA_CATEGORIES), которые seed заводит сразу, без прогона импорта: «Вершини» (места —
- * peaks:sync и правило импорта по названию) и «Бари». Вставка — ON CONFLICT DO NOTHING по любому ключу, в т. ч.
+ * правило импорта по названию, places-import/mapping.ts) и «Бари». Вставка — ON CONFLICT DO NOTHING по любому ключу, в т. ч.
  * (region_id, code): категория, уже заведённая вручную или импортом (staging: peaks), не дублируется и не меняется.
  */
 export const SEED_IMPORT_CATEGORY_CODES: readonly string[] = ["peaks", "bars"];

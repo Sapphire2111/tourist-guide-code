@@ -269,7 +269,16 @@ const PEAK = new RegExp(
 );
 /** Природний об'єкт за назвою (водоспад, скеля, джерело, полонина, каньйон, озеро, печера, дерево, потік…). */
 const NATURE_NAME =
-  /водоспад|водопад|вдсп|водограй|оглядов|скел[яіьи]|waterfall|viewpoint|джерел|криниц|родник|полонин|каньйон|каньон|canyon|озер|печер|cave|смерек|сосн|дерев(?![’'ʼ`]?ян)|струм|потіч|потік|ручей|ручай|річк|river|lake/i;
+  /водоспад|водопад|вдсп|водограй|оглядов|скел[яіьи]|waterfall|viewpoint|джерел|криниц|родник|полонин|каньйон|каньон|canyon|озер|печер|cave|смерек|сосн|дерев(?![’'ʼ`]?ян)|(^|[^а-яіїєґa-z])струм|потіч|потік|ручей|ручай|річк|river|stream|lake/i;
+/**
+ * Назва житла, їжі чи закладу: «Садиба Смерека», «Садиба "За річкою"», «Готель Кришталеве Джерело» — не природа й не
+ * вершина, навіть зі «смерекою» чи «джерелом» у назві.
+ */
+const VENUE_NAME =
+  /садиб|sadyb|котедж|cottage|готел|hotel|хостел|hostel|апартамент|apartment|вілл|villa(?!ge)|шале|chalet|resort|резорт|колиб|kolyb|ресторан|restaurant|кафе|cafe|кав.ярн|піцер|магазин|крамниц|(база|комплекс|будинок) відпоч|будиноч|хат[аи]|chata/i;
+/** «Mountain stream», «Вид на гору», «Гора Явірник Горганський гід» — вода, вид чи гід, не вершина. */
+const NOT_PEAK =
+  /stream|river|lake|view|source|струм|потік|водоспад|waterfall|озер|джерел|вид на|гід|екскурс|excursion|похід|походи/i;
 /** Канатні дороги й підйомники. */
 const LIFT =
   /підйомник|витяг|бугел|крісельн|\blift\b|канатн.{0,4}\s*дорог|канатк|aerial ?lift|cable ?car|гондол/i;
@@ -366,7 +375,7 @@ const NAME_RULES: readonly {
     // Вілли латиницею й кирилицею («Villa Leku», «Вілла Прованс»); «Привілля» — не вілла (с начала слова).
     test: (n) =>
       /[сc]адиб|sadyb|котедж|хат[аи]|будин|cottage|chalet|шале/i.test(n) ||
-      new RegExp(`(^|${NOT_LETTER})(вілл?[аиі]|вилл?[аы]|villa)`, "i").test(n),
+      new RegExp(`(^|${NOT_LETTER})(вілл?[аиі]|вилл?[аы]|villa(?!ge))`, "i").test(n),
     code: "sadyby",
     when: (t) => t === "hotels",
   },
@@ -375,12 +384,12 @@ const NAME_RULES: readonly {
   { test: (n) => CHAN.test(n), code: "chany", when: (t) => WEAK.has(t) || t === "spa" },
   // Вершини — для слабких і природних типів (natural_feature, hiking_area, tourist_attraction); не для магазинів.
   {
-    test: (n) => PEAK.test(n),
+    test: (n) => PEAK.test(n) && !NOT_PEAK.test(n) && !VENUE_NAME.test(n),
     code: "peaks",
     when: (t) => t === undefined || t === "nature" || t === "sights" || t === "active",
   },
   {
-    test: (n) => NATURE_NAME.test(n),
+    test: (n) => NATURE_NAME.test(n) && !VENUE_NAME.test(n),
     code: "nature",
     when: (t) => WEAK.has(t) && t !== "stores",
   },
@@ -433,9 +442,10 @@ const NAME_RULES: readonly {
   { test: (n) => /трансфер|transfer/i.test(n), code: "taxi", when: (t) => t === undefined },
   { test: (n) => /аптек/i.test(n), code: "pharmacies", when: (t) => t === undefined },
   {
-    test: (n) => /[сc]адиб|sadyb|котедж|відпочинок в/i.test(n),
+    test: (n) => /[сc]адиб|sadyb|котедж|відпочинок в|(комплекс|база) відпочинку/i.test(n),
     code: "sadyby",
-    when: (t) => t === undefined,
+    // И при «Зоні для прогулянок»/спорт-типах («Садиба Олімп» з hiking_area) — житло, а не природа.
+    when: (t) => t === undefined || t === "active",
   },
   // Прокат без уточнения и лыжные/вело-точки без типа: в регионе это прокат спорядження.
   {
@@ -557,20 +567,31 @@ export function labelKey(name: string): string {
     .trim();
 }
 
+/** Назва без імені: менше двох літер («1», «№ 5», «Ж»). */
+const hasNoName = (name: string): boolean => (labelKey(name).match(/\p{L}/gu)?.length ?? 0) < 2;
+
 /** Назва-мітка: родова (GENERIC_LABELS) або без імені — менше двох літер («1», «№ 5», «Ж»). */
 export function isGenericLabel(name: string): boolean {
-  const key = labelKey(name);
-  return GENERIC_LABELS.has(key) || (key.match(/\p{L}/gu)?.length ?? 0) < 2;
+  return GENERIC_LABELS.has(labelKey(name)) || hasNoName(name);
 }
+
+/**
+ * Скільки відгуків потрібно місцю з назвою-міткою при слабкому типі, щоб лишитися: «Гойдалка» з 61 відгуком — реальна
+ * точка, «Відпочинок» без відгуків — мітка.
+ */
+export const LABEL_MIN_REVIEWS = 5;
 
 /**
  * Слабкі типи Google, яким у таблиці дано не «слабку» категорію (hiking_area → nature): для правил за назвою вони —
  * як active (назва уточнює: чан, квадроцикли, водоспад, вершина), без уточнення — категорія за таблицею.
  */
-const WEAK_SOURCE_TYPES: ReadonlySet<string> = new Set(["hiking_area"]);
+const WEAK_SOURCE_TYPES: ReadonlySet<string> = new Set(["hiking_area", "park"]);
 
-/** Категорія місця й звідки вона: `byName` — уточнена за назвою; `type` — тип Google, що дав категорію за таблицею. */
-export type Classified = { code: string; byName: boolean; type?: string };
+/**
+ * Категорія місця й звідки вона: `byName` — уточнена за назвою; `type` — тип Google, що дав категорію за таблицею;
+ * `label` — родова назва-мітка при слабкому типі (лишається лише з LABEL_MIN_REVIEWS відгуків, mapPlace).
+ */
+export type Classified = { code: string; byName: boolean; type?: string; label?: true };
 
 /** Класифікація місця: типи, мітки, правила за назвою (mapCategory — лише код). Нет — undefined. */
 export function classifyPlace(
@@ -578,8 +599,11 @@ export function classifyPlace(
   name: string,
 ): Classified | undefined {
   const trimmed = name.trim();
-  if (isGenericLabel(trimmed)) return undefined;
   const { code: byType, type } = categoryByTypes(p);
+  // Родові мітки — лише при слабкому типі: готель «Вершина», ресторан «Гора», фастфуд «1» — заклади.
+  const weakType = WEAK.has(byType) || (!!type && WEAK_SOURCE_TYPES.has(type));
+  if (weakType && hasNoName(trimmed)) return undefined;
+  const label = weakType && GENERIC_LABELS.has(labelKey(trimmed));
   // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
   if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(trimmed)) return undefined;
   // Природа з назвою лише пункту («Яремче» з natural_feature/park) — теж мітка, а не водоспад чи гора.
@@ -594,12 +618,16 @@ export function classifyPlace(
   if (!code) return undefined;
   if (code === "post" && isForeignPost(trimmed)) return undefined;
   if ((code === "kids" || code === "entertainment") && CAMP.test(trimmed)) return undefined;
-  return { code, byName, ...(type ? { type } : {}) };
+  return { code, byName, ...(type ? { type } : {}), ...(label ? { label: true as const } : {}) };
 }
 
-/** Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. */
+/**
+ * Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. Без числа
+ * отзывов: назва-мітка при слабком типе — undefined (mapPlace оставляет её при LABEL_MIN_REVIEWS отзывах).
+ */
 export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name: string): string | undefined {
-  return classifyPlace(p, name)?.code;
+  const c = classifyPlace(p, name);
+  return c && !c.label ? c.code : undefined;
 }
 
 /** Слабые категории по типам, при которых название-метка (NOT_A_VENUE) значит «не заведение»; без active. */
@@ -778,6 +806,9 @@ const LOCALITY_COMPONENT_TYPES = ["locality", "sublocality", "sublocality_level_
  */
 const GOOGLE_LOCALITY_MAX_RADII = 2;
 
+/** Пункти — центри громад: Google пише їхню назву в адресі сіл громади (Микуличин, Буковель → «Яремче»). */
+const HROMADA_CENTERS: ReadonlySet<string> = new Set(["yaremche"]);
+
 const localityKey = (s: string) => labelKey(s.replace(/\(.*?\)/g, ""));
 
 /**
@@ -894,20 +925,28 @@ export function stripRoomSuffix(name: string): string {
 /** Радіус, у якому однакові назви — одне місце (свёртка дублів, dedupePlaces). */
 export const DUPLICATE_RADIUS_M = 50;
 
+/** Мережі з однаковими назвами поруч (зарядки GO TO-U, банкомати, аптеки) — без свёртки, якщо не номер Booking. */
+const NO_DEDUP_CATEGORIES: ReadonlySet<string> = new Set(["ev-charging", "atm", "pharmacies"]);
+
 /**
  * Свёртка дублів: однаковий ключ назви (labelKey) у радіусі DUPLICATE_RADIUS_M — одне місце, якщо категорія та сама
- * або один із записів — тип номера Booking (roomListing; основний запис може бути «Готелі», номер — «Садиби»).
- * Залишається запис без суфікса Booking, потім з більшою кількістю відгуків, потім з меншим id (стабільно між
- * прогонами). Повертає залишені місця (у вхідному порядку) і id відкинутих.
+ * (крім NO_DEDUP_CATEGORIES) або один із записів — тип номера Booking (roomListing; основний запис може бути «Готелі»,
+ * номер — «Садиби»).
+ *
+ * Залишається запис без суфікса Booking, потім уже опублікований у БД (`publishedIds`), потім з меншим google id —
+ * вибір не залежить від відгуків, що змінюються між прогонами. Відкинуті:
+ * - `duplicateIds` — записи номерів Booking: «не наші», запис їх архівує (якщо люди не чіпали місце);
+ * - `skippedIds` — інші дублі: не пишуться (нові не вставляються), але й не архівуються — однакова назва поруч може
+ *   бути й двома різними місцями.
  */
-export function dedupePlaces(places: readonly MappedPlace[]): {
-  kept: MappedPlace[];
-  duplicateIds: string[];
-} {
+export function dedupePlaces(
+  places: readonly MappedPlace[],
+  publishedIds: ReadonlySet<string> = new Set(),
+): { kept: MappedPlace[]; duplicateIds: string[]; skippedIds: string[] } {
   const rank = [...places].sort(
     (a, b) =>
       Number(!!a.roomListing) - Number(!!b.roomListing) ||
-      (b.ratingCount ?? 0) - (a.ratingCount ?? 0) ||
+      Number(!publishedIds.has(a.googlePlaceId)) - Number(!publishedIds.has(b.googlePlaceId)) ||
       a.googlePlaceId.localeCompare(b.googlePlaceId),
   );
   const byKey = new Map<string, MappedPlace[]>();
@@ -915,11 +954,11 @@ export function dedupePlaces(places: readonly MappedPlace[]): {
   for (const p of rank) {
     const key = labelKey(p.name);
     const group = byKey.get(key) ?? [];
-    const twin = group.find(
-      (q) =>
-        haversineMeters(p.at, q.at) <= DUPLICATE_RADIUS_M &&
-        (q.categoryCode === p.categoryCode || !!p.roomListing || !!q.roomListing),
-    );
+    const twin = group.find((q) => {
+      if (haversineMeters(p.at, q.at) > DUPLICATE_RADIUS_M) return false;
+      if (p.roomListing || q.roomListing) return true;
+      return q.categoryCode === p.categoryCode && !NO_DEDUP_CATEGORIES.has(p.categoryCode);
+    });
     if (twin) {
       dropped.add(p.googlePlaceId);
       continue;
@@ -927,9 +966,11 @@ export function dedupePlaces(places: readonly MappedPlace[]): {
     group.push(p);
     byKey.set(key, group);
   }
+  const droppedPlaces = places.filter((p) => dropped.has(p.googlePlaceId));
   return {
     kept: places.filter((p) => !dropped.has(p.googlePlaceId)),
-    duplicateIds: places.filter((p) => dropped.has(p.googlePlaceId)).map((p) => p.googlePlaceId),
+    duplicateIds: droppedPlaces.filter((p) => p.roomListing).map((p) => p.googlePlaceId),
+    skippedIds: droppedPlaces.filter((p) => !p.roomListing).map((p) => p.googlePlaceId),
   };
 }
 
@@ -944,7 +985,10 @@ const AMENITY_TAGS: Readonly<Record<string, string>> = {
   parking_paid: "parking",
   vegetarian: "vegetarian",
 };
-/** Під дахом — «У дощ»: музеї, SPA, чани й сауни, заклади харчування. */
+/**
+ * Під дахом — «У дощ»: музеї, SPA, чани й сауни, заклади харчування. Без барів: планувальник ловить «тільки дорослим»
+ * лише в кафе (BAR_RE) — бар з «У дощ» потрапив би в план з дітьми.
+ */
 const RAINY_DAY_CATEGORIES: ReadonlySet<string> = new Set([
   "museums",
   "spa",
@@ -952,7 +996,6 @@ const RAINY_DAY_CATEGORIES: ReadonlySet<string> = new Set([
   "cafes",
   "restaurants",
   "kolyby",
-  "bars",
   "fast-food",
 ]);
 /** Розваги під дахом (категорії розваг змішані: зіплайн і боулінг — обидва «Для дорослих»): за назвою. */
@@ -1056,8 +1099,13 @@ export function mapPlace(
   const at = { lon, lat };
   const byDistance = localityOf(at, localities, zones);
   if (!byDistance) return { ok: false, reason: "outside_radius" };
-  // Адреса Google главнее відстані до центру (межі Микуличин/Татарів/Ворохта); відстань — запасний варіант.
-  const locality = googleLocality(p, at, localities) ?? byDistance;
+  // Адреса Google главнее відстані до центру (межі Микуличин/Татарів/Ворохта); відстань — запасний варіант. Центр
+  // громади («Яремче») в адресі — часто назва громади, а не пункту: тоді ближчий інший пункт главнее.
+  const byAddress = googleLocality(p, at, localities);
+  const locality =
+    byAddress && !(HROMADA_CENTERS.has(byAddress.code) && byDistance.code !== byAddress.code)
+      ? byAddress
+      : byDistance;
   // Записи типів номерів Booking («Садиба X - Double Room»): суфікс відкидається, дублі згортає collect.
   const name = stripRoomSuffix(rawName);
   const roomListing = name !== rawName;
@@ -1066,6 +1114,10 @@ export function mapPlace(
     : classifyPlace(p, name);
   if (!classified) return { ok: false, reason: "no_category" };
   const categoryCode = classified.code;
+  if (classified.label) {
+    if (opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
+    if ((p.userRatingCount ?? 0) < LABEL_MIN_REVIEWS) return { ok: false, reason: "no_category" };
+  }
   if (categoryCode === "parking" && opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
   if (categoryCode === "parking" && (p.userRatingCount ?? 0) < PARKING_MIN_REVIEWS)
     return { ok: false, reason: "no_category" };
@@ -1075,9 +1127,12 @@ export function mapPlace(
     !classified.byName &&
     classified.type &&
     REVIEWED_TYPES.has(classified.type) &&
-    !RECOGNIZED_OUTDOOR.test(name)
+    (!RECOGNIZED_OUTDOOR.test(name) || VENUE_NAME.test(name))
   ) {
     if (opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
+    // Назва житла чи закладу («Садиба Юровича» з park) — не мітка, а заклад без свого типу: не імпортується, але й не
+    // архівується (unverified).
+    if (VENUE_NAME.test(name)) return { ok: false, reason: "unverified" };
     if ((p.userRatingCount ?? 0) < WEAK_MIN_REVIEWS) return { ok: false, reason: "no_category" };
   }
   return {

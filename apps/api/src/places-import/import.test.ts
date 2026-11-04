@@ -405,6 +405,26 @@ describe("выгрузка", () => {
     expect(r.stats.imported).toBe(2);
     expect(r.stats.byCategory).toEqual({ sadyby: 1, taxi: 1 });
   });
+
+  it("дубли не номеров Booking — не пишутся и не архивируются; остаётся опубликованная запись", async () => {
+    const fetch = vi.fn(async () =>
+      ok({
+        places: [
+          place("w1", { displayName: { text: "Водоспад Капливець" }, primaryType: "natural_feature" }),
+          place("w2", { displayName: { text: "Водоспад  Капливець" }, primaryType: "natural_feature" }),
+        ],
+      }),
+    );
+    const client = new GooglePlacesClient({ apiKey: "k", cacheDir: dir, maxRequests: 9, fetch });
+    const opts = { localities: [IMPORT_LOCALITIES[0]!], queries: ["q"] };
+    const first = await collect(client, { ...opts, publishedIds: new Set(["w2"]) });
+    expect(first.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
+    expect(first.rejectedIds).toEqual([]);
+    expect(first.stats.duplicatesSkipped).toBe(1);
+    // Повтор (из кэша) с тем же набором опубликованных — тот же выбор.
+    const again = await collect(client, { ...opts, publishedIds: new Set(["w2"]) });
+    expect(again.places.map((p) => p.googlePlaceId)).toEqual(["w2"]);
+  });
 });
 
 describe("--photos: хранилище", () => {

@@ -628,6 +628,8 @@ describe("правила импорта по аудиту категорий (04
     expect(mapCategory({ primaryType: "hiking_area" }, "Вид на гори Карпат")).toBe("nature");
     expect(mapCategory({ primaryType: "hotel" }, "Готель Гора")).toBe("hotels");
     expect(mapCategory({ primaryType: "store" }, "Гора подарунків")).toBe("stores");
+    expect(mapCategory({}, "Гора Явірник Горганський гід, Екскурсії на Явірник")).toBe("excursions");
+    expect(mapCategory({ primaryType: "shopping_mall" }, "ТЦ Скеля")).toBe("stores");
     const peaks = IMPORT_EXTRA_CATEGORIES.find((c) => c.code === "peaks");
     expect(peaks).toMatchObject({ parent: "nearby", name: { uk: "Вершини" } });
     expect(SEED_IMPORT_CATEGORY_CODES).toContain("peaks");
@@ -650,6 +652,15 @@ describe("правила импорта по аудиту категорий (04
       "Ручей Татаровчик",
     ])
       expect(mapCategory({ primaryType: "tourist_attraction" }, name), name).toBe("nature");
+    // Житло й заклади з природним словом у назві — не природа (і не вершина); «інструмент» — не «струм».
+    expect(mapCategory({}, "Садиба Смерека")).toBe("sadyby");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, 'Садиба "За річкою"')).toBe("sights");
+    expect(mapCategory({ primaryType: "hiking_area" }, "Садиба Олімп")).toBe("sadyby");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Готель Кришталеве Джерело")).toBe("sights");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "Музей інструментів")).toBe("sights");
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "The source of a mountain stream")).toBe(
+      "nature",
+    );
     // «Дерев'яний» — не дерево; магазин «Озерце» — не природа.
     expect(mapCategory({ primaryType: "tourist_attraction" }, "Дерев'яна церква")).toBe("sights");
     expect(mapCategory({ primaryType: "store" }, "Озерце")).toBe("stores");
@@ -688,6 +699,10 @@ describe("правила импорта по аудиту категорий (04
     // Парк без назви парку — теж з порогом (лісництва, профкоми); «Парк …» — без.
     expect(r({ ...hiking("Микуличинське лісництво", 2), primaryType: "park" })).toBe("no_category");
     expect(r({ ...hiking("Парк Перемоги", 0), primaryType: "park" })).toBe("nature");
+    // Житло з «Зоною для прогулянок» — садиба; житло з park без відгуків — не імпорт, але й не архів (unverified).
+    expect(r(hiking("Комплекс відпочинку «Джерельний»", 1))).toBe("sadyby");
+    expect(r({ ...hiking("Садиба Юровича"), primaryType: "park" })).toBe("sadyby");
+    expect(r({ ...hiking("Деревʼяний будиночок"), primaryType: "hiking_area" })).toBe("unverified");
     // tourist_attraction порогу не має: пам'ятник без відгуків — пам'ятка.
     expect(r({ ...hiking("Пам'ятник Шевченку"), primaryType: "tourist_attraction" })).toBe("sights");
     // Точечный импорт (категория задана) — без порога.
@@ -712,12 +727,41 @@ describe("правила импорта по аудиту категорий (04
       "not",
     ])
       expect(isGenericLabel(name), name).toBe(true);
+    // Слабкий тип без відгуків — мітка.
     expect(mapCategory({ types: ["point_of_interest"] }, "Оглядовий майданчик")).toBeUndefined();
     expect(mapCategory({ primaryType: "tourist_attraction" }, "«Гойдалка»")).toBeUndefined();
-    expect(mapCategory({ primaryType: "lodging" }, "Садиба")).toBeUndefined();
-    expect(mapCategory({ primaryType: "bar" }, "Бар")).toBeUndefined();
-    expect(mapCategory({ primaryType: "cafe" }, "Café")).toBeUndefined();
-    expect(mapCategory({ primaryType: "fast_food_restaurant" }, "1")).toBeUndefined();
+    expect(mapCategory({ primaryType: "tourist_attraction" }, "1")).toBeUndefined();
+    // Сильний тип — заклад з таким ім'ям (аудит staging: готель «Вершина» 313 відгуків, ресторан «Гора» 464,
+    // «Колиба» 244, «Садиба» 133, «Бар» 45, фастфуд «1», оглядовий майданчик observation_deck 68).
+    expect(mapCategory({ primaryType: "hotel" }, "Вершина")).toBe("hotels");
+    expect(mapCategory({ primaryType: "restaurant" }, "Гора")).toBe("restaurants");
+    expect(mapCategory({ primaryType: "restaurant" }, "Колиба")).toBe("kolyby");
+    expect(mapCategory({ primaryType: "lodging" }, "Садиба")).toBe("sadyby");
+    expect(mapCategory({ primaryType: "bar" }, "Бар")).toBe("bars");
+    expect(mapCategory({ primaryType: "cafe" }, "Café")).toBe("cafes");
+    expect(mapCategory({ primaryType: "fast_food_restaurant" }, "1")).toBe("fast-food");
+    expect(mapCategory({ primaryType: "grocery_store" }, "Вершина")).toBe("groceries");
+    expect(mapCategory({ primaryType: "observation_deck" }, "Оглядовий майданчик")).toBe("nature");
+    // Слабкий тип з відгуками — реальна точка («Гойдалка» з 61 відгуком).
+    const label = (name: string, n: number | undefined, ratingsKnown = true): string => {
+      const r = mapPlace(
+        {
+          id: "ChIJlabel",
+          displayName: { text: name },
+          location: { latitude: 48.4505, longitude: 24.5547 },
+          primaryType: "tourist_attraction",
+          ...(n === undefined ? {} : { userRatingCount: n }),
+        },
+        IMPORT_LOCALITIES,
+        {},
+        undefined,
+        { ratingsKnown },
+      );
+      return r.ok ? r.place.categoryCode : r.reason;
+    };
+    expect(label("Гойдалка", 61)).toBe("sights");
+    expect(label("Гойдалка", 2)).toBe("no_category");
+    expect(label("Гойдалка", undefined, false)).toBe("unverified");
     // Подписи пунктов — в т. ч. «Яблониця» (hiking_area → природа).
     expect(mapCategory({ primaryType: "hiking_area" }, "Яблониця")).toBeUndefined();
     // Имя собственное — заведение.
@@ -735,6 +779,9 @@ describe("правила импорта по аудиту категорий (04
     expect(mapCategory({ primaryType: "hotel" }, "Arnika Villa")).toBe("sadyby");
     expect(mapCategory({ primaryType: "hotel" }, "Вілла Прованс")).toBe("sadyby");
     expect(mapCategory({ primaryType: "hotel" }, "Готель Привілля")).toBe("hotels");
+    // «Village» — не вілла: котеджні комплекси лишаються готелями.
+    expect(mapCategory({ primaryType: "hotel" }, "Royal Village Resort")).toBe("hotels");
+    expect(mapCategory({ primaryType: "hotel" }, "Aspen Village")).toBe("hotels");
     expect(mapCategory({}, "Прокат горнолыжного снаряжения")).toBe("ski-rental");
     expect(mapCategory({}, "Прокат суперскі 2")).toBe("ski-rental");
     expect(mapCategory({ primaryType: "sports_club" }, "Прокат лыж")).toBe("ski-rental");
@@ -812,14 +859,39 @@ describe("правила импорта по аудиту категорий (04
     ]);
     expect(r.kept.map((p) => p.googlePlaceId)).toEqual(["main", "other", "cafe"]);
     expect(r.duplicateIds).toEqual(["r1", "r2"]);
-    // Без Booking: однакова назва й категорія в 50 м — одне (більше відгуків); різні категорії — обидва.
-    const s = dedupePlaces([
-      mp("a", { categoryCode: "nature", name: "Водоспад Капливець", ratingCount: 3 }),
+    // Без Booking: однакова назва й категорія в 50 м — одне місце; різні категорії — обидва. Відкинутий не номер
+    // Booking — skippedIds (не пишеться, але й не архівується).
+    const waterfalls = [
       mp("b", { categoryCode: "nature", name: "Водоспад  Капливець", ratingCount: 90, at: near }),
+      mp("a", { categoryCode: "nature", name: "Водоспад Капливець", ratingCount: 3 }),
       mp("c", { categoryCode: "sights", name: "Водоспад Капливець" }),
+    ];
+    const s = dedupePlaces(waterfalls);
+    expect(s.kept.map((p) => p.googlePlaceId)).toEqual(["a", "c"]);
+    expect(s.duplicateIds).toEqual([]);
+    expect(s.skippedIds).toEqual(["b"]);
+    // Два прогони з різною кількістю відгуків — той самий вибір (не залежить від відгуків і порядку).
+    const again = dedupePlaces(
+      [...waterfalls].reverse().map((p) => ({ ...p, ratingCount: (p.ratingCount ?? 0) * 7 + 1 })),
+    );
+    expect(again.kept.map((p) => p.googlePlaceId).sort()).toEqual(["a", "c"]);
+    // Уже опублікований у БД запис главнее меншого id (і для номерів Booking — основний запис після чистки).
+    const pub = dedupePlaces(waterfalls, new Set(["b"]));
+    expect(pub.kept.map((p) => p.googlePlaceId)).toEqual(["b", "c"]);
+    expect(pub.skippedIds).toEqual(["a"]);
+    const rooms = dedupePlaces(
+      [mp("r1", { roomListing: true }), mp("r2", { roomListing: true, at: near })],
+      new Set(["r2"]),
+    );
+    expect([rooms.kept.map((p) => p.googlePlaceId), rooms.duplicateIds]).toEqual([["r2"], ["r1"]]);
+    // Мережі (зарядки, банкомати, аптеки) з однаковою назвою поруч — не дублі.
+    const chargers = dedupePlaces([
+      mp("g1", { categoryCode: "ev-charging", name: "GO TO-U" }),
+      mp("g2", { categoryCode: "ev-charging", name: "GO TO-U", at: near }),
+      mp("atm1", { categoryCode: "atm", name: "Банкомат ПриватБанк" }),
+      mp("atm2", { categoryCode: "atm", name: "Банкомат ПриватБанк", at: near }),
     ]);
-    expect(s.kept.map((p) => p.googlePlaceId)).toEqual(["b", "c"]);
-    expect(s.duplicateIds).toEqual(["a"]);
+    expect(chargers.kept).toHaveLength(4);
   });
 
   it("10. населений пункт — з адреси Google (locality), відстань — запасний варіант", () => {
@@ -916,8 +988,10 @@ describe("правила импорта по аудиту категорий (04
       "kids",
       "parking",
     ]);
-    for (const c of ["museums", "spa", "chany", "cafes", "kolyby", "bars"])
+    for (const c of ["museums", "spa", "chany", "cafes", "kolyby"])
       expect(tagsForPlace(c, []), c).toEqual(["rainy-day"]);
+    // Бари — без «У дощ»: планувальник не знає bars і запропонував би бар у дощ з дітьми.
+    expect(tagsForPlace("bars", [])).toEqual([]);
     expect(tagsForPlace("nature", [])).toEqual([]);
     expect(tagsForPlace("active", [])).toEqual([]);
     // Розваги — «У дощ» лише криті за назвою.
