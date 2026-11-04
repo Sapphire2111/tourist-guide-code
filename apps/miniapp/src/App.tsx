@@ -36,6 +36,8 @@ import { focusScreenHeading, initNavigation, pressBack, sameHrefLinks, takeRetur
 import { createBookingsApi, type BookingsApi } from "./bookings/bookings-api.js";
 import { BookingsProvider, type BookingsEnv } from "./bookings/context.js";
 import { lazyScreen } from "./bookings/lazy.js";
+import { ReviewsProvider, type ReviewsEnv } from "./reviews/context.js";
+import { createReviewsApi, type ReviewsApi } from "./reviews/reviews-api.js";
 import { hasRequiredConsents } from "./consents.js";
 import { ContextUnavailable, ContextView, Onboarding } from "./Entry.js";
 import { useFeatureFlags } from "./feature-flags.js";
@@ -86,6 +88,9 @@ import { createWeatherApi, type WeatherApi } from "./weather/weather-api.js";
 // Бронирования (блок 7, флаг module.bookings) — ленивые чанки (в первый экран не входят) с повтором при сбое загрузки.
 const BookingFlow = lazyScreen(() => import("./bookings/TouristScreens.js").then((m) => m.BookingFlow));
 const MyBookings = lazyScreen(() => import("./bookings/TouristScreens.js").then((m) => m.MyBookings));
+// Отзывы (блок 10, флаг module.reviews): форма отзыва и кабинет партнёра P07 — тоже ленивые чанки.
+const ReviewScreen = lazyScreen(() => import("./reviews/ReviewScreens.js").then((m) => m.ReviewScreen));
+const PartnerReviews = lazyScreen(() => import("./reviews/PartnerReviews.js").then((m) => m.PartnerReviews));
 const PartnerBookings = lazyScreen(() =>
   import("./bookings/PartnerScreens.js").then((m) => m.PartnerBookings),
 );
@@ -156,6 +161,8 @@ export type AppProps = {
   assistantApi?: AssistantApi;
   /** API бронирований (блок 7; тесты подменяют); по умолчанию — поверх api. */
   bookingsApi?: BookingsApi;
+  /** API отзывов (блок 10; тесты подменяют); по умолчанию — поверх api. */
+  reviewsApi?: ReviewsApi;
   /** Погода (флаг module.weather; тесты подменяют); по умолчанию — GET /weather нашего api. */
   weatherApi?: WeatherApi;
 };
@@ -163,7 +170,7 @@ export type AppProps = {
 type Session = Extract<StartupState, { status: "ready" }>;
 type RoutesProps = Omit<
   AppProps,
-  "startup" | "locale" | "guideApi" | "analytics" | "hostApi" | "partnerApi" | "bookingsApi"
+  "startup" | "locale" | "guideApi" | "analytics" | "hostApi" | "partnerApi" | "bookingsApi" | "reviewsApi"
 > & {
   session?: Session;
   onMe: (me: Me) => void;
@@ -450,13 +457,19 @@ function useFocusHeading(path: string) {
   }, [path]);
 }
 
-const PARTNER_PATH_RE = /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources)?$/;
+const PARTNER_PATH_RE =
+  /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources|\/reviews)?$/;
 
 /**
  * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
  * Приглашение (P14) — /partner/invite, токен только в памяти (session.invite), не в адресе.
  */
-function partnerScreen(path: string, invite: string | undefined, bookings: boolean): ReactNode {
+function partnerScreen(
+  path: string,
+  invite: string | undefined,
+  bookings: boolean,
+  reviews: boolean,
+): ReactNode {
   if (path === "/partner") return <PartnerDashboard />;
   if (path === "/partner/new") return <PartnerOnboarding />;
   if (path === "/partner/invite") return <AcceptInvite token={invite ?? ""} />;
@@ -470,6 +483,7 @@ function partnerScreen(path: string, invite: string | undefined, bookings: boole
   if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
   if (bookings && kind === "place" && sub === "/bookings") return <PartnerBookings key={id} placeId={id} />;
   if (bookings && kind === "place" && sub === "/resources") return <PartnerResources key={id} placeId={id} />;
+  if (reviews && kind === "place" && sub === "/reviews") return <PartnerReviews key={id} placeId={id} />;
   return null;
 }
 
@@ -513,6 +527,7 @@ function Routes(props: RoutesProps) {
   const hostRequests = useFeatureFlag("module.host_requests");
   const assistantOn = useFeatureFlag("module.assistant");
   const bookingsOn = useFeatureFlag("module.bookings");
+  const reviewsOn = useFeatureFlag("module.reviews");
   const assistantApi = useAssistantApi(props);
   // Режим персонала — снимок /me на старте; на главной (там ссылка в режим персонала) и на экране персонала
   // перечитываем, чтобы назначение или снятие роли в админке подхватывалось без перезапуска. Без входа — не нужно.
@@ -580,6 +595,17 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
+  const reviewEligibility = reviewsOn ? /^\/review\/([^/]+)$/.exec(path)?.[1] : undefined;
+  if (reviewEligibility !== undefined) {
+    const id = uuidOf(reviewEligibility);
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          {id ? <ReviewScreen key={id} eligibilityId={id} /> : <p role="alert">{t("common.notFound")}</p>}
+        </RequireRegion>
+      </Screen>
+    );
+  }
   const placeId = placeIdOf(path);
   if (placeId !== undefined)
     return (
@@ -688,7 +714,7 @@ function Routes(props: RoutesProps) {
     );
   }
   // Кабинет партнёра (модуль блока 6) при выключенном флаге — как несуществующий путь (T1-22).
-  const partner = partnerCabinet ? partnerScreen(path, session?.invite, bookingsOn) : null;
+  const partner = partnerCabinet ? partnerScreen(path, session?.invite, bookingsOn, reviewsOn) : null;
   if (partner && !session)
     return (
       <Screen title={t("miniapp.partner.title")} webApp={webApp}>
@@ -834,6 +860,7 @@ export function App({
   hostApi,
   partnerApi,
   bookingsApi,
+  reviewsApi,
   ...props
 }: AppProps) {
   const { webApp } = props;
@@ -934,6 +961,10 @@ export function App({
     }),
     [bookingsApi, props.api, context?.region?.timezone, context?.entryContextId],
   );
+  const reviews = useMemo<ReviewsEnv>(
+    () => ({ api: reviewsApi ?? createReviewsApi(props.api) }),
+    [reviewsApi, props.api],
+  );
   const partnerEnabled = Boolean(session) && flags?.["module.partner_cabinet"] === true;
   // Скан QR из приложения: тот же контекст, что при входе по QR, без перезапуска (регион, заведение, приглашение).
   const scanHandler =
@@ -974,22 +1005,24 @@ export function App({
                     <HostProvider value={host}>
                       <PartnerProvider api={pApi} regionId={regionId} enabled={partnerEnabled}>
                         <BookingsProvider value={bookings}>
-                          <Shell
-                            profile={Boolean(session && hasRequiredConsents(session.me))}
-                            scan={scanHandler}
-                            webApp={webApp}
-                            routes={
-                              // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
-                              <AssistantSessionProvider>
-                                <Routes
-                                  {...props}
-                                  session={session}
-                                  onMe={onMe}
-                                  retryContext={retryContext}
-                                />
-                              </AssistantSessionProvider>
-                            }
-                          />
+                          <ReviewsProvider value={reviews}>
+                            <Shell
+                              profile={Boolean(session && hasRequiredConsents(session.me))}
+                              scan={scanHandler}
+                              webApp={webApp}
+                              routes={
+                                // Диалог ассистента — выше маршрутов: «Назад» из карточки места возвращает его как был.
+                                <AssistantSessionProvider>
+                                  <Routes
+                                    {...props}
+                                    session={session}
+                                    onMe={onMe}
+                                    retryContext={retryContext}
+                                  />
+                                </AssistantSessionProvider>
+                              }
+                            />
+                          </ReviewsProvider>
                         </BookingsProvider>
                       </PartnerProvider>
                     </HostProvider>

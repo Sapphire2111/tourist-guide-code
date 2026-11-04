@@ -181,7 +181,7 @@ export class AppealDecisionDto {
 
 // --- ответы ---
 
-export class PlaceRatingDto {
+export class PlaceReviewRatingDto {
   @ApiProperty({ type: String, format: "uuid" }) placeId!: string;
   @ApiProperty({ type: "integer", description: "Опубликованных проверенных отзывов" }) reviewCount!: number;
   @ApiProperty({
@@ -201,7 +201,7 @@ export class PlaceRatingDto {
 }
 
 export class PlaceRatingListDto {
-  @ApiProperty({ type: [PlaceRatingDto] }) items!: PlaceRatingDto[];
+  @ApiProperty({ type: [PlaceReviewRatingDto] }) items!: PlaceReviewRatingDto[];
 }
 
 export class ReviewResponseDto {
@@ -229,7 +229,7 @@ export class PublicReviewDto {
 }
 
 export class PlaceReviewsDto {
-  @ApiProperty({ type: PlaceRatingDto }) rating!: PlaceRatingDto;
+  @ApiProperty({ type: PlaceReviewRatingDto }) rating!: PlaceReviewRatingDto;
   @ApiProperty({ type: [PublicReviewDto] }) items!: PublicReviewDto[];
 }
 

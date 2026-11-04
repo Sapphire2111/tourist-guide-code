@@ -9,6 +9,7 @@ import { isAllDay, pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Stack, useT } from "@tg/ui";
 import { usePlaceResources } from "../bookings/context.js";
 import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
+import { PlaceReviews } from "../reviews/PlaceReviews.js";
 import { useAsync, useGuide } from "./context.js";
 import { interceptBack } from "../telegram.js";
 import { googleRouteUrl } from "./geo.js";
@@ -637,6 +638,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
             )}
           </Section>
         )}
+
+        <PlaceReviews placeId={place.id} />
 
         {reviews.length > 0 && (
           <Section title={t("miniapp.place.reviews")} testId="place-reviews">
