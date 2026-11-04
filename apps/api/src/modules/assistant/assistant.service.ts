@@ -264,6 +264,12 @@ const GENERIC_STEM_CATEGORIES: Readonly<Record<string, readonly string[]>> = {
   скал: NATURE_TYPE,
 };
 const GENERIC_STEMS: ReadonlySet<string> = new Set(Object.keys(GENERIC_STEM_CATEGORIES));
+/**
+ * Названо заведение («кафе Водоспад», «готель Полонина», «таксі до водоспаду») — родовое слово в нём часть названия, а
+ * не тип места.
+ */
+const VENUE_WORD_RE =
+  /(^|[^\p{L}])(кафе|cafe|кав[’'ʼ]?ярн\p{L}*|ресторан\p{L}*|restaurant|колиб\p{L}*|бар|бари|бару|паб\p{L}*|pub|піцер\p{L}*|готел\p{L}*|отел\p{L}*|hotel|садиб\p{L}*|хостел\p{L}*|hostel|апартамент\p{L}*|котедж\p{L}*|таксі|такси|taxi|трансфер\p{L}*|магазин\p{L}*|крамниц\p{L}*|маркет\p{L}*|супермаркет\p{L}*|чан|чани|сауна|spa|спа)(?!\p{L})/iu;
 
 /**
  * Тип места в тексте («водоспад», «на вершину», «озеро») → коды категорий, где такие места; тип не назван — null
@@ -672,17 +678,23 @@ export class AssistantService {
       }
     }
 
-    // Названо место с типом («водоспад», «водоспад Гук», «на вершину Хом'як»): совпадения по названию — только
-    // места этого типа (природа, пам'ятки, вершини) или разделов намерения; магазин «Водоспад» и таксі «…Водоспад
-    // Гук» — нет. Тип не назван («Гуцулія», «Суші Барберрі») — поиск по названию как был.
-    const types = intent.nameQuery ? placeTypeCategories(`${intent.nameQuery} ${text}`) : null;
-    if (types) {
+    // Названо место с типом («водоспад», «водоспад Гук», «на вершину Хом'як»): из совпавших по названию — только места
+    // этого типа (природа, пам'ятки, вершини) или разделов намерения; магазин «Водоспад» и таксі «…Водоспад Гук» —
+    // нет. Только если такие есть (иначе — как раньше: отель «Полонина», «Смерека з видом на гори»); названо заведение
+    // («кафе Водоспад») или блюдо («банош біля водоспаду Шипіт») — тип места не применяется. Остальная выдача
+    // (категории, ключевые слова) не трогается.
+    const types =
+      intent.nameQuery && !intent.keywords.length && !VENUE_WORD_RE.test(`${intent.nameQuery} ${text}`)
+        ? placeTypeCategories(`${intent.nameQuery} ${text}`)
+        : null;
+    if (types && intent.nameQuery) {
+      const stems = nameStems(intent.nameQuery);
+      const byName = (p: PlaceSummaryDto) => named.has(p.id) || (stems.length > 0 && nameHasStems(p, stems));
       const sections = new Set(this.sectionsOf(intent.categories, catalog));
-      found = found.filter(
-        (p) =>
-          types.has(catalog.codeOf.get(p.categoryId) ?? "") ||
-          sections.has(catalog.rootOf.get(p.categoryId) ?? p.categoryId),
-      );
+      const fits = (p: PlaceSummaryDto) =>
+        types.has(catalog.codeOf.get(p.categoryId) ?? "") ||
+        sections.has(catalog.rootOf.get(p.categoryId) ?? p.categoryId);
+      if (found.some((p) => byName(p) && fits(p))) found = found.filter((p) => !byName(p) || fits(p));
     }
 
     if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
