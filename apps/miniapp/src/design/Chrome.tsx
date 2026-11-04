@@ -81,8 +81,8 @@ const FOCUSABLE = "a[href], button:not([disabled]), input, select, textarea, [ta
 
 /**
  * Верхняя полоса по Концепту Б: слева значок огня (открывает меню: сезон, тема, профиль) и подпись с выбором локации
- * (только на главной), справа — «QR» (если сканер доступен, только на главной) и «112» (ведёт на экран помощи /help,
- * номер не набирает). Сообщение сканера — плашка под полосой. На главной — скрытый заголовок h1.
+ * (только на главной), справа — «QR» (если сканер доступен) и на главной ещё «112» (ведёт на экран помощи /help, номер не
+ * набирает; на вложенных экранах путь к помощи — пункт меню). Сообщение сканера — плашка под полосой. На главной — скрытый заголовок h1.
  */
 export function AppTop({
   path,
@@ -150,7 +150,9 @@ export function AppTop({
         data-testid="menu-btn"
         onClick={() => setOpen((v) => !v)}
       >
-        <span aria-hidden="true">🔥</span>
+        <span className="fire-flame" aria-hidden="true">
+          🔥
+        </span>
       </button>
       <div className="modern-top-brand">
         <span className="modern-top-kicker" aria-hidden="true">
@@ -168,7 +170,7 @@ export function AppTop({
           {scan.message ? t(scan.message) : ""}
         </p>
       )}
-      {home && scan && (
+      {scan && (
         <button
           type="button"
           className="modern-qr-pill"
@@ -180,10 +182,12 @@ export function AppTop({
           <b aria-hidden="true">QR</b>
         </button>
       )}
-      <Link to="/help" className="modern-help" aria-label={t("miniapp.top.help")} data-testid="help-112">
-        <span aria-hidden="true">🆘</span>
-        <b aria-hidden="true">112</b>
-      </Link>
+      {home && (
+        <Link to="/help" className="modern-help" aria-label={t("miniapp.top.help")} data-testid="help-112">
+          <span aria-hidden="true">🆘</span>
+          <b aria-hidden="true">112</b>
+        </Link>
+      )}
       {open && (
         <div
           className="kosiv-sheet-backdrop"
@@ -217,6 +221,10 @@ export function AppTop({
             <Link to="/favorites" className="kosiv-sheet-link">
               {ICONS.heart}
               {t("miniapp.nav.favorites")}
+            </Link>
+            <Link to="/help" className="kosiv-sheet-link" data-testid="help-menu-item">
+              <span aria-hidden="true">🆘</span>
+              {t("miniapp.menu.help")}
             </Link>
             {scan && (
               <button

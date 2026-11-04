@@ -47,7 +47,6 @@ import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
 import { resolveScan, type ScanOutcome } from "./scan.js";
 import { LocationChip, LocationSheetHost } from "./guide/LocationPicker.js";
 import { LocationProvider } from "./guide/LocationProvider.js";
-import { HomePlaces, SeasonTags } from "./design/HomeParts.js";
 import { SeasonProvider } from "./design/SeasonProvider.js";
 import { ThemeProvider } from "./design/ThemeProvider.js";
 import { BottomNav } from "./guide/BottomNav.js";
@@ -357,17 +356,8 @@ function Home(props: RoutesProps) {
           {t("miniapp.staff.open")}
         </Link>
       )}
-      {/* Hero с полем ассистента и сезонными тегами поверх панорамы, Bento-разделы; лента мест — ниже. */}
-      <HomeSections
-        hasVenue={venueOf(session) !== null}
-        hero={
-          <>
-            <HomeAssistant {...props} />
-            <SeasonTags />
-          </>
-        }
-      />
-      <HomePlaces />
+      {/* Hero с полем ассистента поверх панорамы, Bento-разделы. */}
+      <HomeSections hasVenue={venueOf(session) !== null} hero={<HomeAssistant {...props} />} />
       {(diagnostics || partner) && (
         <div className="kosiv-meta-block">
           {diagnostics && <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>}

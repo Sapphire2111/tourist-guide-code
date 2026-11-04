@@ -42,7 +42,7 @@ const TILES: readonly Tile[] = [
   { to: sectionPath("fun"), icon: "🎡", name: "miniapp.home.tile.fun", aria: "miniapp.modern.fun" },
   { to: sectionPath("ski"), icon: "⛷️", name: "miniapp.section.ski" },
   { to: sectionPath("transfer"), icon: "🚕", name: "miniapp.section.transfer" },
-  { to: sectionPath("services"), icon: "🛠️", name: "miniapp.section.services" },
+  { to: sectionPath("services"), icon: "📱💇", name: "miniapp.section.services" },
   // Без профиля «Обране» в доке; с профилем это единственный путь на экран кроме меню.
   { to: "/favorites", icon: "❤️", name: "miniapp.nav.favorites" },
 ];

@@ -144,7 +144,21 @@ export function AssistantBox({
               else recorder.start();
             }}
           >
-            {recording ? <StopIcon /> : refine ? <MicIcon /> : <span aria-hidden="true">🔥</span>}
+            {/* Волны расходятся от кнопки микрофона (декор; нет в состоянии «надіслати»). */}
+            <span className="mic-waves" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            {recording ? (
+              <StopIcon />
+            ) : refine ? (
+              <MicIcon />
+            ) : (
+              <span className="fire-flame" aria-hidden="true">
+                🔥
+              </span>
+            )}
           </button>
         )}
       </div>
