@@ -30,6 +30,8 @@ export type TelegramWebApp = {
   themeParams?: Record<string, string | undefined>;
   ready(): void;
   expand(): void;
+  /** Bot API 7.7+: свайп вниз по содержимому не сворачивает приложение (закрывается шапкой и «Назад»). */
+  disableVerticalSwipes?(): void;
   onEvent?(event: string, cb: (payload?: { data?: string }) => void): void;
   offEvent?(event: string, cb: (payload?: { data?: string }) => void): void;
   /** Bot API 6.4+: системный сканер QR внутри Telegram; текст приходит событием qrTextReceived. */
@@ -85,6 +87,14 @@ export function initTelegram(webApp: TelegramWebApp, root: HTMLElement = documen
   syncTheme();
   webApp.onEvent?.("themeChanged", syncTheme);
   webApp.expand();
+  // Свайп по плиткам и по карте не должен сворачивать приложение. Старый клиент — как было.
+  if (webApp.isVersionAtLeast?.("7.7")) {
+    try {
+      webApp.disableVerticalSwipes?.();
+    } catch {
+      // Клиент отверг вызов: остаётся стандартное поведение свайпа.
+    }
+  }
 }
 
 /**

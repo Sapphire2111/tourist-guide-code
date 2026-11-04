@@ -22,18 +22,18 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     await page.keyboard.press("Escape");
-    // modern (Concept B): 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + горизонтальная карусель из 8 категорий.
+    // Концепт Б: 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + блок из 8 плиток с вертикальной прокруткой.
     const intentions = page.getByTestId("home-sections").getByRole("link");
     await expect(intentions).toHaveCount(8);
     expect(await intentions.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual([
-      "#/section/relax",
-      "#/section/fun",
-      "#/section/shop",
-      "#/section/transfer",
       "#/section/stay",
+      "#/section/relax",
+      "#/section/shop",
+      "#/section/fun",
       "#/section/ski",
+      "#/section/transfer",
       "#/section/services",
-      "#/section/eat",
+      "#/favorites",
     ]);
     // «Допомога» — кнопка 112 в верхней полосе, а не плитка.
     await expect(intentions.filter({ hasText: "Допомога" })).toHaveCount(0);
@@ -61,7 +61,7 @@ test.describe("QR отеля demoHotel01", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page.getByRole("heading", { level: 1, name: "Де поїсти" })).toBeVisible();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const ad = page.getByTestId("place-item").filter({ hasText: "Піцерія «Реклама»" });
@@ -118,7 +118,7 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(sheet).toHaveCount(0);
     await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
 
-    await page.getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page.getByTestId("location-caption")).toHaveText("Локація: Татарів");
     await expect(page.getByTestId("place-item")).toHaveCount(1);
     await expect(page.getByTestId("place-item")).toContainText("Піцерія «Реклама»");
@@ -348,7 +348,7 @@ test.describe("тёмная тема Telegram", () => {
     await page.goto("/");
     await expect(page.getByTestId("home-sections")).toBeVisible();
     await expectNoSeriousA11yViolations(page);
-    await page.getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     await expectNoSeriousA11yViolations(page);
     await page.goto("/#/help");

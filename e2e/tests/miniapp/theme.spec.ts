@@ -257,29 +257,40 @@ test("цели нажатия: чипы категорий, пилюли рад�
   }
 });
 
-test("лист меню: кольцо фокуса не жёлтое (на светлом листе), на полосе — жёлтое", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("home-sections")).toBeVisible();
-  await page.keyboard.press("Tab");
-  expect(
-    await page.evaluate(() => {
+for (const dark of [false, true]) {
+  test(`кольцо фокуса на полосе видно${dark ? " «Ніч»: жёлтое" : " «День»: тёмное"}; на светлом листе не жёлтое`, async ({
+    page,
+  }) => {
+    if (dark) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
+    await page.goto("/");
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await page.keyboard.press("Tab");
+    const ring = await page.evaluate(() => {
       const a = document.activeElement!;
-      return a.closest('[data-testid="app-top"]') ? getComputedStyle(a).outlineColor : "outside";
-    }),
-  ).toBe("rgb(253, 230, 138)");
-  await page.getByTestId("menu-btn").click();
-  await expect(page.getByRole("dialog", { name: "Меню" })).toBeVisible();
-  await page.keyboard.press("Tab");
-  const inSheet = await page.evaluate(() => {
-    const a = document.activeElement!;
-    return {
-      inside: Boolean(a.closest('[data-testid="app-settings"]')),
-      outline: getComputedStyle(a).outlineColor,
-    };
+      return {
+        inBar: Boolean(a.closest('[data-testid="app-top"]')),
+        outline: getComputedStyle(a).outlineColor,
+        bar: getComputedStyle(document.querySelector('[data-testid="app-top"]')!).backgroundColor,
+      };
+    });
+    expect(ring.inBar).toBe(true);
+    expect(ring.outline).toBe(dark ? "rgb(253, 230, 138)" : "rgb(138, 44, 15)");
+    expect(contrastOf(ring.outline, ring.bar)).toBeGreaterThanOrEqual(3);
+    if (dark) return;
+    await page.getByTestId("menu-btn").click();
+    await expect(page.getByRole("dialog", { name: "Меню" })).toBeVisible();
+    await page.keyboard.press("Tab");
+    const inSheet = await page.evaluate(() => {
+      const a = document.activeElement!;
+      return {
+        inside: Boolean(a.closest('[data-testid="app-settings"]')),
+        outline: getComputedStyle(a).outlineColor,
+      };
+    });
+    expect(inSheet.inside).toBe(true);
+    expect(inSheet.outline).not.toBe("rgb(253, 230, 138)");
   });
-  expect(inSheet.inside).toBe(true);
-  expect(inSheet.outline).not.toBe("rgb(253, 230, 138)");
-});
+}
 
 test("«Поруч» без геолокации: сортировка «від <база>», а не «від вас»", async ({ page }) => {
   await page.goto("/#/nearby");
@@ -400,7 +411,7 @@ for (const [width, height, night] of [
   [320, 740, false],
   [320, 740, true],
 ] as const) {
-  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и горизонтальная карусель из 8 категорий`, async ({
+  test(`главная ${width}×${height}${night ? " «Ніч»" : ""}: 2 крупные карточки и плитки 4 в ряд, подписи без обрезки`, async ({
     page,
   }) => {
     if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
@@ -413,23 +424,43 @@ for (const [width, height, night] of [
       nodes.map((n) => {
         const r = n.getBoundingClientRect();
         const text = n.querySelector(".modern-intention-label")!;
+        const tr = text.getBoundingClientRect();
         return {
           x: Math.round(r.x),
           y: Math.round(r.y),
           w: Math.round(r.width),
           h: Math.round(r.height),
-          fits: text.scrollWidth <= text.clientWidth + 1,
+          fits:
+            text.scrollWidth <= text.clientWidth + 1 &&
+            tr.left >= r.left &&
+            tr.right <= r.right &&
+            tr.bottom <= r.bottom &&
+            n.scrollHeight <= n.clientHeight + 1,
         };
       }),
     );
-    // Горизонтальная карусель: все 8 плиток в один ряд (одинаковые y и h), подписи без обрезки.
+    // Два ряда по 4 одинаковых плитки, подписи целиком внутри.
     for (const b of boxes) {
       expect(b.h).toBeGreaterThanOrEqual(44);
       expect(b.fits).toBe(true);
     }
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
-    expect(new Set(boxes.map((b) => b.y)).size).toBe(1);
-    // Карточка «Що поруч зараз» — между Hero и горизонтальной каруселью.
+    expect(new Set(boxes.map((b) => b.w)).size).toBe(1);
+    expect(new Set(boxes.map((b) => b.x)).size).toBe(4);
+    expect(new Set(boxes.map((b) => b.y)).size).toBe(2);
+    expect(new Set(boxes.slice(0, 4).map((b) => b.y)).size).toBe(1);
+    // Первый ряд виден целиком, от второго — только край.
+    const edge = await page.getByTestId("home-sections").evaluate((n) => {
+      const r = n.getBoundingClientRect();
+      const [first, fifth] = [n.querySelectorAll("a")[0]!, n.querySelectorAll("a")[4]!].map((a) =>
+        a.getBoundingClientRect(),
+      );
+      return { firstInside: first!.bottom <= r.bottom, peek: r.bottom - fifth!.top, h: fifth!.height };
+    });
+    expect(edge.firstInside).toBe(true);
+    expect(edge.peek).toBeGreaterThan(10);
+    expect(edge.peek).toBeLessThan(edge.h);
+    // Карточка «Що поруч зараз» — между Hero и плитками.
     const order = await page.evaluate(() => {
       const top = (id: string) => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
       const first = document.querySelector('[data-testid="home-sections"] a')!.getBoundingClientRect();

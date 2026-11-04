@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 test("Mini App: нет нарушений a11y уровня serious/critical (главная)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("health")).toHaveText("Сервер працює");
+  await expect(page.getByTestId("home-sections")).toBeVisible();
   await expectNoSeriousA11yViolations(page);
 });
 

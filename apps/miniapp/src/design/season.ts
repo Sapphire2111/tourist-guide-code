@@ -18,14 +18,6 @@ export function isSeason(v: unknown): v is Season {
   return typeof v === "string" && (SEASONS as readonly string[]).includes(v);
 }
 
-/** Цвета окна Telegram (setBackgroundColor / setHeaderColor) — совпадают с --app-bg / --app-surface. */
-export const WINDOW_COLORS: Record<Season, { bg: string; surface: string }> = {
-  winter: { bg: "#F8F9FA", surface: "#FFFFFF" },
-  spring: { bg: "#FBF9F5", surface: "#FFFFFF" },
-  summer: { bg: "#FDFBF6", surface: "#FFFFFF" },
-  autumn: { bg: "#FAF5EE", surface: "#FFFDF9" },
-};
-
 /** Ключ localStorage ручного выбора: { season, auto } — действует, пока не сменился настоящий сезон. */
 export const SEASON_STORAGE_KEY = "tg.season";
 

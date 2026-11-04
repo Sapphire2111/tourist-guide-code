@@ -107,9 +107,14 @@ describe("главная C02", () => {
     const { rerender } = render(view(true));
     expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(8);
     const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
-    expect(href("Де поїсти")).toBe("#/section/eat");
+    // Еда — большая карточка, плитка не дублирует её.
+    expect(href(/^Де смачно поїсти/)).toBe("#/section/eat");
+    expect(screen.queryByRole("link", { name: "Де поїсти" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Що поруч" })).toBeNull();
-    expect(href(/Що поруч зі мною зараз/)).toBe("#/nearby/me");
+    expect(href(/^Що поруч зараз/)).toBe("#/nearby/me");
+    // Имена на плитках и подсказка «Де жити» — для скринридера.
+    expect(href(/^Де жити.*Готелі, садиби/)).toBe("#/section/stay");
+    expect(href("Обране")).toBe("#/favorites");
     expect(href("Відпочити та зігрітися")).toBe("#/section/relax");
     expect(href("Розваги та враження")).toBe("#/section/fun");
     expect(
@@ -117,14 +122,14 @@ describe("главная C02", () => {
         .getAllByRole("link")
         .map((a) => a.getAttribute("href")),
     ).toEqual([
-      "#/section/relax",
-      "#/section/fun",
-      "#/section/shop",
-      "#/section/transfer",
       "#/section/stay",
+      "#/section/relax",
+      "#/section/shop",
+      "#/section/fun",
       "#/section/ski",
+      "#/section/transfer",
       "#/section/services",
-      "#/section/eat",
+      "#/favorites",
     ]);
     expect(href(/Про заклад/)).toBe("#/about");
     rerender(view(false));
