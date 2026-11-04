@@ -13,6 +13,12 @@ export const test = base.extend<{
   telegram: [{}, { option: true }],
   googleMaps: [true, { option: true }],
   page: async ({ page, telegram, googleMaps }, use) => {
+    // Медленный процессор (E2E_CPU_THROTTLE=4): проверка тестов на гонки с анимацией, как на CI.
+    const throttle = Number(process.env.E2E_CPU_THROTTLE ?? 0);
+    if (throttle > 1) {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
+    }
     // Настоящий telegram-web-app.js не грузим (CI без сети, и он перезаписал бы мок).
     await page.route("**/telegram.org/**", (route) =>
       route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),

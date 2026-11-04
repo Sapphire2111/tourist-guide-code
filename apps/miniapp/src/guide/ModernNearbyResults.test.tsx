@@ -1,6 +1,6 @@
 // Список мест для карты стабилен между рендерами: иначе карта сбрасывает охват и окно маркера на каждый шаг ползунка.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import { ModernNearbyResults } from "./Nearby.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
@@ -38,6 +38,8 @@ describe("ModernNearbyResults", () => {
     const api = {
       categories: vi.fn(async () => [
         { id: "c1", parentId: null, name: { uk: "Кафе" }, homeSection: "eat" as const },
+        { id: "c2", parentId: null, name: { uk: "Крамниці" }, homeSection: "shop" as const },
+        { id: "c3", parentId: null, name: { uk: "Пам'ятки" }, homeSection: "nearby" as const },
       ]),
     } as unknown as GuideApi;
     const env = {
@@ -47,7 +49,11 @@ describe("ModernNearbyResults", () => {
       regionId: "r",
       signedIn: true,
     } as unknown as GuideEnv;
-    const list = [place("a", "Смерека"), place("b", "Гуцульська хата")];
+    const list = [
+      place("a", "Смерека"),
+      { ...place("b", "Гуцульська хата"), categoryId: "c2" },
+      { ...place("c", "Пам'ятник"), categoryId: "c3" },
+    ];
     const ui = (radius: number) => (
       <GuideProvider value={env}>
         <ModernNearbyResults list={list} radius={radius} base={null} me={null} loading={false} />
@@ -60,9 +66,37 @@ describe("ModernNearbyResults", () => {
     rerender(ui(700));
     expect(seen[seen.length - 1]).toBe(before);
 
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Смер" } });
+    fireEvent.click(screen.getByRole("button", { name: "Де поїсти" }));
     expect(seen[seen.length - 1]).not.toBe(before);
     expect(seen[seen.length - 1]).toHaveLength(1);
+  });
+
+  it("поиска и плашки ближайшего нет; чип «Що поруч» не показан, его места — в «Усі поруч»", async () => {
+    const api = {
+      categories: vi.fn(async () => [
+        { id: "c1", parentId: null, name: { uk: "Кафе" }, homeSection: "eat" as const },
+        { id: "c3", parentId: null, name: { uk: "Пам'ятки" }, homeSection: "nearby" as const },
+      ]),
+    } as unknown as GuideApi;
+    const env = {
+      api,
+      analytics: { track: vi.fn(), flush: vi.fn(), dispose: vi.fn() },
+      base: null,
+      regionId: "r",
+      signedIn: true,
+    } as unknown as GuideEnv;
+    const list = [place("a", "Смерека"), { ...place("c", "Пам'ятник"), categoryId: "c3" }];
+    const { container } = render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={list} radius={1000} base={null} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(container.querySelector(".modern-map-spot")).toBeNull();
+    const chips = within(screen.getByRole("group", { name: "Категорії місць поруч" }));
+    expect(chips.getAllByRole("button").map((b) => b.textContent)).toEqual(["✦Усі поруч", "🍲Де поїсти"]);
+    expect(seen[seen.length - 1]).toHaveLength(2);
   });
 
   it("выстраивает места от ближайшего к более далёкому", async () => {

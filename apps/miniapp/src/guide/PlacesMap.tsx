@@ -3,7 +3,7 @@
 // Карта берётся из пула и не пересоздаётся: смена мест/радиуса перестраивает только маркеры, круг и линию.
 // Маркеры — AdvancedMarker с цветом и значком раздела категории, рядом стоящие собираются в кластеры
 // (@googlemaps/markerclusterer); подпись — по нажатию (InfoWindow), легенда — под картой.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { useRoute, useT } from "@tg/ui";
@@ -11,7 +11,7 @@ import { SECTION_EMOJI } from "../design/Ornament.js";
 import { useTheme } from "../design/ThemeProvider.js";
 import { useCategoryIndex } from "./categories.js";
 import { useGuide } from "./context.js";
-import type { LatLng } from "./geo.js";
+import { googleRouteUrl, type LatLng } from "./geo.js";
 import {
   acquireMap,
   loadMapsApi,
@@ -21,7 +21,8 @@ import {
   type MapsLibs,
   type PooledMap,
 } from "./google-maps.js";
-import type { HomeSection, PlaceSummary } from "./types.js";
+import { coverCreditText } from "./parts.js";
+import type { HomeSection, Photo, PlaceSummary } from "./types.js";
 
 export type PlacesMapProps = {
   places: PlaceSummary[];
@@ -39,13 +40,11 @@ export type PlacesMapProps = {
   me?: LatLng | null;
   /** Место, подсвеченное как ближайшее («Поруч»): только оно получает акцент; в каталоге и маршрутах не задаётся. */
   closestId?: string;
-  /** Плавающий элемент поверх нижней части карты («Поруч»): его размеры, как и верхней панели [data-map-inset], учитываются в fitBounds. */
-  overlay?: ReactNode;
   /** Короткая подпись базовой точки на карте («Поруч»: название; подпись значка для читалки — centerLabel). */
   centerTag?: string;
   /** false — без легенды под картой («Поруч»: значок категории уже на капсуле маркера). */
   legend?: boolean;
-  /** Карта-сцена («Поруч»): оранжевый круг радиуса, кнопки масштаба посередине справа. Не зависит от того, есть ли плашка. */
+  /** Карта-сцена («Поруч»): оранжевый круг радиуса, кнопки масштаба посередине справа. */
   floating?: boolean;
 };
 
@@ -131,30 +130,123 @@ export function pinNode(
   return pin;
 }
 
-/** Содержимое подписи маркера: название, категория, ссылка на карточку (только textContent — XSS из названия места). */
-export function popupNode(
-  name: string,
-  category: string,
-  id: string,
-  openText: string,
-  navigate: (to: string) => void,
-): HTMLElement {
+export type PopupData = {
+  name: string;
+  category: string;
+  id: string;
+  /** Подпись расстояния («524 м»), если сервер его вернул. */
+  distance?: string;
+  /** Значок раздела: вместо фото, если обложки нет или она не загрузилась. */
+  icon: string;
+  /** Обложка места; null — компактный вид со значком, без пустого прямоугольника. */
+  cover?: Photo | null;
+  coverAlt: string;
+  /** Подпись автора и лицензии обложки (обязательна для Google и Wikimedia). */
+  creditText?: string;
+  openText: string;
+  routeText: string;
+  routeLabel: string;
+  routeHref: string;
+  closeText: string;
+  navigate: (to: string) => void;
+  /** Нажатие на внешнюю ссылку: Telegram открывает её через openLink. */
+  openExternal: (e: Event, href: string) => void;
+  onRoute: () => void;
+  onClose: () => void;
+};
+
+/** Содержимое окна маркера: обложка, название, категория, расстояние, «Маршрут» и карточка (только textContent — XSS из данных места). */
+export function popupNode(d: PopupData): HTMLElement {
   const box = document.createElement("div");
   box.className = "kosiv-map-popup";
+  const head = document.createElement("div");
+  head.className = "kosiv-map-popup-head";
+  const showIcon = () => {
+    box.dataset.cover = "none";
+    const icon = document.createElement("span");
+    icon.className = "kosiv-map-popup-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = d.icon;
+    head.prepend(icon);
+  };
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "kosiv-map-popup-close";
+  close.setAttribute("aria-label", d.closeText);
+  close.textContent = "×";
+  close.addEventListener("click", d.onClose);
+  // Первой в порядке Tab: на экране она поверх фото (z-index в kosiv.css).
+  box.append(close);
+  const titles = document.createElement("div");
+  titles.className = "kosiv-map-popup-titles";
   const title = document.createElement("strong");
-  title.textContent = name;
+  title.textContent = d.name;
   const cat = document.createElement("span");
-  cat.textContent = category;
+  cat.textContent = d.distance ? `${d.category} · ${d.distance}` : d.category;
+  titles.append(title, cat);
+  head.append(titles);
+  if (d.cover) {
+    box.dataset.cover = "photo";
+    const media = document.createElement("div");
+    media.className = "kosiv-map-popup-media";
+    const img = document.createElement("img");
+    img.alt = d.coverAlt;
+    img.setAttribute("loading", "lazy");
+    img.setAttribute("decoding", "async");
+    // Файл не загрузился: окно без картинки и без её подписи, со значком раздела.
+    img.addEventListener("error", () => {
+      media.remove();
+      showIcon();
+    });
+    img.src = d.cover.url;
+    media.append(img);
+    if (d.creditText) {
+      const credit = document.createElement("span");
+      credit.className = "kosiv-map-popup-credit";
+      credit.dataset.testid = "cover-credit";
+      const source = d.cover.credit;
+      if (source?.source === "wikimedia" && source.sourceUrl) {
+        const href = source.sourceUrl;
+        const a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = d.creditText;
+        a.addEventListener("click", (e) => d.openExternal(e, href));
+        credit.append(a);
+      } else credit.textContent = d.creditText;
+      media.append(credit);
+    }
+    box.append(media);
+  } else showIcon();
+  const actions = document.createElement("div");
+  actions.className = "kosiv-map-popup-actions";
+  const route = document.createElement("a");
+  route.className = "kosiv-map-popup-route";
+  route.href = d.routeHref;
+  route.target = "_blank";
+  route.rel = "noopener noreferrer";
+  route.textContent = d.routeText;
+  route.setAttribute("aria-label", d.routeLabel);
+  route.addEventListener("click", (e) => {
+    d.onRoute();
+    d.openExternal(e, d.routeHref);
+  });
   const link = document.createElement("a");
-  link.href = `#/place/${encodeURIComponent(id)}`;
-  link.textContent = openText;
+  link.className = "kosiv-map-popup-open";
+  link.href = `#/place/${encodeURIComponent(d.id)}`;
+  link.textContent = d.openText;
   link.addEventListener("click", (e) => {
     e.preventDefault();
-    navigate(`/place/${encodeURIComponent(id)}`);
+    d.navigate(`/place/${encodeURIComponent(d.id)}`);
   });
-  box.append(title, cat, link);
+  actions.append(route, link);
+  box.append(head, actions);
   return box;
 }
+
+/** Меньше свободной высоты под панелью — окно без фото: иначе оно не поместится и закроет маркер. */
+export const POPUP_PHOTO_MIN_FREE = 220;
 
 /** Цвет акцента сезона (--app-accent) для кругов карты: у Circle нет CSS, только значение. */
 function accentColor(): string {
@@ -188,7 +280,6 @@ export default function PlacesMap({
   route = false,
   me,
   closestId,
-  overlay,
   centerTag,
   legend = true,
   floating = false,
@@ -197,12 +288,17 @@ export default function PlacesMap({
   // Тема — из контекста, а не из DOM: data-theme ставится эффектом ThemeProvider, то есть после эффектов детей.
   const night = useTheme().theme === "night";
   const [, navigate] = useRoute();
-  const { api } = useGuide();
+  const guide = useGuide();
+  const { api } = guide;
+  const guideRef = useRef(guide);
+  guideRef.current = guide;
   const index = useCategoryIndex(api);
   const el = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<Libs>({ status: "loading" });
   const [map, setMap] = useState<PooledMap | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
+  /** Откуда открыто окно маркера: туда возвращается фокус при закрытии. */
+  const openerRef = useRef<HTMLElement | null>(null);
   const overlays = useRef<Overlays>({ clusterer: null, markers: [], other: [], listeners: [], frame: null });
   /** Установка вида под текущий размер карты (задаёт эффект маркеров); вызывается и при смене размера контейнера. */
   const applyView = useRef<(() => void) | null>(null);
@@ -239,11 +335,28 @@ export default function PlacesMap({
   useEffect(() => {
     if (!libs || !el.current) return;
     const item = acquireMap(libs, el.current, night);
-    const info = new libs.maps.InfoWindow();
+    // Без служебной строки заголовка (своя кнопка закрытия поверх окна) и без автосдвига Google: он не знает о панели над картой.
+    const info = new libs.maps.InfoWindow({ headerDisabled: true, disableAutoPan: true });
     infoRef.current = info;
+    const ready = info.addListener("domready", () => {
+      requestAnimationFrame(() => panPopupIntoView(item.map, el.current));
+    });
     const o = overlays.current;
     setMap(item);
+    // Кнопки масштаба лежат выше окна: на узкой карте они прячутся на время, пока окно открыто (panPopupIntoView).
+    const closed = info.addListener("close", () => {
+      item.map.setOptions({ zoomControl: true });
+      // Фокус был в окне (или пропал вместе с ним) — обратно на маркер; маркер уже снят с карты — некуда, остаётся как есть.
+      const opener = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || active.closest(".kosiv-map-popup")))
+        opener.focus({ preventScroll: true });
+    });
     return () => {
+      ready.remove();
+      closed.remove();
+      item.map.setOptions({ zoomControl: true });
       info.close();
       infoRef.current = null;
       clearOverlays(o);
@@ -373,12 +486,46 @@ export default function PlacesMap({
         const catName = cat ? pickLocalized(cat.name, lc) : tr(groupLabel(g));
         const info = infoRef.current;
         if (!info) return;
+        const name = pickLocalized(p.name, lc);
+        const cover = p.cover && freeMapHeight(el.current) >= POPUP_PHOTO_MIN_FREE ? p.cover : null;
+        // Окно одно на карту: новое содержимое сразу заменяет прежнее, два окна открытыми не бывают.
         info.setContent(
-          popupNode(pickLocalized(p.name, lc), catName, p.id, tr("miniapp.map.open"), (to) =>
-            navigateRef.current(to),
-          ),
+          popupNode({
+            name,
+            category: catName,
+            id: p.id,
+            distance: fmtDist(p.distanceMeters),
+            icon: SECTION_EMOJI[g] ?? SECTION_EMOJI.other!,
+            cover,
+            coverAlt: cover?.alt ? pickLocalized(cover.alt, lc) : tr("miniapp.map.coverAlt", { name }),
+            creditText: cover?.credit ? coverCreditText(cover.credit, tr) : undefined,
+            openText: tr("miniapp.map.open"),
+            routeText: tr("miniapp.modern.route"),
+            routeLabel: tr("miniapp.modern.routeTo", { name }),
+            routeHref: googleRouteUrl(p.location!, p.googlePlaceId),
+            closeText: tr("miniapp.map.close"),
+            navigate: (to) => navigateRef.current(to),
+            openExternal: (e, href) => {
+              const webApp = guideRef.current.webApp;
+              if (webApp?.openLink) {
+                e.preventDefault();
+                webApp.openLink(href);
+              }
+            },
+            onRoute: () => guideRef.current.analytics.track("route_clicked", { placeId: p.id }),
+            onClose: () => infoRef.current?.close(),
+          }),
         );
-        info.open({ map: m, anchor: marker });
+        const active = document.activeElement;
+        // Нажатие на другой маркер при открытом окне: фокус уже на нём; иначе — сам маркер (настоящий маркер — HTML-элемент).
+        openerRef.current =
+          active instanceof HTMLElement && active !== document.body && !active.closest(".kosiv-map-popup")
+            ? active
+            : (marker as unknown) instanceof HTMLElement
+              ? (marker as unknown as HTMLElement)
+              : null;
+        info.setOptions({ ariaLabel: name });
+        info.open({ map: m, anchor: marker, shouldFocus: true });
       });
       o.markers.push({ marker, place: p, stop });
       bounds.extend(p.location!);
@@ -459,7 +606,11 @@ export default function PlacesMap({
       timer = window.setTimeout(() => {
         libs.core.event.trigger(map.map, "resize");
         if (explicit) userMoved.current = false;
-        if (!userMoved.current) applyView.current?.();
+        if (!userMoved.current) {
+          // Окно привязано к маркеру и после новой подгонки ушло бы за панель: закрываем (кнопки масштаба возвращаются).
+          infoRef.current?.close();
+          applyView.current?.();
+        }
         explicit = false;
       }, 120);
     });
@@ -533,14 +684,8 @@ export default function PlacesMap({
     ...new Set(places.filter((p) => p.location).map((p) => markerGroup(index.sectionOf(p.categoryId)))),
   ];
 
-  // Карта не загрузилась: заглушка, а плашка с ближайшим местом и маршрутом остаётся (список рядом тоже).
-  if (state.status === "error")
-    return (
-      <>
-        <p role="alert">{t("miniapp.map.error")}</p>
-        {overlay}
-      </>
-    );
+  // Карта не загрузилась: заглушка; места и их кнопки «Маршрут» остаются в списке рядом.
+  if (state.status === "error") return <p role="alert">{t("miniapp.map.error")}</p>;
 
   // Карта дублирует список рядом: маркеры — не единственный путь к месту (клавиатура и чтение с экрана — список).
   return (
@@ -559,7 +704,6 @@ export default function PlacesMap({
             background: night ? MAP_BACKDROP.night : MAP_BACKDROP.day,
           }}
         />
-        {overlay}
       </div>
       {legend && (groups.length > 0 || (center && centerMarker)) && (
         <ul className="kosiv-map-legend" aria-label={t("miniapp.map.legend")} data-testid="map-legend">
@@ -582,19 +726,21 @@ export default function PlacesMap({
 }
 
 const FIT_PADDING = 24;
+/** Снизу на карте «Поруч» — логотип и условия Google (~30 px): маркер не должен на них лежать. */
+const FIT_PADDING_LOGO = 40;
 
-/** Отступы fitBounds: 24 px, а под плавающие панели «Поруч» (верх — поиск и фильтры, низ — карточка) — их фактический размер. */
+/** Отступы fitBounds: 24 px, на сцене «Поруч» сверху — фактическая высота панели (радиус и категории), снизу — под логотип. */
 function fitPadding(host: HTMLElement | null): google.maps.Padding {
   const base = { top: FIT_PADDING, right: FIT_PADDING, bottom: FIT_PADDING, left: FIT_PADDING };
   const stage = host?.closest(".modern-map-stage");
   if (!host || !stage) return base;
   const map = host.getBoundingClientRect();
   const top = stage.querySelector('[data-map-inset="top"]')?.getBoundingClientRect();
-  const bottom = stage.querySelector('[data-map-inset="bottom"]')?.getBoundingClientRect();
+  base.bottom = FIT_PADDING_LOGO;
   // Запас 16 px: маркер (капсула 30 px высотой привязана центром к точке) не должен касаться края панели.
-  if (top) base.top = Math.max(base.top, Math.ceil(top.bottom - map.top) + 16);
-  if (bottom) base.bottom = Math.max(base.bottom, Math.ceil(map.bottom - bottom.top) + 16);
-  // Панели не должны съесть карту: вместе не больше 70% высоты, иначе fitBounds нечего вписывать.
+  // Минус 0,01: шум плавающей точки в координатах (91,00001) не должен давать лишний пиксель.
+  if (top) base.top = Math.max(base.top, Math.ceil(top.bottom - map.top - 0.01) + 16);
+  // Панель не должна съесть карту: вместе не больше 70% высоты, иначе fitBounds нечего вписывать.
   const room = map.height * 0.7;
   const used = base.top + base.bottom;
   if (used > room) {
@@ -602,6 +748,40 @@ function fitPadding(host: HTMLElement | null): google.maps.Padding {
     base.bottom = Math.round((base.bottom * room) / used);
   }
   return base;
+}
+
+/** Нижняя граница панели над картой («Поруч») или верх карты. */
+function panelBottom(host: HTMLElement): number {
+  const panel = host.closest(".modern-map-stage")?.querySelector('[data-map-inset="top"]');
+  return panel ? panel.getBoundingClientRect().bottom : host.getBoundingClientRect().top;
+}
+
+/** Свободная высота карты под панелью: помещается ли окно с фото. */
+function freeMapHeight(host: HTMLElement | null): number {
+  return host ? host.getBoundingClientRect().bottom - panelBottom(host) : 0;
+}
+
+/** Полоса кнопок масштаба у правого края карты (40 px и отступ 10 px) с зазором до окна. */
+const ZOOM_RESERVE = 58;
+
+/**
+ * Окно маркера целиком в свободной части карты: не под панелью и не за краем (автосдвиг Google о панели не знает).
+ * Кнопки масштаба выше окна и закрыли бы его действия: окно сдвигается левее них, а если места нет (320 px) — кнопки скрыты, пока окно открыто.
+ */
+function panPopupIntoView(map: google.maps.Map, host: HTMLElement | null): void {
+  const popup = host?.querySelector(".kosiv-map-popup");
+  if (!host || !popup) return;
+  const box = (popup.closest(".gm-style-iw-c") ?? popup).getBoundingClientRect();
+  const area = host.getBoundingClientRect();
+  const top = panelBottom(host) + 4;
+  const bottom = area.bottom - 30;
+  const dy = box.top < top ? box.top - top : box.bottom > bottom ? box.bottom - bottom : 0;
+  const left = area.left + 8;
+  const roomy = area.width >= box.width + ZOOM_RESERVE + 8;
+  map.setOptions({ zoomControl: roomy });
+  const right = area.right - (roomy ? ZOOM_RESERVE : 8);
+  const dx = box.left < left ? box.left - left : box.right > right ? box.right - right : 0;
+  if (dx || dy) map.panBy(dx, dy);
 }
 
 function clearOverlays(o: Overlays): void {

@@ -59,6 +59,8 @@ export type PlaceSummary = {
   /** Адрес (населённый пункт, улица) — подпись в карточке. */
   address?: LocalizedText | null;
   location: LatLng | null;
+  /** Place ID Google: точнее пункт назначения в ссылке маршрута. API пока не отдаёт — нет поля, маршрут по координатам. */
+  googlePlaceId?: string | null;
   /** Расстояние от точки поиска, м (считает сервер). */
   distanceMeters: number | null;
   cover: Photo | null;
