@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -19,10 +20,12 @@ import { LocalizedTextDto } from "../../common/http/index.js";
 import {
   HOME_SECTIONS,
   PLACE_AMENITIES,
+  PLACE_TAG_SOURCES,
   PROMOTION_AD_LABELS,
   TAG_GROUPS,
   type HomeSection,
   type PlaceAmenity,
+  type PlaceTagSource,
   type LocalizedText,
   type PromotionAdLabel,
   type TagGroup,
@@ -54,6 +57,10 @@ export const SEARCH_OFFSET_MAX = 1000;
 export const SEARCH_QUERY_MAX = 100;
 /** Локаций в фильтре поиска — не больше (в регионе их единицы). */
 export const SEARCH_LOCALITIES_MAX = 10;
+/** Тегов в фильтре (удобства «Де жити») — не больше. */
+export const SEARCH_TAGS_MAX = 10;
+/** Код тега — формат is_catalog_code (0012). */
+const TAG_CODE = /^[a-z0-9]([a-z0-9_-]{0,62}[a-z0-9])?$/;
 
 /** Повтор параметра (?localityIds=a&localityIds=b) и/или список через запятую — массив без пустых. */
 const toList = ({ value }: { value: unknown }) =>
@@ -180,6 +187,20 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   localityIds?: string[];
 
   @ApiPropertyOptional({
+    type: [String],
+    maxItems: SEARCH_TAGS_MAX,
+    example: ["pool", "sauna"],
+    description:
+      "Коды тегов (фильтр удобств «Де жити»: pool, sauna, hot-tub, breakfast, parking, pets, kids, wifi, kitchen): " +
+      "только места со ВСЕМИ указанными активными тегами (И). Повтор параметра или через запятую",
+  })
+  @IsOptional()
+  @Transform(toList)
+  @ArrayMaxSize(SEARCH_TAGS_MAX)
+  @Matches(TAG_CODE, { each: true })
+  tags?: string[];
+
+  @ApiPropertyOptional({
     type: Boolean,
     description: "«Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений)",
   })
@@ -214,6 +235,25 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   @Min(0)
   @Max(SEARCH_OFFSET_MAX)
   offset?: number;
+}
+
+/** Число мест по тегам (фильтр удобств «Де жити»): та же категория и населённые пункты, что у поиска. */
+export class PlaceTagCountsQueryDto extends RegionQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: "uuid",
+    description: "Категория; раздел включает свои подкатегории",
+  })
+  @IsOptional()
+  @IsUUID()
+  category?: string;
+
+  @ApiPropertyOptional({ type: [String], format: "uuid", maxItems: SEARCH_LOCALITIES_MAX })
+  @IsOptional()
+  @Transform(toList)
+  @ArrayMaxSize(SEARCH_LOCALITIES_MAX)
+  @IsUUID("all", { each: true })
+  localityIds?: string[];
 }
 
 /** Фото Google места: ширина файла (превью 400 или полноэкранный 1200). */
@@ -473,6 +513,28 @@ export class GuideTagDto {
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: LocalizedTextDto }) name!: LocalizedText;
   @ApiProperty({ enum: TAG_GROUPS, enumName: "TagGroup" }) group!: TagGroup;
+  @ApiProperty({
+    enum: PLACE_TAG_SOURCES,
+    enumName: "PlaceTagSource",
+    description:
+      "manual — админка; import — структурированные данные Google; reviews — по отзывам/описанию Google (places:amenities), " +
+      "в карточке — с пометкой «за відгуками Google»",
+  })
+  source!: PlaceTagSource;
+}
+
+export class PlaceTagCountDto {
+  @ApiProperty({ type: String, example: "pool" }) code!: string;
+  @ApiProperty({ type: LocalizedTextDto }) name!: LocalizedText;
+  @ApiProperty({ type: "integer", description: "Опубликованных мест с тегом" }) count!: number;
+}
+
+export class PlaceTagCountListDto {
+  @ApiProperty({
+    type: [PlaceTagCountDto],
+    description: "Активные теги, у которых есть места; порядок — группа, sortOrder",
+  })
+  items!: PlaceTagCountDto[];
 }
 
 // --- богатая картка (0018): данные Google Place Details, Вікіпедія, ИИ-текст ---

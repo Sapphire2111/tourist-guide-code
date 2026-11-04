@@ -396,3 +396,10 @@ html[data-season] .pc-title:focus-visible {
 .pc-footer p {
   margin: 0 0 4px;
 }
+/* Удобства «за відгуками Google» (places:amenities): чипы и подпись источника под ними. */
+.pc-review-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+}

@@ -5627,6 +5627,18 @@
             "schema": { "maxItems": 10, "type": "array", "items": { "type": "string", "format": "uuid" } }
           },
           {
+            "name": "tags",
+            "required": false,
+            "in": "query",
+            "description": "Коды тегов (фильтр удобств «Де жити»: pool, sauna, hot-tub, breakfast, parking, pets, kids, wifi, kitchen): только места со ВСЕМИ указанными активными тегами (И). Повтор параметра или через запятую",
+            "schema": {
+              "maxItems": 10,
+              "example": ["pool", "sauna"],
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          {
             "name": "available_now",
             "required": false,
             "in": "query",
@@ -5699,6 +5711,87 @@
           }
         },
         "summary": "Поиск мест: «Що поруч» (lat/lng + радиус), категория, текст q",
+        "tags": ["guide"]
+      }
+    },
+    "/places/tag-counts": {
+      "get": {
+        "description": "Без аутентификации. Опубликованные места активного региона в категории (с подкатегориями и доп. категориями, как в поиске) и населённых пунктах localityIds; по каждому активному тегу, у которого есть места. Фильтр поиска — GET /places/search?tags=… (все теги сразу, И). 404 — региона нет или он не активен.",
+        "operationId": "placeTagCounts",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "description": "Категория; раздел включает свои подкатегории",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "localityIds",
+            "required": false,
+            "in": "query",
+            "schema": { "maxItems": 10, "type": "array", "items": { "type": "string", "format": "uuid" } }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceTagCountListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "summary": "Число мест по тегам в категории (счётчики фильтра удобств «Де жити»)",
         "tags": ["guide"]
       }
     },
@@ -15570,6 +15663,26 @@
         },
         "required": ["items", "nextOffset", "radiusMeters"]
       },
+      "PlaceTagCountDto": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "example": "pool" },
+          "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "count": { "type": "integer", "description": "Опубликованных мест с тегом" }
+        },
+        "required": ["code", "name", "count"]
+      },
+      "PlaceTagCountListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Активные теги, у которых есть места; порядок — группа, sortOrder",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceTagCountDto" }
+          }
+        },
+        "required": ["items"]
+      },
       "GuideCategoryRefDto": {
         "type": "object",
         "properties": {
@@ -15580,15 +15693,24 @@
         },
         "required": ["id", "parentId", "name", "icon"]
       },
+      "PlaceTagSource": {
+        "type": "string",
+        "enum": ["manual", "import", "reviews"],
+        "description": "manual — админка; import — структурированные данные Google; reviews — по отзывам/описанию Google (places:amenities), в карточке — с пометкой «за відгуками Google»"
+      },
       "GuideTagDto": {
         "type": "object",
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "code": { "type": "string" },
           "name": { "$ref": "#/components/schemas/LocalizedTextDto" },
-          "group": { "allOf": [{ "$ref": "#/components/schemas/TagGroup" }] }
+          "group": { "allOf": [{ "$ref": "#/components/schemas/TagGroup" }] },
+          "source": {
+            "description": "manual — админка; import — структурированные данные Google; reviews — по отзывам/описанию Google (places:amenities), в карточке — с пометкой «за відгуками Google»",
+            "allOf": [{ "$ref": "#/components/schemas/PlaceTagSource" }]
+          }
         },
-        "required": ["id", "code", "name", "group"]
+        "required": ["id", "code", "name", "group", "source"]
       },
       "AiSummaryDto": {
         "type": "object",

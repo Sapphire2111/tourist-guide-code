@@ -37,6 +37,7 @@ import {
   GuideLocalityListDto,
   PlaceCardDto,
   PlaceSearchResultDto,
+  PlaceTagCountListDto,
   SEARCH_LIMIT_DEFAULT,
   SEARCH_RADIUS_DEFAULT,
   SEARCH_RADIUS_MAX,
@@ -48,6 +49,7 @@ import {
   CoverQueryDto,
   GooglePhotoQueryDto,
   OriginQueryDto,
+  PlaceTagCountsQueryDto,
   RegionQueryDto,
   SearchPlacesQueryDto,
 } from "./guide.dto.js";
@@ -195,8 +197,28 @@ export class GuidePlacesController {
       localityIds,
       text: q.q?.trim() || undefined,
       excludeSections: q.exclude_section,
+      tagCodes: q.tags?.length ? q.tags : undefined,
       limit: q.limit ?? SEARCH_LIMIT_DEFAULT,
       offset: q.offset ?? 0,
+    });
+  }
+
+  @Get("tag-counts")
+  @RateLimit(SEARCH_RATE_LIMIT)
+  @ApiOperation({
+    operationId: "placeTagCounts",
+    summary: "Число мест по тегам в категории (счётчики фильтра удобств «Де жити»)",
+    description:
+      "Без аутентификации. Опубликованные места активного региона в категории (с подкатегориями и доп. категориями, " +
+      "как в поиске) и населённых пунктах localityIds; по каждому активному тегу, у которого есть места. Фильтр поиска — " +
+      "GET /places/search?tags=… (все теги сразу, И). 404 — региона нет или он не активен.",
+  })
+  @ApiOkResponse({ type: PlaceTagCountListDto })
+  @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
+  tagCounts(@Query() q: PlaceTagCountsQueryDto): Promise<PlaceTagCountListDto> {
+    return this.guide.tagCounts(q.regionId, {
+      categoryId: q.category,
+      localityIds: q.localityIds?.length ? q.localityIds : undefined,
     });
   }
 

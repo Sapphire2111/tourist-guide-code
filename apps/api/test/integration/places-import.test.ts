@@ -12,6 +12,12 @@ import { GooglePlacesClient } from "../../src/places-import/google-client.js";
 import type { MappedPlace } from "../../src/places-import/mapping.js";
 import { importPhotos } from "../../src/places-import/photos.js";
 import { googlePlaceIds, writePlaces } from "../../src/places-import/writer.js";
+import {
+  applyChanges,
+  loadLodging,
+  planChanges,
+  type AmenityResult,
+} from "../../src/places-amenities/store.js";
 import { ALL_LOCALITIES } from "../../src/places-import/targeted.js";
 import { seedCatalog, SEED_PLACES } from "../../src/seed/seed-catalog.js";
 import { seedBase, type SeedBaseResult } from "../../src/seed/seed.js";
@@ -714,6 +720,99 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     // Повтор — ничего нового (ON CONFLICT DO NOTHING).
     const again = await writePlaces(appDb, "test-region", [place("gTag1")], t);
     expect(again.tagsWritten).toBe(0);
+  });
+
+  it("places:amenities (0029): теги удобств «Де жити» с источником, аудит, ручные теги не трогаются, повтор — без изменений", async () => {
+    const t = new Date();
+    const gids = ["gAm1", "gAm2", "gAm3"];
+    await writePlaces(
+      appDb,
+      "test-region",
+      [
+        place("gAm1", { categoryCode: "hotels" }),
+        place("gAm2", { categoryCode: "sadyby" }),
+        place("gAm3", { categoryCode: "hotels" }),
+      ],
+      t,
+    );
+    await sql(
+      `INSERT INTO place_enrichments (region_id, place_id, google)
+       SELECT region_id, id, '{"amenities":["good_for_children"],"summary":null,"reviews":[]}'::jsonb
+       FROM places WHERE google_place_id = ANY($1)
+       ON CONFLICT (region_id, place_id) DO UPDATE SET google = EXCLUDED.google`,
+      [gids],
+    );
+    const idOf = new Map(
+      (await sql(`SELECT id, google_place_id FROM places WHERE google_place_id = ANY($1)`, [gids])).rows.map(
+        (r) => [String(r.google_place_id), String(r.id)] as const,
+      ),
+    );
+    const [id1, id2, id3] = gids.map((g) => idOf.get(g)!);
+    const user = String((await sql("INSERT INTO users DEFAULT VALUES RETURNING id")).rows[0].id);
+    await sql(
+      `INSERT INTO audit_logs (actor_type, actor_user_id, region_id, action, entity_type, entity_id)
+       SELECT 'user', $1, region_id, 'place.update', 'place', id::text FROM places WHERE id = $2`,
+      [user, id3],
+    );
+
+    const state = await loadLodging(appDb, "test-region");
+    expect(state.hasSourceColumn).toBe(true);
+    expect(state.places.find((p) => p.id === id1)).toMatchObject({ category: "hotels", touched: false });
+    expect(state.places.find((p) => p.id === id3)?.touched).toBe(true);
+    const results: AmenityResult[] = [
+      { placeId: id1!, structured: ["kids"], reviews: [{ code: "pool", evidence: "Є басейн" }], hash: "h1" },
+      { placeId: id2!, structured: [], reviews: [{ code: "hot_tub", evidence: "Є чан" }], hash: "h2" },
+      { placeId: id3!, structured: ["kids"], reviews: [], hash: null },
+    ];
+    const plan = planChanges(state.places, results);
+    expect(plan.skippedTouched).toEqual([id3]);
+    const stats = await applyChanges(appDb, state.regionId, plan.changes, { model: "claude-sonnet-5-5" });
+    expect(stats).toMatchObject({ added: 3, upgraded: 0, removed: 0, audited: 2, skippedTouched: 0 });
+
+    const tags = async (id: string) =>
+      (
+        await sql(
+          `SELECT t.code, pt.source FROM place_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.place_id = $1
+           ORDER BY t.code`,
+          [id],
+        )
+      ).rows.map((x) => `${x.code}:${x.source}`);
+    expect(await tags(id1!)).toEqual(["kids:import", "pool:reviews"]);
+    expect(await tags(id2!)).toEqual(["hot-tub:reviews"]);
+    expect(await tags(id3!)).toEqual([]);
+    const audit = await sql(
+      `SELECT actor_type, new_values FROM audit_logs WHERE action = 'place.amenities' AND entity_id = $1`,
+      [id1],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].actor_type).toBe("system");
+    expect(audit.rows[0].new_values).toMatchObject({
+      added: { pool: "reviews", kids: "import" },
+      evidence: { pool: "Є басейн" },
+      inputHash: "h1",
+    });
+
+    // Повтор с тем же входом — ничего не пишется (хэш применён, теги на месте).
+    const again = await loadLodging(appDb, "test-region");
+    expect(planChanges(again.places, results).changes).toEqual([]);
+
+    // Новое извлечение без чана — тег reviews снимается; правка админки (manual) — нет.
+    await sql(
+      `UPDATE place_tags SET source = 'manual' WHERE place_id = $1 AND tag_id = (SELECT id FROM tags WHERE code = 'pool' AND region_id = place_tags.region_id)`,
+      [id1],
+    );
+    const later = planChanges((await loadLodging(appDb, "test-region")).places, [
+      { placeId: id1!, structured: [], reviews: [], hash: "h1b" },
+      { placeId: id2!, structured: [], reviews: [], hash: "h2b" },
+    ]);
+    const s2 = await applyChanges(appDb, state.regionId, later.changes, { model: "claude-sonnet-5-5" });
+    expect(s2.removed).toBe(1);
+    expect(await tags(id1!)).toEqual(["kids:import", "pool:manual"]);
+    expect(await tags(id2!)).toEqual([]);
+
+    // Импорт ставит свои теги с источником import и не трогает чужие.
+    await writePlaces(appDb, "test-region", [place("gAm2", { categoryCode: "sadyby" })], t);
+    expect(await tags(id2!)).toEqual(["kids:import"]);
   });
 
   it("ручная чистка (place.curate от system) и использование: импорт не меняет категорию, пункт, статус и не архивирует", async () => {
