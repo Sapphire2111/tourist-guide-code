@@ -37,18 +37,19 @@ html[data-design="modern"] {
   --sheet-bg: #fbf8f1;
   --sheet-border: #e2d9c5;
   --fire: #c2521a;
-  --hero-far: #7fa99b;
-  --hero-far-o: 0.45;
-  --hero-mid: #3b6e5c;
-  --hero-mid-o: 0.78;
-  --hero-near: #1e4635;
-  --hero-trees: #122b20;
-  --hero-lit: #fffdf9;
-  --hero-lit-o: 0.42;
+  --hero-far: #6ba392;
+  --hero-far-o: 0.62;
+  --hero-mid: #356957;
+  --hero-mid-o: 0.88;
+  --hero-near: #1b4332;
+  --hero-valley: #102a1f;
+  --hero-trees: #0c2118;
+  --hero-lit: #fff8eb;
+  --hero-lit-o: 0.54;
   --hero-mist: #ffffff;
-  --hero-mist-o: 0.3;
-  --hero-edge-o: 0;
-  --hero-stars-o: 0;
+  --hero-mist-o: 0.58;
+  --hero-edge-o: 0.48;
+  --hero-stars-o: 0.36;
   --art-far: #1e4e3a;
   --art-mist: #ffffff;
   --art-mist-o: 0.25;
@@ -57,7 +58,7 @@ html[data-design="modern"] {
 html[data-design="modern"] body {
   background-color: var(--app-bg);
 }
-/* Фон «Поруч» і головної: темний смарагд угорі плавно переходить у крафт; без сегмента-смуги під шапкою. */
+/* Фон «Поруч» і головної: темний смарагд угорі; на головній поверх нього лежить повноекранна панорама Карпат. */
 html[data-screen="nearby"] body {
   background-image: linear-gradient(
     180deg,
@@ -69,17 +70,12 @@ html[data-screen="nearby"] body {
   background-repeat: no-repeat;
 }
 html[data-screen="home"] body {
-  background-image: linear-gradient(
-    180deg,
-    var(--top-bg) 0,
-    var(--top-bg) 150px,
-    var(--top-mid) 400px,
-    var(--top-end) 820px
-  );
-  background-repeat: no-repeat;
+  background-color: var(--top-bg);
+  background-image: linear-gradient(180deg, var(--top-bg) 0%, var(--top-mid) 52%, #102a1f 100%);
+  background-attachment: fixed;
 }
 
-/* Верхня смуга: компактна й зливається з темним верхом. Без transform і backdrop-filter (ТЗ §6.4). */
+/* Верхня смуга: компактна й зливається з небом над горами. Без transform і backdrop-filter (ТЗ §6.4). */
 html[data-design="modern"] .kosiv-top {
   gap: 6px;
   padding-top: calc(
@@ -91,6 +87,10 @@ html[data-design="modern"] .kosiv-top {
   padding-right: 10px;
   background-color: var(--top-bg);
   color: var(--top-text);
+}
+html[data-screen="home"] .kosiv-top {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgb(11 29 22 / 78%) 0%, transparent 100%);
 }
 html[data-screen="inner"] .kosiv-top {
   padding-bottom: 8px;
@@ -157,17 +157,24 @@ html[data-design="modern"] .kosiv-content h2 {
   font-weight: 700;
 }
 
-/* Привітання та «Локація» на головній лежать на темному верху. */
+/* На головній усі елементи плавно рухаються поверх фіксованої панорами Карпатських гір. */
 html[data-screen="home"] .kosiv-content {
-  padding-top: 2px;
-  gap: 10px;
+  padding-top: 0;
+  gap: 8px;
+}
+html[data-screen="home"] .kosiv-content > :not(.modern-home),
+.modern-home > :not(.modern-hero),
+.modern-hero > :not(.modern-hero-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 html[data-design="modern"] .kosiv-welcome {
-  gap: 3px;
+  gap: 2px;
 }
 html[data-screen="home"] .kosiv-welcome {
-  background-color: var(--top-bg);
+  background-color: transparent;
   color: var(--top-text);
+  text-shadow: 0 1px 8px rgb(8 22 16 / 75%);
 }
 html[data-screen="home"] .kosiv-welcome:not(:has(> *:not([data-testid="venue-summary"]))) {
   display: none;
@@ -180,8 +187,8 @@ html[data-screen="home"] .kosiv-welcome-hello {
 }
 html[data-screen="home"] .kosiv-welcome-sub,
 html[data-screen="home"] .kosiv-welcome .kosiv-muted {
-  font-size: 13px;
-  color: var(--top-muted);
+  font-size: 12.5px;
+  color: #d6e4dc;
 }
 html[data-screen="home"] .kosiv-welcome a {
   color: #fde68a;
@@ -192,10 +199,11 @@ html[data-design="modern"] .kosiv-welcome-sub[data-testid="venue-summary"] {
 html[data-design="modern"] .loc-chip,
 html[data-design="modern"] .wx-chip {
   min-height: 40px;
-  background-color: #1d3b2e;
+  background-color: #193629;
   color: #ffffff;
-  border: 1px solid #3a6450;
-  border-radius: 14px;
+  border: 1px solid rgb(246 174 45 / 35%);
+  border-radius: 9999px;
+  box-shadow: 0 6px 16px rgb(7 21 16 / 28%);
 }
 html[data-design="modern"] .loc-chip svg {
   color: #f6ae2d;
@@ -204,43 +212,42 @@ html[data-design="modern"] .loc-chip svg {
 .modern-home {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 11px;
 }
 
-/* Hero: панорама на весь блок, поверх неї — заголовок, скляне поле ассистента, теги, картка закладу. */
-.modern-hero {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 12px 12px;
-  border-radius: 28px;
-  border: 1.5px solid #2d5644;
-  background-color: #0b1d16;
-  background-image:
-    radial-gradient(circle at 50% 82%, rgb(242 100 25 / 28%), transparent 58%),
-    linear-gradient(180deg, #0b1d16 0%, #16382b 56%, #274235 100%);
-  box-shadow: 0 18px 40px -14px rgb(11 29 21 / 50%);
-  color: #ffffff;
-}
-.modern-hero-art,
-.modern-hero-rose {
-  position: absolute;
-  z-index: -1;
+/* Повноекранний живий фон Карпатських гір (фіксований за всім інтерфейсом головної). */
+.modern-hero-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 0;
   pointer-events: none;
+  overflow: hidden;
+  background-color: var(--top-bg);
+  background-image:
+    radial-gradient(circle at 50% 30%, rgb(242 100 25 / 28%), transparent 56%),
+    linear-gradient(180deg, #0b1d16 0%, #173a2c 42%, #133124 74%, #0d231a 100%);
 }
 .modern-hero-art {
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
 }
 .modern-hero-rose {
-  top: 10px;
-  right: 10px;
-  width: 58px;
-  height: 58px;
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  width: 78px;
+  height: 78px;
+  filter: drop-shadow(0 0 18px rgb(245 158 11 / 48%));
+  animation: modern-rose-pulse 7s ease-in-out infinite;
+}
+.modern-hero-glow {
+  animation: modern-vatra-breathe 5s ease-in-out infinite;
 }
 .modern-hero-far {
   fill: var(--hero-far);
@@ -248,7 +255,7 @@ html[data-design="modern"] .loc-chip svg {
 }
 .modern-hero-edge {
   stroke: #f6ae2d;
-  stroke-width: 1;
+  stroke-width: 1.25;
   opacity: var(--hero-edge-o);
 }
 .modern-hero-lit {
@@ -262,65 +269,202 @@ html[data-design="modern"] .loc-chip svg {
 .modern-hero-near {
   fill: var(--hero-near);
 }
+.modern-hero-valley {
+  fill: var(--hero-valley);
+}
 .modern-hero-trees {
   fill: var(--hero-trees);
 }
 .modern-hero-stars {
   fill: #f6ae2d;
   stroke: #f6ae2d;
-  stroke-width: 0.7;
+  stroke-width: 0.75;
   opacity: var(--hero-stars-o);
 }
 .modern-hero-mist {
   fill: var(--hero-mist);
   opacity: var(--hero-mist-o);
-  animation: modern-mist 8s ease-in-out infinite;
+  animation: modern-mist 7s ease-in-out infinite;
 }
 .modern-hero-mist-slow {
-  animation-duration: 12s;
+  animation: modern-mist-slow 11s ease-in-out infinite;
 }
 .modern-nearby-art ellipse {
   animation: modern-mist 8s ease-in-out infinite;
 }
+/* Живі іскри ватри над хребтами Чорногори */
+.modern-hero-embers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.modern-hero-embers i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: #f6ae2d;
+  box-shadow: 0 0 10px 2px rgb(242 100 25 / 80%);
+  opacity: 0;
+  animation: modern-ember-rise 3.6s ease-out infinite;
+}
+.modern-hero-embers i:nth-child(1) {
+  left: 16%;
+  top: 34%;
+  animation-delay: 0s;
+  animation-duration: 3.3s;
+}
+.modern-hero-embers i:nth-child(2) {
+  left: 33%;
+  top: 38%;
+  width: 5px;
+  height: 5px;
+  background-color: #f26419;
+  animation-delay: 1.1s;
+  animation-duration: 4.1s;
+}
+.modern-hero-embers i:nth-child(3) {
+  left: 51%;
+  top: 32%;
+  width: 7px;
+  height: 7px;
+  animation-delay: 0.5s;
+  animation-duration: 2.9s;
+}
+.modern-hero-embers i:nth-child(4) {
+  left: 67%;
+  top: 36%;
+  width: 5px;
+  height: 5px;
+  background-color: #f26419;
+  animation-delay: 1.7s;
+  animation-duration: 3.8s;
+}
+.modern-hero-embers i:nth-child(5) {
+  left: 82%;
+  top: 33%;
+  animation-delay: 0.8s;
+  animation-duration: 4.2s;
+}
+.modern-hero-embers i:nth-child(6) {
+  left: 44%;
+  top: 40%;
+  width: 4.5px;
+  height: 4.5px;
+  animation-delay: 2.2s;
+  animation-duration: 3.5s;
+}
 @keyframes modern-mist {
+  0%,
+  100% {
+    transform: translate3d(-16px, 0, 0);
+    opacity: 0.42;
+  }
   50% {
-    transform: translateX(12px);
+    transform: translate3d(24px, -4px, 0);
+    opacity: 0.82;
   }
 }
+@keyframes modern-mist-slow {
+  0%,
+  100% {
+    transform: translate3d(20px, 0, 0);
+    opacity: 0.36;
+  }
+  50% {
+    transform: translate3d(-22px, 3px, 0);
+    opacity: 0.72;
+  }
+}
+@keyframes modern-rose-pulse {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.06) rotate(8deg);
+    opacity: 1;
+  }
+}
+@keyframes modern-vatra-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes modern-ember-rise {
+  0% {
+    transform: translate3d(0, 10px, 0) scale(0.95);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(-10px, -48px, 0) scale(0.25);
+    opacity: 0;
+  }
+}
+@keyframes modern-pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(242 100 25 / 55%);
+  }
+  50% {
+    box-shadow: 0 0 0 9px rgb(242 100 25 / 0%);
+  }
+}
+
+/* Hero без замкнутої рамки: заголовок і скляна капсула ширяють прямо перед відкритими горами. */
+.modern-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #ffffff;
+}
 .modern-hero-head {
-  padding: 0 62px 92px 4px;
+  padding: 2px 76px 38px 2px;
 }
 html[data-design="modern"] .modern-hero h2#sections-title {
   margin: 0 0 4px;
-  font-size: clamp(27px, 7.6vw, 32px);
-  line-height: 1.08;
+  font-size: clamp(27px, 7.6vw, 33px);
+  line-height: 1.06;
   color: #ffffff;
-  text-shadow: 0 2px 10px rgb(12 32 24 / 65%);
+  text-shadow: 0 2px 14px rgb(7 21 16 / 85%);
 }
 .modern-hero-head p {
   margin: 0;
   color: #e5efe9;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.35;
-  text-shadow: 0 1px 6px rgb(12 32 24 / 75%);
+  text-shadow: 0 1px 8px rgb(7 21 16 / 85%);
 }
 .modern-hero-glass {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   padding: 10px;
   border-radius: 24px;
-  background-color: rgb(255 255 255 / 86%);
+  background-color: rgb(255 255 255 / 88%);
   border: 1px solid #ffffff;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 10px 24px rgb(9 25 19 / 28%);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 14px 32px -10px rgb(7 21 16 / 45%);
   color: var(--glass-text);
 }
 html[data-design="modern"] .assistant-pill {
   min-height: 48px;
-  padding: 2px 3px 2px 12px;
+  padding: 2px 4px 2px 12px;
   border-radius: 18px;
   background-color: rgb(22 56 43 / 7%);
   border: 1px solid rgb(22 56 43 / 16%);
@@ -352,12 +496,15 @@ html[data-design="modern"] .assistant-action {
   border-radius: 14px;
   background-color: var(--fire);
   color: #ffffff;
+  animation: modern-pulse-glow 2.4s infinite;
 }
 .modern-hero-glass [data-testid="assistant-box"] {
   gap: 0;
 }
-/* Приклади й сезонні теги — по одному прокручуваному рядку у склі. */
-.modern-hero-glass .assistant-examples,
+/* Ховаємо дублюючий ряд прикладів у скляній капсулі — залишаємо один ряд сезонних чипів, щоб не закривати гори. */
+.modern-hero-glass .assistant-examples {
+  display: none;
+}
 .modern-season .kosiv-tags {
   flex-wrap: nowrap;
   gap: 6px;
@@ -399,14 +546,14 @@ html[data-design="modern"] .assistant-action {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  background-color: rgb(255 255 255 / 86%);
+  background-color: rgb(255 255 255 / 88%);
   border: 1px solid #ffffff;
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border-radius: 18px;
   color: var(--glass-text);
   text-decoration: none;
-  box-shadow: 0 8px 20px rgb(9 25 19 / 24%);
+  box-shadow: 0 10px 24px rgb(7 21 16 / 32%);
 }
 .modern-host-icon {
   display: grid;
@@ -449,14 +596,14 @@ html[data-design="modern"] .assistant-action {
   color: #9e3616;
 }
 
-/* Сетка в 2 колонки, 8 одинаковых плиток */
+/* Сітка в 2 колонки, 8 збалансованих Bento-плиток поверх гірського пейзажу */
 .modern-intentions {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 108px;
+  grid-auto-rows: minmax(114px, auto);
   gap: 10px;
 }
 .modern-intention {
@@ -478,8 +625,8 @@ html[data-design="modern"] .assistant-action {
     linear-gradient(160deg, #1d2922 0%, #2e2119 100%);
   color: #fff8f0;
   text-decoration: none;
-  border: 1.5px solid #593e2e;
-  box-shadow: 0 12px 26px -12px rgb(18 36 27 / 40%);
+  border: 1.5px solid #6b4c38;
+  box-shadow: 0 12px 26px -10px rgb(7 21 16 / 52%);
   transition:
     transform 0.16s ease,
     border-color 0.16s ease;
@@ -489,18 +636,18 @@ html[data-design="modern"] .assistant-action {
   background-image:
     radial-gradient(circle at 88% 18%, rgb(45 212 191 / 26%), transparent 54%),
     linear-gradient(160deg, #0d251b 0%, #183f2e 100%);
-  border-color: #2e634c;
+  border-color: #367358;
 }
 .modern-intention[data-tone="cream"] {
   background-color: #fdf3e7;
   background-image: linear-gradient(160deg, #fff9f2 0%, #f6dec4 100%);
-  border-color: #d9b28c;
+  border-color: #e2be98;
   color: #16241c;
 }
 .modern-intention[data-tone="mint"] {
   background-color: #e4f1ea;
   background-image: linear-gradient(160deg, #f2f9f5 0%, #cfe6da 100%);
-  border-color: #9ac2ad;
+  border-color: #a4cbb7;
   color: #12261c;
 }
 .modern-intention > svg:first-child {
@@ -537,11 +684,10 @@ html[data-design="modern"] .assistant-action {
   min-width: 0;
   max-width: 100%;
   font-family: var(--font-heading);
-  font-size: clamp(18px, 5.2vw, 21px);
-  line-height: 1.1;
+  font-size: clamp(18px, 5vw, 20.5px);
+  line-height: 1.08;
   font-weight: 700;
   overflow-wrap: break-word;
-  -webkit-text-stroke: 0.25px currentcolor;
 }
 .modern-intention small {
   display: block;
@@ -550,15 +696,14 @@ html[data-design="modern"] .assistant-action {
   font-size: 11px;
   line-height: 1.2;
   font-weight: 500;
-  -webkit-text-stroke: 0;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 .modern-intention:hover {
   border-color: #f59e0b;
   transform: translateY(-2px);
 }
 
-/* Кнопка «Що поруч зі мною зараз»: полум'я ватри. */
+/* Кнопка «Що поруч зі мною зараз»: полум'я ватри поверх гір. */
 .modern-location-action {
   min-height: 52px;
   display: flex;
@@ -567,13 +712,13 @@ html[data-design="modern"] .assistant-action {
   padding: 10px 16px;
   border-radius: 20px;
   background-color: #9e3616;
-  background-image: linear-gradient(135deg, #b33c18 0%, #872b0f 100%);
-  border: 1.5px solid #d97706;
+  background-image: linear-gradient(135deg, #c2521a 0%, #8f2d10 100%);
+  border: 1.5px solid #f59e0b;
   color: #ffffff;
   font-size: 14.5px;
   font-weight: 750;
   text-decoration: none;
-  box-shadow: 0 12px 28px -12px rgb(158 54 22 / 50%);
+  box-shadow: 0 12px 28px -10px rgb(158 54 22 / 60%);
 }
 .modern-location-action > svg {
   color: #fde68a;
@@ -581,6 +726,26 @@ html[data-design="modern"] .assistant-action {
 }
 .modern-location-action > svg:last-child {
   margin-left: auto;
+}
+
+/* Секція популярних місць і службовий блок унизу головної (контрастний світлий текст на темному тлі лісу). */
+html[data-screen="home"] #home-places-title {
+  color: #ffffff;
+  text-shadow: 0 1px 8px rgb(7 21 16 / 75%);
+}
+html[data-screen="home"] .kosiv-section-link {
+  color: #fde68a;
+}
+html[data-screen="home"] section[aria-labelledby="home-places-title"] > .kosiv-muted {
+  color: #d6e4dc;
+}
+html[data-screen="home"] .kosiv-meta-block,
+html[data-screen="home"] .kosiv-meta-block h2,
+html[data-screen="home"] .kosiv-meta-block p {
+  color: #d6e4dc;
+}
+html[data-screen="home"] .kosiv-meta-block a {
+  color: #fde68a;
 }
 
 /* Картки місць у списках */
@@ -596,35 +761,35 @@ html[data-design="modern"] .kosiv-place {
 html[data-design="modern"] .kosiv-place-title {
   font-size: 19px;
   line-height: 1.15;
-  -webkit-text-stroke: 0.2px currentcolor;
 }
 html[data-design="modern"] .kosiv-tag,
 html[data-design="modern"] .kosiv-toggle {
   border-color: var(--app-border);
 }
 
-/* Нижній док: темний смарагд, активна вкладка — золото; значок і підпис в один рядок, як на еталоні. */
+/* Нижній док: темний смарагд, активна вкладка — золото; значок над підписом (як у затвердженому прототипі). */
 html[data-design="modern"] .kosiv-nav {
-  padding-top: 3px;
-  background-color: #16382b;
+  padding-top: 4px;
+  background-color: #122e23;
   background-image: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   border-radius: 24px 24px 0 0;
-  box-shadow: 0 -4px 18px rgb(9 25 19 / 18%);
-  border-top: 1px solid #2f5b48;
+  box-shadow: 0 -6px 24px rgb(7 21 16 / 38%);
+  border-top: 1px solid rgb(246 174 45 / 32%);
 }
 html[data-design="modern"] .kosiv-nav-item {
-  flex-direction: row;
+  flex-direction: column;
   gap: 2px;
   min-height: 44px;
-  font-size: 11.5px;
+  font-size: 11px;
+  line-height: 1.1;
   font-weight: 600;
-  color: #e3ece7;
+  color: #d8e6df;
 }
 html[data-design="modern"] .kosiv-nav-icon {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
 }
 html[data-design="modern"] .kosiv-nav-item[aria-current="page"] {
   color: #f6ae2d;
@@ -1386,7 +1551,7 @@ html[data-design="modern"] .pc-action {
   border-radius: 16px;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 300px) {
   .modern-help span {
     display: none;
   }
@@ -1410,6 +1575,10 @@ html[data-design="modern"] .pc-action {
     transform: none;
   }
   .modern-hero-mist,
+  .modern-hero-rose,
+  .modern-hero-glow,
+  .modern-hero-embers i,
+  html[data-design="modern"] .assistant-action,
   .modern-nearby-art ellipse,
   .modern-locate[aria-busy="true"] svg,
   .modern-map-stage .kosiv-pin-base::before {
@@ -1454,18 +1623,19 @@ html[data-theme="night"] {
   --sheet-bg: #0f241c;
   --sheet-border: rgb(246 174 45 / 30%);
   --fire: #c2521a;
-  --hero-far: #133326;
-  --hero-far-o: 0.85;
-  --hero-mid: #0f2a20;
-  --hero-mid-o: 0.9;
-  --hero-near: #0b1f17;
-  --hero-trees: #071510;
+  --hero-far: #183d2e;
+  --hero-far-o: 0.88;
+  --hero-mid: #123024;
+  --hero-mid-o: 0.92;
+  --hero-near: #0c2219;
+  --hero-valley: #081812;
+  --hero-trees: #05110c;
   --hero-lit: #f6ae2d;
-  --hero-lit-o: 0.12;
+  --hero-lit-o: 0.22;
   --hero-mist: #f6ae2d;
-  --hero-mist-o: 0.08;
-  --hero-edge-o: 0.4;
-  --hero-stars-o: 0.55;
+  --hero-mist-o: 0.22;
+  --hero-edge-o: 0.65;
+  --hero-stars-o: 0.72;
   --art-mist: #f6ae2d;
   --art-mist-o: 0.08;
 }
@@ -1478,19 +1648,22 @@ html[data-theme="night"][data-screen="nearby"] body {
   background-size: 100% 90vh;
 }
 html[data-theme="night"][data-screen="home"] body {
+  background-color: #091913;
   background-image:
-    radial-gradient(circle at 50% 460px, rgb(242 100 25 / 10%), transparent 460px),
+    radial-gradient(circle at 50% 460px, rgb(242 100 25 / 12%), transparent 460px),
     linear-gradient(180deg, #091913 0, #091913 150px, #0f291e 460px, #091913 900px);
 }
 html[data-theme="night"][data-screen="inner"] .kosiv-top {
   border-bottom: 1px solid rgb(246 174 45 / 25%);
 }
-html[data-theme="night"] .modern-hero {
-  border-color: rgb(246 174 45 / 30%);
+html[data-theme="night"] .modern-hero-backdrop {
   background-color: #071510;
   background-image:
-    radial-gradient(circle at 50% 72%, rgb(242 100 25 / 42%), rgb(246 174 45 / 10%) 40%, transparent 62%),
-    linear-gradient(180deg, #071510 0%, #0f291e 58%, #1d1612 100%);
+    radial-gradient(circle at 50% 34%, rgb(242 100 25 / 38%), rgb(246 174 45 / 12%) 42%, transparent 64%),
+    linear-gradient(180deg, #071510 0%, #0f291e 52%, #1d1612 100%);
+}
+html[data-theme="night"] .modern-hero {
+  background: transparent;
 }
 html[data-theme="night"] .modern-hero-glass,
 html[data-theme="night"] .modern-host {
