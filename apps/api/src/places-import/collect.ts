@@ -18,6 +18,7 @@ import {
 } from "./google-client.js";
 import {
   boundingBox,
+  dedupePlaces,
   GOOGLE_PLACE_ID,
   mapPlace,
   localityOf,
@@ -196,6 +197,7 @@ export async function collect(
       no_category: 0,
       no_name: 0,
       unverified: 0,
+      duplicate: 0,
     },
     byLocality: {},
     byCategory: {},
@@ -212,7 +214,7 @@ export async function collect(
     queriesTotal: areas.length * queries.length,
     zones: zoneStats,
   };
-  const places: MappedPlace[] = [];
+  const mapped: MappedPlace[] = [];
   const closedIds: string[] = [];
   const rejectedIds: string[] = [];
   for (const p of raw.values()) {
@@ -243,8 +245,14 @@ export async function collect(
       }
       continue;
     }
-    const m = r.place;
-    places.push(m);
+    mapped.push(r.place);
+  }
+  // Свёртка дублів (записи номерів Booking, однакові назви в 50 м): відкинуті — «не наші», уже імпортовані
+  // запис архівує, якщо адмінка їх не чіпала.
+  const { kept: places, duplicateIds } = dedupePlaces(mapped);
+  stats.skipped.duplicate = duplicateIds.length;
+  rejectedIds.push(...duplicateIds);
+  for (const m of places) {
     inc(stats.byLocality, m.localityCode);
     inc(stats.byCategory, m.categoryCode);
     if (m.phone) stats.withPhone++;

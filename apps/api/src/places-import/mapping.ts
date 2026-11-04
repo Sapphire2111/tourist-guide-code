@@ -1,6 +1,8 @@
 // Маппинг ответа Google Places API (New) в место каталога (без БД и сети): типы → наши категории, часы работы →
-// place_schedules, телефон/сайт — в форматы CHECK миграции 0012, выбор населённого пункта по расстоянию.
+// place_schedules, телефон/сайт — в форматы CHECK миграции 0012, выбор населённого пункта (адрес Google, затем
+// расстояние), теги места по удобствам Google и категории.
 import type { LonLat } from "../db/index.js";
+import { LOCALITY_ALIASES } from "../modules/guide/index.js";
 import { REGION_POSTCODE_PREFIXES, type ImportLocality, type SearchZone } from "./config.js";
 
 /** Поля места, которые запрашивает импорт (FieldMask в google-client.ts). */
@@ -9,6 +11,8 @@ export type GooglePlace = {
   displayName?: { text?: string; languageCode?: string };
   formattedAddress?: string;
   shortFormattedAddress?: string;
+  /** Части адреса (SKU Text Search Pro — как адрес и точка): населённый пункт — тип locality. */
+  addressComponents?: { longText?: string; shortText?: string; types?: string[] }[];
   location?: { latitude?: number; longitude?: number };
   types?: string[];
   primaryType?: string;
@@ -69,10 +73,11 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   ice_cream_shop: "cafes",
   confectionery: "cafes",
   juice_shop: "cafes",
-  bar: "cafes",
-  pub: "cafes",
-  wine_bar: "cafes",
-  cocktail_bar: "cafes",
+  // Бари, паби, кальянні — окремо від кафе (04.11.2026); night_club/hookah — ще й «Для дорослих» (extraCategories).
+  bar: "bars",
+  pub: "bars",
+  wine_bar: "bars",
+  cocktail_bar: "bars",
   bar_and_grill: "restaurants",
   // Покупки
   gift_shop: "souvenirs",
@@ -163,7 +168,10 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   cycling_park: "active",
   off_roading_area: "active",
   horseback_riding: "active",
-  hiking_area: "active",
+  // «Зона для прогулянок»: Google ставит її видам, альтанкам, гойдалкам, мостам — не активність. Тип слабкий
+  // (WEAK_SOURCE_TYPES): назва уточнює, без уточнення — природа й поріг відгуків (WEAK_MIN_REVIEWS).
+  hiking_area: "nature",
+  aerial_lift: "ski-lifts",
   // Природа й пам'ятки
   natural_feature: "nature",
   national_park: "nature",
@@ -186,7 +194,7 @@ export const GOOGLE_TYPE_TO_CATEGORY: Readonly<Record<string, string>> = {
   landmark: "sights",
   scenic_spot: "nature",
   // Дополнения по первой выгрузке (02.11.2026): типы, которые встретились у мест пилота.
-  hookah_bar: "cafes",
+  hookah_bar: "bars",
   pizza_delivery: "fast-food",
   playground: "kids",
   florist: "stores",
@@ -248,11 +256,30 @@ const WEAK = new Set<string | undefined>([
   "adult-fun",
 ]);
 
-const SKI = /\bski|ski\b|лиж|сноуборд|snowboard|бордів/i;
+/** Лижі: латиниця й русизми («лыж», «горнолыжн», «суперскі») — частина вивісок прокатів російською. */
+const SKI = /\bski|ski\b|лиж|лыж|сноуборд|snowboard|бордів|суперск/i;
 /** Лыжная точка без типа Google (SeeSki, HAPPY SKI…): в регионе это прокат. */
 const t0 = (n: string) => /\bski|ski\b/i.test(n);
 const ADVENTURE =
-  /джип|jeep|квадро|kvadro|quadro|багі|баггі|buggy|\batv\b|рафтинг|rafting|зіплайн|zipline|тролей|родельбан|rope ?jump|роуп|адреналін|на конях|кінн|конн[іи]|horse/i;
+  /джип|jeep|квадро|kvadro|quadro|багі|баггі|buggy|\batv\b|позашлях|off-?road|снігох|снегох|рафтинг|rafting|зіплайн|zipline|тролей|родельбан|rope ?jump|роуп|адреналін|на конях|кінн|конн[іи]|horse/i;
+/** Вершина: «Гора Х», «Х гора», «Hora X», «X mountain», «Вершина …», «г.Томас». */
+const PEAK = new RegExp(
+  `(^|${NOT_LETTER})(гора|hora|mount|mountain|вершина)(${NOT_LETTER}|$)|(^|${NOT_LETTER})г\\.\\s*[а-яіїєґa-z]`,
+  "i",
+);
+/** Природний об'єкт за назвою (водоспад, скеля, джерело, полонина, каньйон, озеро, печера, дерево, потік…). */
+const NATURE_NAME =
+  /водоспад|водопад|вдсп|водограй|оглядов|скел[яіьи]|waterfall|viewpoint|джерел|криниц|родник|полонин|каньйон|каньон|canyon|озер|печер|cave|смерек|сосн|дерев(?![’'ʼ`]?ян)|струм|потіч|потік|ручей|ручай|річк|river|lake/i;
+/** Канатні дороги й підйомники. */
+const LIFT =
+  /підйомник|витяг|бугел|крісельн|\blift\b|канатн.{0,4}\s*дорог|канатк|aerial ?lift|cable ?car|гондол/i;
+/** Таксі за назвою — главнее travel_agency/lodging (Google ставит такси «Туристичне агентство», «Нічліг»). */
+const TAXI = /таксі|такси|taxi/i;
+/** Кальянні, лаунжі й паби з типом кафе — «Бари». */
+const BAR_NAME = new RegExp(
+  `кальян|hookah|shisha|lounge|лаунж|(^|${NOT_LETTER})(паб|pub)(${NOT_LETTER}|$)`,
+  "i",
+);
 const REPAIR = /ремонт|сервіс|service|repair|майстерн/i;
 const TECH = /телефон|смартфон|ноутбук|комп.ютер|техн|iphone|apple|gsm|побутов|electronics|пральн|холодильн/i;
 const OPERATOR = /київстар|kyivstar|vodafone|водафон|lifecell|лайфсел/i;
@@ -272,14 +299,21 @@ const NAME_RULES: readonly {
     code: "tow-trucks",
     when: (t) => WEAK.has(t) || t === "car-service" || t === "taxi",
   },
+  // Таксі: у Google — travel_agency (екскурсії — доп. категорія) или lodging («Приватне таксі Ворохта»).
+  {
+    test: (n) => TAXI.test(n),
+    code: "taxi",
+    when: (t) => WEAK.has(t) || t === "excursions" || t === "hotels" || t === "sadyby",
+  },
   // Гірські лижі: школи, підйомники, сервіс, магазини, курорти, прокат (основная; прокат — ещё и gear-rental).
   {
     test: (n) => SKI.test(n) && /школ|school|інструктор|instructor/i.test(n),
     code: "ski-schools",
     when: (t) => WEAK.has(t) || t === "ski-resorts" || t === "gear-rental",
   },
+  // Канатні дороги й витяги: и при «Зоні для прогулянок»/active (канатна дорога «Захар Беркут»).
   {
-    test: (n) => /підйомник|витяг|бугел|крісельн|\blift\b/i.test(n),
+    test: (n) => LIFT.test(n),
     code: "ski-lifts",
     when: (t) => WEAK.has(t) || t === "ski-resorts",
   },
@@ -289,7 +323,7 @@ const NAME_RULES: readonly {
     when: (t) => WEAK.has(t) || t === "ski-resorts",
   },
   {
-    test: (n) => /гірськолиж|\bski|лиж|сноуборд|snowboard/i.test(n) && !RENTAL.test(n),
+    test: (n) => /гірськолиж|\bski|лиж|лыж|сноуборд|snowboard/i.test(n) && !RENTAL.test(n),
     code: "ski-shops",
     when: (t) => t === "stores",
   },
@@ -304,31 +338,51 @@ const NAME_RULES: readonly {
     when: (t) => WEAK.has(t) || t === "gear-rental",
   },
   // Активний відпочинок: джипінг, квадроцикли, рафтинг, зіплайн, родельбан, кінні прогулянки (раньше — прокат,
-  // екскурсії или атракціони).
+  // екскурсії или атракціони). Джип-тури з типом car_rental — теж сюди (справжній прокат авто без цих слів —
+  // «Прокат авто»).
   {
     test: (n) => ADVENTURE.test(n),
     code: "active",
-    when: (t) => WEAK.has(t) || t === "excursions" || t === "gear-rental",
+    when: (t) => WEAK.has(t) || t === "excursions" || t === "gear-rental" || t === "rental",
   },
   // Паркінг без типа (bus_stop и т. п.); «Ринок … стоянка» (store) — не паркінг.
   { test: (n) => /паркінг|parking/i.test(n), code: "parking", when: (t) => t === undefined },
   {
-    test: (n) => /колиб/i.test(n),
+    test: (n) => /колиб|kolyb|kolib/i.test(n),
     code: "kolyby",
-    when: (t) => t === "restaurants" || t === "cafes" || t === "fast-food",
+    when: (t) =>
+      t === "restaurants" ||
+      t === "cafes" ||
+      t === "fast-food" ||
+      t === "bars" ||
+      (WEAK.has(t) && t !== "stores"),
   },
   {
-    test: (n) => /[сc]адиб|sadyb|котедж|віл[аи]|хат[аи]|будин|cottage|chalet|шале/i.test(n),
+    test: (n) => BAR_NAME.test(n),
+    code: "bars",
+    when: (t) => t === "cafes" || (WEAK.has(t) && t !== "stores"),
+  },
+  {
+    // Вілли латиницею й кирилицею («Villa Leku», «Вілла Прованс»); «Привілля» — не вілла (с начала слова).
+    test: (n) =>
+      /[сc]адиб|sadyb|котедж|хат[аи]|будин|cottage|chalet|шале/i.test(n) ||
+      new RegExp(`(^|${NOT_LETTER})(вілл?[аиі]|вилл?[аы]|villa)`, "i").test(n),
     code: "sadyby",
     when: (t) => t === "hotels",
   },
   { test: (n) => RENTAL.test(n) && GEAR.test(n), code: "gear-rental", when: (t) => WEAK.has(t) },
   { test: (n) => RENTAL.test(n) && CAR.test(n), code: "rental", when: (t) => WEAK.has(t) },
   { test: (n) => CHAN.test(n), code: "chany", when: (t) => WEAK.has(t) || t === "spa" },
+  // Вершини — для слабких і природних типів (natural_feature, hiking_area, tourist_attraction); не для магазинів.
   {
-    test: (n) => /водоспад|водопад|оглядов|скел[яі]|waterfall|viewpoint/i.test(n),
+    test: (n) => PEAK.test(n),
+    code: "peaks",
+    when: (t) => t === undefined || t === "nature" || t === "sights" || t === "active",
+  },
+  {
+    test: (n) => NATURE_NAME.test(n),
     code: "nature",
-    when: (t) => WEAK.has(t),
+    when: (t) => WEAK.has(t) && t !== "stores",
   },
   {
     test: (n) => /джип|екскурс|excursion|jeep|похід|походи/i.test(n) || GUIDE.test(n),
@@ -366,7 +420,7 @@ const NAME_RULES: readonly {
   {
     test: (n) => ADULT.test(n),
     code: "adult-fun",
-    when: (t) => WEAK.has(t) || t === "cafes" || t === "kids",
+    when: (t) => WEAK.has(t) || t === "cafes" || t === "bars" || t === "kids",
   },
   {
     // Только при типе Google (без типа «дитяч…» — садочки, школи, лікарні); табори, магазини, школи — не розвага.
@@ -376,7 +430,7 @@ const NAME_RULES: readonly {
     code: "kids",
     when: (t) => t !== undefined && WEAK.has(t) && t !== "stores",
   },
-  { test: (n) => /таксі|такси|taxi|трансфер/i.test(n), code: "taxi", when: (t) => t === undefined },
+  { test: (n) => /трансфер|transfer/i.test(n), code: "taxi", when: (t) => t === undefined },
   { test: (n) => /аптек/i.test(n), code: "pharmacies", when: (t) => t === undefined },
   {
     test: (n) => /[сc]адиб|sadyb|котедж|відпочинок в/i.test(n),
@@ -385,7 +439,7 @@ const NAME_RULES: readonly {
   },
   // Прокат без уточнения и лыжные/вело-точки без типа: в регионе это прокат спорядження.
   {
-    test: (n) => RENTAL.test(n) || /ski|лиж|bike|вело|enduro|ендуро/i.test(n),
+    test: (n) => RENTAL.test(n) || /ski|лиж|лыж|bike|вело|enduro|ендуро/i.test(n),
     code: "gear-rental",
     when: (t) => t === undefined,
   },
@@ -397,7 +451,7 @@ const NAME_RULES: readonly {
  */
 function refineByName(name: string, byType: string | undefined): string | undefined {
   for (const r of NAME_RULES) if (r.when(byType) && r.test(name)) return r.code;
-  return byType;
+  return undefined;
 }
 
 /**
@@ -405,13 +459,13 @@ function refineByName(name: string, byType: string | undefined): string | undefi
  * «Яремче») или платёжного бренда («Mastercard», «Visa») — такие точки пользователи Google ставят с любым типом.
  */
 const NOT_A_VENUE =
-  /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|ворохта|bukovel|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
+  /^(((буковель|яремче|татарів|микуличин|поляниця|яблуниця|яблониця|яблоница|ворохта|bukovel|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia|карпати)[\s,.-]*)+|mastercard|visa|приватбанк|monobank)$/i;
 /**
  * Природа з назвою лише населеного пункту («Яремче» з natural_feature/park) — мітка. Без «Буковель»/«Карпати»: так
  * звуться й гора, й хребет.
  */
 const NATURE_LABEL =
-  /^((яремче|татарів|микуличин|поляниця|яблуниця|ворохта|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia)[\s,.-]*)+$/i;
+  /^((яремче|татарів|микуличин|поляниця|яблуниця|яблониця|яблоница|ворохта|yaremche|vorokhta|tatariv|mykulychyn|polianytsia|yablunytsia)[\s,.-]*)+$/i;
 /** Поштомати (без персоналу, их сотни) засоряют карту — берём только відділення й пункти. */
 const PARCEL_LOCKER = /поштомат|parcel ?locker/i;
 /** Індекс Укрпошти в назві («Укрпошта 77344»). */
@@ -443,30 +497,123 @@ const CAMP = /табір|camp/i;
 const NOT_TOURIST_EDU =
   /дитячий садок|дитсадок|садочок|ясла|дюсш|спортивна школа|загальноосвітн|опорний ліцей|(ліцей|гімназія)\s*№|(^|[^а-яіїєґ])(днз|здо|зош)([^а-яіїєґ]|$)|школа\s*(№|n\s*\d|[іi]{1,3}(\s*-\s*[іi]{1,3})?\s+ступ)/i;
 
+/**
+ * Родові назви-мітки без імені власного: «Оглядовий майданчик», «Гойдалка», «Джерело», «Садиба», «Бар»… Користувачі
+ * Google ставлять такі точки з будь-яким типом; у списку вони нерозрізненні — не імпортуються за будь-якого типу.
+ * Порівняння — після labelKey (регістр, лапки, розділові знаки).
+ */
+const GENERIC_LABELS: ReadonlySet<string> = new Set([
+  "оглядовий майданчик",
+  "оглядова",
+  "оглядова площадка",
+  "оглядовий",
+  "смотровая площадка",
+  "відпочинок",
+  "отдых",
+  "отдих",
+  "місце відпочинку",
+  "місце для відпочинку",
+  "місце для пікніка",
+  "місце для пікніку",
+  "місце для туристів",
+  "зона відпочинку",
+  "пікнік",
+  "гойдалка",
+  "качеля",
+  "качели",
+  "альтанка",
+  "бесідка",
+  "лавочка",
+  "джерело",
+  "криниця",
+  "родник",
+  "гора",
+  "вершина",
+  "водоспад",
+  "панорама",
+  "вид на гори",
+  "краєвид",
+  "гарний краєвид",
+  "прокат",
+  "садиба",
+  "приватна садиба",
+  "котедж",
+  "бар",
+  "кафе",
+  "cafe",
+  "café",
+  "ресторан",
+  "колиба",
+  "магазин",
+  "not",
+]);
+
+/** Ключ назви для порівняння: нижній регістр, без лапок і розділових знаків, одинарні пробіли. */
+export function labelKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[«»"“”„'’ʼ`]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** Назва-мітка: родова (GENERIC_LABELS) або без імені — менше двох літер («1», «№ 5», «Ж»). */
+export function isGenericLabel(name: string): boolean {
+  const key = labelKey(name);
+  return GENERIC_LABELS.has(key) || (key.match(/\p{L}/gu)?.length ?? 0) < 2;
+}
+
+/**
+ * Слабкі типи Google, яким у таблиці дано не «слабку» категорію (hiking_area → nature): для правил за назвою вони —
+ * як active (назва уточнює: чан, квадроцикли, водоспад, вершина), без уточнення — категорія за таблицею.
+ */
+const WEAK_SOURCE_TYPES: ReadonlySet<string> = new Set(["hiking_area"]);
+
+/** Категорія місця й звідки вона: `byName` — уточнена за назвою; `type` — тип Google, що дав категорію за таблицею. */
+export type Classified = { code: string; byName: boolean; type?: string };
+
+/** Класифікація місця: типи, мітки, правила за назвою (mapCategory — лише код). Нет — undefined. */
+export function classifyPlace(
+  p: Pick<GooglePlace, "primaryType" | "types">,
+  name: string,
+): Classified | undefined {
+  const trimmed = name.trim();
+  if (isGenericLabel(trimmed)) return undefined;
+  const { code: byType, type } = categoryByTypes(p);
+  // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
+  if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(trimmed)) return undefined;
+  // Природа з назвою лише пункту («Яремче» з natural_feature/park) — теж мітка, а не водоспад чи гора.
+  if (byType === "nature" && NATURE_LABEL.test(trimmed)) return undefined;
+  const ruleKey = type && WEAK_SOURCE_TYPES.has(type) ? "active" : byType;
+  // Совпавшее правило, даже если дало ту же категорию (джип-тур при hiking_area → active), — категория по названию.
+  const refined = refineByName(trimmed, ruleKey);
+  const byName = refined !== undefined && (refined !== byType || ruleKey !== byType);
+  const code = refined ?? byType;
+  // Слабый тип без уточнения по названию: садочок/школа — не заведение для туриста.
+  if (!byName && LABEL_TYPES.has(byType) && NOT_TOURIST_EDU.test(trimmed)) return undefined;
+  if (!code) return undefined;
+  if (code === "post" && isForeignPost(trimmed)) return undefined;
+  if ((code === "kids" || code === "entertainment") && CAMP.test(trimmed)) return undefined;
+  return { code, byName, ...(type ? { type } : {}) };
+}
+
 /** Наша подкатегория места: primaryType, затем types по порядку, затем уточнение по названию. Нет — undefined. */
 export function mapCategory(p: Pick<GooglePlace, "primaryType" | "types">, name: string): string | undefined {
-  const byType = categoryByTypes(p);
-  // Метка «только пункт/бренд» — лишь при слабом типе: «Буковель» с ski_resort или «Карпати» с hotel — заведения.
-  if (LABEL_TYPES.has(byType) && NOT_A_VENUE.test(name.trim())) return undefined;
-  // Природа з назвою лише пункту («Яремче» з natural_feature/park) — теж мітка, а не водоспад чи гора.
-  if (byType === "nature" && NATURE_LABEL.test(name.trim())) return undefined;
-  const code = refineByName(name, byType);
-  // Слабый тип без уточнения по названию: садочок/школа — не заведение для туриста.
-  if (code === byType && LABEL_TYPES.has(byType) && NOT_TOURIST_EDU.test(name)) return undefined;
-  if (code === "post" && isForeignPost(name)) return undefined;
-  if ((code === "kids" || code === "entertainment") && CAMP.test(name)) return undefined;
-  return code;
+  return classifyPlace(p, name)?.code;
 }
 
 /** Слабые категории по типам, при которых название-метка (NOT_A_VENUE) значит «не заведение»; без active. */
 const LABEL_TYPES = new Set([...WEAK].filter((t) => t !== "active"));
 
-function categoryByTypes(p: Pick<GooglePlace, "primaryType" | "types">): string | undefined {
+function categoryByTypes(p: Pick<GooglePlace, "primaryType" | "types">): {
+  code: string | undefined;
+  type?: string;
+} {
   for (const t of [p.primaryType, ...(p.types ?? [])]) {
     const code = t ? categoryOfType(t) : undefined;
-    if (code) return code;
+    if (code) return { code, type: t };
   }
-  return undefined;
+  return { code: undefined };
 }
 
 // --- часы работы ---
@@ -623,6 +770,43 @@ export function localityOf<L extends ImportLocality>(
   return best?.l;
 }
 
+/** Типи частин адреси Google з назвою населеного пункту (за пріоритетом). */
+const LOCALITY_COMPONENT_TYPES = ["locality", "sublocality", "sublocality_level_1", "neighborhood"] as const;
+/**
+ * Наскільки далеко від центру пункту (у його радіусах) ще віримо адресі Google: Микуличин витягнутий на ~10 км, а
+ * «Яремче» в адресі Буковеля (13 км) — назва громади, не пункт.
+ */
+const GOOGLE_LOCALITY_MAX_RADII = 2;
+
+const localityKey = (s: string) => labelKey(s.replace(/\(.*?\)/g, ""));
+
+/**
+ * Пункт за адресою Google (addressComponents: locality, потім sublocality/neighborhood), якщо назва збігається з
+ * пунктом регіону (назва, англійська назва, LOCALITY_ALIASES — Буковель → Поляниця) і точка не далі
+ * GOOGLE_LOCALITY_MAX_RADII радіусів від його центру. Немає частин адреси чи збігу — undefined.
+ */
+export function googleLocality<L extends ImportLocality>(
+  p: Pick<GooglePlace, "addressComponents">,
+  at: LonLat,
+  localities: readonly L[],
+): L | undefined {
+  const comps = p.addressComponents ?? [];
+  for (const kind of LOCALITY_COMPONENT_TYPES) {
+    for (const c of comps) {
+      if (!c.types?.includes(kind)) continue;
+      const texts = [c.longText, c.shortText].filter((t): t is string => !!t).map(localityKey);
+      for (const l of localities) {
+        const names = [l.name.uk, l.name.en ?? "", ...(LOCALITY_ALIASES[l.code] ?? [])]
+          .filter(Boolean)
+          .map(localityKey);
+        if (!texts.some((t) => names.includes(t))) continue;
+        if (haversineMeters(at, l.at) <= GOOGLE_LOCALITY_MAX_RADII * l.radiusM) return l;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** Прямоугольник вокруг круга (locationRestriction Text Search принимает только rectangle); с запасом: 111 км на градус. */
 export function boundingBox(center: LonLat, radiusM: number): { low: LonLat; high: LonLat } {
   const dLat = radiusM / 111_000;
@@ -638,7 +822,11 @@ export function boundingBox(center: LonLat, radiusM: number): { low: LonLat; hig
 /** Типы и названия атракціонів «для всіх»: основная entertainment, дополнительно — «Для дітей» и «Активний відпочинок». */
 const ATTRACTION_TYPES = new Set(["water_park", "amusement_park", "ferris_wheel", "roller_coaster"]);
 const ATTRACTION = /колесо огляду|аквапарк|атракціон|луна[ -]парк|парк розваг/i;
-const QUAD_JEEP = /джип|jeep|квадро|kvadro|quadro|багі|баггі|buggy|\batv\b/i;
+const QUAD_JEEP = /джип|jeep|квадро|kvadro|quadro|багі|баггі|buggy|\batv\b|позашлях|off-?road|снігох|снегох/i;
+/** Нічні клуби й кальянні серед барів — ще й «Для дорослих». */
+const ADULT_BAR_TYPES = new Set(["night_club", "hookah_bar"]);
+const ADULT_BAR = /кальян|hookah|shisha|нічн|night/i;
+const EXCURSION = /екскурс|excursion|тур(и|ів)?([^а-яіїєґa-z]|$)/i;
 
 /**
  * Дополнительные категории места (place_extra_categories): место показывается и в этих разделах. Коды —
@@ -660,10 +848,16 @@ export function extraCategories(
   }
   if (code === "gear-rental" || code === "ski-resorts" || code === "ski-lifts") out.add("active");
   if (code === "ski-rental") out.add("gear-rental");
+  const byType = categoryByTypes(p).code;
   if (code === "active" && QUAD_JEEP.test(name)) {
     out.add("adult-fun");
-    if (RENTAL.test(name)) out.add("gear-rental");
+    // Прокат квадроциклів/джипів — и у «Прокаті спорядження»; Google сам назвав місце прокатом (car_rental) — теж.
+    if (RENTAL.test(name) || byType === "rental") out.add("gear-rental");
   }
+  if (code === "bars" && (types.some((t) => t && ADULT_BAR_TYPES.has(t)) || ADULT_BAR.test(name)))
+    out.add("adult-fun");
+  // Таксі, що возить і на екскурсії (Google: travel_agency або «екскурсії» в назві).
+  if (code === "taxi" && (byType === "excursions" || EXCURSION.test(name))) out.add("excursions");
   if (code === "car-service" || code === "tow-trucks") out.add("help");
   out.delete(code);
   return [...out];
@@ -671,6 +865,116 @@ export function extraCategories(
 
 /** Паркінг — только с отзывами (платные, охраняемые, у атракціонів), не каждая обочина с меткой. */
 export const PARKING_MIN_REVIEWS = 5;
+
+/**
+ * Поріг відгуків для слабких «природних» типів без упізнаної назви (hiking_area, park): Google ставить їх альтанкам,
+ * лавочкам, «Вид на гори», лісництвам. tourist_attraction сюди не входить — під ним пам'ятники й церкви з 0–2
+ * відгуками; там відсіюють лише родові мітки (isGenericLabel).
+ */
+export const WEAK_MIN_REVIEWS = PARKING_MIN_REVIEWS;
+const REVIEWED_TYPES: ReadonlySet<string> = new Set(["hiking_area", "park"]);
+/** Назва природного об'єкта, вершини чи парку — місце впізнане, поріг відгуків не потрібен. */
+const RECOGNIZED_OUTDOOR = new RegExp(
+  `${NATURE_NAME.source}|${PEAK.source}|парк|park|сквер|ботаніч|дендро|заповід|урочищ`,
+  "i",
+);
+
+/**
+ * Суфікс запису типу номера Booking: « - Double Room», « - Two-Bedroom Villa», « - Vacation Home» (латиницею, у
+ * кінці назви). Без суфікса назва не змінюється.
+ */
+const ROOM_SUFFIX =
+  /\s+[-–—]\s+(?=[A-Za-z0-9 '’&(),./+-]*\b(Rooms?|House|Villa|Apartments?|Suite|Studio|Townhouse|Chalet|Vacation Home|Cottage|Bungalow|Cabin|Bedroom|Lodge|Loft|Dormitory|Bed)\b)[A-Za-z0-9 '’&(),./+-]+$/;
+
+export function stripRoomSuffix(name: string): string {
+  const stripped = name.replace(ROOM_SUFFIX, "").trim();
+  return stripped || name;
+}
+
+/** Радіус, у якому однакові назви — одне місце (свёртка дублів, dedupePlaces). */
+export const DUPLICATE_RADIUS_M = 50;
+
+/**
+ * Свёртка дублів: однаковий ключ назви (labelKey) у радіусі DUPLICATE_RADIUS_M — одне місце, якщо категорія та сама
+ * або один із записів — тип номера Booking (roomListing; основний запис може бути «Готелі», номер — «Садиби»).
+ * Залишається запис без суфікса Booking, потім з більшою кількістю відгуків, потім з меншим id (стабільно між
+ * прогонами). Повертає залишені місця (у вхідному порядку) і id відкинутих.
+ */
+export function dedupePlaces(places: readonly MappedPlace[]): {
+  kept: MappedPlace[];
+  duplicateIds: string[];
+} {
+  const rank = [...places].sort(
+    (a, b) =>
+      Number(!!a.roomListing) - Number(!!b.roomListing) ||
+      (b.ratingCount ?? 0) - (a.ratingCount ?? 0) ||
+      a.googlePlaceId.localeCompare(b.googlePlaceId),
+  );
+  const byKey = new Map<string, MappedPlace[]>();
+  const dropped = new Set<string>();
+  for (const p of rank) {
+    const key = labelKey(p.name);
+    const group = byKey.get(key) ?? [];
+    const twin = group.find(
+      (q) =>
+        haversineMeters(p.at, q.at) <= DUPLICATE_RADIUS_M &&
+        (q.categoryCode === p.categoryCode || !!p.roomListing || !!q.roomListing),
+    );
+    if (twin) {
+      dropped.add(p.googlePlaceId);
+      continue;
+    }
+    group.push(p);
+    byKey.set(key, group);
+  }
+  return {
+    kept: places.filter((p) => !dropped.has(p.googlePlaceId)),
+    duplicateIds: places.filter((p) => dropped.has(p.googlePlaceId)).map((p) => p.googlePlaceId),
+  };
+}
+
+// --- теги ---
+
+/** Удобство Google (place_enrichments.google.amenities) → код тега (SEED_TAGS). */
+const AMENITY_TAGS: Readonly<Record<string, string>> = {
+  good_for_children: "kids",
+  kids_menu: "kids",
+  dogs_allowed: "pets",
+  parking_free: "parking",
+  parking_paid: "parking",
+  vegetarian: "vegetarian",
+};
+/** Під дахом — «У дощ»: музеї, SPA, чани й сауни, заклади харчування. */
+const RAINY_DAY_CATEGORIES: ReadonlySet<string> = new Set([
+  "museums",
+  "spa",
+  "chany",
+  "cafes",
+  "restaurants",
+  "kolyby",
+  "bars",
+  "fast-food",
+]);
+/** Розваги під дахом (категорії розваг змішані: зіплайн і боулінг — обидва «Для дорослих»): за назвою. */
+const INDOOR_FUN_CATEGORIES: ReadonlySet<string> = new Set(["entertainment", "adult-fun", "kids"]);
+const INDOOR_FUN =
+  /боулінг|bowling|більярд|billiard|караоке|karaoke|квест|quest|escape|кінотеатр|кіно|cinema|аквапарк|басейн|ігров|game|аркад|arcade|батутн|лазертаг|музей/i;
+
+/**
+ * Теги місця за категорією й удобствами Google (place_enrichments.google.amenities): з дітьми, з тваринами,
+ * паркування, вегетаріанське меню, «У дощ» (категорії під дахом; розваги — лише криті за назвою). Коди — з SEED_TAGS;
+ * нових тегів не вводить. Сортовано, без повторів.
+ */
+export function tagsForPlace(category: string, amenities: readonly string[], name = ""): string[] {
+  const out = new Set<string>();
+  for (const a of amenities) {
+    const tag = AMENITY_TAGS[a];
+    if (tag) out.add(tag);
+  }
+  if (RAINY_DAY_CATEGORIES.has(category) || (INDOOR_FUN_CATEGORIES.has(category) && INDOOR_FUN.test(name)))
+    out.add("rainy-day");
+  return [...out].sort();
+}
 
 // --- место целиком ---
 
@@ -693,6 +997,8 @@ export type MappedPlace = {
   photos: string[];
   rating: number | null;
   ratingCount: number | null;
+  /** Запис типу номера Booking (суфікс « - Double Room» відкинуто) — при свёртці дублів поступається основному. */
+  roomListing?: true;
 };
 
 export type SkipReason =
@@ -703,9 +1009,15 @@ export type SkipReason =
   | "no_category"
   | "no_name"
   /** Правило не проверить: в ответе нет нужного поля (паркинг без числа отзывов при маске pro). */
-  | "unverified";
+  | "unverified"
+  /** Дубль іншого місця прогону (dedupePlaces): однакова назва в радіусі 50 м. */
+  | "duplicate";
 
-/** Описание места: краткое описание Google (если есть) или «<тип> у <пункті>.», плюс источник. */
+/**
+ * Описание места: краткое описание Google (если есть) или «<тип> у <пункті>.», плюс источник. Тип — Google
+ * (primaryTypeDisplayName), а без него — `fallbackType` (название нашей категории; mapPlace передаёт его и тогда, когда
+ * категория определена по названию).
+ */
 export function describe(p: GooglePlace, locality: ImportLocality, fallbackType: string): string {
   const summary = p.editorialSummary?.text?.trim();
   const type = p.primaryTypeDisplayName?.text?.trim() || fallbackType;
@@ -735,20 +1047,39 @@ export function mapPlace(
 ): { ok: true; place: MappedPlace } | { ok: false; reason: SkipReason } {
   const zones = opts.zones ?? [];
   if (p.businessStatus === "CLOSED_PERMANENTLY") return { ok: false, reason: "closed_permanently" };
-  const name = p.displayName?.text?.trim();
+  const rawName = p.displayName?.text?.trim();
   if (typeof p.id !== "string" || !GOOGLE_PLACE_ID.test(p.id)) return { ok: false, reason: "invalid_id" };
-  if (!name) return { ok: false, reason: "no_name" };
+  if (!rawName) return { ok: false, reason: "no_name" };
   const lat = p.location?.latitude;
   const lon = p.location?.longitude;
   if (typeof lat !== "number" || typeof lon !== "number") return { ok: false, reason: "no_location" };
   const at = { lon, lat };
-  const locality = localityOf(at, localities, zones);
-  if (!locality) return { ok: false, reason: "outside_radius" };
-  const categoryCode = categoryOverride ?? mapCategory(p, name);
-  if (!categoryCode) return { ok: false, reason: "no_category" };
+  const byDistance = localityOf(at, localities, zones);
+  if (!byDistance) return { ok: false, reason: "outside_radius" };
+  // Адреса Google главнее відстані до центру (межі Микуличин/Татарів/Ворохта); відстань — запасний варіант.
+  const locality = googleLocality(p, at, localities) ?? byDistance;
+  // Записи типів номерів Booking («Садиба X - Double Room»): суфікс відкидається, дублі згортає collect.
+  const name = stripRoomSuffix(rawName);
+  const roomListing = name !== rawName;
+  const classified: Classified | undefined = categoryOverride
+    ? { code: categoryOverride, byName: false }
+    : classifyPlace(p, name);
+  if (!classified) return { ok: false, reason: "no_category" };
+  const categoryCode = classified.code;
   if (categoryCode === "parking" && opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
   if (categoryCode === "parking" && (p.userRatingCount ?? 0) < PARKING_MIN_REVIEWS)
     return { ok: false, reason: "no_category" };
+  // «Зона для прогулянок»/«Парк» без упізнаної назви (альтанки, лавочки, «Під лісом») — лише з відгуками.
+  if (
+    !categoryOverride &&
+    !classified.byName &&
+    classified.type &&
+    REVIEWED_TYPES.has(classified.type) &&
+    !RECOGNIZED_OUTDOOR.test(name)
+  ) {
+    if (opts.ratingsKnown === false) return { ok: false, reason: "unverified" };
+    if ((p.userRatingCount ?? 0) < WEAK_MIN_REVIEWS) return { ok: false, reason: "no_category" };
+  }
   return {
     ok: true,
     place: {
@@ -757,7 +1088,12 @@ export function mapPlace(
       extraCategoryCodes: extraCategories(categoryCode, p, name),
       localityCode: locality.code,
       name,
-      description: describe(p, locality, categoryNames[categoryCode] ?? "Місце"),
+      // Категорія за назвою — у шаблоні опису її назва, а не тип Google («Генеральний підрядник» у чанів).
+      description: describe(
+        classified.byName ? { ...p, primaryTypeDisplayName: undefined } : p,
+        locality,
+        categoryNames[categoryCode] ?? "Місце",
+      ),
       address: p.shortFormattedAddress?.trim() || p.formattedAddress?.trim() || locality.name.uk,
       at,
       phone: normalizePhone(p.internationalPhoneNumber),
@@ -769,6 +1105,7 @@ export function mapPlace(
         .slice(0, 2),
       rating: p.rating ?? null,
       ratingCount: p.userRatingCount ?? null,
+      ...(roomListing ? { roomListing: true as const } : {}),
     },
   };
 }
