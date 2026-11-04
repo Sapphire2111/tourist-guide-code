@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   categoriesRelated,
+  compareNames,
   explicitGroups,
   findDuplicatePairs,
   findOutOfRegion,
@@ -38,29 +39,70 @@ describe("normalizeAddress", () => {
     );
   });
 
-  it("адрес из одного пункта или plus-кода — без улицы", () => {
+  it("«обл.», район, «р-н» отбрасываются; «урочище X» без номера — не улица", () => {
+    expect(normalizeAddress("вул. Свободи, 5, Яремче, Івано-Франківська обл.")).toEqual({
+      street: "свободи",
+      number: "5",
+    });
+    expect(normalizeAddress("вул. Свободи, 5, Надвірнянський район")).toEqual({
+      street: "свободи",
+      number: "5",
+    });
+    expect(normalizeAddress("вул. Свободи, 5, Надвірнянський р-н")).toEqual({
+      street: "свободи",
+      number: "5",
+    });
+    expect(normalizeAddress("урочище Вишня, Поляниця")).toEqual({ street: null, number: null });
+    expect(normalizeAddress("урочище Вишня, 8а, Поляниця")).toEqual({ street: "вишня", number: "8а" });
+  });
+
+  it("адрес из одного пункта или plus-кода — без улицы; пункты можно передать из БД", () => {
     expect(normalizeAddress("Яремче")).toEqual({ street: null, number: null });
     expect(normalizeAddress("9C64+M9, Поляниця")).toEqual({ street: null, number: null });
     expect(normalizeAddress(null)).toEqual({ street: null, number: null });
+    expect(normalizeAddress("Шешори", new Set(["шешори"]))).toEqual({ street: null, number: null });
   });
 
-  it("совпадение: одна улица и один номер (или оба без номера); без улицы — никогда", () => {
-    const a = normalizeAddress("вулиця Михайла Грушевського, Яремче");
-    expect(sameAddress(a, normalizeAddress("вул. Грушевського, Яремче"))).toBe(true);
-    expect(sameAddress(a, normalizeAddress("вулиця Грушевського, 5, Яремче"))).toBe(false);
+  it("совпадение — только улица и номер; без номера или без улицы — никогда", () => {
+    const a = normalizeAddress("вулиця Михайла Грушевського, 5, Яремче");
+    expect(sameAddress(a, normalizeAddress("вул. Грушевського, 5, Яремче"))).toBe(true);
+    expect(sameAddress(a, normalizeAddress("вулиця Грушевського, 7, Яремче"))).toBe(false);
+    const noNumber = normalizeAddress("вулиця Грушевського, Яремче");
+    expect(sameAddress(noNumber, noNumber)).toBe(false);
     expect(sameAddress(normalizeAddress("Яремче"), normalizeAddress("Яремче"))).toBe(false);
   });
 });
 
-describe("nameSimilarity", () => {
-  it("одинаковые после нормализации и вложенные — 1; разные — мало", () => {
-    expect(nameSimilarity("Готель «Карпати»", "готель Карпати")).toBe(1);
-    expect(nameSimilarity("Вольєрне господарство", "Вольєрне господарство Карпатського НПП")).toBe(1);
-    expect(nameSimilarity("Садиба Смерічка", "Садиба Ведмежий кут")).toBeLessThan(0.4);
+describe("compareNames", () => {
+  it("одинаковые после нормализации — 1 без блокеров; разные — мало", () => {
+    expect(compareNames("Готель «Карпати»", "готель Карпати")).toEqual({ similarity: 1, blockers: [] });
+    expect(nameSimilarity("Смерічка", "Ведмежий кут")).toBeLessThan(0.4);
   });
 
-  it("общие слова (тип места, пункт) не делают названия похожими", () => {
-    expect(nameSimilarity("Кафе у Яремчі", "Ресторан у Яремчі")).toBe(0);
+  it("банкомат и відділення — разные типы, пара не явная", () => {
+    const r = compareNames("Банкомат Ощадбанк", "Ощадбанк");
+    expect(r.blockers.join()).toMatch(/разные типы.*банкомат/);
+    expect(compareNames("Банкомат МТБ Банк", "МТБ Банк").blockers).not.toEqual([]);
+  });
+
+  it("разные номера в названиях — блокер", () => {
+    expect(compareNames("Поштомат 5531", "Поштомат 5532").blockers.join()).toMatch(/разные номера/);
+    expect(compareNames("Підйомник 7", "Підйомник 17").blockers.join()).toMatch(/разные номера/);
+    expect(compareNames("Смерічка", "Смерічка 2").blockers.join()).toMatch(/разные номера/);
+    expect(compareNames("Аптека №1", "Аптека № 12").blockers.join()).toMatch(/разные номера/);
+  });
+
+  it("только общие слова — похожесть не 1 и блокер", () => {
+    const r = compareNames("Аптека", "Аптека");
+    expect(r.similarity).toBeLessThanOrEqual(0.5);
+    expect(r.blockers).toContain("в названии только общие слова");
+    expect(compareNames("Кафе у Яремчі", "Ресторан у Яремчі").blockers).not.toEqual([]);
+  });
+
+  it("вложенность — похоже, но не явно", () => {
+    const r = compareNames("Вольєрне господарство", "Вольєрне господарство Карпатського НПП");
+    expect(r.similarity).toBe(0.9);
+    expect(r.blockers).toContain("одно название внутри другого");
   });
 });
 
@@ -74,20 +116,55 @@ describe("categoriesRelated", () => {
 
 describe("findDuplicatePairs", () => {
   const zooA = place("a", {
-    name: "Вольєрне господарство Карпатського НПП",
-    address: "вулиця Михайла Грушевського, Яремче",
+    name: "Звіринець Карпатського НПП",
+    address: "вулиця Михайла Грушевського, 3, Яремче",
   });
   const zooB = place("b", {
-    name: "Вольєрне господарство | Звіринець в Яремче",
-    address: "вулиця Михайла Грушевського, Яремче",
+    name: "Звіринець Карпатського НПП",
+    address: "вул. Грушевського, 3, Яремче",
     at: north(zooA.at!, 2),
   });
 
-  it("звіринець: 2 м, тот же адрес, похожие названия, та же категория — явный", () => {
+  it("2 м, тот же адрес с номером, то же название, та же категория — явный", () => {
     const [p, ...rest] = findDuplicatePairs([zooA, zooB]);
     expect(rest).toEqual([]);
     expect(p).toMatchObject({ verdict: "explicit", sameAddress: true });
     expect(p!.a.id).toBe("a");
+  });
+
+  it("звіринець без номера дома и с разными названиями — только спорный", () => {
+    const a = place("a", {
+      name: "Вольєрне господарство Карпатського НПП",
+      address: "вулиця Михайла Грушевського, Яремче",
+    });
+    const b = place("b", {
+      name: "Вольєрне господарство | Звіринець в Яремче",
+      address: "вулиця Михайла Грушевського, Яремче",
+      at: north(a.at!, 2),
+    });
+    expect(findDuplicatePairs([a, b])[0]).toMatchObject({ verdict: "disputed", sameAddress: false });
+  });
+
+  it("банкомат у відділення — не явный дубль", () => {
+    const branch = place("br", { category: "atm", name: "Ощадбанк", address: "вулиця Свободи, 260, Яремче" });
+    const atm = place("atm", {
+      category: "atm",
+      name: "Банкомат Ощадбанк",
+      address: "вулиця Свободи, 260, Яремче",
+      at: north(branch.at!, 5),
+    });
+    expect(findDuplicatePairs([branch, atm])[0]!.verdict).toBe("disputed");
+  });
+
+  it("разные номера в названиях рядом — не явный", () => {
+    const a = place("p1", { category: "post", name: "Поштомат 5531", address: "вулиця Свободи, 1, Яремче" });
+    const b = place("p2", {
+      category: "post",
+      name: "Поштомат 5532",
+      address: "вулиця Свободи, 1, Яремче",
+      at: north(a.at!, 3),
+    });
+    expect(findDuplicatePairs([a, b])[0]!.verdict).toBe("disputed");
   });
 
   it("дальше порога — не пара; дальше явного порога — спорный", () => {
@@ -116,10 +193,11 @@ describe("findDuplicatePairs", () => {
     expect(findDuplicatePairs([h1, { ...h2, address: "Яремче" }])).toEqual([]);
   });
 
-  it("почти одинаковые названия без адреса рядом — явный", () => {
-    const x = place("x", { category: "cafes", name: "Кафе Гуцулка", address: "Яремче" });
+  it("одинаковые названия без адреса рядом — явный; тип только в одном названии — спорный", () => {
+    const x = place("x", { category: "cafes", name: "Гуцулка", address: "Яремче" });
     const y = place("y", { category: "cafes", name: "Гуцулка", address: null, at: north(x.at!, 10) });
     expect(findDuplicatePairs([x, y])[0]!.verdict).toBe("explicit");
+    expect(findDuplicatePairs([{ ...x, name: "Кафе Гуцулка" }, y])[0]!.verdict).toBe("disputed");
   });
 
   it("места без точки пропускаются", () => {
@@ -180,7 +258,11 @@ describe("findOutOfRegion", () => {
     expect(r[0]!.reason).toMatch(/без пункта/);
   });
 
-  it("чужой индекс — спорно; чужая область: точка в круге — спорно, за краем — явно", () => {
+  it("место с пунктом без точки — не «далеко»", () => {
+    expect(findOutOfRegion([place("noat", { at: null })], circles, opts)).toEqual([]);
+  });
+
+  it("чужой индекс и чужая область — только спорно (перевал на границе), явно — лишь по расстоянию", () => {
     const r = findOutOfRegion(
       [
         place("post", { address: "Укрпошта 77344, вулиця Грушевського" }),
@@ -193,7 +275,7 @@ describe("findOutOfRegion", () => {
     expect(r.map((o) => [o.place.id, o.verdict])).toEqual([
       ["post", "disputed"],
       ["inside", "disputed"],
-      ["oblast", "explicit"],
+      ["oblast", "disputed"],
     ]);
   });
 });

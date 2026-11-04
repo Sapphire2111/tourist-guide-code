@@ -62,6 +62,8 @@ describe("parseDecisions", () => {
       `${ID};rename;Гора Синяк;`,
       `${ID};describe;Опис;`,
       `${ID};locality;tatariv;`,
+      `${ID};restore;;не дубль`,
+      `${ID};address;вулиця Грушевського, 190B, Микуличин;`,
       `${ID};skip;;проверить`,
     ].join("\n");
     expect(parseDecisions(text).map((d) => d.kind)).toEqual([
@@ -71,8 +73,16 @@ describe("parseDecisions", () => {
       "rename",
       "describe",
       "locality",
+      "restore",
+      "address",
       "skip",
     ]);
+    expect(parseDecisions(text)[7]).toEqual({
+      kind: "address",
+      id: ID,
+      address: "вулиця Грушевського, 190B, Микуличин",
+      note: "",
+    });
     expect(parseDecisions(text)[0]).toEqual({
       kind: "move",
       id: ID,

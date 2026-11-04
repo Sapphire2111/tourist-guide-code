@@ -42,9 +42,11 @@ export function categoriesRelated(a: string, b: string): boolean {
 export type NormalizedAddress = { street: string | null; number: string | null };
 
 const APOSTROPHES = /[«»"“”„'‘’ʼʹ`]/g;
-/** Сегменты адреса, которые не различают места: страна, область, громада, индекс, plus-код. */
+/** Сегменты адреса, которые не различают места: страна, область, район, громада, индекс, plus-код. */
 const NOISE_SEGMENT =
-  /^(україна|украина|ukraine|.*област[ьі]|.*oblast|.*міська рада|.*громада|\d{5}|[0-9a-z]{4}\+[0-9a-z]{2,3}(\s.*)?)$/i;
+  /^(україна|украина|ukraine|.*област[ьі]|.*обл\.?|.*oblast|.*район|.*р-н\.?|.*міська рада|.*громада|\d{5}|[0-9a-z]{4}\+[0-9a-z]{2,3}(\s.*)?)$/i;
+/** Префиксы местности, а не улицы: «урочище Вишня», «участок Щивки» — улица только вместе с номером. */
+const AREA_PREFIX = /^(урочище|ур|участок|ділянка)(\.\s*|\s+)/i;
 const STREET_PREFIX =
   /^(вулиця|вул|ул|улица|street|st|провулок|пров|переулок|пер|площа|пл|проспект|просп|урочище|ур|участок|ділянка|дорога|траса|шосе)(\.\s*|\s+)/i;
 /** «буд. 1», «будинок 5а» — номер дома; «прим. 5», «кв. 3», «офіс 2» — часть дома, не различает места. */
@@ -72,6 +74,7 @@ export function normalizeAddress(
     .filter((s) => s && !NOISE_SEGMENT.test(s));
   let street: string | null = null;
   let number: string | null = null;
+  let area = false;
   for (const seg of segments) {
     const town = seg.replace(/^(м|с|смт|село|селище|місто)\.?\s+/, "");
     if (knownTowns.has(town)) continue;
@@ -92,16 +95,19 @@ export function normalizeAddress(
       number ??= tail[1]!.replace(/\s+/g, "");
       s = s.slice(0, tail.index);
     }
+    if (AREA_PREFIX.test(s)) area = true;
     const hadPrefix = STREET_PREFIX.test(s);
     s = s.replace(STREET_PREFIX, "").trim();
     const words = s.split(/[^\p{L}\p{N}-]+/u).filter(Boolean);
     // Без префикса улицы сегмент — улица, только если это не одно слово-ориентир без номера («Навпроти садиба…»).
     if (words.length && (hadPrefix || tail || words.length <= 3)) street = words.at(-1)!;
   }
+  // «урочище X» без номера дома — местность, не адрес.
+  if (area && !number) street = null;
   return { street, number };
 }
 
-const DEFAULT_TOWNS: ReadonlySet<string> = new Set([
+export const DEFAULT_TOWNS: ReadonlySet<string> = new Set([
   "яремче",
   "татарів",
   "микуличин",
@@ -115,19 +121,31 @@ const DEFAULT_TOWNS: ReadonlySet<string> = new Set([
   "дора",
 ]);
 
-/** Адреса совпадают: одна улица и (оба без номера или один номер). Адрес без улицы не совпадает ни с чем. */
+/** Адреса совпадают: одна улица и один номер дома. Адрес без улицы или без номера не совпадает ни с чем. */
 export function sameAddress(a: NormalizedAddress, b: NormalizedAddress): boolean {
-  if (!a.street || !b.street || a.street !== b.street) return false;
-  return a.number === b.number;
+  if (!a.street || !b.street || !a.number || !b.number) return false;
+  return a.street === b.street && a.number === b.number;
 }
 
-/** Слова названий, которые не отличают объекты (тип места, предлоги). */
-const GENERIC_WORDS = new Set(
+/** Слова, которые не несут смысла для сравнения названий: предлоги, союзы, пункты. */
+const STOP_WORDS = new Set(
   (
-    "в у на та і й и біля поруч the of and готель гостиница отель hotel садиба усадьба котедж котеджі cottage " +
-    "villa вілла вила кафе ресторан restaurant колиба бар магазин маркет прокат лиж лижі оренда сноубордів " +
-    "аптека таксі служба банкомат відділення тури тур джип чан чани баня трансфер " +
-    "яремче яремчі татарів микуличин поляниця буковель яблуниця ворохта"
+    "в у на та і й и з біля поруч the of and " +
+    "яремче яремчі татарів татарові микуличин микуличині поляниця поляниці буковель буковелі яблуниця яблуниці " +
+    "ворохта ворохті косів косові"
+  ).split(" "),
+);
+
+/**
+ * Слова-типы: в сравнении остаются и различают объекты. «Банкомат Ощадбанк» и «Ощадбанк» (відділення) — разные
+ * точки: тип есть только в одном названии — пара не явная.
+ */
+const TYPE_WORDS = new Set(
+  (
+    "банкомат банкомати відділення поштомат термінал аптека таксі трансфер прокат оренда чан чани баня сауна " +
+    "спа spa готель гостиница отель hotel хостел hostel садиба усадьба котедж котеджі cottage вілла villa " +
+    "апартаменти apartments кафе ресторан restaurant колиба бар піцерія кавярня магазин маркет супермаркет " +
+    "ринок підйомник витяг школа музей"
   ).split(" "),
 );
 
@@ -141,22 +159,7 @@ function bigrams(s: string): Map<string, number> {
   return m;
 }
 
-/**
- * Похожесть названий 0…1: коэффициент Дайса по биграммам нормализованных названий без общих слов (тип места,
- * пункт). Одно название (≥ 2 слов) целиком внутри другого — 1.
- */
-export function nameSimilarity(a: string, b: string): number {
-  const clean = (s: string) =>
-    normalizeName(s)
-      .split(" ")
-      .filter((w) => w && !GENERIC_WORDS.has(w))
-      .join(" ");
-  const x = clean(a);
-  const y = clean(b);
-  if (!x || !y) return normalizeName(a) === normalizeName(b) ? 1 : 0;
-  if (x === y) return 1;
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  if (short.includes(" ") && ` ${long} `.includes(` ${short} `)) return 1;
+function dice(x: string, y: string): number {
   const ga = bigrams(x);
   const gb = bigrams(y);
   let common = 0;
@@ -167,6 +170,55 @@ export function nameSimilarity(a: string, b: string): number {
   }
   for (const n of gb.values()) total += n;
   return total ? (2 * common) / total : 0;
+}
+
+/** Сравнение названий: похожесть и причины, по которым пара не может быть явной. */
+export type NameComparison = {
+  /** 0…1: Дайс по биграммам слов без предлогов и пунктов (слова-типы остаются); вложенность ≥ 2 слов — 0.9. */
+  similarity: number;
+  /** Причины «не явная»: разные слова-типы, разные числа, только общие слова, вложенность. Пусто — можно явно. */
+  blockers: string[];
+};
+
+const nameWords = (s: string) =>
+  normalizeName(s)
+    .split(" ")
+    .filter((w) => w && !STOP_WORDS.has(w));
+
+export function compareNames(a: string, b: string): NameComparison {
+  const wa = nameWords(a);
+  const wb = nameWords(b);
+  const blockers: string[] = [];
+  const types = (ws: string[]) => new Set(ws.filter((w) => TYPE_WORDS.has(w)));
+  const ta = types(wa);
+  const tb = types(wb);
+  const typeDiff = [...ta].filter((w) => !tb.has(w)).concat([...tb].filter((w) => !ta.has(w)));
+  if (typeDiff.length) blockers.push(`разные типы в названиях (${typeDiff.join(", ")})`);
+  const nums = (ws: string[]) =>
+    ws
+      .flatMap((w) => w.match(/\d+/g) ?? [])
+      .sort()
+      .join(",");
+  if (nums(wa) !== nums(wb))
+    blockers.push(`разные номера в названиях (${nums(wa) || "—"} / ${nums(wb) || "—"})`);
+  const x = wa.join(" ");
+  const y = wb.join(" ");
+  if (!wa.some((w) => !TYPE_WORDS.has(w)) || !wb.some((w) => !TYPE_WORDS.has(w))) {
+    blockers.push("в названии только общие слова");
+    return { similarity: Math.min(0.5, dice(x, y)), blockers };
+  }
+  if (x === y) return { similarity: 1, blockers };
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (short.includes(" ") && ` ${long} `.includes(` ${short} `)) {
+    blockers.push("одно название внутри другого");
+    return { similarity: 0.9, blockers };
+  }
+  return { similarity: dice(x, y), blockers };
+}
+
+/** Похожесть названий 0…1 (см. compareNames). */
+export function nameSimilarity(a: string, b: string): number {
+  return compareNames(a, b).similarity;
 }
 
 export type DuplicateOptions = {
@@ -190,10 +242,10 @@ export type DuplicatePair = {
 
 /**
  * Вероятные дубли: родственные категории, расстояние ≤ maxDistanceM и одно из: похожие названия ≥ 0.75;
- * одинаковый нормализованный адрес с улицей и названия хоть немного похожи (≥ 0.3); тот же адрес, та же категория
- * и ≤ 15 м (одна точка Google при разных названиях). Явный дубль: та же категория, ≤ explicitDistanceM и либо адрес совпал и названия
- * похожи (≥ 0.5), либо названия почти одинаковы (≥ 0.9). Остальное — спорное: разные заведения в одном доме
- * (садиби, апартаменти) без похожих названий сюда не попадают.
+ * одинаковый адрес (улица + номер) и названия хоть немного похожи (≥ 0.3); тот же адрес, та же категория и ≤ 15 м
+ * (одна точка Google при разных названиях). Явный дубль: та же категория, ≤ explicitDistanceM, у названий нет
+ * блокеров (compareNames: разные типы/номера, только общие слова, вложенность) и либо адрес совпал и названия
+ * похожи (≥ 0.5), либо названия почти одинаковы (≥ 0.9). Остальное — спорное.
  */
 export function findDuplicatePairs(
   places: readonly CheckPlace[],
@@ -218,15 +270,26 @@ export function findDuplicatePairs(
       const d = haversineMeters(x.p.at, y.p.at);
       if (d > maxD) continue;
       const same = sameAddress(x.addr, y.addr);
-      const sim = nameSimilarity(x.p.name, y.p.name);
+      const names = compareNames(x.p.name, y.p.name);
+      const sim = names.similarity;
       const sameCategory = x.p.category === y.p.category;
-      if (sim < 0.75 && !(same && (sim >= 0.3 || (sameCategory && d <= 15)))) continue;
-      const explicit = sameCategory && d <= explicitD && ((same && sim >= 0.5) || sim >= 0.9);
+      // Та же улица, у обоих без номера (вулиця Грушевського, Яремче) и похожие названия — только спорная пара.
+      const sameStreetNoNumber =
+        x.addr.street != null && x.addr.street === y.addr.street && !x.addr.number && !y.addr.number;
+      if (
+        sim < 0.75 &&
+        !(same && (sim >= 0.3 || (sameCategory && d <= 15))) &&
+        !(sameStreetNoNumber && sameCategory && sim >= 0.5 && d <= explicitD)
+      )
+        continue;
+      const explicit =
+        sameCategory && d <= explicitD && !names.blockers.length && ((same && sim >= 0.5) || sim >= 0.9);
       const reason = [
         `${Math.round(d)} м`,
-        same ? "адрес совпал" : "адрес разный/неполный",
+        same ? "адрес совпал" : sameStreetNoNumber ? "та же улица без номера" : "адрес разный/неполный",
         `названия ${sim.toFixed(2)}`,
         sameCategory ? "категория та же" : `категории ${x.p.category}/${y.p.category}`,
+        ...names.blockers,
       ].join(", ");
       const [a, b] = x.p.id < y.p.id ? [x.p, y.p] : [y.p, x.p];
       pairs.push({
@@ -324,9 +387,10 @@ const FOREIGN_OBLAST =
 /**
  * Места вне региона: точка дальше slackM от всех кругов пунктов/зон, чужой почтовый индекс или чужая область в
  * адресе. Явно (архив по --write) — только место с населённым пунктом (оно выдаёт себя за место пункта), точка
- * которого дальше explicitM от всех кругов, или дальше slackM и в адресе чужая область; кроме REMOTE_CATEGORIES
- * (вершины, природа, пам'ятки бывают далеко от пунктов). Место без пункта (точечный импорт для сценариев: скит,
- * кафе по дороге) и чужая область в адресе при точке в круге (ошибка адреса Google) — только в отчёт.
+ * которого дальше explicitM от всех кругов; кроме REMOTE_CATEGORIES (вершины, природа, пам'ятки бывают далеко от
+ * пунктов). Чужая область или индекс в адресе — только в отчёт (перевал Яблуниця граничит с Закарпаттям, адрес
+ * Google ошибается). Место без пункта (точечный импорт для сценариев: скит, кафе по дороге) — только в отчёт; место
+ * без точки «далеко» не бывает.
  */
 export function findOutOfRegion(
   places: readonly CheckPlace[],
@@ -360,7 +424,7 @@ export function findOutOfRegion(
     if (oblast) reasons.push(`чужая область в адресе («${oblast[0]}»)`);
     if (!reasons.length) continue;
     const outside = Number.isFinite(outsideM) && outsideM > slack;
-    const explicit = Boolean(p.locality) && outside && (outsideM > explicitM || oblast != null);
+    const explicit = Boolean(p.locality) && outside && outsideM > explicitM;
     const remote = REMOTE_CATEGORIES.has(p.category);
     out.push({
       place: p,

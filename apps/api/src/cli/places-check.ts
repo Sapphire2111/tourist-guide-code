@@ -1,9 +1,16 @@
 // CLI проверки опубликованных мест: вероятные дубли и места вне региона.
 //   pnpm --filter @tg/api places:check -- [--region test-region] [--csv <out.csv>] [--max-distance 80]
 //     [--explicit-distance 30] [--write]
-// По умолчанию — только отчёт (ничего не пишет). --write: явные дубли сливаются (главная — больше отзывов/фото,
-// дубль → archived, ссылки переносятся), явные «вне региона» — в архив; запись через places:curate
-// (curatePlaces: одна транзакция, tenant-контекст, аудит place.curate). Спорные — только в отчёт/CSV.
+// Без --write — отчёт: в БД ничего не сохраняется (план считается тем же curatePlaces в транзакции с откатом).
+// --write в одной транзакции (tenant-контекст, аудит place.curate с причиной пары):
+//   - явные дубли: главная — опубликованная с большим числом отзывов/фото; дубль → archived (mergedInto в аудите),
+//     у главной — аудит со списком поглощённых; на главную переносятся избранное, пункты сценариев и их
+//     альтернативы, «где живу» в планах, QR-точки, телефон/сайт (если у главной их нет); пункт сценария с
+//     повтором места меняется на ближайшую опубликованную альтернативу;
+//   - слияние пропускается (в «не применено»), если у любой стороны место партнёра, источник не google или есть
+//     данные, которые слияние не переносит (брони, отзывы, медиа, расписание, теги… — MERGE_BLOCKING_TABLES);
+//   - явные «вне региона» — archived.
+// Спорные — только в отчёт/CSV.
 // Только DATABASE_URL — роль приложения без BYPASSRLS.
 import { writeFile } from "node:fs/promises";
 import { sql } from "kysely";
@@ -17,13 +24,14 @@ import {
 } from "../db/index.js";
 import { curatePlaces, pickMain } from "../places-curate/apply.js";
 import {
+  DEFAULT_TOWNS,
   explicitGroups,
   findDuplicatePairs,
   findOutOfRegion,
   type CheckPlace,
   type CoverageCircle,
 } from "../places-curate/checks.js";
-import { CurateInputError, type Decision } from "../places-curate/rules.js";
+import { CurateInputError, normalizeName, type Decision } from "../places-curate/rules.js";
 import {
   IMPORT_LOCALITIES,
   REGION_POSTCODE_PREFIXES,
@@ -64,17 +72,22 @@ function parseArgs(argv: readonly string[]): Args {
     else if (a === "--explicit-distance") out.explicitDistanceM = meters();
     else throw new CurateInputError(`Неизвестный аргумент ${a}`);
   }
+  if (out.explicitDistanceM > out.maxDistanceM)
+    throw new CurateInputError("--explicit-distance не может быть больше --max-distance");
   return out;
 }
 
 const csvCell = (v: string | number | null | undefined) => {
   const s = String(v ?? "");
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 type Row = CheckPlace & { status: string; description: { uk: string } | null; hasAi: boolean };
 
-async function load(db: Db, regionCode: string): Promise<{ places: Row[]; circles: CoverageCircle[] }> {
+async function load(
+  db: Db,
+  regionCode: string,
+): Promise<{ places: Row[]; circles: CoverageCircle[]; towns: Set<string> }> {
   const region = await db
     .selectFrom("regions")
     .select("id")
@@ -104,17 +117,27 @@ async function load(db: Db, regionCode: string): Promise<{ places: Row[]; circle
       .execute();
     const localities = await trx
       .selectFrom("localities")
-      .select(["code", (eb) => lonLatOf(eb.ref("location")).as("at")])
+      .select(["code", "name_i18n", (eb) => lonLatOf(eb.ref("location")).as("at")])
       .execute();
     const radius = new Map([...IMPORT_LOCALITIES, ...TARGETED_LOCALITIES].map((l) => [l.code, l.radiusM]));
     const circles: CoverageCircle[] = [
-      ...localities
-        .filter((l): l is { code: string; at: NonNullable<typeof l.at> } => l.at != null)
-        .map((l) => ({ code: l.code, at: l.at, radiusM: radius.get(l.code) ?? DEFAULT_LOCALITY_RADIUS_M })),
+      ...localities.flatMap((l) =>
+        l.at ? [{ code: l.code, at: l.at, radiusM: radius.get(l.code) ?? DEFAULT_LOCALITY_RADIUS_M }] : [],
+      ),
       ...SEARCH_ZONES.map((z) => ({ code: `zone:${z.code}`, at: z.at, radiusM: z.radiusM })),
     ];
+    // Названия пунктов из БД (uk/en, части «Поляниця (Буковель)») — сегменты адреса, которые не улица.
+    const towns = new Set(DEFAULT_TOWNS);
+    for (const l of localities)
+      for (const n of Object.values(l.name_i18n ?? {}))
+        if (typeof n === "string")
+          for (const part of [n, ...n.split(/[()]/)]) {
+            const t = normalizeName(part);
+            if (t) towns.add(t);
+          }
     return {
       circles,
+      towns,
       places: raw.map((r) => ({
         id: r.id,
         name: r.name,
@@ -144,11 +167,12 @@ try {
     throw new CurateInputError(
       `Роль ${role.role} обходит RLS — нужна роль приложения (DATABASE_URL), не владелец схемы`,
     );
-  const { places, circles } = await load(db, args.region);
+  const { places, circles, towns } = await load(db, args.region);
   const byId = new Map(places.map((p) => [p.id, p]));
   const pairs = findDuplicatePairs(places, {
     maxDistanceM: args.maxDistanceM,
     explicitDistanceM: args.explicitDistanceM,
+    knownTowns: towns,
   });
   const { groups, split } = explicitGroups(pairs);
   const outside = findOutOfRegion(places, circles, { postcodePrefixes: REGION_POSTCODE_PREFIXES });
@@ -167,8 +191,17 @@ try {
     console.log(
       `  ${main.name} (${main.id}, ${main.category}) ← ${dups.map((d) => `${d.name} (${d.id})`).join(", ")}`,
     );
-    for (const d of dups)
-      decisions.push({ kind: "merge", id: d.id, mainId: main.id, note: "places:check — явный дубль" });
+    for (const d of dups) {
+      const pair = pairs.find(
+        (p) => (p.a.id === d.id && p.b.id === main.id) || (p.b.id === d.id && p.a.id === main.id),
+      );
+      decisions.push({
+        kind: "merge",
+        id: d.id,
+        mainId: main.id,
+        note: `places:check — явный дубль «${main.name}»: ${pair?.reason ?? "группа явных пар"}`,
+      });
+    }
   }
   const inGroups = new Set(groups.flat().map((p) => p.id));
   console.log("\nСпорные дубли:");
@@ -242,6 +275,7 @@ try {
       localityIssueIds: [],
       dryRun: !args.write,
       reason: "проверка дублей/региона",
+      guardMerges: true,
     });
     console.log(
       `\n${args.write ? "Записано" : "План (откат)"}: изменено мест ${report.changedPlaces}, ` +
