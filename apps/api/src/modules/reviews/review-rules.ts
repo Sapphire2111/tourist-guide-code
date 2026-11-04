@@ -8,6 +8,8 @@ const DAY = 24 * 3_600_000;
 export const REVIEW_PARAMS = {
   /** Окно на отзыв после окончания брони, дней (D-79 не решён — параметр). */
   eligibilityWindowDays: 30,
+  /** Окно правки отзыва после первой отправки, дней (D-79 не решён — параметр). */
+  editWindowDays: 30,
   /** Длина текста отзыва (CHECK БД — 1…2000). */
   textMin: 1,
   textMax: 2000,
@@ -116,6 +118,20 @@ export function autoFlags(text: string): ReviewAutoFlag[] {
   if (PHONE_RE.test(text)) flags.push("phone");
   if (PROFANITY_RE.test(text)) flags.push("profanity");
   return flags;
+}
+
+/** Правка отзыва ещё разрешена: не позже editWindowDays после первой отправки. */
+export function editAllowed(createdAt: Date, now: Date): boolean {
+  return now.getTime() - createdAt.getTime() <= REVIEW_PARAMS.editWindowDays * DAY;
+}
+
+/**
+ * Отзыв, который модератор скрыл или отклонил, правкой в публикацию не возвращается: hidden/rejected, а также
+ * pending_moderation после такой правки (признак — hidden_reason, его снимает только решение publish).
+ */
+export function awaitsModerator(r: { status: ReviewStatus; hidden_reason: string | null }): boolean {
+  if (r.status === "hidden" || r.status === "rejected") return true;
+  return r.status === "pending_moderation" && r.hidden_reason !== null;
 }
 
 /** Статус новой версии отзыва: без срабатываний — published, иначе — в очередь модерации. */

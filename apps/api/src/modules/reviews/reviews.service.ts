@@ -39,10 +39,12 @@ import {
   appealAllowed,
   appealGrantedStatus,
   autoFlags,
+  awaitsModerator,
   categoryPrior,
   complaintOutcome,
   computeRating,
   decisionTarget,
+  editAllowed,
   effectiveEligibilityStatus,
   eligibilityExpiresAt,
   ratingStale,
@@ -161,6 +163,12 @@ export class ReviewsService {
    * Отзыв по праву (states-and-rules §6.2 «— → submitted»): eligibility своего пользователя, active — новый отзыв
    * (eligibility → consumed), consumed — новая версия того же отзыва (история хранится, показывается последняя).
    * Автофильтр сработал — pending_moderation, иначе published. Правка скрытого/отклонённого — снова к модератору.
+   * Автор с ролью в организации места (BR-12) — 403. Правка — в окне editWindowDays после первой отправки; повтор
+   * без изменений (та же оценка и текст) версию не создаёт.
+   *
+   * Упрощение облегчённой версии: правка опубликованного отзыва, на которой сработал автофильтр, снимает с публикации
+   * весь отзыв (status pending_moderation до решения модератора), а не оставляет видимой прежнюю версию, как в
+   * states-and-rules §6.2 (PlaceRevision-подобная схема — позже).
    */
   async submit(userId: string, input: SubmitReviewDto, meta: ReviewAuditMeta): Promise<MyReviewDto> {
     const text = input.text.trim();
@@ -170,10 +178,13 @@ export class ReviewsService {
           fields: [{ field: "text", constraint: "minLength", messageKey: "errors.validation.minLength" }],
         },
       });
+    const grants = await this.activeGrants(userId);
     const result = await this.inRegion(input.regionId, async () => {
       const now = this.now();
       const e = await this.repo.findEligibility(input.eligibilityId.toLowerCase(), true);
       if (e?.user_id !== userId) throw forbidden("not_eligible", "errors.review.notEligible");
+      // BR-12: сотрудник/владелец организации места отзыв о своём заведении не пишет.
+      if (relatedTo(grants, e, now)) throw forbidden("own_organization", "errors.review.ownOrganization");
       const status = effectiveEligibilityStatus(e, now);
       if (status === "expired")
         throw unprocessable("errors.review.eligibilityExpired", "eligibility_expired");
@@ -200,12 +211,15 @@ export class ReviewsService {
       } else {
         const row = await this.repo.reviewByEligibility(e.id, true);
         if (!row) throw conflict("errors.review.eligibilityChanged", "eligibility_changed");
+        // Повтор без изменений — без новой версии, аудита и события.
+        if (row.rating === input.rating && row.text === text)
+          return { dto: (await this.myDtos([row])).get(row.id)!, review: row, changed: false };
+        if (!editAllowed(row.created_at, now))
+          throw unprocessable("errors.review.editWindowClosed", "edit_window_closed");
         previous = row.status;
-        // Скрытый или отклонённый модератором отзыв правкой не возвращается в публикацию — только через модератора.
-        const target =
-          row.status === "hidden" || row.status === "rejected"
-            ? "pending_moderation"
-            : statusAfterSubmit(flags);
+        // Скрытый или отклонённый модератором отзыв правкой не возвращается в публикацию — только через модератора
+        // (и повторной правкой тоже: awaitsModerator по hidden_reason).
+        const target = awaitsModerator(row) ? "pending_moderation" : statusAfterSubmit(flags);
         const updated = await this.repo.updateReview(row.id, {
           rating: input.rating,
           text,
@@ -240,9 +254,10 @@ export class ReviewsService {
       });
       if (previous === "published" || review.status === "published")
         await this.refreshRating(review.place_id);
-      return { dto: (await this.myDtos([review])).get(review.id)!, review };
+      return { dto: (await this.myDtos([review])).get(review.id)!, review, changed: true };
     });
-    await this.emit("review_submitted", result.review, userId, { reviewId: result.review.id });
+    if (result.changed)
+      await this.emit("review_submitted", result.review, userId, { reviewId: result.review.id });
     return result.dto;
   }
 
@@ -258,7 +273,7 @@ export class ReviewsService {
         this.repo.responses(rows.map((r) => r.id)),
         this.repo.users(rows.map((r) => r.author_user_id)),
       ]);
-      const rating = await this.ratingOf(place);
+      const rating = await this.publicRatingOf(place);
       return {
         rating,
         items: rows.map(
@@ -283,14 +298,21 @@ export class ReviewsService {
   async placeRatings(regionId: string, placeIds: string): Promise<PlaceRatingListDto> {
     const ids = [...new Set(placeIds.toLowerCase().split(","))];
     return this.inRegion(regionId, async () => {
-      const items: PlaceRatingDto[] = [];
-      const cached = await this.repo.ratings(ids);
-      for (const id of ids) {
-        const place = await this.repo.findPlace(id);
-        if (place?.status !== "published") continue;
-        items.push(await this.ratingOf(place, cached.get(id)));
-      }
-      return { items };
+      // Пачка — два запроса (места и кэш), без пересчёта и записи на публичном GET: кэш обновляется при изменениях
+      // отзывов места; устаревший по давности кэш отдаётся как есть (computedAt в ответе).
+      const [published, cached] = await Promise.all([
+        this.repo.publishedPlaceIds(ids),
+        this.repo.ratings(ids),
+      ]);
+      const now = this.now();
+      return {
+        items: ids
+          .filter((id) => published.has(id))
+          .map((id) => {
+            const row = cached.get(id);
+            return row ? toRatingDto(row) : emptyRating(id, now);
+          }),
+      };
     });
   }
 
@@ -343,6 +365,13 @@ export class ReviewsService {
    * «оставить» по его жалобе. Одна на отзыв; решает модератор, не принимавший обжалуемое решение.
    */
   async appeal(userId: string, input: CreateAppealDto, meta: ReviewAuditMeta): Promise<AppealDto> {
+    const text = input.text.trim();
+    if (!text)
+      throw new ApiError("VALIDATION_FAILED", {
+        details: {
+          fields: [{ field: "text", constraint: "minLength", messageKey: "errors.validation.minLength" }],
+        },
+      });
     const grants = await this.activeGrants(userId);
     return this.inRegion(input.regionId, async () => {
       const review = await this.repo.findReview(input.reviewId.toLowerCase(), true);
@@ -356,8 +385,8 @@ export class ReviewsService {
       const kind = isAuthor ? "author" : "partner";
       const dismissed = isAuthor
         ? false
-        : ((await this.repo.complaints([review.id])).get(review.id) ?? []).some(
-            (c) => c.complainant_kind === "partner" && c.status === "dismissed",
+        : ((await this.repo.complaints([review.id])).get(review.id) ?? []).some((c) =>
+            ownDismissed(c, userId),
           );
       if (!appealAllowed(kind, review, dismissed) || !review.last_decision_by)
         throw unprocessable("errors.review.appealNotAllowed", "appeal_not_allowed", {
@@ -368,7 +397,7 @@ export class ReviewsService {
           review_id: review.id,
           appellant_user_id: userId,
           appellant_kind: kind,
-          text: input.text.trim(),
+          text,
           appealed_decision_by: review.last_decision_by,
           appealed_review_status: review.status,
         })
@@ -535,6 +564,9 @@ export class ReviewsService {
       if (relatedTo(grants, review, now)) throw forbidden("own_organization");
       const appeal = await this.repo.appealOf(review.id);
       if (appeal?.status === "open") throw conflict("errors.review.appealPending", "appeal_pending");
+      // Решение по апелляции финально: модератор, чьё решение обжаловали, не переигрывает его своим новым решением.
+      if (appeal && appeal.appealed_decision_by === userId)
+        throw forbidden("appeal_final", "errors.review.appealFinal");
       const target = decisionTarget(review.status, input.decision);
       if (!target)
         throw conflict("errors.review.invalidDecision", "invalid_decision", { currentStatus: review.status });
@@ -663,6 +695,9 @@ export class ReviewsService {
   }
 
   private async computeAndStore(place: PlaceRef): Promise<PlaceReviewRating> {
+    // Параллельные изменения отзывов места пересчитывают кэш по очереди (иначе поздний пересчёт со старыми данными
+    // мог бы перезаписать свежий): блокировка до конца транзакции, затем чтение.
+    await this.repo.lockRating(place.id);
     const now = this.now();
     const [inputs, stats] = await Promise.all([
       this.repo.ratingInputs(place.id),
@@ -672,11 +707,29 @@ export class ReviewsService {
     return this.repo.upsertRating(place.id, result, now);
   }
 
-  /** Рейтинг из кэша; нет кэша, другая версия формулы или устарел — пересчёт. */
-  private async ratingOf(place: PlaceRef, cached?: PlaceReviewRating): Promise<PlaceRatingDto> {
-    let row = cached ?? (await this.repo.ratings([place.id])).get(place.id);
-    if (ratingStale(row, this.now())) row = await this.computeAndStore(place);
-    return toRatingDto(row!);
+  /**
+   * Рейтинг для публичного GET без записи: свежий кэш текущей версии формулы — как есть; нет кэша или он устарел
+   * (затухание по давности, другая версия формулы) — расчёт в памяти, кэш обновится при следующем изменении отзывов.
+   */
+  private async publicRatingOf(place: PlaceRef): Promise<PlaceRatingDto> {
+    const now = this.now();
+    const row = (await this.repo.ratings([place.id])).get(place.id);
+    if (row && !ratingStale(row, now)) return toRatingDto(row);
+    const [inputs, stats] = await Promise.all([
+      this.repo.ratingInputs(place.id),
+      this.repo.categoryStats(place.category_id),
+    ]);
+    const r = computeRating(inputs, categoryPrior(stats.count, stats.sum), now);
+    return toRatingDto({
+      id: row?.id ?? place.id,
+      region_id: row?.region_id ?? "",
+      place_id: place.id,
+      formula_version: r.formulaVersion,
+      review_count: r.reviewCount,
+      average: r.average === null ? null : String(r.average),
+      score: r.score === null ? null : String(r.score),
+      computed_at: now,
+    });
   }
 
   private async myDtos(rows: readonly Review[]): Promise<Map<string, MyReviewDto>> {
@@ -745,9 +798,7 @@ export class ReviewsService {
           appealAllowed(
             "partner",
             r,
-            (complaints.get(r.id) ?? []).some(
-              (c) => c.complainant_kind === "partner" && c.status === "dismissed",
-            ),
+            (complaints.get(r.id) ?? []).some((c) => ownDismissed(c, userId)),
           ),
       };
     });
@@ -957,6 +1008,24 @@ function relatedTo(
       !!g.scopeId &&
       ids.has(g.scopeId.toLowerCase()),
   );
+}
+
+/** Жалоба этого партнёра, которую модератор отклонил («оставить») — основание его апелляции. */
+function ownDismissed(c: ReviewComplaint, userId: string): boolean {
+  return c.complainant_kind === "partner" && c.status === "dismissed" && c.complainant_user_id === userId;
+}
+
+/** Нет кэша — нет опубликованных отзывов: «Мало відгуків». */
+function emptyRating(placeId: string, now: Date): PlaceRatingDto {
+  return {
+    placeId,
+    reviewCount: 0,
+    fewReviews: true,
+    score: null,
+    minReviews: RATING_PARAMS.minReviews,
+    formulaVersion: RATING_PARAMS.formulaVersion,
+    computedAt: now.toISOString(),
+  };
 }
 
 function waitingSince(

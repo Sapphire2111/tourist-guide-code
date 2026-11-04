@@ -74,6 +74,18 @@ export class ReviewsRepository {
     return new Map(rows.map((r) => [r.id, r.name_i18n]));
   }
 
+  /** Из списка — id опубликованных мест региона (один запрос). */
+  async publishedPlaceIds(ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.q
+      .selectFrom("places")
+      .select("id")
+      .where("id", "in", [...new Set(ids)])
+      .where("status", "=", "published")
+      .execute();
+    return new Set(rows.map((r) => r.id));
+  }
+
   async placesOfOrganizations(
     organizationIds: readonly string[],
   ): Promise<{ id: string; organization_id: string }[]> {
@@ -434,6 +446,15 @@ export class ReviewsRepository {
       .where("place_id", "in", places)
       .executeTakeFirst();
     return { count: Number(row?.count ?? 0), sum: Number(row?.sum ?? 0) };
+  }
+
+  /** Блокировка пересчёта рейтинга места до конца транзакции (advisory, по hashtext ключа). */
+  async lockRating(placeId: string): Promise<void> {
+    await this.q
+      .selectNoFrom(
+        sql<string>`pg_advisory_xact_lock(hashtext(${`review_rating:${placeId}`}))::text`.as("locked"),
+      )
+      .execute();
   }
 
   async ratings(placeIds: readonly string[]): Promise<Map<string, PlaceReviewRating>> {
