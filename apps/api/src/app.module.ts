@@ -71,6 +71,8 @@ export class AppModule {
           | "ANTHROPIC_API_KEY"
           | "ASSISTANT_DAILY_LIMIT"
           | "ASSISTANT_USER_DAILY_LIMIT"
+          | "PLANNER_AI_DAILY_LIMIT"
+          | "PLANNER_AI_USER_DAILY_LIMIT"
         >
       >,
   ): DynamicModule {
@@ -156,7 +158,12 @@ export class AppModule {
           googleMonthlyLimit: env.GOOGLE_WEATHER_MONTHLY_LIMIT,
           refresh: env.WORKER_IN_PROCESS,
         }),
-        PlannerModule,
+        // «Мій план»: живой план через Claude — за флагом planner.ai (по умолчанию выключен), без ключа — правиловый.
+        PlannerModule.forRoot({
+          anthropicApiKey: env.ANTHROPIC_API_KEY,
+          dailyLimit: env.PLANNER_AI_DAILY_LIMIT,
+          userDailyLimit: env.PLANNER_AI_USER_DAILY_LIMIT,
+        }),
         // Кабинет партнёра и модерация (блок 6, ADR-0021).
         PartnerModule.forRoot({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME }),
         // Бронирования (блок 7): за флагом module.bookings (по умолчанию выключен).

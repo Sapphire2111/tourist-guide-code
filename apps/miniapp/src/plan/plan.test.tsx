@@ -10,7 +10,7 @@ import { GuideProvider, noopGuideApi } from "../guide/context.js";
 import { HostProvider, noopHostApi, type HostEnv } from "../host/context.js";
 import { createHostApi, seasonOfDate } from "../host/host-api.js";
 import { ConflictError, type HostApi, type PlanOption, type UserPlan } from "../host/types.js";
-import { MyPlan, NewPlanScreen, SavedPlanScreen } from "./MyPlan.js";
+import { MyPlan, NewPlanScreen, PLAN_WAIT_MS, SavedPlanScreen } from "./MyPlan.js";
 import { markPlanPartial } from "./partial-notice.js";
 
 afterEach(() => {
@@ -97,6 +97,7 @@ const plan = (over: Partial<UserPlan> = {}): UserPlan => ({
   ],
   weather: [],
   weatherSource: null,
+  generation: null,
   ...over,
 });
 
@@ -204,14 +205,19 @@ describe("Мій план: параметри поїздки", () => {
       target: { value: "2026-11-10" },
     });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Підібрати варіанти" })));
-    expect(createPlan).toHaveBeenCalledWith({
-      adults: 3,
-      children: 1,
-      withCar: false,
-      days: 3,
-      startDate: "2026-11-10",
-      basePlaceId: HOTEL,
-    });
+    // Без флага planner.ai — без выбора интересов.
+    expect(screen.queryByTestId("trip-interests")).toBeNull();
+    expect(createPlan).toHaveBeenCalledWith(
+      {
+        adults: 3,
+        children: 1,
+        withCar: false,
+        days: 3,
+        startDate: "2026-11-10",
+        basePlaceId: HOTEL,
+      },
+      expect.any(String),
+    );
     expect(window.location.hash).toBe(`#/plan/saved/${PLAN}`);
   });
 
@@ -478,5 +484,145 @@ describe("Мій план: сценарії за датою поїздки", () 
     expect(seasonOfDate("2026-12-01")).toBe("winter");
     expect(seasonOfDate("2027-03-31")).toBe("spring");
     expect(seasonOfDate("2027-11-30")).toBe("autumn");
+  });
+});
+
+describe("Мій план: живий план через Claude (planner.ai)", () => {
+  const AI = { "planner.ai": true };
+
+  it("«Скласти план»: «Складаємо план…» пока ждём; fallback — подсказка один раз на экране плана", async () => {
+    let resolve: (p: UserPlan) => void = () => undefined;
+    const createPlan = vi.fn(() => new Promise<UserPlan>((r) => (resolve = r)));
+    setup(<NewPlanScreen />, { createPlan }, {}, true, AI);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скласти план" })));
+    expect(screen.getByTestId("plan-status").textContent).toBe("Складаємо план… Це займе до хвилини.");
+    expect(screen.getByRole("button", { name: "Скласти план" })).toHaveProperty("disabled", true);
+    await act(async () => resolve(plan({ generation: "fallback" })));
+    expect(window.location.hash).toBe(`#/plan/saved/${PLAN}`);
+    cleanup();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan() }, {}, true, AI);
+    expect((await screen.findByTestId("plan-ai-fallback")).textContent).toContain("оберіть варіанти");
+    cleanup();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan() }, {}, true, AI);
+    await screen.findByRole("region", { name: /День 1/ });
+    expect(screen.queryByTestId("plan-ai-fallback")).toBeNull();
+  });
+
+  it("без вечного ожидания: дольше PLAN_WAIT_MS — сообщение и «Збережені плани»; повтор — тот же Idempotency-Key", async () => {
+    vi.useFakeTimers();
+    try {
+      const createPlan = vi.fn<HostApi["createPlan"]>(() => new Promise<UserPlan>(() => undefined));
+      setup(<NewPlanScreen />, { createPlan }, {}, true, AI);
+      fireEvent.click(screen.getByRole("button", { name: "Гастро" }));
+      expect(screen.getByRole("button", { name: "Гастро" }).getAttribute("aria-pressed")).toBe("true");
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скласти план" })));
+      await act(async () => vi.advanceTimersByTime(PLAN_WAIT_MS + 1));
+      expect(screen.getByTestId("plan-status").textContent).toBe(
+        "План складається задовго. Спробуйте ще раз.",
+      );
+      expect(screen.getByTestId("plan-open-saved").getAttribute("href")).toContain("/plan/saved");
+      expect(screen.getByRole("button", { name: "Скласти план" })).toHaveProperty("disabled", false);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Скласти план" })));
+      expect(createPlan).toHaveBeenCalledTimes(2);
+      const [first, second] = createPlan.mock.calls;
+      expect(first![0]).toMatchObject({ interests: ["gastro"] });
+      expect(second![1]).toBe(first![1]);
+      expect(PLAN_WAIT_MS).toBeLessThan(100_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("«Інший варіант» при пунктах в плане — сначала подтверждение; 409 — сообщение и план перечитан", async () => {
+    const withItem = plan({
+      schedule: [
+        {
+          day: 1,
+          items: [
+            {
+              id: "i1",
+              time: "10:00",
+              durationMin: 60,
+              place: { id: "m1", name: { uk: "Кав'ярня «Ранок»" } },
+              note: null,
+              alternatives: [],
+              distanceMeters: null,
+              slot: "morning",
+            },
+          ],
+        },
+      ],
+    } as unknown as Partial<UserPlan>);
+    const planFn = vi.fn(async () => withItem);
+    const regeneratePlan = vi.fn<HostApi["regeneratePlan"]>(async () => {
+      throw new ConflictError("errors.plan.changedMeanwhile");
+    });
+    setup(<SavedPlanScreen id={PLAN} />, { plan: planFn, regeneratePlan }, {}, true, AI);
+    fireEvent.click(await screen.findByRole("button", { name: "Інший варіант" }));
+    expect(screen.getByText("Новий варіант замінить ваш план разом із вашими змінами.")).toBeTruthy();
+    expect(regeneratePlan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Залишити як є" }));
+    expect(screen.queryByTestId("plan-replace-confirm")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Інший варіант" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Замінити план" })));
+    expect(regeneratePlan).toHaveBeenCalledWith(PLAN, expect.any(String));
+    expect(screen.getByTestId("plan-status").textContent).toContain("План змінився");
+    expect(planFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("«Інший варіант»: новый план с теми же параметрами; не вышло — план без изменений; без флага — кнопки нет", async () => {
+    const next = plan({ title: { uk: "Інший день" }, generation: "ai" });
+    const regeneratePlan = vi.fn<HostApi["regeneratePlan"]>(async () => next);
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan(), regeneratePlan }, {}, true, AI);
+    const another = await screen.findByRole("button", { name: "Інший варіант" });
+    await act(async () => fireEvent.click(another));
+    expect(regeneratePlan).toHaveBeenCalledWith(PLAN, expect.any(String));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Інший день");
+    expect(screen.getByTestId("plan-status").textContent).toBe("Готово: новий варіант плану.");
+    regeneratePlan.mockResolvedValueOnce(plan({ generation: "fallback" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Інший варіант" })));
+    expect(screen.getByTestId("plan-status").textContent).toBe(
+      "Не вдалося скласти інший варіант — план без змін.",
+    );
+    cleanup();
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan() });
+    await screen.findByRole("region", { name: /День 1/ });
+    expect(screen.queryByTestId("plan-regenerate")).toBeNull();
+    cleanup();
+    // План из сценария — без «Інший варіант».
+    setup(<SavedPlanScreen id={PLAN} />, { plan: async () => plan({ scenarioId: "sc1" }) }, {}, true, AI);
+    await screen.findByRole("region", { name: /День 1/ });
+    expect(screen.queryByTestId("plan-regenerate")).toBeNull();
+  });
+
+  it("адаптер: POST /me/plan/{id}/regenerate с регионом; generation из ответа", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const dto = {
+      id: PLAN,
+      regionId: "reg",
+      scenarioId: null,
+      scenarioVersion: null,
+      scenarioUpdated: false,
+      title: { uk: "Мій план" },
+      startDate: null,
+      trip: { adults: 2, children: 0, withCar: true, days: 1, base: null },
+      plan: [{ dayNo: 1, items: [] }],
+      options: [],
+      weather: [],
+      weatherSource: null,
+      generation: "ai",
+      createdAt: "",
+      updatedAt: "",
+    };
+    const fetchMock = vi.fn(async (req: Request) => {
+      calls.push({ url: req.url, body: await req.json() });
+      return new Response(JSON.stringify(dto), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const api = createHostApi(createApiClient({ baseUrl: "http://api", fetch: fetchMock }), "reg");
+    expect((await api.regeneratePlan(PLAN)).generation).toBe("ai");
+    expect(calls).toEqual([{ url: `http://api/me/plan/${PLAN}/regenerate`, body: { regionId: "reg" } }]);
   });
 });

@@ -4,10 +4,12 @@
 // підходить, скільки йти/їхати); галочка — PATCH addItem, снятая — removeItemId. «Скласти свій план» — план без
 // сценария. Пункт → картка місця C06. Сохранение — только с сессией (C-24). Погода (module.weather, при дате начала):
 // в заголовке дня — иконка и t°, в дне — предупреждения; дождь — «якщо дощ» раскрыт; горный поход в опасный день —
-// с предупреждением; подпись источника под днями.
+// с предупреждением; подпись источника под днями. Флаг planner.ai: свой план составляет Claude (ожидание
+// «Складаємо план…» с пределом PLAN_WAIT_MS), «Інший варіант» — новый план с теми же параметрами.
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
+import { useIdempotencyKey } from "../bookings/parts.js";
 import { useAsync, useGuide } from "../guide/context.js";
 import { AsyncView, Badge, card, listStyle, useDistance } from "../guide/parts.js";
 import { useScreenState } from "../screen-state.js";
@@ -16,6 +18,7 @@ import { useHost } from "../host/context.js";
 import { isMessageKey, useErrorText } from "../host/errors.js";
 import {
   ApiCallError,
+  PLAN_INTERESTS,
   PLAN_SLOTS,
   type PlanChange,
   type PlanDay,
@@ -37,7 +40,7 @@ import {
   WeatherAttribution,
   WeatherIcon,
 } from "../weather/Weather.js";
-import { takePlanPartial } from "./partial-notice.js";
+import { markPlanFallback, takePlanFallback, takePlanPartial } from "./partial-notice.js";
 import "./plan.css";
 
 // Сегменты в стиле переключателя сезонов (.kosiv-seasons): активный — поверхность и акцент.
@@ -58,6 +61,11 @@ const tabStyle = (active: boolean): CSSProperties => ({
 
 const PEOPLE_MAX = 20;
 const DAYS_MAX = 14;
+/**
+ * Живой план (Claude): дольше — сообщение и ссылка на «Збережені». Сервер укладывается в ~55 с (общий дедлайн обеих
+ * попыток), прокси Cloudflare рвёт запрос на 100 с.
+ */
+export const PLAN_WAIT_MS = 70_000;
 
 export function MyPlan({ tab }: { tab: "scenarios" | "saved" }) {
   const { t } = useT();
@@ -253,6 +261,8 @@ function TripForm({
   const { t } = useT();
   const [trip, setTrip] = useState(initial);
   const [date, setDate] = useState(startDate ?? "");
+  const aiOn = useFeatureFlag("planner.ai");
+  const interests = trip.interests ?? [];
   const dateId = useId();
   const set = (patch: Partial<PlanTrip>) => setTrip((v) => ({ ...v, ...patch }));
   return (
@@ -261,7 +271,9 @@ function TripForm({
       data-testid="trip-form"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(trip, date || null);
+        // Интересы — только для живого плана (флаг planner.ai).
+        const { interests, ...rest } = trip;
+        onSubmit(aiOn && interests ? { ...rest, interests } : rest, date || null);
       }}
     >
       <Stepper
@@ -298,6 +310,32 @@ function TripForm({
           </button>
         ))}
       </div>
+      {aiOn && (
+        <div
+          role="group"
+          aria-label={t("miniapp.plan.trip.interests")}
+          className="kosiv-seasons plan-interests"
+          data-testid="trip-interests"
+        >
+          {PLAN_INTERESTS.map((i) => (
+            <button
+              key={i}
+              type="button"
+              className="kosiv-season"
+              aria-pressed={interests.includes(i)}
+              onClick={() =>
+                set({
+                  interests: PLAN_INTERESTS.filter((x) =>
+                    x === i ? !interests.includes(i) : interests.includes(x),
+                  ),
+                })
+              }
+            >
+              {t(`miniapp.plan.interest.${i}`)}
+            </button>
+          ))}
+        </div>
+      )}
       <label htmlFor={dateId} className="plan-date">
         <span>{t("miniapp.plan.trip.startDate")}</span>
         <input id={dateId} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -325,16 +363,34 @@ export function NewPlanScreen() {
   const errorText = useErrorText();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Message>(null);
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  const aiOn = useFeatureFlag("planner.ai");
+  // Повтор того же запроса (после таймаута, сети) — тот же Idempotency-Key: второй план не создаётся, лимит не тратится.
+  const idem = useIdempotencyKey();
   const create = async (trip: PlanTrip, startDate: string | null) => {
     setBusy(true);
-    setStatus(null);
+    setWaitedTooLong(false);
+    setStatus(aiOn ? { text: t("miniapp.plan.ai.generating"), alert: false } : null);
+    // Без вечного ожидания: дольше PLAN_WAIT_MS — сообщение и «Збережені плани» (поздний ответ всё равно откроет план).
+    const timer = aiOn
+      ? window.setTimeout(() => {
+          setStatus({ text: t("miniapp.plan.ai.timeout"), alert: true });
+          setWaitedTooLong(true);
+          setBusy(false);
+        }, PLAN_WAIT_MS)
+      : undefined;
+    const input: TripInput = { ...trip, startDate, ...(hotelPlaceId ? { basePlaceId: hotelPlaceId } : {}) };
     try {
-      const input: TripInput = { ...trip, startDate, ...(hotelPlaceId ? { basePlaceId: hotelPlaceId } : {}) };
-      const plan = await api.createPlan(input);
+      const plan = await api.createPlan(input, idem.keyFor(input));
+      idem.settle();
+      if (plan.generation === "fallback") markPlanFallback(plan.id);
       navigate(`/plan/saved/${plan.id}`, { replace: true });
     } catch (err) {
+      idem.settle(err);
       setStatus({ text: errorText(err, "miniapp.plan.createError"), alert: true });
       setBusy(false);
+    } finally {
+      window.clearTimeout(timer);
     }
   };
   return (
@@ -349,11 +405,16 @@ export function NewPlanScreen() {
           <TripForm
             initial={DEFAULT_TRIP}
             startDate={null}
-            submitLabel={t("miniapp.plan.trip.create")}
+            submitLabel={t(aiOn ? "miniapp.plan.ai.create" : "miniapp.plan.trip.create")}
             busy={busy}
             onSubmit={(trip, date) => void create(trip, date)}
           />
           <Live message={status} testId="plan-status" />
+          {waitedTooLong && (
+            <Link to="/plan/saved" data-testid="plan-open-saved">
+              {t("miniapp.plan.ai.openSaved")}
+            </Link>
+          )}
         </>
       ) : (
         <p data-testid="plan-login">{t("miniapp.plan.needsLogin")}</p>
@@ -487,6 +548,7 @@ export function SavedPlanScreen({ id }: { id: string }) {
   );
   // Ассистент добавил не все места — сообщаем один раз (флаг снимается при первом показе экрана).
   const [partial] = useState(() => takePlanPartial(id));
+  const [fallback] = useState(() => takePlanFallback(id));
   if (plan.status === "error" && plan.error instanceof NotFoundError)
     return <p role="alert">{t("miniapp.plan.notFound")}</p>;
   if (plan.status === "error" && plan.error instanceof UnauthorizedError)
@@ -496,6 +558,11 @@ export function SavedPlanScreen({ id }: { id: string }) {
       {partial && (
         <p role="status" data-testid="plan-partial">
           {t("miniapp.assistant.plan.partial")}
+        </p>
+      )}
+      {fallback && (
+        <p role="status" data-testid="plan-ai-fallback">
+          {t("miniapp.plan.ai.fallback")}
         </p>
       )}
       <AsyncView state={plan} retry={retry}>
@@ -571,6 +638,43 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
   };
   const edit: Edit = { busy, apply: (c, done, focus) => void apply(c, done, focus) };
   const weatherOn = useFeatureFlag("module.weather");
+  const aiOn = useFeatureFlag("planner.ai");
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  const regenKey = useIdempotencyKey();
+  /**
+   * «Інший варіант»: новый план через Claude с теми же параметрами; не вышло — план без изменений. Поздний ответ (после
+   * PLAN_WAIT_MS) — план перечитывается: за это время его могли изменить. План изменили на сервере — 409, перечитываем.
+   */
+  const another = async () => {
+    setConfirmReplace(false);
+    setBusy(true);
+    setStatus({ text: t("miniapp.plan.ai.anotherGenerating"), alert: false });
+    let late = false;
+    const timer = window.setTimeout(() => {
+      late = true;
+      setStatus({ text: t("miniapp.plan.ai.timeout"), alert: true });
+      setBusy(false);
+    }, PLAN_WAIT_MS);
+    try {
+      const next = await api.regeneratePlan(plan.id, regenKey.keyFor({ plan: plan.id, at: plan.updatedAt }));
+      regenKey.settle();
+      setPlan(late ? await api.plan(plan.id) : next);
+      setStatus(
+        next.generation === "ai"
+          ? { text: t("miniapp.plan.ai.anotherDone"), alert: false }
+          : { text: t("miniapp.plan.ai.anotherFailed"), alert: true },
+      );
+    } catch (err) {
+      regenKey.settle(err);
+      setStatus({ text: errorText(err, "miniapp.plan.ai.anotherFailed"), alert: true });
+      if (err instanceof ApiCallError && err.status === 409)
+        await api.plan(plan.id).then(setPlan, () => undefined);
+    } finally {
+      window.clearTimeout(timer);
+      setBusy(false);
+    }
+  };
+  const hasItems = plan.schedule.some((d) => d.items.length > 0);
   const { trip } = plan;
   return (
     <Stack>
@@ -618,6 +722,26 @@ function PlanEditor({ initial }: { initial: UserPlan }) {
           <Button disabled={busy} onClick={() => setEditTrip(true)} data-testid="trip-edit">
             {t("miniapp.plan.trip.edit")}
           </Button>
+        )}
+        {aiOn && plan.scenarioId === null && !editTrip && !confirmReplace && (
+          <Button
+            disabled={busy}
+            onClick={() => (hasItems ? setConfirmReplace(true) : void another())}
+            data-testid="plan-regenerate"
+          >
+            {t("miniapp.plan.ai.another")}
+          </Button>
+        )}
+        {confirmReplace && (
+          <div role="group" aria-labelledby="plan-replace-q" data-testid="plan-replace-confirm">
+            <p id="plan-replace-q" className="plan-note">
+              {t("miniapp.plan.ai.replaceConfirm")}
+            </p>
+            <Button disabled={busy} onClick={() => void another()} data-testid="plan-replace">
+              {t("miniapp.plan.ai.replace")}
+            </Button>
+            <Button onClick={() => setConfirmReplace(false)}>{t("miniapp.plan.ai.keep")}</Button>
+          </div>
         )}
       </section>
       <Live message={status} testId="plan-status" />

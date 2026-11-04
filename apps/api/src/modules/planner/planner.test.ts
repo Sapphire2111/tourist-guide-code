@@ -1,6 +1,7 @@
 // Unit (без БД): планировщик (C09, S-04; ADR-0020) — HTTP-контракт (валидация, 401, 403, флаг) и правила сервиса
 // (только опубликованные сценарии; пункт с неопубликованным местом — «Недоступно»; альтернативы — только
 // опубликованные; «Замінити» — только на альтернативу). Репозиторий подменён; на БД — test/integration/host.test.ts.
+import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
@@ -12,7 +13,9 @@ import {
   DATABASE,
   DatabaseModule,
   regionContext,
+  currentTenant,
   withTenant,
+  type IdempotencyKey,
   type Scenario,
   type ScenarioItem,
   type UserPlan,
@@ -24,11 +27,15 @@ import {
   RbacModule,
   RbacTenantContextSource,
   RoleAssignmentsRepository,
+  type Grant,
 } from "../rbac/index.js";
 import type { RegionsRepository } from "../regions/index.js";
 import type { Forecast, WeatherDay, WeatherService } from "../weather/index.js";
 import { planItemsFromScenario } from "./plan-rules.js";
+import type { PlannerAi } from "./plan-ai.service.js";
+import { USER_PLANS_MAX } from "./planner.dto.js";
 import { PlannerModule } from "./planner.module.js";
+import { IDEMPOTENCY_STORE, IdempotencyModule, type IdempotencyStore } from "../idempotency/index.js";
 import type { CatalogPlaceRow, PlannerRepository, PlanPlaceRow } from "./planner.repository.js";
 import { PlannerService } from "./planner.service.js";
 
@@ -44,13 +51,66 @@ afterEach(async () => {
   app = undefined;
 });
 
-async function start(authenticated = false) {
+/** Idempotency-Key в памяти (как IdempotencyKeysRepository): повтор с тем же ключом — сохранённый ответ. */
+function memoryIdempotency(): IdempotencyStore {
+  const rows = new Map<string, IdempotencyKey>();
+  return {
+    claim: (input) => {
+      const id = `${input.scope}|${input.key}`;
+      const row = rows.get(id);
+      if (row) return Promise.resolve({ acquired: false, row: { ...row } });
+      const now = new Date();
+      const created: IdempotencyKey = {
+        id,
+        scope: input.scope,
+        key: input.key,
+        request_hash: input.requestHash,
+        status: "in_progress",
+        response_status: null,
+        response_body: null,
+        expires_at: new Date(now.getTime() + input.ttlSeconds * 1000),
+        created_at: now,
+        updated_at: now,
+      };
+      rows.set(id, created);
+      return Promise.resolve({ acquired: true, row: { ...created } });
+    },
+    complete: (id, status, body) => {
+      Object.assign(rows.get(id)!, { status: "completed", response_status: status, response_body: body });
+      return Promise.resolve();
+    },
+    fail: (id) => {
+      rows.get(id)!.status = "failed";
+      return Promise.resolve();
+    },
+  };
+}
+
+const grant = (role: string, scopeType: Grant["scopeType"], regionId: string | null): Grant => ({
+  id: "0190f5c2-7d3e-7000-8000-0000000001aa",
+  role,
+  scopeType,
+  scopeId: regionId,
+  regionId,
+  validUntil: null,
+});
+
+async function start(authenticated = false, grants: Grant[] = [], selectedRegion: string | null = null) {
+  /** Был ли tenant-контекст (транзакция запроса) при вызове сервиса создания/«Інший варіант». */
+  const tenants: unknown[] = [];
   const service = {
     scenarios: vi.fn(() => Promise.resolve({ items: [] })),
     scenario: vi.fn(() => Promise.resolve({ id: SCEN })),
     plans: vi.fn(() => Promise.resolve({ items: [] })),
     plan: vi.fn(() => Promise.resolve({ id: PLAN })),
-    createPlan: vi.fn(() => Promise.resolve({ id: PLAN })),
+    createPlan: vi.fn(() => {
+      tenants.push(currentTenant());
+      return Promise.resolve({ id: PLAN });
+    }),
+    regeneratePlan: vi.fn(() => {
+      tenants.push(currentTenant());
+      return Promise.resolve({ id: PLAN });
+    }),
     updatePlan: vi.fn(() => Promise.resolve({ id: PLAN })),
     deletePlan: vi.fn(() => Promise.resolve()),
     adminList: vi.fn(() => Promise.resolve({ items: [] })),
@@ -59,6 +119,8 @@ async function start(authenticated = false) {
   const moduleRef = await Test.createTestingModule({
     imports: [
       DatabaseModule.forRoot({ connectionString: "postgres://u:p@127.0.0.1:1/db" }),
+      // Раньше TenancyModule: захват ключа — до транзакции запроса (как в AppModule).
+      IdempotencyModule,
       TenancyModule.forRoot({ source: RbacTenantContextSource, imports: [RbacModule] }),
       FeatureFlagsModule.forRoot({ appEnv: "local" }),
       PlannerModule,
@@ -67,9 +129,14 @@ async function start(authenticated = false) {
     .overrideProvider(DATABASE)
     .useValue(db)
     .overrideProvider(PRINCIPAL_SOURCE)
-    .useValue({ resolve: () => (authenticated ? { userId: USER } : undefined) })
+    .useValue({
+      resolve: () =>
+        authenticated ? { userId: USER, sessionId: "s1", regionId: selectedRegion } : undefined,
+    })
     .overrideProvider(RoleAssignmentsRepository)
-    .useValue({ activeGrantsOf: () => Promise.resolve([]) })
+    .useValue({ activeGrantsOf: () => Promise.resolve(grants) })
+    .overrideProvider(IDEMPOTENCY_STORE)
+    .useValue(memoryIdempotency())
     .overrideProvider(FeatureFlagsService)
     .useValue({ isEnabled: () => Promise.resolve(true) })
     .overrideProvider(PlannerService)
@@ -77,10 +144,66 @@ async function start(authenticated = false) {
     .compile();
   app = configureApp(moduleRef.createNestApplication({ logger: false }), { appEnv: "local" });
   await app.init();
-  return { http: () => request(app!.getHttpServer()), service };
+  const server = app.getHttpServer();
+  // POST — с Idempotency-Key (у создания и «Інший варіант» он обязателен), raw — без него.
+  const http = () => {
+    const r = request(server);
+    return {
+      get: (u: string) => r.get(u),
+      patch: (u: string) => r.patch(u),
+      delete: (u: string) => r.delete(u),
+      post: (u: string) => r.post(u).set("Idempotency-Key", randomUUID()),
+    };
+  };
+  return { http, raw: () => request(server), service, tenants };
 }
 
 describe("HTTP планировщика", () => {
+  it("создание и «Інший варіант»: Idempotency-Key необязателен (без него — как раньше); с ключом повтор — тот же ответ без вызова", async () => {
+    const { raw, service } = await start(true);
+    // Без ключа — как раньше (старые клиенты): выполняется каждый раз.
+    await raw().post("/me/plan").send({ regionId: REGION }).expect(201);
+    await raw().post("/me/plan").send({ regionId: REGION }).expect(201);
+    expect(service.createPlan).toHaveBeenCalledTimes(2);
+    service.createPlan.mockClear();
+    await raw().post(`/me/plan/${PLAN}/regenerate`).send({ regionId: REGION }).expect(200);
+    service.regeneratePlan.mockClear();
+    const key = randomUUID();
+    await raw().post("/me/plan").set("Idempotency-Key", key).send({ regionId: REGION, days: 2 }).expect(201);
+    const again = await raw()
+      .post("/me/plan")
+      .set("Idempotency-Key", key)
+      .send({ regionId: REGION, days: 2 })
+      .expect(201);
+    expect(again.headers["idempotent-replayed"]).toBe("true");
+    expect(service.createPlan).toHaveBeenCalledTimes(1);
+    await raw()
+      .post(`/me/plan/${PLAN}/regenerate`)
+      .set("Idempotency-Key", key)
+      .send({ regionId: REGION })
+      .expect(200);
+    expect(service.regeneratePlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("персонал и админы (ORG_OWNER, REGION_ADMIN, MODERATOR, SUPERADMIN): Claude — вне транзакции запроса", async () => {
+    const roles: [Grant[], string | null][] = [
+      [[grant("ORG_OWNER", "REGION", REGION)], null],
+      [[grant("REGION_ADMIN", "REGION", REGION)], null],
+      [[grant("MODERATOR", "REGION", REGION)], null],
+      [[grant("SUPERADMIN", "PLATFORM", null)], REGION],
+      [[grant("SUPERADMIN", "PLATFORM", null)], null],
+    ];
+    for (const [grants, selected] of roles) {
+      const { http, service, tenants } = await start(true, grants, selected);
+      await http().post("/me/plan").send({ regionId: REGION }).expect(201);
+      await http().post(`/me/plan/${PLAN}/regenerate`).send({ regionId: REGION }).expect(200);
+      expect(service.createPlan).toHaveBeenCalledTimes(1);
+      expect(tenants).toEqual([undefined, undefined]);
+      await app?.close();
+      app = undefined;
+    }
+  });
+
   it("сценарии — без сессии, фильтр tag/days; неизвестный тег — 400", async () => {
     const { http, service } = await start();
     await http().get(`/scenarios?regionId=${REGION}&tag=kids&days=1`).expect(200);
@@ -123,6 +246,25 @@ describe("HTTP планировщика", () => {
       .patch(`/me/plan/${PLAN}`)
       .send({ regionId: REGION, addItem: { dayNo: 1, slot: "night", placeId: P(3) } })
       .expect(400);
+    // «Інший варіант» и интересы живого плана; неизвестный интерес — 400.
+    await http()
+      .post(`/me/plan/${PLAN}/regenerate`)
+      .send({ regionId: REGION, interests: ["culture"] })
+      .expect(200);
+    expect(service.regeneratePlan).toHaveBeenCalledWith(USER, PLAN, {
+      regionId: REGION,
+      interests: ["culture"],
+    });
+    await http()
+      .post(`/me/plan/${PLAN}/regenerate`)
+      .send({ regionId: REGION, interests: ["space"] })
+      .expect(400);
+    await http().post("/me/plan/x/regenerate").send({ regionId: REGION }).expect(400);
+    await http()
+      .post("/me/plan")
+      .send({ regionId: REGION, interests: ["gastro", "relax"] })
+      .expect(201);
+    await http().post("/me/plan").send({ regionId: REGION, interests: "gastro" }).expect(400);
     // Админка сценариев — только с правом scenario.manage.
     await http().get("/admin/scenarios").expect(403);
   });
@@ -255,6 +397,7 @@ describe("PlannerService", () => {
       with_car: true,
       days: null,
       base_place_id: null,
+      interests: [],
       created_at: new Date(),
       updated_at: new Date(),
     };
@@ -304,6 +447,7 @@ describe("PlannerService: параметри поїздки і варіанти 
     with_car: false,
     days: 2,
     base_place_id: null,
+    interests: [],
     created_at: new Date(),
     updated_at: new Date(),
     ...over,
@@ -579,5 +723,231 @@ describe("PlannerService: админка без контекста регион�
     await expect(
       withTenant(db, regionContext(REGION), () => service.adminCreate(P(77), input, meta)),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("PlannerService: живой план через Claude (planner.ai)", () => {
+  const customRow = (over: Partial<UserPlan> = {}): UserPlan => ({
+    id: PLAN,
+    region_id: REGION,
+    user_id: USER,
+    scenario_id: null,
+    scenario_version: null,
+    title_i18n: { uk: "Мій план", en: "My plan" },
+    start_date: null,
+    items: [],
+    adults: 2,
+    children: 2,
+    with_car: true,
+    days: 3,
+    base_place_id: null,
+    interests: [],
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...over,
+  });
+  const draft = {
+    title: { uk: "Три дні з дітьми", en: "Three days with kids" },
+    items: [
+      {
+        dayNo: 1,
+        placeId: P(10),
+        timeHint: "10:00",
+        durationMin: 90,
+        note: { uk: "Взуття." },
+        alternatives: [P(11)],
+      },
+      { dayNo: 2, placeId: P(11), timeHint: "18:30", durationMin: 75, note: null, alternatives: [] },
+    ],
+  };
+  function setup(opts: { flag?: boolean; ok?: boolean; enabled?: boolean; row?: UserPlan } = {}) {
+    let row = opts.row ?? customRow();
+    const generate = vi.fn(() =>
+      Promise.resolve(
+        opts.ok === false
+          ? { ok: false, reason: "invalid" }
+          : { ok: true, draft, attempts: 1, usage: {}, model: "m" },
+      ),
+    );
+    const ai = { enabled: opts.enabled ?? true, generate } as unknown as PlannerAi;
+    const flags = {
+      isEnabled: vi.fn((key: string) => Promise.resolve(key === "planner.ai" ? (opts.flag ?? true) : true)),
+    } as unknown as FeatureFlagsService;
+    const createPlan = vi.fn((r: Record<string, unknown>) =>
+      Promise.resolve(customRow(r as Partial<UserPlan>)),
+    );
+    const updatePlan = vi.fn((_id: string, patch: Partial<UserPlan>) => {
+      row = { ...row, ...patch };
+      return Promise.resolve(row);
+    });
+    const places = [place(10), place(11)];
+    const repo = {
+      findScenario: vi.fn(),
+      items: vi.fn(() => Promise.resolve([])),
+      places: vi.fn((ids: string[]) => Promise.resolve(places.filter((p) => ids.includes(p.id)))),
+      scenarioVersions: vi.fn(() => Promise.resolve(new Map())),
+      catalogPlaces: vi.fn(() => Promise.resolve([])),
+      firstLocality: vi.fn(() =>
+        Promise.resolve({ name_i18n: { uk: "Яремче" }, location: { lon: 24, lat: 48 } }),
+      ),
+      countPlans: vi.fn(() => Promise.resolve(0)),
+      createPlan,
+      findPlan: vi.fn(() => Promise.resolve(row)),
+      updatePlan,
+    };
+    const { db } = recordingDb({});
+    const regions = {
+      findById: (id: string) => Promise.resolve({ id, status: "active", timezone: "Europe/Kyiv" }),
+    } as unknown as RegionsRepository;
+    const service = new PlannerService(
+      db,
+      repo as unknown as PlannerRepository,
+      regions,
+      {} as AuditService,
+      undefined,
+      flags,
+      ai,
+    );
+    return { service, generate, createPlan, updatePlan, repo };
+  }
+  const input = {
+    regionId: REGION,
+    days: 3,
+    children: 2,
+    withCar: true,
+    interests: ["waterfalls" as const],
+  };
+
+  it("флаг включён — пункты и назва от Claude, generation: ai; параметры туриста — в запрос", async () => {
+    const { service, generate, createPlan } = setup();
+    const dto = await service.createPlan(USER, { ...input, startDate: "2026-07-10" });
+    expect(generate).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ id: REGION }),
+      expect.objectContaining({
+        days: 3,
+        children: 2,
+        withCar: true,
+        season: "summer",
+        interests: ["waterfalls"],
+        centerName: "Яремче",
+      }),
+    );
+    expect(createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ title_i18n: draft.title, scenario_id: null }),
+    );
+    expect(dto.generation).toBe("ai");
+    expect(dto.plan[0]!.items[0]).toMatchObject({ slot: "morning", place: { id: P(10) }, timeHint: "10:00" });
+    expect(dto.plan[1]!.items[0]).toMatchObject({ slot: "evening", place: { id: P(11) } });
+  });
+
+  it("Claude не смог — правиловый план (пустой, с вариантами), generation: fallback; без ключа — тоже", async () => {
+    const failed = setup({ ok: false });
+    const dto = await failed.service.createPlan(USER, input);
+    expect(dto.generation).toBe("fallback");
+    expect(failed.createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ items: [], title_i18n: { uk: "Мій план", en: "My plan" } }),
+    );
+    const nokey = setup({ enabled: false });
+    expect((await nokey.service.createPlan(USER, input)).generation).toBe("fallback");
+    expect(nokey.generate).not.toHaveBeenCalled();
+  });
+
+  it("флаг выключен, сценарий или ai: false (ассистент) — без Claude, generation: null", async () => {
+    const manual = setup();
+    expect((await manual.service.createPlan(USER, { ...input, ai: false })).generation).toBeNull();
+    expect(manual.generate).not.toHaveBeenCalled();
+    const off = setup({ flag: false });
+    expect((await off.service.createPlan(USER, input)).generation).toBeNull();
+    expect(off.generate).not.toHaveBeenCalled();
+    const ok = setup();
+    ok.repo.findScenario.mockResolvedValue(scenario());
+    expect((await ok.service.createPlan(USER, { regionId: REGION, scenarioId: SCEN })).generation).toBeNull();
+    expect(ok.generate).not.toHaveBeenCalled();
+  });
+
+  it("планов уже максимум — 409 без запроса к Claude", async () => {
+    const full = setup();
+    full.repo.countPlans.mockResolvedValue(USER_PLANS_MAX);
+    await expect(full.service.createPlan(USER, input)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(full.generate).not.toHaveBeenCalled();
+  });
+
+  it("«Інший варіант»: параметры плана, места текущего — «уже були»; новые пункты и назва", async () => {
+    const current = customRow({
+      items: [
+        {
+          id: P(600),
+          dayNo: 1,
+          position: 0,
+          placeId: P(11),
+          timeHint: null,
+          durationMin: null,
+          note: null,
+          alternatives: [],
+          replacedPlaceId: null,
+        },
+      ],
+    });
+    const { service, generate, updatePlan } = setup({ row: current });
+    const dto = await service.regeneratePlan(USER, PLAN, { regionId: REGION });
+    expect(generate).toHaveBeenCalledWith(
+      USER,
+      expect.anything(),
+      expect.objectContaining({ days: 3, children: 2, avoid: [P(11)] }),
+    );
+    expect(updatePlan).toHaveBeenCalledWith(PLAN, expect.objectContaining({ title_i18n: draft.title }));
+    expect(dto).toMatchObject({ generation: "ai", title: draft.title });
+  });
+
+  it("«Інший варіант»: план изменили во время ожидания — 409, правки не перезаписаны; дни — по текущему плану", async () => {
+    const t0 = new Date("2026-11-04T10:00:00Z");
+    const row = customRow({ updated_at: t0, interests: ["culture"] });
+    const changed = setup({ row });
+    changed.repo.findPlan
+      .mockResolvedValueOnce(row)
+      .mockResolvedValueOnce({ ...row, updated_at: new Date(t0.getTime() + 1000) });
+    await expect(changed.service.regeneratePlan(USER, PLAN, { regionId: REGION })).rejects.toMatchObject({
+      code: "CONFLICT",
+      messageKey: "errors.plan.changedMeanwhile",
+    });
+    expect(changed.updatePlan).not.toHaveBeenCalled();
+    // Интересы — из плана; дней стало 1 — пункты второго дня не сохраняются.
+    expect(changed.generate).toHaveBeenCalledWith(
+      USER,
+      expect.anything(),
+      expect.objectContaining({ interests: ["culture"] }),
+    );
+    const shorter = setup({ row });
+    shorter.repo.findPlan.mockResolvedValueOnce(row).mockResolvedValueOnce({ ...row, days: 1 });
+    await shorter.service.regeneratePlan(USER, PLAN, { regionId: REGION, interests: ["gastro", "gastro"] });
+    const saved = shorter.updatePlan.mock.calls[0]![1] as Partial<UserPlan>;
+    expect(saved.items!.map((i) => i.dayNo)).toEqual([1]);
+    expect(saved.interests).toEqual(["gastro"]);
+  });
+
+  it("внутри tenant-транзакции — явная ошибка конфигурации, а не тихий правиловый план", async () => {
+    const { service, generate } = setup();
+    const { db } = recordingDb({});
+    await expect(
+      withTenant(db, regionContext(REGION), () => service.createPlan(USER, input)),
+    ).rejects.toThrow(/WithoutTenantContext/);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("«Інший варіант»: Claude не смог — план без изменений; флаг выключен — 404; план сценария — 422", async () => {
+    const failed = setup({ ok: false });
+    expect((await failed.service.regeneratePlan(USER, PLAN, { regionId: REGION })).generation).toBe(
+      "fallback",
+    );
+    expect(failed.updatePlan).not.toHaveBeenCalled();
+    await expect(
+      setup({ flag: false }).service.regeneratePlan(USER, PLAN, { regionId: REGION }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      setup({ row: customRow({ scenario_id: SCEN }) }).service.regeneratePlan(USER, PLAN, {
+        regionId: REGION,
+      }),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE", messageKey: "errors.plan.notCustom" });
   });
 });

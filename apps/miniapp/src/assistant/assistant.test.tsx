@@ -737,6 +737,8 @@ describe("Assistant: больше мест и план", () => {
       withCar: true,
       days: 2,
       startDate: "2026-11-07",
+      // Места ассистента — без живого плана Claude.
+      ai: false,
     });
     expect(updatePlan.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
       { add: { day: 1, slot: "morning", placeId: place(1).id } },

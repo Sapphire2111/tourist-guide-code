@@ -213,6 +213,8 @@ export type Brief = {
   seasons: readonly ScenarioSeason[];
   days: number;
   target?: BriefTarget;
+  /** Центр подбора, если он не населённый пункт каталога (живой план: жильё туриста). */
+  center?: LonLat;
 };
 
 const SEASON_CODE: Record<ScenarioSeason, string> = { winter: "w", spring: "sp", summer: "s", autumn: "a" };

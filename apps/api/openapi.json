@@ -7813,7 +7813,7 @@
         "tags": ["planner"]
       },
       "post": {
-        "description": "404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
+        "description": "Свой план при флаге planner.ai региона — через Claude (пункты из опубликованных мест, до ~40 с ожидания; generation: ai), иначе или при сбое Claude — пустой план с вариантами на выбор (generation: fallback/null). Повтор с тем же Idempotency-Key — тот же ответ (план не создаётся повторно). 404 — сценария нет или он не опубликован; 409 errors.plan.limitReached — планов уже максимум; 422 errors.plan.placeUnavailable — basePlaceId не опубликованное место региона.",
         "operationId": "createMyPlan",
         "parameters": [
           {
@@ -7822,6 +7822,13 @@
             "description": "Correlation id; иначе генерируется",
             "required": false,
             "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
           }
         ],
         "requestBody": {
@@ -7901,6 +7908,107 @@
         },
         "security": [{ "session": [] }],
         "summary": "«Зберегти план»: копия опубликованного сценария или свой план (без scenarioId) с параметрами поездки",
+        "tags": ["planner"]
+      }
+    },
+    "/me/plan/{id}/regenerate": {
+      "post": {
+        "description": "Свій план (без сценарію): пункти й назва замінюються новим планом, відмінним від поточного. Claude не впорався (ліміт, помилка, перевірка) — план без змін, generation: fallback. 404 — плану немає або флаг planner.ai вимкнено; 422 errors.plan.notCustom — план зі сценарію; 409 errors.plan.changedMeanwhile — план змінили, поки складався новий. Повтор з тим самим Idempotency-Key — та сама відповідь.",
+        "operationId": "regenerateMyPlan",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ; без ключа — без защиты от повтора",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RegenerateUserPlanDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserPlanDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "422": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Інший варіант»: новий план через Claude з тими ж параметрами поїздки (флаг planner.ai)",
         "tags": ["planner"]
       }
     },
@@ -15991,6 +16099,11 @@
           "children": { "type": "integer" },
           "withCar": { "type": "boolean" },
           "days": { "type": "integer", "minimum": 1, "maximum": 14 },
+          "interests": {
+            "type": "array",
+            "description": "Інтереси туриста (0027) для живого плану",
+            "items": { "$ref": "#/components/schemas/ScenarioTag" }
+          },
           "base": {
             "nullable": true,
             "description": "Від чого рахується відстань, якщо в день ще нічого не вибрано",
@@ -15998,7 +16111,7 @@
             "allOf": [{ "$ref": "#/components/schemas/PlanBaseDto" }]
           }
         },
-        "required": ["adults", "children", "withCar", "days", "base"]
+        "required": ["adults", "children", "withCar", "days", "interests", "base"]
       },
       "UserPlanItemDto": {
         "type": "object",
@@ -16211,6 +16324,11 @@
           "noMountains"
         ]
       },
+      "PlanGeneration": {
+        "type": "string",
+        "enum": ["ai", "fallback"],
+        "description": "Только в ответе создания и «Інший варіант»: ai — план склав Claude; fallback — Claude недоступний (ліміт, помилка, перевірка не пройдена) — правиловий план; null — без Claude (сценарій, флаг planner.ai вимкнено, GET)"
+      },
       "UserPlanDto": {
         "type": "object",
         "properties": {
@@ -16245,6 +16363,11 @@
             "description": "Источник прогноза для подписи; null — прогноза нет",
             "allOf": [{ "$ref": "#/components/schemas/WeatherSource" }]
           },
+          "generation": {
+            "nullable": true,
+            "description": "Только в ответе создания и «Інший варіант»: ai — план склав Claude; fallback — Claude недоступний (ліміт, помилка, перевірка не пройдена) — правиловий план; null — без Claude (сценарій, флаг planner.ai вимкнено, GET)",
+            "allOf": [{ "$ref": "#/components/schemas/PlanGeneration" }]
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -16261,6 +16384,7 @@
           "options",
           "weather",
           "weatherSource",
+          "generation",
           "createdAt",
           "updatedAt"
         ]
@@ -16302,12 +16426,39 @@
             "nullable": true,
             "description": "Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»"
           },
+          "interests": {
+            "type": "array",
+            "maxItems": 6,
+            "description": "Інтереси туриста для живого плану (флаг planner.ai; зберігаються в плані): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки",
+            "items": { "$ref": "#/components/schemas/ScenarioTag" }
+          },
+          "ai": {
+            "type": "boolean",
+            "description": "За замовчуванням true. false — свій план без Claude навіть при флагу planner.ai (місця додасть клієнт, напр. асистент)"
+          },
           "scenarioId": {
             "type": "string",
             "format": "uuid",
             "description": "Опубликованный сценарий региона; без него — свой план с вариантами на выбор"
           },
           "startDate": { "type": "string", "format": "date", "nullable": true, "example": "2026-11-10" }
+        },
+        "required": ["regionId"]
+      },
+      "RegenerateUserPlanDto": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Регион туриста: regionId из GET /context"
+          },
+          "interests": {
+            "type": "array",
+            "maxItems": 6,
+            "description": "Інтереси (як у POST /me/plan)",
+            "items": { "$ref": "#/components/schemas/ScenarioTag" }
+          }
         },
         "required": ["regionId"]
       },
@@ -16353,6 +16504,12 @@
             "format": "uuid",
             "nullable": true,
             "description": "Де живе турист (місце каталогу, напр. готель з QR): від нього — відстань і «пішки»"
+          },
+          "interests": {
+            "type": "array",
+            "maxItems": 6,
+            "description": "Інтереси туриста для живого плану (флаг planner.ai; зберігаються в плані): водоспади, культура, гастро…; теги аудиторії (kids, no_car, rain) і формату ігноруються — вони з параметрів поїздки",
+            "items": { "$ref": "#/components/schemas/ScenarioTag" }
           },
           "startDate": {
             "type": "string",
@@ -18209,7 +18366,8 @@
           "module.reviews",
           "module.ambassadors",
           "module.assistant",
-          "module.weather"
+          "module.weather",
+          "planner.ai"
         ]
       },
       "FeatureFlagValueDto": {

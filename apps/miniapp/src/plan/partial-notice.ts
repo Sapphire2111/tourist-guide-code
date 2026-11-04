@@ -11,6 +11,27 @@ export function markPlanPartial(planId: string): void {
   }
 }
 
+const fallbackKey = (planId: string) => `tg:plan-fallback:${planId}`;
+
+/** Claude не составил план (флаг planner.ai) — экран плана один раз скажет «оберіть варіанти вручну». */
+export function markPlanFallback(planId: string): void {
+  try {
+    sessionStorage.setItem(fallbackKey(planId), "1");
+  } catch {
+    // Хранилище недоступно — переход без сообщения.
+  }
+}
+
+export function takePlanFallback(planId: string): boolean {
+  try {
+    const set = sessionStorage.getItem(fallbackKey(planId)) !== null;
+    sessionStorage.removeItem(fallbackKey(planId));
+    return set;
+  } catch {
+    return false;
+  }
+}
+
 /** Был ли план заполнен частично (флаг снимается при чтении). */
 export function takePlanPartial(planId: string): boolean {
   try {

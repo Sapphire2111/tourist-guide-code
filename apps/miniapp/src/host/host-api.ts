@@ -2,15 +2,18 @@
 // Регион — regionId из контекста входа (GET /context), как у гида.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
 import { API_URL } from "../api.js";
+import { uuidv7 } from "../guide/analytics.js";
 import { NotFoundError, UnauthorizedError } from "../guide/types.js";
 import { safeIcon } from "../weather/weather-api.js";
 import {
   ApiCallError,
   ConflictError,
   NetworkError,
+  PLAN_INTERESTS,
   type HostApi,
   type PlanChange,
   type PlanDay,
+  type PlanInterest,
   type PlanPlace,
   type RoomContext,
   type ScenarioSummary,
@@ -85,7 +88,16 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
   scenarioUpdated: p.scenarioUpdated,
   updatedAt: p.updatedAt,
   startDate: p.startDate,
-  trip: { adults: p.trip.adults, children: p.trip.children, withCar: p.trip.withCar, days: p.trip.days },
+  trip: {
+    adults: p.trip.adults,
+    children: p.trip.children,
+    withCar: p.trip.withCar,
+    days: p.trip.days,
+    // Старый ответ api без поля — без интересов; в форме — только известные.
+    interests: (p.trip.interests ?? []).filter((x): x is PlanInterest =>
+      (PLAN_INTERESTS as readonly string[]).includes(x),
+    ),
+  },
   base: p.trip.base?.name ?? null,
   options: p.options.map((d) => ({
     day: d.dayNo,
@@ -109,6 +121,8 @@ export const planOf = (p: ApiSchemas["UserPlanDto"]): UserPlan => ({
     iconUrl: safeIcon(w.iconUrl, API_URL),
   })),
   weatherSource: p.weatherSource ?? null,
+  // Старый ответ api без поля — без Claude.
+  generation: p.generation ?? null,
 });
 
 /** Правка плана → тело PATCH /me/plan/{id}. */
@@ -234,16 +248,33 @@ export function createHostApi(api: ApiClient, regionId: string | null): HostApi 
       (await ok(api.GET("/me/plan", { params: { query: { regionId: region() } } }))).items.map(planOf),
     plan: async (id) =>
       planOf(await ok(api.GET("/me/plan/{id}", { params: { path: { id }, query: { regionId: region() } } }))),
-    savePlan: async (scenarioId, startDate) =>
+    savePlan: async (scenarioId, startDate, key = uuidv7()) =>
       planOf(
         await ok(
           api.POST("/me/plan", {
+            params: { header: { "Idempotency-Key": key } },
             body: { regionId: region(), scenarioId, ...(startDate ? { startDate } : {}) },
           }),
         ),
       ),
-    createPlan: async (trip) =>
-      planOf(await ok(api.POST("/me/plan", { body: { regionId: region(), ...trip } }))),
+    createPlan: async (trip, key = uuidv7()) =>
+      planOf(
+        await ok(
+          api.POST("/me/plan", {
+            params: { header: { "Idempotency-Key": key } },
+            body: { regionId: region(), ...trip },
+          }),
+        ),
+      ),
+    regeneratePlan: async (id, key = uuidv7()) =>
+      planOf(
+        await ok(
+          api.POST("/me/plan/{id}/regenerate", {
+            params: { path: { id }, header: { "Idempotency-Key": key } },
+            body: { regionId: region() },
+          }),
+        ),
+      ),
     updatePlan: async (id, change) =>
       planOf(
         await ok(
