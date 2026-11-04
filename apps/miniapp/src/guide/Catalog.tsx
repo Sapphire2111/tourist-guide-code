@@ -32,7 +32,12 @@ export function Catalog({ section }: { section: CatalogSection }) {
   const [categories, retry] = useAsync(() => loadCategories(api), [api]);
   return (
     <Stack>
-      <h1>{t(`miniapp.section.${section}` as MessageKey)}</h1>
+      {/* «Пам'ятки» (#/section/nearby) — свой заголовок: miniapp.section.nearby («Що поруч») — у карты и «Поруч». */}
+      <h1>
+        {t(
+          section === "nearby" ? "miniapp.catalog.sightsTitle" : (`miniapp.section.${section}` as MessageKey),
+        )}
+      </h1>
       <AsyncView state={categories} retry={retry}>
         {(all) => {
           const root = all.find((c) => c.parentId === null && c.homeSection === section);

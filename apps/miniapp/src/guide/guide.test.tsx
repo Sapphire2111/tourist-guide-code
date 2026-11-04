@@ -233,6 +233,8 @@ describe("каталог C04", () => {
       </GuideProvider>,
     );
     await flush();
+    // Заголовок — «Пам'ятки», а не «Що поруч» (тот ключ — у карты и экрана «Поруч»).
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Пам'ятки");
     for (const name of ["Природа", "Пам'ятки", "Вершини"])
       expect(screen.getByRole("button", { name })).toBeTruthy();
     expect(screen.queryByTestId("catalog-peaks")).toBeNull();

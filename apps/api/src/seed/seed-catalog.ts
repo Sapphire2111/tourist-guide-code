@@ -94,7 +94,8 @@ export const SEED_CATEGORIES: readonly {
     name: { uk: "Що поруч", en: "Nearby" },
     icon: "map-pin",
     home: "nearby",
-    children: [{ code: "nature", name: { uk: "Пам'ятки природи", en: "Nature sights" }, icon: "trees" }],
+    // «Природа» (до 04.11.2026 — «Пам'ятки природи»; на staging переименована с аудитом category.update).
+    children: [{ code: "nature", name: { uk: "Природа", en: "Nature" }, icon: "trees" }],
   },
   {
     // «Авто» (до 03.11.2026 — «Трансфер»; код прежний — ссылки и home_section не ломаются).
