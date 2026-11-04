@@ -704,12 +704,30 @@ export default function PlacesMap({
   // геолокации (как на «Поруч»). Отказ — центр точки поиска и короткая подсказка.
   const hintTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(hintTimer.current), []);
+  // Первое нажатие на «Поруч» без позиции: ждём, пока родитель получит её, и тогда центрируем карту.
+  const waitingMe = useRef(false);
+  const meLatNow = me?.lat;
+  const meLngNow = me?.lng;
+  useEffect(() => {
+    if (!waitingMe.current || !map || meLatNow === undefined || meLngNow === undefined) return;
+    waitingMe.current = false;
+    userMoved.current = true;
+    map.map.panTo({ lat: meLatNow, lng: meLngNow });
+    const zoom = Math.min(DEVICE_MAX_ZOOM, maxZoom);
+    if ((map.map.getZoom() ?? 0) < zoom) map.map.setZoom(zoom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, meLatNow, meLngNow]);
+  useEffect(() => {
+    // Родитель закончил определение без позиции (отказ): ждать больше нечего.
+    if (!parentLocating && meLatNow === undefined) waitingMe.current = false;
+  }, [parentLocating, meLatNow]);
   const locate = async () => {
     if (!map || locating) return;
     // Позиция известна — просто центрируем. Иначе: родитель («Поруч») определяет место сам, либо запрос здесь.
     // Прежний результат запроса не кэшируется: при каждом нажатии без me/gps позиция запрашивается заново.
     let target: LatLng | null = me ?? gps;
     if (!target && onLocate) {
+      waitingMe.current = true;
       onLocate();
       return;
     }

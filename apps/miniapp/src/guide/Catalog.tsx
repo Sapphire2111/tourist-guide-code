@@ -117,6 +117,8 @@ function CategoryPlaces({
   }, [radius, queryRadius]);
   const activeRadius = canRadius ? queryRadius : null;
   const radiusNumber = typeof activeRadius === "number" ? activeRadius : null;
+  // Фактический радиус GPS-выдачи (3 или 10 км): держим последний, пока грузится новый ответ или он не пришёл.
+  const usedRadius = useRef<number>(GPS_RADIUS);
   // Центр карты: GPS, иначе выбранные локации (середина их центров), QR — только если ничего не выбрано.
   // Объект стабилен между рендерами (ввод в поиске не должен пересоздавать маркеры карты).
   const qrPoint = base?.point ?? null;
@@ -187,6 +189,7 @@ function CategoryPlaces({
       key: JSON.stringify([categoryId, q, submitId, base?.pending, point, localityIds, gps, activeRadius]),
     },
   );
+  if (places.status === "ready" && places.data.used) usedRadius.current = places.data.used;
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
     pendingSubmit.current = null;
@@ -255,17 +258,7 @@ function CategoryPlaces({
       {canRadius && (
         <RadiusSlider
           // По умолчанию с GPS — фактически использованный радиус (3 км или 10 км после расширения).
-          value={
-            radius === null
-              ? gps
-                ? places.status === "ready"
-                  ? (places.data.used ?? GPS_RADIUS)
-                  : GPS_RADIUS
-                : null
-              : radius === "all"
-                ? null
-                : radius
-          }
+          value={radius === null ? (gps ? usedRadius.current : null) : radius === "all" ? null : radius}
           allowAll
           onChange={(m) => setRadius(m === null ? "all" : m)}
         />
@@ -326,7 +319,7 @@ function CategoryPlaces({
                   centerMarker={!byLocation || !!gps}
                   // По геолокации не приближаем карту до двора туриста (как «Що поруч»).
                   maxZoom={gps ? DEVICE_MAX_ZOOM : undefined}
-                  radius={radiusNumber ?? undefined}
+                  radius={radiusNumber ?? (gps && radius === null ? usedRadius.current : undefined)}
                 />
               )}
               <PlaceList places={list} />

@@ -911,7 +911,7 @@ html[data-season] .kosiv-place-credit a:focus-visible {
 /* Поверх карты: стеклянная капсула по ширине панели, события — только на ней. */
 .kosiv-radius-overlay {
   box-sizing: border-box;
-  margin: 0 0 11px;
+  margin: 3px 0 8px;
   padding: 0 12px;
   border-radius: 12px;
   border: 1px solid var(--glass-border);
