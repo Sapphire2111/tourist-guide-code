@@ -177,6 +177,25 @@ export function keywordRank(
   );
 }
 
+/** Явная просьба о лучших по рейтингу: «найкращий», «з найвищим рейтингом», «топ», «лучший». */
+export function wantsBest(text: string): boolean {
+  return /(найкращ|найліпш|найвищ\S* рейтинг|рейтинг|лучш|высок\S* рейтинг|(^|[^\p{L}])топ($|[^\p{L}])|bbestb|top[- ]?rated|highest[- ]rated)/iu.test(
+    text,
+  );
+}
+
+/** По рейтингу Google (больше отзывов — выше при равном), без рейтинга — в конце; иначе — порядок как был. */
+function byRating(
+  found: readonly PlaceSummaryDto[],
+  enrichment: ReadonlyMap<string, Enrichment>,
+): PlaceSummaryDto[] {
+  const score = (p: PlaceSummaryDto) => {
+    const g = enrichment.get(p.id)?.google;
+    return g?.rating == null ? -Infinity : g.rating + 0.01 * Math.log10(1 + (g.ratingCount ?? 0));
+  };
+  return [...found].sort((a, b) => score(b) - score(a));
+}
+
 /** Вес совпадения по связанным понятиям в keywordRank: подъём, а не замена рейтинга (одно упоминание — +0.4). */
 export const relatedBoost = (score: number) => Math.min(score, 6) * 0.4;
 
@@ -336,7 +355,7 @@ export class AssistantService {
       localityCenter: localityRows.find((l) => l.id === localityIds[0])?.location ?? undefined,
     };
     if (intent.kind === "plan") return this.plan(regionId, userId, intent, catalog, scope);
-    return this.select(regionId, intent, catalog, scope);
+    return this.select(regionId, intent, catalog, scope, wantsBest(q.text));
   }
 
   async transcribe(regionId: string, userId: string, audio: Buffer, mime: AudioMime): Promise<string> {
@@ -414,6 +433,7 @@ export class AssistantService {
     intent: AssistantIntent,
     catalog: Catalog,
     scope: Scope,
+    best = false,
   ): Promise<AssistantResultDto> {
     const { origin, localityIds } = scope;
     const byLocality = localityIds.length > 0;
@@ -495,6 +515,11 @@ export class AssistantService {
       );
       found = [...found].sort((a, b) => rank.get(b.id)! - rank.get(a.id)!);
     }
+    // Порядок списка — от ближайшего к дальнему от точки туриста (релевантность — только отбор кандидатов);
+    // «найкращий / з найвищим рейтингом» — по рейтингу Google. Без точки — прежний порядок.
+    if (best) found = byRating(found, enrichment);
+    else if (origin)
+      found = [...found].sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
     let items: AssistantPlaceDto[] = found.map((place) => this.placeDto(place, enrichment.get(place.id)));
     if (intent.priceMin !== null || intent.priceMax !== null) {
       const min = intent.priceMin ?? 0;

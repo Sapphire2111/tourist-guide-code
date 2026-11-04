@@ -7,7 +7,7 @@ import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto, ScheduleRows } from "../guide/index.js";
 import type { AssistantRepository, KeywordQuery, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
-import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
+import { AssistantService, describe as describePlace, shorten, wantsBest } from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
@@ -622,7 +622,7 @@ describe("блюдо или кухня (ключевые слова)", () => {
   const sushi = (id: number, name: string, over: Partial<PlaceSummaryDto> = {}) =>
     place(id, { name: { uk: name }, categoryId: RESTAURANTS, ...over });
 
-  it("«суші»: поиск по названию, типу, описаниям и отзывам во всём разделе «Де поїсти»; порядок — совпадение и рейтинг", async () => {
+  it("«суші»: поиск по названию, типу, описаниям и отзывам во всём разделе «Де поїсти»; порядок — от ближайшего (релевантность — отбор)", async () => {
     const byName = sushi(1, "Суши Кафе");
     const byReview = sushi(2, "Family", { categoryId: CAFES });
     const byAi = sushi(3, "KUMA");
@@ -655,7 +655,7 @@ describe("блюдо или кухня (ключевые слова)", () => {
       expect.objectContaining({ ids: [byName.id, byAi.id, byReview.id], origin: YAREMCHE_AT }),
     );
     expect(guide.search).toHaveBeenCalledTimes(1);
-    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суши Кафе", "KUMA", "Family"]);
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суши Кафе", "Family", "KUMA"]);
     expect(res.notes).toEqual([]);
   });
 
@@ -1138,7 +1138,7 @@ describe("широкое понимание и расширение поиска
     expect(r.notes).not.toContain("widened");
   });
 
-  it("связанные понятия: места категорий плюс найденные по словам; совпавшие — выше", async () => {
+  it("связанные понятия: места категорий плюс найденные по словам; с точкой — от ближайшего", async () => {
     const terrace = place(3);
     const { service, repo } = setup({
       llm: {
@@ -1153,7 +1153,64 @@ describe("широкое понимание и расширение поиска
     });
     const res = await service.query(REGION, USER, ask("романтичний вечір", { origin: YAREMCHE_AT }));
     expect(repo.keywordMatches).toHaveBeenCalled();
-    expect(res.items.map((i) => i.place.id)).toEqual([terrace.id, place(1).id, place(2).id]);
+    expect(res.items.map((i) => i.place.id)).toEqual([place(1).id, place(2).id, terrace.id]);
+  });
+});
+
+describe("порядок списка — по расстоянию от туриста", () => {
+  const near = place(1, { name: { uk: "Близька" }, distanceMeters: 300 });
+  const mid = place(2, { name: { uk: "Середня" }, distanceMeters: 1200 });
+  const far = place(3, { name: { uk: "Далека" }, distanceMeters: 4000 });
+  const chargers = (text: string, origin?: { lon: number; lat: number }) => {
+    const { service } = setup({
+      // Каталог/поиск отдаёт в порядке релевантности: дальняя — самая релевантная и с лучшим рейтингом.
+      searchAt: () => [far, mid, near],
+      keywordMatches: () => [
+        { id: far.id, score: 9 },
+        { id: mid.id, score: 5 },
+        { id: near.id, score: 2 },
+      ],
+      enrichment: {
+        [far.id]: { google: google({ rating: 5, ratingCount: 500 }), wiki: null, ai: null },
+        [mid.id]: { google: google({ rating: 3.9 }), wiki: null, ai: null },
+        [near.id]: { google: google({ rating: 4.2 }), wiki: null, ai: null },
+      },
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"], keywords: ["зарядка"] })))),
+      },
+    });
+    return service
+      .query(REGION, USER, ask(text, origin ? { origin } : {}))
+      .then((r) => r.items.map((i) => i.place.name.uk));
+  };
+
+  it("зарядки на разном удалении и с разным рейтингом — от ближайшей к дальней", async () => {
+    expect(await chargers("знайди електрозарядку", YAREMCHE_AT)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("явное «найкращий» — по рейтингу", async () => {
+    expect(await chargers("найкраща зарядка поруч", YAREMCHE_AT)).toEqual(["Далека", "Близька", "Середня"]);
+  });
+
+  it("без точки — прежний порядок (релевантность и рейтинг)", async () => {
+    expect(await chargers("знайди електрозарядку")).toEqual(["Далека", "Середня", "Близька"]);
+  });
+
+  it("по категории без ключевых слов — тоже от ближайшего", async () => {
+    const { service } = setup({
+      searchAt: () => [far, near, mid],
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"] })))) },
+    });
+    const res = await service.query(REGION, USER, ask("де кава", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("wantsBest", () => {
+    expect(wantsBest("з найвищим рейтингом")).toBe(true);
+    expect(wantsBest("топ кафе")).toBe(true);
+    expect(wantsBest("лучшее кафе")).toBe(true);
+    expect(wantsBest("знайди зарядку")).toBe(false);
+    expect(wantsBest("стопка млинців")).toBe(false);
   });
 });
 
