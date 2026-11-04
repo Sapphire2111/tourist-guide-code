@@ -48,6 +48,21 @@ describe("CATEGORY_HINTS", () => {
     expect(CATEGORY_HINTS.peaks).toMatch(/Говерла/);
     expect(CATEGORY_HINTS.nature).toMatch(/водоспади/);
   });
+
+  it("«Бари» — своя підказка (бар, паб, пивний бар, коктейль); у ресторанах барів немає", () => {
+    for (const w of [/бари/, /паб/, /пив/, /коктейль/, /кальян/]) expect(CATEGORY_HINTS.bars).toMatch(w);
+    expect(CATEGORY_HINTS.restaurants).not.toMatch(/бар/);
+    // «Де купити пиво» — не бар: голого «пиво» в підказці немає.
+    expect(CATEGORY_HINTS.bars).not.toMatch(/пиво(?!\p{L})/u);
+  });
+
+  it("зіплайни, родельбани — лише «Активний відпочинок», канатні дороги — лише «Підйомники» (як імпорт)", () => {
+    const where = (re: RegExp) => Object.keys(CATEGORY_HINTS).filter((c) => re.test(CATEGORY_HINTS[c]!));
+    expect(where(/зіплайн/)).toEqual(["active"]);
+    expect(where(/тролеї/)).toEqual(["active"]);
+    expect(where(/родельбан/)).toEqual(["active"]);
+    expect(where(/канатн|канатк/)).toEqual(["ski-lifts"]);
+  });
 });
 
 describe("intentTool", () => {

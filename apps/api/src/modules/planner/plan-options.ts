@@ -92,8 +92,8 @@ const SLOT_CATEGORIES: Record<PlanSlot, readonly string[]> = {
     "souvenirs",
     "markets",
   ],
-  // «Для дорослих» (боулінг, караоке, клуби) — вечером и только без детей (adultsOnly).
-  evening: ["restaurants", "kolyby", "chany", "spa", "cafes", "adult-fun"],
+  // «Для дорослих» (боулінг, караоке, клуби) и «Бари» — вечером и только без детей (adultsOnly).
+  evening: ["restaurants", "kolyby", "chany", "spa", "cafes", "bars", "adult-fun"],
   // Под крышей: музеи, кафе, ресторации, чаны и SPA, сувенирные лавки; аттракционы — только с тегом «У дощ».
   rain: ["museums", "cafes", "restaurants", "kolyby", "chany", "spa", "souvenirs", "stores"],
 };
@@ -103,11 +103,34 @@ const KIDS_FIRST = new Set(["kids", "museums", "entertainment", "nature", "sight
 
 const L = "\\p{L}";
 const word = (src: string) => new RegExp(`(^|[^${L}])(${src})([^${L}]|$)`, "iu");
-const WATERFALL_RE = /водоспад|waterfall/iu;
-/** Бар, паб, винний чи коктейль-бар — у Google это тип bar/pub, у нас категория cafes (mapping.ts). */
-const BAR_RE = word(
-  "бар|bar|паб|pub|пивн\\p{L}*|beer|винн\\p{L}*|wine|cocktail|коктейль\\p{L}*|lounge|лаунж",
+/** Водоспад за назвою Google; «Вдсп», «вдсп.» — скорочення на мітках карти (як NATURE_NAME у mapping.ts). */
+const WATERFALL_RE = /водоспад|waterfall|(^|[^\p{L}])вдсп(?!\p{L})/iu;
+/**
+ * Явний бар за назвою: паб, пивна, винний чи коктейль-бар, кальянна, лаунж. Імпорт (mapping.ts) кладе Google
+ * bar/pub/wine_bar/cocktail_bar/hookah_bar і кафе з «кальян/lounge/паб» у назві в «Бари» (bars); тут — решта кафе.
+ */
+const STRONG_BAR_RE = word(
+  "паб|pub|пивн\\p{L}*|beer|винн\\p{L}*|wine|cocktail|коктейль\\p{L}*|lounge|лаунж|кальян\\p{L}*|hookah|shisha",
 );
+/** Слово «бар» без уточнення: «Бар «Колиба»» — бар, «Кафе-бар Едельвейс» — кафе (CAFE_BAR_RE). */
+const BAR_WORD_RE = word("бар|bar");
+const NOT_L = "(^|[^\\p{L}])";
+const BAR_TAIL = "[\\s\\-–—]*(бар|bar)(?!\\p{L})";
+/** «Кава-бар», «кав'ярня-бар», «суші-бар», «фреш-бар», «десерт-бар» — кафе й не «тільки дорослим». */
+const SOFT_BAR_RE = new RegExp(
+  `${NOT_L}(кав(?:а|и|і|у|ов\\p{L}*|[’'ʼ]?ярн\\p{L}*)|coffee|кофе\\p{L}*|espresso|еспресо|суші|суши|sushi|фреш\\p{L}*|fresh|смузі|smoothie|салат\\p{L}*|salad|десерт\\p{L}*|dessert|морозив\\p{L}*|молочн\\p{L}*|milk|сніданк\\p{L}*|breakfast|веган\\p{L}*|vegan|чай\\p{L}*|tea)${BAR_TAIL}`,
+  "iu",
+);
+/** «Кафе-бар», «гриль-бар», «піца-бар», «стейк-бар», «ресторан-бар» — заклад харчування (кафе), хоча й з алкоголем. */
+const CAFE_BAR_RE = new RegExp(
+  `${NOT_L}(кафе|cafe|café|гриль|grill|піц\\p{L}*|pizz\\p{L}*|стейк\\p{L}*|steak\\p{L}*|ресторан\\p{L}*|restaurant)${BAR_TAIL}`,
+  "iu",
+);
+/** Кафе — бар (лише ввечері): явний бар або «бар» без уточнення «кафе-/кава-/суші-…». */
+const isBarName = (n: string) =>
+  STRONG_BAR_RE.test(n) || (BAR_WORD_RE.test(n) && !SOFT_BAR_RE.test(n) && !CAFE_BAR_RE.test(n));
+/** Кафе з алкоголем — не для дітей (як раніше): бар, кафе-бар; кава-бар, суші-бар — ні. */
+const servesAlcohol = (n: string) => STRONG_BAR_RE.test(n) || (BAR_WORD_RE.test(n) && !SOFT_BAR_RE.test(n));
 /** Ночная жизнь — не для детей в любой категории. */
 const NIGHTLIFE_RE = /нічн\p{L}*\s+клуб|night\s*club|кальян|hookah|стрип|strip/iu;
 /** ТРЦ/ТЦ — под крышей; прочие магазины в «якщо дощ» не предлагаем. */
@@ -116,15 +139,18 @@ const MALL_RE = word("трц|тц|mall|торгов\\p{L}*\\s+центр");
 export function placeKind(p: Pick<CatalogPlace, "category" | "names">): PlaceKind {
   if ((p.category === "nature" || p.category === "sights") && p.names.some((n) => WATERFALL_RE.test(n)))
     return "waterfall";
-  if (p.category === "cafes" && p.names.some((n) => BAR_RE.test(n))) return "bar";
+  // «Бари» (bars) — бар по категории импорта; кафе — по названию.
+  if (p.category === "bars") return "bar";
+  if (p.category === "cafes" && p.names.some(isBarName)) return "bar";
   return p.category;
 }
 
-/** Не для детей: бары, ночная жизнь и «Для дорослих» (признак — категория и название из Google). */
+/** Не для детей: бары (категория «Бари», кафе-бары и кафе с алкоголем), ночная жизнь и «Для дорослих» (категория и название). */
 export function adultsOnly(p: Pick<CatalogPlace, "category" | "extraCategories" | "names">): boolean {
   return (
     categoriesOf(p).includes("adult-fun") ||
     placeKind(p) === "bar" ||
+    (p.category === "cafes" && p.names.some(servesAlcohol)) ||
     p.names.some((n) => NIGHTLIFE_RE.test(n))
   );
 }
@@ -144,6 +170,8 @@ function reasonOf(slot: PlanSlot, category: string): OptionReason {
   switch (category) {
     case "cafes":
       return slot === "morning" ? "breakfast" : "evening_out";
+    case "bars":
+      return "evening_out";
     case "restaurants":
     case "kolyby":
       return slot === "evening" ? "dinner" : "lunch";
@@ -187,6 +215,8 @@ function slotCategory(p: CatalogPlace, slot: PlanSlot): string {
 }
 
 function fitsSlot(p: CatalogPlace, slot: PlanSlot): boolean {
+  // Бар («Бари» или кафе-бар) — только вечером: не сніданок, не обід и не «якщо дощ».
+  if (placeKind(p) === "bar") return slot === "evening";
   const cats = categoriesOf(p);
   if (slot !== "rain") return cats.some((c) => SLOT_CATEGORIES[slot].includes(c));
   if (p.tags.includes("rainy-day")) return true;

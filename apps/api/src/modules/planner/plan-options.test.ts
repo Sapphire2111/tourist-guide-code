@@ -290,3 +290,68 @@ describe("«Вершини» в плане", () => {
     expect(ids("winter")).not.toContain(P(1));
   });
 });
+
+describe("«Бари» в плане", () => {
+  it("категория bars — бар и «тільки дорослим»; кафе-бар — по названию (и кальянна), кава-бар — кафе", () => {
+    expect(placeKind({ category: "bars", names: ["Гуцул Паб"] })).toBe("bar");
+    expect(adultsOnly({ category: "bars", names: ["Винотека"] })).toBe(true);
+    expect(placeKind({ category: "cafes", names: ["Кальянна Дим"] })).toBe("bar");
+    expect(placeKind({ category: "cafes", names: ["Кава-бар «Зерно»"] })).toBe("cafes");
+    expect(placeKind({ category: "cafes", names: ["Coffee bar"] })).toBe("cafes");
+    expect(placeKind({ category: "cafes", names: ["Суші бар Токіо"] })).toBe("cafes");
+    expect(adultsOnly({ category: "cafes", names: ["Кава-бар"] })).toBe(false);
+  });
+
+  it("бар — только вечером (причина evening_out); утром, днём и «якщо дощ» — нет; с детьми — нет", () => {
+    const places = [
+      place(1, "bars", 100, { names: ["Pub 21"] }),
+      place(2, "cafes", 150, { names: ["Пивний бар"] }),
+      place(3, "cafes", 200),
+      place(4, "restaurants", 200),
+    ];
+    for (const slot of ["morning", "afternoon", "rain"] as const) {
+      const ids = slotOptions(slot, BASE, places, car, new Set()).map((o) => o.placeId);
+      expect(ids).not.toContain(P(1));
+      expect(ids).not.toContain(P(2));
+    }
+    const evening = slotOptions("evening", BASE, places, car, new Set());
+    expect(evening.find((o) => o.placeId === P(1))).toMatchObject({ kind: "bar", reason: "evening_out" });
+    expect(evening.map((o) => o.placeId)).toContain(P(2));
+    const withKids = slotOptions("evening", BASE, places, kids, new Set()).map((o) => o.placeId);
+    expect(withKids).not.toContain(P(1));
+    expect(withKids).not.toContain(P(2));
+  });
+});
+
+describe("кафе-бар — кафе, явний бар — бар", () => {
+  it("«Кафе-бар», «гриль-бар» — кафе (не для дітей, як раніше); «кав'ярня-бар» — кафе й для всіх", () => {
+    const cafe = (name: string) => ({ category: "cafes", names: [name] });
+    expect(placeKind(cafe("Кафе-бар Едельвейс"))).toBe("cafes");
+    expect(adultsOnly(cafe("Кафе-бар Едельвейс"))).toBe(true);
+    expect(placeKind(cafe("Гриль-бар Ватра"))).toBe("cafes");
+    expect(placeKind(cafe("Кав'ярня-бар Ранок"))).toBe("cafes");
+    expect(adultsOnly(cafe("Кав'ярня-бар Ранок"))).toBe(false);
+    expect(adultsOnly(cafe("Кавʼярня бар"))).toBe(false);
+    // «Кавказький бар» — не кава; вино й кава разом — бар у будь-якому порядку.
+    expect(placeKind(cafe("Кавказький бар"))).toBe("bar");
+    expect(placeKind(cafe("Wine & coffee bar"))).toBe("bar");
+    expect(placeKind(cafe("Coffee & Wine bar"))).toBe("bar");
+    expect(placeKind(cafe("Пивна Бочка"))).toBe("bar");
+  });
+
+  it("кафе-бар — на сніданок, увечері й «якщо дощ», як звичайне кафе (без дітей)", () => {
+    const places = [place(1, "cafes", 100, { names: ["Кафе-бар Едельвейс"] })];
+    for (const slot of ["morning", "evening", "rain"] as const)
+      expect(slotOptions(slot, BASE, places, car, new Set()).map((o) => o.placeId)).toContain(P(1));
+    expect(slotOptions("morning", BASE, places, kids, new Set())).toEqual([]);
+  });
+});
+
+describe("«Вдсп» — водоспад", () => {
+  it("скорочення «Вдсп»/«вдсп.» у назві — водоспад; слово з «вдсп» усередині — ні", () => {
+    expect(placeKind({ category: "nature", names: ["Вдсп Женецький Гук"] })).toBe("waterfall");
+    expect(placeKind({ category: "sights", names: ["вдсп.Капливець"] })).toBe("waterfall");
+    expect(placeKind({ category: "nature", names: ["Твдсп"] })).toBe("nature");
+    expect(placeKind({ category: "stores", names: ["Вдсп"] })).toBe("stores");
+  });
+});

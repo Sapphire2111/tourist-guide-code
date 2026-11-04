@@ -337,6 +337,7 @@ export const CATEGORY_MINUTES: Readonly<Record<string, number>> = {
   kolyby: 75,
   cafes: 45,
   "fast-food": 30,
+  bars: 90,
   chany: 120,
   spa: 150,
   markets: 45,
@@ -364,6 +365,8 @@ const KIND_OF_CATEGORY: Readonly<Record<string, VisitKind>> = {
   kolyby: "meal",
   cafes: "meal",
   "fast-food": "meal",
+  // Бар — вечірній відпочинок, а не обід (не закриває «де поїсти»).
+  bars: "relax",
   chany: "relax",
   spa: "relax",
   markets: "shopping",

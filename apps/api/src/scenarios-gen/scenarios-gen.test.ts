@@ -297,6 +297,53 @@ describe("проверка сценария", () => {
   });
 });
 
+describe("«Вершини» и «Бари» в сценариях", () => {
+  const turkul = place("peaks", "Туркул", 600);
+  const pub = place("bars", "Гуцул Паб", 900);
+
+  it("кандидаты: вершина и бар — пункты плана; бар — не с детьми; вершина — не зимой", () => {
+    expect(fitsBrief(turkul, brief("peak"))).toBe(true);
+    expect(fitsBrief(turkul, brief("peak", { seasons: ["winter"] }))).toBe(false);
+    expect(fitsBrief(pub, brief("romantic"))).toBe(true);
+    expect(fitsBrief(pub, brief("kids"))).toBe(false);
+    expect(pub.kind).toBe("bar");
+    expect(pub.adultsOnly).toBe(true);
+  });
+
+  const errs = (r: { errors: string[] }) => r.errors.join(" | ");
+
+  it("вершина — лише зранку, бар — лише ввечері", () => {
+    const set = setOf([turkul, lunch, pub]);
+    const late = validateScenario(
+      brief("peak"),
+      set,
+      scenario([item("p2", "11:30", 75), item("p1", "13:00", 240), item("p3", "18:30", 90)]),
+    );
+    expect(errs(late)).toMatch(/вершина — лише зранку/);
+    expect(errs(late)).not.toMatch(/бар — лише ввечері/);
+    const day = validateScenario(
+      brief("peak"),
+      set,
+      scenario([item("p1", "08:00", 240), item("p3", "13:00", 60), item("p2", "14:30", 75)]),
+    );
+    expect(errs(day)).toMatch(/бар — лише ввечері/);
+    expect(errs(day)).not.toMatch(/вершина — лише зранку/);
+  });
+
+  it("кафе-бар — обід удень без помилки; альтернатива не тієї частини дня прибирається", () => {
+    const cafeBar = place("cafes", "Кафе-бар Едельвейс", 700);
+    const set = setOf([probii, cafeBar, pub, turkul, chan]);
+    const r = validateScenario(
+      brief("waterfalls"),
+      set,
+      scenario([item("p1", "10:00", 45, ["p3", "p4"]), item("p2", "12:00", 75), item("p5", "15:00", 120)]),
+    );
+    expect(errs(r)).not.toMatch(/бар — лише ввечері/);
+    expect(r.fixes.some((f) => f.includes("«p3»") && f.includes("не та частина дня"))).toBe(true);
+    expect(r.fixes.some((f) => f.includes("«p4»"))).toBe(false);
+  });
+});
+
 describe("генерация", () => {
   const set = setOf([probii, lunch, chan]);
   const good = scenario([item("p1", "10:00", 45, ["p3"]), item("p2", "12:00", 75), item("p3", "15:00", 120)]);
