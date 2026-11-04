@@ -174,7 +174,7 @@ function dice(x: string, y: string): number {
 
 /** Сравнение названий: похожесть и причины, по которым пара не может быть явной. */
 export type NameComparison = {
-  /** 0…1: Дайс по биграммам слов без предлогов и пунктов (слова-типы остаются); вложенность ≥ 2 слов — 0.9. */
+  /** 0…1: Дайс по биграммам слов без предлогов, пунктов и слов-типов; вложенность ≥ 2 слов — 0.9. */
   similarity: number;
   /** Причины «не явная»: разные слова-типы, разные числа, только общие слова, вложенность. Пусто — можно явно. */
   blockers: string[];
@@ -201,11 +201,13 @@ export function compareNames(a: string, b: string): NameComparison {
       .join(",");
   if (nums(wa) !== nums(wb))
     blockers.push(`разные номера в названиях (${nums(wa) || "—"} / ${nums(wb) || "—"})`);
-  const x = wa.join(" ");
-  const y = wb.join(" ");
-  if (!wa.some((w) => !TYPE_WORDS.has(w)) || !wb.some((w) => !TYPE_WORDS.has(w))) {
+  // Похожесть — по словам без типов: «Садиба Форесок» и «Садиба Топірець» не похожи из-за общего «садиба»
+  // (типы сравниваются отдельно — блокер).
+  const x = wa.filter((w) => !TYPE_WORDS.has(w)).join(" ");
+  const y = wb.filter((w) => !TYPE_WORDS.has(w)).join(" ");
+  if (!x || !y) {
     blockers.push("в названии только общие слова");
-    return { similarity: Math.min(0.5, dice(x, y)), blockers };
+    return { similarity: Math.min(0.5, dice(wa.join(" "), wb.join(" "))), blockers };
   }
   if (x === y) return { similarity: 1, blockers };
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
