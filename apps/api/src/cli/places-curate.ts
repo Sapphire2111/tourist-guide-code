@@ -123,6 +123,10 @@ try {
     console.log(
       `  в архиве, в сценариях без опубликованной замены: ${s.name} (${s.id}) — пунктов ${s.items}`,
     );
+  for (const c of report.contactsMoved)
+    console.log(
+      `  контакты на главную: ${c.name} (${c.main}) ← ${c.from}: ${[c.phone, c.website].filter(Boolean).join(", ")}`,
+    );
   for (const f of report.scenarioFixes)
     console.log(
       `  пункт сценария ${f.item}: ${f.replaced ? `замена ${f.replaced.from} → ${f.replaced.to}; ` : ""}` +

@@ -55,6 +55,8 @@ type PlaceRow = {
   ratingCount: number;
   photos: number;
   hasAi: boolean;
+  phone: string | null;
+  website: string | null;
 };
 
 type Change = {
@@ -85,6 +87,8 @@ export type CurateReport = {
   moves: Record<string, number>;
   todo: TodoItem[];
   merges: { dup: string; main: string; dupName: string; mainName: string; kind: "booking" | "decision" }[];
+  /** Контакты (телефон, сайт), перенесённые с дубля на главную, у которой их не было. */
+  contactsMoved: { main: string; name: string; from: string; phone?: string; website?: string }[];
   leftRefs: { dup: string; table: string; count: number }[];
   movedRefs: Record<string, number>;
   /** Пункты сценариев, где осталось неопубликованное место архива чистки (нет опубликованной замены). */
@@ -104,6 +108,10 @@ export type CurateReport = {
 };
 
 class DryRunRollback extends Error {}
+
+/** Сайты-агрегаторы бронирования: их ссылку с дубля-номера на главную не переносим. */
+const BOOKING_AGGREGATOR =
+  /^https:\/\/([a-z0-9-]+\.)*(bluepillow|freecancellations|booking|hotels|agoda|expedia|trip|airbnb|vio)\.[a-z.]+\//i;
 
 /** Контроль: опубликованные с суффиксом номера Booking (регэксп PostgreSQL). */
 const ROOM_SUFFIX_RE =
@@ -199,6 +207,8 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       "p.id",
       "p.name_i18n",
       "p.description_i18n",
+      "p.phone",
+      "p.website",
       sql<string | null>`p.address_i18n ->> 'uk'`.as("address"),
       "c.code as category",
       "p.status",
@@ -225,6 +235,8 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
         ratingCount: Number(r.rc ?? 0) || 0,
         photos: Number(r.photos) || 0,
         hasAi: Boolean(r.ai),
+        phone: r.phone,
+        website: r.website,
       },
     ]),
   );
@@ -238,10 +250,14 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     .execute();
   const priorArchived = new Set<string>();
   const priorLocality = new Set<string>();
+  /** Слияния прошлых прогонов: дубль → главная. */
+  const priorMerges: { dup: string; main: string }[] = [];
   for (const a of priorAudits) {
     if (!a.entity_id) continue;
     if (a.new_values?.status === "archived") priorArchived.add(a.entity_id);
     if (a.new_values && "locality" in a.new_values) priorLocality.add(a.entity_id);
+    if (typeof a.new_values?.mergedInto === "string")
+      priorMerges.push({ dup: a.entity_id, main: a.new_values.mergedInto });
   }
 
   const before = await publishedByCategory(trx);
@@ -581,6 +597,58 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     });
   }
 
+  // --- Контакты: у главной нет телефона/сайта, у дубля есть — перенести (этот и прошлые прогоны) ---
+  const dupsByMain = new Map<string, string[]>();
+  for (const m of [...priorMerges, ...merges.map((x) => ({ dup: x.dup, main: x.main }))])
+    if (!dupsByMain.get(m.main)?.includes(m.dup))
+      dupsByMain.set(m.main, [...(dupsByMain.get(m.main) ?? []), m.dup]);
+  const contactsMoved: CurateReport["contactsMoved"] = [];
+  for (const [mainId, dupIds] of dupsByMain) {
+    const main = places.get(mainId);
+    if (!main || main.status === "archived") continue;
+    // Порядок дублей — как при выборе главной (больше отзывов/фото — надёжнее контакты).
+    const dups = dupIds.map((d) => places.get(d)).filter((d): d is PlaceRow => Boolean(d));
+    const ordered: PlaceRow[] = [];
+    const pool = [...dups];
+    while (pool.length) {
+      const best = pickMain(pool.map((d) => ({ ...d, status: "published" })));
+      const i = pool.findIndex((d) => d.id === best.id);
+      ordered.push(pool.splice(i, 1)[0]!);
+    }
+    const phoneFrom = main.phone ? undefined : ordered.find((d) => d.phone);
+    // Ссылки агрегаторов бронирования у записей-номеров (bluepillow, freecancellations, booking…) — не сайт объекта.
+    const siteFrom = main.website
+      ? undefined
+      : ordered.find((d) => d.website && !BOOKING_AGGREGATOR.test(d.website));
+    if (!phoneFrom && !siteFrom) continue;
+    const set: PlaceUpdate = {};
+    const newValues: Record<string, unknown> = {};
+    if (phoneFrom) set.phone = newValues.phone = phoneFrom.phone;
+    if (siteFrom) set.website = newValues.website = siteFrom.website;
+    newValues.contactsFrom = [...new Set([phoneFrom?.id, siteFrom?.id].filter(Boolean))];
+    await trx.updateTable("places").set(set).where("id", "=", mainId).execute();
+    await audit.record(trx, {
+      actor: { type: "system" },
+      action: CURATE_ACTION,
+      entityType: "place",
+      entityId: mainId,
+      oldValues: {
+        ...(phoneFrom ? { phone: main.phone } : {}),
+        ...(siteFrom ? { website: main.website } : {}),
+      },
+      newValues,
+      reason: `${CURATE_REASON}: контакты слитого дубля на главную (у главной их не было)`,
+    });
+    contactsMoved.push({
+      main: mainId,
+      name: main.name.uk,
+      from: (phoneFrom ?? siteFrom)!.id,
+      ...(phoneFrom?.phone ? { phone: phoneFrom.phone } : {}),
+      ...(siteFrom?.website ? { website: siteFrom.website } : {}),
+    });
+    counts.contacts = (counts.contacts ?? 0) + 1;
+  }
+
   // --- Сценарии: место пункта, архивированное чисткой, — на ближайшую опубликованную альтернативу пункта;
   // из альтернатив убрать само место пункта, повторы и места, архивированные чисткой ---
   const curatedArchived = new Set([
@@ -676,6 +744,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     moves,
     todo,
     merges,
+    contactsMoved,
     leftRefs,
     movedRefs,
     archivedInScenarios,
