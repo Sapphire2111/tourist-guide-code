@@ -1,7 +1,9 @@
 // Фейк Google Maps JavaScript API для E2E: в CI нет ключа и сети. Скрипт ставится до загрузки страницы — Mini App
 // видит API «уже на странице» (map-config.ts: mapsApiOnPage) и не грузит настоящий. Маркеры, подписи, круги и линии —
 // обычные DOM-узлы внутри узла карты: тесты нажимают маркеры и проверяют подписи и маршрут.
-// Кластеры здесь не рисуются (фейк без проекции): в тестах мест меньше порога PlacesMap.CLUSTER_MIN.
+// Кластеры не рисуются (у фейка нет проекции, getProjection() — null), но настоящий MarkerClusterer создаётся и работает
+// поверх OverlayView фейка (методы перечислимые: библиотека копирует их в свой прототип); карта с кластеризатором
+// получает data-clusterer, а маркеры при ≥ PlacesMap.CLUSTER_MIN местах остаются не на карте — как под кластерами.
 // Режим сверки дизайна (window.__gmFakeScatter, design-shots.spec.ts): условная подложка-топография, логотип и условия Google,
 // кнопки масштаба и маркеры на местах, как на эталоне; настоящие тайлы и подписи карты так не проверить.
 import type { Page } from "@playwright/test";
@@ -32,9 +34,13 @@ function fakeGoogleMaps() {
     node: HTMLElement;
     zoom = 12;
     center: unknown = null;
-    constructor(div: HTMLElement) {
+    constructor(div: HTMLElement, opts?: { colorScheme?: string }) {
       this.node = document.createElement("div");
       this.node.className = "gm-fake-map";
+      // Схема, с которой «создана» карта (LIGHT/DARK): тесты проверяют, что смена темы даёт карту нужной схемы.
+      this.node.dataset.colorScheme = opts?.colorScheme ?? "";
+      this.node.dataset.fitCount = "0";
+      this.node.dataset.resizeCount = "0";
       this.node.style.cssText =
         "position:relative;box-sizing:border-box;width:100%;height:100%;background:#e5e3df;overflow:hidden;padding:24px 0 0 24px";
       div.appendChild(this.node);
@@ -61,6 +67,11 @@ function fakeGoogleMaps() {
     // фейк без проекции раскладывает маркеры потоком, поэтому отступ сверху/слева применяется как padding узла.
     fitBounds(_b: unknown, padding?: number | { top?: number; left?: number }) {
       const p = typeof padding === "number" ? { top: padding, left: padding } : padding;
+      // Сколько раз и с каким верхним/нижним отступом подгонялись границы (проверка подгонки при смене размера).
+      this.node.dataset.fitCount = String(Number(this.node.dataset.fitCount) + 1);
+      this.node.dataset.fitPaddingTop = String(p?.top ?? 0);
+      this.node.dataset.fitPaddingBottom = String((p as { bottom?: number } | undefined)?.bottom ?? 0);
+      this.node.dataset.fitHeight = String(this.node.clientHeight);
       if (!scatter()) this.node.style.padding = `${p?.top ?? 0}px 0 0 ${p?.left ?? 0}px`;
     }
     setCenter(c: unknown) {
@@ -75,10 +86,16 @@ function fakeGoogleMaps() {
     getZoom() {
       return this.zoom;
     }
-    addListener() {
-      return { remove() {} };
-    }
     setOptions() {}
+    getProjection() {
+      return null;
+    }
+    addListener(name?: string, f?: () => void) {
+      if (name === "dragstart" && f) this.node.addEventListener("gm-fake-dragstart", f);
+      return {
+        remove: () => f && name === "dragstart" && this.node.removeEventListener("gm-fake-dragstart", f),
+      };
+    }
     getMapCapabilities() {
       return { isAdvancedMarkersAvailable: true };
     }
@@ -170,7 +187,32 @@ function fakeGoogleMaps() {
     }
   }
 
-  const event = { addListenerOnce: () => ({ remove() {} }), trigger() {}, removeListener() {} };
+  // Прототип с перечислимыми методами: MarkerClusterer копирует их циклом for..in (методы class неперечислимы).
+  function OverlayView(this: { _map: unknown }) {
+    this._map = null;
+  }
+  OverlayView.prototype.setMap = function (this: { _map: unknown }, m: unknown) {
+    const prev = hostOf(this._map);
+    if (prev) delete prev.dataset.clusterer;
+    this._map = m;
+    const host = hostOf(m);
+    if (host) host.dataset.clusterer = "true";
+  };
+  OverlayView.prototype.getMap = function (this: { _map: unknown }) {
+    return this._map;
+  };
+  OverlayView.prototype.getProjection = () => null;
+  for (const name of ["onAdd", "draw", "onRemove"]) OverlayView.prototype[name] = () => undefined;
+
+  const event = {
+    addListenerOnce: () => ({ remove() {} }),
+    // trigger(map, "resize"): считаем — карта получила новый размер.
+    trigger(m: unknown, name: string) {
+      const host = hostOf(m);
+      if (host && name === "resize") host.dataset.resizeCount = String(Number(host.dataset.resizeCount) + 1);
+    },
+    removeListener() {},
+  };
   const libs: Record<string, unknown> = {
     core: { LatLngBounds, event, ControlPosition: { RIGHT_CENTER: 8, RIGHT_BOTTOM: 12 } },
     maps: {
@@ -193,9 +235,7 @@ function fakeGoogleMaps() {
     maps: {
       importLibrary: async (name: string) => libs[name],
       Map: FakeMap,
-      OverlayView: class {
-        setMap() {}
-      },
+      OverlayView,
       LatLngBounds,
       event,
       marker: { AdvancedMarkerElement },

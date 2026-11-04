@@ -1,5 +1,4 @@
-// C02: Hero с панорамой (заголовок, поле ассистента, сезонные теги, карточка заведения поверх гор), Bento из 4 разделов,
-// «Що поруч зі мною зараз» и служебные разделы. «Про заклад» — только при QR заведения (C-13).
+// C02: Hero с панорамой (заголовок, поле ассистента, сезонные теги, карточка заведения поверх гор), кнопка «Що поруч зі мною зараз» и сетка из восьми разделов. «Про заклад» — только при QR заведения (C-13).
 import type { ReactNode } from "react";
 import { Link, useT } from "@tg/ui";
 import { HeroPanorama } from "../design/HeroPanorama.js";
@@ -17,11 +16,17 @@ export function sectionPath(section: HomeSection): string {
 export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: ReactNode }) {
   const { t } = useT();
   const { base } = useGuide();
-  const intentions = [
-    { section: "eat", key: "miniapp.modern.eat" },
-    { section: "nearby", key: "miniapp.modern.explore" },
-    { section: "relax", key: "miniapp.modern.relax" },
-    { section: "fun", key: "miniapp.modern.fun" },
+  // Одна сетка 2×4 одинаковых плиток; тон — шахматным порядком (тёмные: кофейный и изумрудный, светлые: крем и мята).
+  // «Допомога» — кнопка со щитом в верхней полосе (Chrome.tsx), не плитка.
+  const tiles = [
+    { section: "stay", label: t("miniapp.section.stay"), tone: "emerald" },
+    { section: "eat", label: t("miniapp.modern.eat"), tone: "cream" },
+    { section: "relax", label: t("miniapp.modern.relax"), tone: "mint" },
+    { section: "shop", label: t("miniapp.section.shop"), tone: "coffee" },
+    { section: "fun", label: t("miniapp.modern.fun"), tone: "emerald" },
+    { section: "ski", label: t("miniapp.section.ski"), tone: "cream" },
+    { section: "transfer", label: t("miniapp.section.transfer"), tone: "mint" },
+    { section: "services", label: t("miniapp.section.services"), tone: "coffee" },
   ] as const;
   return (
     <section className="modern-home" aria-labelledby="sections-title">
@@ -46,34 +51,28 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
           </Link>
         )}
       </div>
-      <nav aria-labelledby="sections-title">
-        <ul className="modern-intentions" data-testid="home-sections">
-          {intentions.map(({ section, key }) => (
-            <li key={section}>
-              <Link to={sectionPath(section)} className="modern-intention" data-kind={section}>
-                {ICONS[section]}
-                <span>{t(key)}</span>
-                {ICONS.arrow}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
       <Link to="/nearby/me" className="modern-location-action" data-testid="near-me">
         {ICONS.locate}
         {t("miniapp.home.nearMe")}
         {ICONS.arrow}
       </Link>
-      <nav aria-label={t("miniapp.modern.more")} className="modern-utilities">
-        {(["transfer", "shop", "help", "stay", "ski", "services"] as const).map((section) => (
-          <Link key={section} to={sectionPath(section)}>
-            {ICONS[section]}
-            <span>{section === "help" ? t("miniapp.modern.help") : t(`miniapp.section.${section}`)}</span>
-            {section === "stay" && (
-              <small data-testid="tile-hint-stay">{t("miniapp.section.stayHint")}</small>
-            )}
-          </Link>
-        ))}
+      <nav aria-labelledby="sections-title">
+        <ul className="modern-intentions" data-testid="home-sections">
+          {tiles.map(({ section, label, tone }) => (
+            <li key={section}>
+              <Link to={sectionPath(section)} className="modern-intention" data-tone={tone}>
+                {ICONS[section]}
+                <span>
+                  {label}
+                  {section === "stay" && (
+                    <small data-testid="tile-hint-stay">{t("miniapp.section.stayHint")}</small>
+                  )}
+                </span>
+                {ICONS.arrow}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </nav>
     </section>
   );

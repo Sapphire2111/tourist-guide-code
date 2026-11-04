@@ -100,7 +100,14 @@ function LazyMap(props: PlacesMapProps) {
   const { t } = useT();
   const [PlacesMap] = useState(() => currentLazyMap());
   return (
-    <MapBoundary fallback={<p role="alert">{t("miniapp.map.error")}</p>}>
+    <MapBoundary
+      fallback={
+        <>
+          <p role="alert">{t("miniapp.map.error")}</p>
+          {props.overlay}
+        </>
+      }
+    >
       <Suspense fallback={<p role="status">{t("miniapp.guide.loading")}</p>}>
         <PlacesMap {...props} />
       </Suspense>

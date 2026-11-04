@@ -2,6 +2,8 @@
 // Фейк карты расставляет маркеры по области карты (__gmFakeScatter), как на эталоне; тайлы настоящей карты здесь не видны.
 import { apiMockState, CAFE_PLACE } from "../../support/api-mock.js";
 import { expect, test } from "../../support/fixtures.js";
+import { installAssistantMock } from "../../support/assistant-mock.js";
+import { bookingDto, installBookingsMock, PARTNER_PLACE } from "../../support/bookings-mock.js";
 
 const DIR = process.env.DESIGN_SHOTS_DIR;
 const ONLY = process.env.DESIGN_SHOTS_ONLY;
@@ -52,6 +54,8 @@ const PLACES = [
   place(6, CAT.eat, "Броварня та Паб «Гуцульське Пінне»", 680, true),
 ];
 
+const ORG_ID = "00000000-0000-4000-8000-00000000a001";
+
 const SHOTS: {
   name: string;
   path: string;
@@ -62,6 +66,8 @@ const SHOTS: {
   open?: string;
   click?: string;
   noMap?: boolean;
+  /** Мок экрана партнёра / персонала / броней / ассистента (по e2e-мокам). */
+  scene?: "partner" | "staff" | "partner-bookings" | "bookings" | "assistant";
 }[] = [
   { name: "nearby-split-390-day", path: "/#/nearby", width: 390, height: 844, click: "Список ↓" },
   {
@@ -117,6 +123,26 @@ const SHOTS: {
   { name: "profile-390-night", path: "/#/profile", width: 390, height: 844, night: true, full: true },
   { name: "place-390-day", path: "/#/place/CAFE", width: 390, height: 844, full: true },
   { name: "place-390-night", path: "/#/place/CAFE", width: 390, height: 844, night: true, full: true },
+  ...(["day", "night"] as const).flatMap((mode) =>
+    (
+      [
+        ["partner", "/#/partner", "partner"],
+        ["staff", `/#/partner/org/${ORG_ID}/staff`, "staff"],
+        ["partner-bookings", `/#/partner/place/${PARTNER_PLACE}/bookings`, "partner-bookings"],
+        ["bookings", "/#/bookings", "bookings"],
+        ["assistant", `/#/assistant?q=${encodeURIComponent("Де поїсти суші")}`, "assistant"],
+        ["about", "/#/about", undefined],
+      ] as const
+    ).map(([name, path, scene]) => ({
+      name: `${name}-390-${mode}`,
+      path,
+      width: 390,
+      height: 844,
+      night: mode === "night",
+      full: true,
+      scene,
+    })),
+  ),
 ];
 
 for (const shot of SHOTS.filter((s) => !ONLY || new RegExp(ONLY).test(s.name))) {
@@ -153,6 +179,72 @@ for (const shot of SHOTS.filter((s) => !ONLY || new RegExp(ONLY).test(s.name))) 
           },
         }),
       );
+    }
+    if (shot.scene) {
+      const state = apiMockState.get(page)!;
+      if (shot.scene !== "assistant" && shot.scene !== "bookings") {
+        state.partner.orgs = [{ id: ORG_ID, name: "ТОВ «Смерека»", role: "ORG_OWNER" }];
+        state.partner.places = [
+          {
+            id: PARTNER_PLACE,
+            orgId: ORG_ID,
+            role: "ORG_OWNER",
+            status: "published",
+            name: { uk: "Садиба «Під Смерекою»" },
+            address: { uk: "Косів, вул. Ринкова, 1" },
+            description: null,
+            phone: "+380501112233",
+            weekly: [],
+            media: [],
+            moderation: null,
+            version: 1,
+          },
+        ];
+      }
+      if (shot.scene === "staff")
+        await page.route("**/partner/organizations/*/staff", (route) =>
+          route.fulfill({
+            headers: { "access-control-allow-origin": "*" },
+            json: {
+              members: [
+                {
+                  assignmentId: "00000000-0000-4000-8000-00000000c001",
+                  userId: "00000000-0000-4000-8000-00000000d001",
+                  displayName: "Олена Коваль",
+                  username: "olena",
+                  role: "ORG_OWNER",
+                  grantedAt: "2026-10-01T08:00:00.000Z",
+                  isMe: true,
+                },
+                {
+                  assignmentId: "00000000-0000-4000-8000-00000000c002",
+                  userId: "00000000-0000-4000-8000-00000000d002",
+                  displayName: null,
+                  username: "taras_cash",
+                  role: "ORG_STAFF",
+                  grantedAt: "2026-10-05T08:00:00.000Z",
+                  isMe: false,
+                },
+              ],
+              invites: [
+                {
+                  id: "00000000-0000-4000-8000-00000000e001",
+                  role: "ORG_STAFF",
+                  state: "active",
+                  expiresAt: "2026-11-20T08:00:00.000Z",
+                  createdAt: "2026-11-03T08:00:00.000Z",
+                  acceptedAt: null,
+                  acceptedByName: null,
+                },
+              ],
+            },
+          }),
+        );
+      if (shot.scene === "partner-bookings" || shot.scene === "bookings") {
+        const mock = await installBookingsMock(page);
+        mock.bookings.push(bookingDto({ id: "00000000-0000-4000-8000-000000000499" }));
+      }
+      if (shot.scene === "assistant") await installAssistantMock(page);
     }
     await page.setViewportSize({ width: shot.width, height: shot.height });
     await page.emulateMedia({ reducedMotion: "reduce" });

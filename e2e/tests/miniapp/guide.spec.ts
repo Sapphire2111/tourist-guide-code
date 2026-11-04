@@ -22,17 +22,26 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     await page.keyboard.press("Escape");
-    // modern: четыре намерения в основном блоке, остальные разделы — в «Ще для вашої подорожі», «Про заклад» — карточка заведения.
+    // modern: одна сетка из восьми разделов (без «Що поруч» — он в кнопке под Hero и в нижней навигации), «Про заклад» — карточка заведения.
     const intentions = page.getByTestId("home-sections").getByRole("link");
     await expect(intentions).toHaveText([
+      /^Де жити/,
       "Де поїсти",
-      "Що поруч",
       "Відпочити та зігрітися",
+      "Де купити",
       "Розваги та враження",
+      "Гірські лижі",
+      "Авто",
+      "Сервіси",
     ]);
+    // «Допомога» — кнопка со щитом в верхней полосе, а не плитка.
+    await expect(intentions.filter({ hasText: "Допомога" })).toHaveCount(0);
+    await expect(page.getByTestId("app-top").getByRole("link", { name: "Допомога" })).toHaveAttribute(
+      "href",
+      "#/help",
+    );
+    await expect(page.getByTestId("near-me")).toHaveAttribute("href", "#/nearby/me");
     await expect(page.getByRole("link", { name: /Про заклад/ })).toHaveAttribute("href", "#/about");
-    const more = page.getByRole("navigation", { name: "Ще для вашої подорожі" }).getByRole("link");
-    await expect(more).toHaveText(["Авто", "Де купити", "Допомога", /^Де жити/, "Гірські лижі", "Сервіси"]);
     const nav = page.getByRole("navigation", { name: "Основна навігація" });
     await expect(nav.getByRole("link", { name: "Головна" })).toHaveAttribute("aria-current", "page");
     // Стили на месте (защита от случайного удаления правил kosiv.css): нижняя навигация, карточки намерений.
@@ -247,7 +256,10 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("«Що поруч» без геолокации: от базовой точки отеля, радиус; a11y", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
+    await page
+      .getByRole("navigation", { name: "Основна навігація" })
+      .getByRole("link", { name: "Поруч", exact: true })
+      .click();
     await expect(page.getByTestId("nearby-caption")).toHaveText("Поруч: Тестовий готель");
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     const state = apiMockState.get(page)!;
@@ -297,10 +309,7 @@ test.describe("QR отеля demoHotel01", () => {
 
   test("«Халепа?»: 112 и контакты региона, звонок в одно нажатие; a11y", async ({ page }) => {
     await page.goto("/");
-    await page
-      .getByRole("navigation", { name: "Ще для вашої подорожі" })
-      .getByRole("link", { name: "Допомога" })
-      .click();
+    await page.getByTestId("app-top").getByRole("link", { name: "Допомога" }).click();
     await expect(page.getByTestId("call-112")).toHaveAttribute("href", "tel:112");
     await expect(page.getByRole("link", { name: "Подзвонити: Поліція, 102" })).toHaveAttribute(
       "href",
@@ -365,7 +374,10 @@ test.describe("сборка без ключа Google Maps", () => {
       if (/maps\.googleapis\.com/.test(r.url())) maps.push(r.url());
     });
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Що поруч" }).click();
+    await page
+      .getByRole("navigation", { name: "Основна навігація" })
+      .getByRole("link", { name: "Поруч", exact: true })
+      .click();
     await expect(page.getByTestId("place-item")).toHaveCount(2);
     await expect(page.getByTestId("map-unavailable")).toHaveText("Карта недоступна. Нижче — список.");
     await expect(page.getByTestId("places-map")).toHaveCount(0);
