@@ -11,6 +11,7 @@
     "dev": "tsc -p tsconfig.build.json && concurrently -k -n tsc,node \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --env-file-if-exists=../../.env --watch dist/main.js\"",
     "start": "node dist/main.js",
     "webhook:set": "node --env-file-if-exists=../../.env dist/set-webhook.js",
+    "menu:set": "node --env-file-if-exists=../../.env dist/set-menu.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"

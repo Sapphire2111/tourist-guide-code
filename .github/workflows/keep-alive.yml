@@ -1,36 +1,63 @@
 name: Keep-alive staging
 
 # Render free усыпляет web-сервис после ~15 мин без HTTP-трафика; первый запрос будит его ~30–60 с — всё это время
-# Mini App висит на заставке (вход POST /auth/telegram ждёт api). Пинг GET /health каждые 10 мин держит api
-# staging бодрым. Репозиторий публичный — минуты бесплатны; секретов нет (адрес публичный).
-# Ограничения: GitHub запускает schedule с задержкой (обычно минуты, в часы пик — дольше) — поэтому 10 мин, а не 14;
-# Render free даёт 750 ч инстанса в месяц на workspace — одного api 24/7 (~744 ч) хватает, второго — уже нет.
-# Отключить: Actions → Keep-alive staging → Disable workflow.
+# бот не отвечает на /start и Mini App висит на заставке. Пинг GET /health каждые ~5 мин держит api staging бодрым.
+# Только днём по Киеву (07:00–23:30 Europe/Kyiv): бодрый api раз в минуту ходит в Neon (worker в процессе) и
+# ночью зря тратил бы квоту CU-ч Neon free. Ночью api засыпает.
+# Почему один запуск живёт до ~5 ч 40 мин: cron GitHub срабатывает с задержкой до часов, поэтому вместо частых
+# коротких запусков — один длинный цикл пингов (≤340 мин при timeout-minutes 355).
+# Непрерывность: concurrency без cancel-in-progress — новый запуск ждёт окончания текущего (в очереди не больше
+# одного). В конце цикла, если окно ещё открыто, запуск ставит себя заново (workflow_dispatch через GITHUB_TOKEN);
+# вне окна выходит без перезапуска. Утром цепочку запускает cron (04:05 и 05:05 UTC — 07:05 по Киеву летом и
+# зимой; час проверяется через TZ=Europe/Kyiv), cron раз в 3 ч — страховка, если цепочка оборвалась.
+# Репозиторий публичный — минуты бесплатны; секретов нет (адрес публичный). Render free: 750 ч/мес на workspace.
+# Остановить: Actions → Keep-alive staging → Disable workflow, затем отменить идущий И ожидающий запуск.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "5 4,5 * * *"
+    - cron: "17 */3 * * *"
   workflow_dispatch:
 
 concurrency:
   group: keep-alive
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 355
+    permissions:
+      actions: write # только для перезапуска самого себя
     steps:
-      - name: GET /health
+      - name: Цикл GET /health (днём по Киеву)
+        id: loop
         shell: bash
         run: |
+          # Окно 07:00–23:30 Europe/Kyiv (летнее/зимнее время учитывает TZ).
+          in_window() { local hm; hm=$(TZ=Europe/Kyiv date +%H%M); [ "$((10#$hm))" -ge 700 ] && [ "$((10#$hm))" -lt 2330 ]; }
+          end=$(( $(date +%s) + 340 * 60 ))
+          fails=0
           # Только код и время ответа — тело и заголовки в лог не пишутся.
-          # Холодный старт дольше таймаута одной попытки — повтор (запрос уже разбудил сервис).
-          for attempt in 1 2 3; do
+          while in_window && [ "$(date +%s)" -lt "$end" ]; do
             out=$(curl -s -o /dev/null --max-time 60 -w '%{http_code} %{time_total}' https://tg-api-staging.onrender.com/health || true)
-            echo "attempt $attempt: HTTP ${out:-000} s"
-            case "$out" in 200\ *) exit 0 ;; esac
-            sleep 5
+            echo "$(date -u +%H:%M:%S) HTTP ${out:-000} s"
+            case "$out" in
+              200\ *) fails=0; sleep 300 ;;
+              *)
+                fails=$((fails + 1))
+                [ "$fails" -eq 3 ] && echo "::warning::staging api не ответил 200 на /health 3 раза подряд"
+                sleep 20 ;; # холодный старт/сбой — повтор скоро (запрос уже разбудил сервис)
+            esac
           done
-          echo "::warning::staging api не ответил 200 на /health"
+          if in_window; then echo "restart=true" >> "$GITHUB_OUTPUT"; else echo "вне окна — без перезапуска"; fi
+      - name: Следующий запуск
+        if: ${{ !cancelled() && steps.loop.outputs.restart == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run keep-alive.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+            || echo "::warning::не удалось перезапустить keep-alive — продолжит cron"
