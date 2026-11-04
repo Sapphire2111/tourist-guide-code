@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { GuideProvider, type GuideEnv } from "./context.js";
+import { pickSub } from "./subcategory-test-utils.js";
 import { ModernNearbyResults } from "./Nearby.js";
 import type { GuideApi, PlaceSummary } from "./types.js";
 
@@ -66,7 +67,7 @@ describe("ModernNearbyResults", () => {
     rerender(ui(700));
     expect(seen[seen.length - 1]).toBe(before);
 
-    fireEvent.click(screen.getByRole("button", { name: "Де поїсти" }));
+    pickSub("Де поїсти", "nearby-filter");
     expect(seen[seen.length - 1]).not.toBe(before);
     expect(seen[seen.length - 1]).toHaveLength(1);
   });
@@ -94,8 +95,10 @@ describe("ModernNearbyResults", () => {
     await flush();
     expect(screen.queryByRole("searchbox")).toBeNull();
     expect(container.querySelector(".modern-map-spot")).toBeNull();
-    const chips = within(screen.getByRole("group", { name: "Категорії місць поруч" }));
-    expect(chips.getAllByRole("button").map((b) => b.textContent)).toEqual(["✦Усі поруч", "🍲Де поїсти"]);
+    fireEvent.click(screen.getByTestId("nearby-filter"));
+    const options = within(screen.getByRole("dialog")).getAllByRole("radio");
+    expect(options.map((r) => r.closest("label")!.textContent)).toEqual(["✦Шукати все", "🍲Де поїсти"]);
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(seen[seen.length - 1]).toHaveLength(2);
   });
 
@@ -129,17 +132,19 @@ describe("ModernNearbyResults", () => {
       </GuideProvider>,
     );
     await flush();
-    const filters = within(screen.getByRole("group", { name: "Категорії місць поруч" }));
-    expect(filters.getAllByRole("button").map((b) => b.textContent?.replace(/^\P{L}+/u, ""))).toEqual(
-      expect.arrayContaining(["Природа", "Пам'ятки", "Вершини"]),
+    const trigger = screen.getByTestId("nearby-filter");
+    expect(trigger.textContent).toContain("Шукати все");
+    fireEvent.click(trigger);
+    const radios = within(screen.getByRole("dialog")).getAllByRole("radio");
+    expect(radios.map((r) => r.closest("label")!.textContent?.replace(/^\P{L}+/u, ""))).toEqual(
+      expect.arrayContaining(["Шукати все", "Природа", "Пам'ятки", "Вершини"]),
     );
-    expect(screen.getByTestId("nearby-sub-nature").nextElementSibling).toBe(
-      screen.getByTestId("nearby-sub-sights"),
-    );
-    fireEvent.click(screen.getByTestId("nearby-sub-nature"));
-    expect(screen.getByTestId("nearby-sub-nature").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    pickSub("Природа", "nearby-filter");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("nearby-filter").textContent).toContain("Природа");
     expect(seen[seen.length - 1]!.map((p) => p.id).sort()).toEqual(["w1", "w2"]);
-    fireEvent.click(screen.getByTestId("nearby-sub-peaks"));
+    pickSub("Вершини", "nearby-filter");
     expect(seen[seen.length - 1]!.map((p) => p.id)).toEqual(["p1"]);
   });
 

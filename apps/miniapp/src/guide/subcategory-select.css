@@ -1,0 +1,27 @@
+/* Кнопка выбора подкатегории (SubcategorySelect.tsx); лист — стили .loc-* из location.css. Токены темы День/Ніч. */
+.subcat-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.subcat-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subcat-trigger:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}

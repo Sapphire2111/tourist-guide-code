@@ -8,6 +8,7 @@ import type { Analytics } from "./analytics.js";
 import { GuideProvider, type GuideEnv } from "./context.js";
 import { peakOf } from "./guide-api.js";
 import { availableFilters, filterPeaks, sortPeaks, type PeakPlace } from "./peak-list.js";
+import { pickSub } from "./subcategory-test-utils.js";
 import { PeakBadge, PeakDetails, PeakList, Peaks } from "./Peaks.js";
 import type { GuideApi, Peak, PeakDifficulty } from "./types.js";
 import type { WeatherApi } from "../weather/weather-api.js";
@@ -114,12 +115,13 @@ describe("значок і список", () => {
     expect(first.getByTestId("peak-badge").textContent).toBe("Легка");
     expect(first.getByRole("link").getAttribute("href")).toMatch(/^#\/place\//);
 
-    fireEvent.click(screen.getByTestId("peak-filter-hard"));
+    pickSub("Складна", "peak-filter");
     expect(names()).toEqual(["Петрос"]);
-    expect(screen.getByTestId("peak-filter-hard").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByTestId("peak-filter-expert")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("peak-filter-all"));
+    expect(screen.getByTestId("peak-filter").textContent).toContain("Складна");
+    // Фильтров без вершин в списке нет: «Дуже складна» отсутствует.
+    fireEvent.click(screen.getByTestId("peak-filter"));
+    expect(within(screen.getByRole("dialog")).queryByRole("radio", { name: "Дуже складна" })).toBeNull();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("radio", { name: "Шукати все" }));
     fireEvent.click(screen.getByTestId("peak-sort-distance"));
     expect(names()[0]).toBe("Маковиця");
     fireEvent.click(screen.getByTestId("peak-sort-height"));

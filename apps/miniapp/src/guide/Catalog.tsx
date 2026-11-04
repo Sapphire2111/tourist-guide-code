@@ -10,6 +10,7 @@ import { useAsync, useGuide } from "./context.js";
 import { GPS_RADIUS, searchAround, useLocationCaption, useLocations } from "./LocationProvider.js";
 import { MapSlot } from "./MapSlot.js";
 import { DEVICE_MAX_ZOOM, RADIUS_DEBOUNCE_MS } from "./Nearby.js";
+import { SubcategorySelect } from "./SubcategorySelect.js";
 import { AsyncView, PlaceList } from "./parts.js";
 import { RadiusSlider } from "./RadiusSlider.js";
 import type { LatLng } from "./geo.js";
@@ -217,21 +218,15 @@ function CategoryPlaces({
   return (
     <Stack>
       {subcategories.length > 0 && root && (
-        <div role="group" aria-label={t("miniapp.catalog.subcategories")}>
-          <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {[root, ...subcategories].map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className="kosiv-toggle"
-                aria-pressed={c.id === categoryId}
-                onClick={() => setCategoryId(c.id)}
-              >
-                {c.id === root.id ? t("miniapp.catalog.all") : pickLocalized(c.name, locale)}
-              </button>
-            ))}
-          </span>
-        </div>
+        <SubcategorySelect
+          title={t("miniapp.catalog.subcategories")}
+          options={[root, ...subcategories].map((c) => ({
+            id: c.id,
+            label: c.id === root.id ? t("miniapp.subcategory.all") : pickLocalized(c.name, locale),
+          }))}
+          value={categoryId ?? root.id}
+          onChange={setCategoryId}
+        />
       )}
       {subcategories.find((c) => c.id === categoryId)?.code === "peaks" && (
         // Подраздел «Вершини»: свой экран со сложностью, высотой и маршрутом (#/peaks).

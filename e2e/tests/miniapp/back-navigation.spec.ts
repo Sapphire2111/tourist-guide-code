@@ -70,7 +70,8 @@ test.describe("в Telegram (QR отеля)", () => {
 
     await page.getByTestId("featured-eat").click();
     await expect(page).toHaveURL(/#\/section\/eat$/);
-    await page.getByRole("button", { name: "Кав'ярні" }).click();
+    await page.getByTestId("subcategory-select").click();
+    await page.getByRole("dialog").getByRole("radio", { name: "Кав'ярні" }).click();
     await page.getByLabel("Пошук за назвою").fill("Місце");
     await page.getByRole("button", { name: "Знайти" }).click();
     const link = page.getByTestId("place-list").getByRole("link", { name: "Місце 25", exact: true });
@@ -88,7 +89,7 @@ test.describe("в Telegram (QR отеля)", () => {
     // 1: место → список: подраздел, запрос, та же прокрутка, без нового поиска.
     await press(page);
     await expect(page).toHaveURL(/#\/section\/eat$/);
-    await expect(page.getByRole("button", { name: "Кав'ярні" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("subcategory-select")).toContainText("Кав'ярні");
     await expect(page.getByLabel("Пошук за назвою")).toHaveValue("Місце");
     await expect(page.getByTestId("place-list").getByRole("link")).toHaveCount(30);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolled - 80);
@@ -97,7 +98,7 @@ test.describe("в Telegram (QR отеля)", () => {
     // 2: подраздел → раздел целиком, экран тот же.
     await press(page);
     await expect(page).toHaveURL(/#\/section\/eat$/);
-    await expect(page.getByRole("button", { name: "Усі" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("subcategory-select")).toContainText("Шукати все");
 
     // 3: раздел → главная, кнопка скрыта.
     await press(page);
@@ -108,12 +109,13 @@ test.describe("в Telegram (QR отеля)", () => {
   test("новый заход в раздел — чистые фильтры (состояние только у возврата)", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("featured-eat").click();
-    await page.getByRole("button", { name: "Кав'ярні" }).click();
+    await page.getByTestId("subcategory-select").click();
+    await page.getByRole("dialog").getByRole("radio", { name: "Кав'ярні" }).click();
     await press(page);
     await press(page);
     await expect(page.getByTestId("home-sections")).toBeVisible();
     await page.getByTestId("featured-eat").click();
-    await expect(page.getByRole("button", { name: "Усі" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("subcategory-select")).toContainText("Шукати все");
   });
 
   test("поиск → место → назад: тот же запрос и результаты", async ({ page }) => {
@@ -165,15 +167,19 @@ test.describe("в Telegram (QR отеля)", () => {
     await expect(page.getByRole("searchbox")).toHaveCount(0);
     await page.getByRole("button", { name: /Список/ }).click();
     await expect(page.locator(".modern-nearby")).toHaveAttribute("data-map-mode", "split");
-    const filters = page.getByRole("group", { name: "Категорії місць поруч" });
-    await filters.getByRole("button", { name: /Де поїсти/ }).click();
-    await expect(filters.getByRole("button", { name: /Де поїсти/ })).toHaveAttribute("aria-pressed", "true");
+    const filter = page.getByTestId("nearby-filter");
+    await filter.click();
+    await page
+      .getByRole("dialog")
+      .getByRole("radio", { name: /Де поїсти/ })
+      .click();
+    await expect(filter).toContainText("Де поїсти");
     await page.getByTestId("place-list").getByRole("link").first().click();
     await expect(page).toHaveURL(/#\/place\//);
     await press(page);
     await expect(page).toHaveURL(/#\/nearby$/);
     await expect(page.locator(".modern-nearby")).toHaveAttribute("data-map-mode", "split");
-    await expect(filters.getByRole("button", { name: /Де поїсти/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(filter).toContainText("Де поїсти");
   });
 
   test("новая шапка и нижняя панель: 🔥-меню, QR и 112 на главной; «Назад» из 112 и с вкладок", async ({
