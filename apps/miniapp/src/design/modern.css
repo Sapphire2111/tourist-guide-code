@@ -678,21 +678,10 @@ html[data-design="modern"] .assistant-action {
 .modern-hero-glass [data-testid="assistant-box"] {
   gap: 6px;
 }
-/* Два ряди чипів: приклади запитів і сезонні теги, кожен прокручується вбік. */
+/* Ряд чипів із прикладами запитів, прокручується вбік. */
 .modern-hero-glass .assistant-examples {
   gap: 6px;
   margin-bottom: 4px;
-}
-.modern-season .kosiv-tags {
-  flex-wrap: nowrap;
-  gap: 6px;
-  overflow-x: auto;
-  margin: 0 -14px;
-  padding: 2px 14px;
-  scrollbar-width: none;
-}
-.modern-season .kosiv-tags::-webkit-scrollbar {
-  display: none;
 }
 html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   flex: none;
@@ -707,15 +696,6 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   font-weight: 600;
   white-space: nowrap;
   box-shadow: none;
-}
-.modern-season > h2 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 /* Картка заведения */
@@ -913,6 +893,7 @@ html[data-design="modern"] a.modern-intention {
 .modern-intention-emoji {
   font-size: 19px;
   line-height: 1;
+  white-space: nowrap;
 }
 .modern-intention-label {
   max-width: 100%;
@@ -926,8 +907,7 @@ html[data-design="modern"] a.modern-intention {
   border-color: #f6ae2d;
 }
 
-/* Блоки нижче плиток («Цікаві місця», службовий) — картки на тій самій вуалі. */
-html[data-screen="home"] section[aria-labelledby="home-places-title"],
+/* Службовий блок нижче плиток — картка на тій самій вуалі. */
 html[data-screen="home"] .kosiv-meta-block {
   --gutter: 12px;
   padding: 12px;
@@ -1834,4 +1814,86 @@ html[data-theme="night"]
 html[data-theme="night"] .modern-route {
   background-color: #16382b;
   border: 1px solid rgb(246 174 45 / 35%);
+}
+
+/* Живой огонёк (кнопка меню и микрофон): лёгкое покачивание и мерцание, только transform и opacity, раскладку не двигает. */
+.fire-flame {
+  display: inline-block;
+  transform-origin: 50% 85%;
+  animation: fire-flicker 2.2s ease-in-out infinite;
+}
+@keyframes fire-flicker {
+  0%,
+  100% {
+    transform: scale(1) rotate(-3deg);
+    opacity: 0.92;
+  }
+  30% {
+    transform: scale(1.08, 1.14) rotate(2deg);
+    opacity: 1;
+  }
+  55% {
+    transform: scale(0.97, 1.03) rotate(-1.5deg);
+    opacity: 0.85;
+  }
+  80% {
+    transform: scale(1.05, 1.09) rotate(3deg);
+    opacity: 1;
+  }
+}
+
+/* Волны от микрофона: три кольца расширяются и гаснут; не ловят касания и не увеличивают цель нажатия. */
+.mic-waves {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mic-waves i {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--ember-b, #e06d2b);
+  opacity: 0;
+  animation: mic-wave 2.4s ease-out infinite;
+}
+.mic-waves i:nth-child(2) {
+  animation-delay: 0.8s;
+}
+.mic-waves i:nth-child(3) {
+  animation-delay: 1.6s;
+}
+.assistant-pill[data-recording] .mic-waves i {
+  border-color: var(--ember-a, #f26419);
+  animation-duration: 1.1s;
+}
+.assistant-pill[data-recording] .mic-waves i:nth-child(2) {
+  animation-delay: 0.37s;
+}
+.assistant-pill[data-recording] .mic-waves i:nth-child(3) {
+  animation-delay: 0.74s;
+}
+@keyframes mic-wave {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+/* Экономия батареи, как у искр: скрытая вкладка и листы на весь экран. */
+html[data-tab-hidden] .fire-flame,
+html[data-tab-hidden] .mic-waves i {
+  animation-play-state: paused;
+}
+body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .fire-flame,
+body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .mic-waves i {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fire-flame,
+  .mic-waves i {
+    animation: none;
+  }
 }

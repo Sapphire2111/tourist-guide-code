@@ -72,10 +72,18 @@ export const AppBackdrop = memo(function AppBackdrop() {
   // Скрытая вкладка (свёрнутый Telegram): искры на паузе. Атрибут — напрямую, без обновления React.
   const embers = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const sync = () => embers.current?.toggleAttribute("data-paused", document.visibilityState === "hidden");
+    const sync = () => {
+      const hidden = document.visibilityState === "hidden";
+      embers.current?.toggleAttribute("data-paused", hidden);
+      // Тот же признак ставит на паузу живой огонёк и волны микрофона (modern.css).
+      document.documentElement.toggleAttribute("data-tab-hidden", hidden);
+    };
     sync();
     document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      document.documentElement.removeAttribute("data-tab-hidden");
+    };
   }, []);
   return (
     <div className="app-backdrop" data-testid="app-backdrop" aria-hidden="true">

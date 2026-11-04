@@ -416,46 +416,6 @@ html[data-season] :focus-visible {
 .kosiv-muted {
   color: var(--app-muted);
 }
-.kosiv-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-.kosiv-section-head h2 {
-  margin: 0;
-}
-.kosiv-section-link {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
-}
-
-/* Горизонтальная лента карточек мест. */
-.kosiv-rail {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  margin: 0 calc(var(--gutter) * -1);
-  padding: 4px var(--gutter) 12px;
-  list-style: none;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-.kosiv-rail::-webkit-scrollbar {
-  display: none;
-}
-.kosiv-rail > li {
-  flex: 0 0 72%;
-  max-width: 260px;
-  scroll-snap-align: start;
-}
-
 /* Карточка места. */
 .kosiv-place {
   position: relative;
@@ -793,9 +753,6 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   }
   .kosiv-content {
     animation: none;
-  }
-  .kosiv-rail {
-    scroll-behavior: auto;
   }
 }
 

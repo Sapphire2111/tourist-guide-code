@@ -78,7 +78,7 @@ export const SECTION_EMOJI: Record<string, string> = {
   fun: "🎢",
   ski: "⛷️",
   transfer: "🚕",
-  services: "🛠️",
+  services: "📱💇",
   nearby: "🧭",
   other: "📍",
 };

@@ -189,7 +189,6 @@ test.describe("в Telegram (QR отеля)", () => {
     await sos.click();
     await expect(page).toHaveURL(/#\/help$/);
     expect(await backVisible(page)).toBe(true);
-    await sos.click(); // повторный тап по 112 — без новой записи
     await press(page);
     await expect(page.getByTestId("home-sections")).toBeVisible();
     await expect.poll(() => backVisible(page)).toBe(false);
@@ -197,8 +196,12 @@ test.describe("в Telegram (QR отеля)", () => {
     const nav = page.getByTestId("bottom-nav");
     await nav.getByRole("link", { name: "Поруч", exact: true }).click();
     await expect(page).toHaveURL(/#\/nearby$/);
+    // На вложенном экране вместо 112 — QR, а путь к «Допомога» — пункт меню.
+    await expect(top.getByTestId("scan-btn")).toBeVisible();
+    await expect(top.getByTestId("help-112")).toHaveCount(0);
     await top.getByTestId("menu-btn").click();
     await expect(page.getByTestId("app-settings")).toBeVisible();
+    await expect(page.getByTestId("help-menu-item")).toHaveAttribute("href", "#/help");
     await press(page);
     await expect(page.getByTestId("app-settings")).toHaveCount(0);
     await expect(page).toHaveURL(/#\/nearby$/);

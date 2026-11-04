@@ -128,15 +128,15 @@ test.describe("QR отеля demoHotel01", () => {
     expect(state.searches.at(-1)).toHaveProperty("lat");
     expect(state.searches.at(-1)).not.toHaveProperty("radius");
 
-    // Главная: лента — по выбранной локации.
+    // Главная: выбор запомнен; ленты мест на ней нет, поэтому новых запросов поиска нет.
+    const before = state.searches.length;
     await page
       .getByRole("navigation", { name: "Основна навігація" })
       .getByRole("link", { name: "Головна" })
       .click();
     await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
-    await expect
-      .poll(() => state.searches.at(-1))
-      .toMatchObject({ localityIds: LOCALITY_TATARIV, limit: "8" });
+    await page.waitForLoadState("networkidle");
+    expect(state.searches).toHaveLength(before);
     // Повторный вход по QR заведения — выдача от заведения: сохранённый выбор сброшен.
     await page.reload();
     await expect(page.getByTestId("location-chip")).toHaveText(/Усі локації/);
@@ -155,12 +155,18 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).toBeChecked();
     await expect(sheet.getByRole("checkbox", { name: "Усі локації" })).not.toBeChecked();
     const state = apiMockState.get(page)!;
-    await expect.poll(() => state.searches.at(-1)).toMatchObject({ lat: "48.4535", radius: "10000" });
     await expectNoSeriousA11yViolations(page);
+    await sheet.getByRole("button", { name: "Готово" }).click();
+    // Раздел ищет вокруг точки устройства.
+    await page.getByTestId("featured-eat").click();
+    await expect.poll(() => state.searches.at(-1)).toMatchObject({ lat: "48.4535" });
+    await page.goBack();
+    await page.getByTestId("location-chip").click();
     await sheet.getByRole("checkbox", { name: "Татарів" }).check();
     await expect(sheet.getByRole("checkbox", { name: "Моє місцезнаходження" })).not.toBeChecked();
     await sheet.getByRole("button", { name: "Готово" }).click();
     await expect(page.getByTestId("location-chip")).toHaveText(/Татарів/);
+    await page.getByTestId("featured-eat").click();
     await expect.poll(() => state.searches.at(-1)).toMatchObject({ localityIds: LOCALITY_TATARIV });
   });
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Analytics } from "../guide/analytics.js";
 import { Catalog } from "../guide/Catalog.js";
-import { GuideProvider, type GuideEnv } from "../guide/context.js";
+import { GuideProvider, useGuide, type GuideEnv } from "../guide/context.js";
 import type { GuideApi, PlaceSummary, SearchParams } from "../guide/types.js";
 import { consumeBack, type TelegramWebApp } from "../telegram.js";
 import { AppTop, SeasonSwitcher, Splash } from "./Chrome.js";
@@ -13,12 +13,39 @@ import {
   GPS_RADIUS_WIDE,
   LOCATION_STORAGE_KEY,
   LocationProvider,
+  searchAround,
   useLocations,
 } from "../guide/LocationProvider.js";
-import { HOME_PLACES, HomePlaces, SeasonTags } from "./HomeParts.js";
 import { PlaceSearch } from "../guide/Catalog.js";
 import { readSeason, saveSeason, seasonOfMonth, SEASON_STORAGE_KEY } from "./season.js";
 import { SeasonProvider, syncTelegramColors } from "./SeasonProvider.js";
+import { useEffect, useState } from "react";
+
+/** Сколько мест запрашивает пробник выдачи. */
+const HOME_PLACES = 8;
+
+/** Пробник: ищет места так же, как экраны с выбором локации (выбранные пункты или «Моє місцезнаходження»). */
+function HomePlaces() {
+  const { api, regionId } = useGuide();
+  const { selected, gps } = useLocations();
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!regionId) return;
+    let alive = true;
+    const params = {
+      ...(selected.length ? { localityIds: selected } : {}),
+      excludeSections: ["stay" as const],
+      limit: HOME_PLACES,
+    };
+    (gps ? searchAround(api.search, params, gps) : api.search(params)).then(
+      (data) => alive && setCount(data.length),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, regionId, selected, gps]);
+  return <p data-testid="home-places">{count ?? "…"}</p>;
+}
 
 afterEach(() => {
   cleanup();
@@ -205,7 +232,6 @@ describe("локації", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(chip.textContent).toContain("Яремче +1");
-    expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Яремче, Татарів");
     // «Усі локації» — без фильтра, хранилище очищено.
     fireEvent.click(chip);
     fireEvent.click(screen.getByRole("checkbox", { name: "Усі локації" }));
@@ -439,9 +465,10 @@ describe("шапка", () => {
   it("вне главной: нет h1 и только «Допомога» в самой полосе; профиль — только в меню и только при profile", () => {
     const view = render(<AppTop path="/help" profile={false} />);
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-    // В полосе только постоянная кнопка «Допомога» (modern).
-    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#/help"]);
+    // Вне главной и без сканера в полосе ссылок нет (112 — только на главной); «Допомога» — в меню.
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Меню" }));
+    expect(screen.getByRole("link", { name: "Допомога" }).getAttribute("href")).toBe("#/help");
     expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
     view.unmount();
     render(<AppTop path="/help" profile />);
@@ -489,10 +516,8 @@ describe("локація: моє місцезнаходження", () => {
       excludeSections: ["stay"],
       limit: HOME_PLACES,
     });
-    expect(screen.getByRole("heading", { name: "Поруч з вами" })).toBeDefined();
     const chip = screen.getByTestId("location-chip");
     expect(chip.textContent).toContain("Моє місцезнаходження");
-    expect(screen.getByTestId("location-caption").textContent).toBe("Локація: Моє місцезнаходження");
     fireEvent.click(chip);
     expect((screen.getByRole("checkbox", { name: "Моє місцезнаходження" }) as HTMLInputElement).checked).toBe(
       true,
@@ -560,15 +585,6 @@ describe("локація: моє місцезнаходження", () => {
     expect((screen.getByRole("checkbox", { name: "Усі локації" }) as HTMLInputElement).checked).toBe(true);
     // Не явное «Усі локації»: режим в хранилище не пишется.
     expect(localStorage.getItem(LOCATION_STORAGE_KEY)).toBeNull();
-  });
-
-  it("пустая лента в GPS-режиме: подсказка «Змінити локацію» открывает лист", async () => {
-    stubGeolocation({ lat: 48.45, lng: 24.55 });
-    mount(vi.fn(async (_params: SearchParams) => []));
-    await flush();
-    await flush();
-    fireEvent.click(screen.getByTestId("home-change-location"));
-    expect(screen.getByRole("dialog", { name: "Локація" })).toBeDefined();
   });
 
   it("каталог в GPS-режиме: «Змінити локацію» открывает лист; текстовый поиск без результатов рядом — по региону с пометкой", async () => {
@@ -740,16 +756,9 @@ describe("поиск мест /search", () => {
   });
 });
 
-describe("быстрый поиск сезона", () => {
-  it("чипы ведут в поиск мест с коротким запросом", () => {
-    document.documentElement.setAttribute("data-season", "winter");
-    render(
-      <SeasonProvider>
-        <SeasonTags />
-      </SeasonProvider>,
-    );
-    const link = screen.getByRole("link", { name: "Чани на дровах" });
-    expect(link.getAttribute("href")).toBe(`#/search?q=${encodeURIComponent("чан")}`);
-    expect(screen.getAllByRole("link")).toHaveLength(4);
+describe("главная без сезонных тегов", () => {
+  it("SeasonConfig не содержит быстрых тегов", async () => {
+    const { SEASON_CONFIG } = await import("./season.js");
+    for (const cfg of Object.values(SEASON_CONFIG)) expect(cfg).not.toHaveProperty("tags");
   });
 });

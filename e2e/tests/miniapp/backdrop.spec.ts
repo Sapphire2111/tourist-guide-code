@@ -127,9 +127,18 @@ for (const [width, height] of [
   }
 }
 
+/** Главная теперь умещается на экране; для проверки прокрутки страницы добавляем высоту в конец. */
+const makeScrollable = (page: Page) =>
+  page.evaluate(() => {
+    const spacer = document.createElement("div");
+    spacer.style.height = "1500px";
+    document.body.appendChild(spacer);
+  });
+
 test("фон не двигается при прокрутке, блоки двигаются", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("home-place").first()).toBeAttached();
+  await expect(page.getByTestId("home-sections")).toBeAttached();
+  await makeScrollable(page);
   const read = () =>
     page.evaluate(() => ({
       bd: document.querySelector('[data-testid="app-backdrop"]')!.getBoundingClientRect().top,
@@ -331,7 +340,7 @@ test("плитки: имена для скринридера и цель не м
     "Розваги",
     "Гірські лижі",
     "Авто",
-    "Сервіси",
+    "Послуги",
     "Обране",
   ]);
 });
@@ -394,7 +403,8 @@ test("плитки: свайп и флик листают страницу, ря
       page: Math.round(window.scrollY),
       list: Math.round(document.querySelector('[data-testid="home-sections"]')!.scrollTop),
     }));
-  await expect(page.getByTestId("home-place").first()).toBeAttached();
+  await expect(page.getByTestId("home-sections")).toBeAttached();
+  await makeScrollable(page);
   const start = await state();
   await drag(-200);
   const up = await state();
@@ -482,7 +492,7 @@ test("служебный блок: туристу нет, /health не запр�
     if (new URL(r.url()).pathname === "/health") health.push(r.url());
   });
   await page.goto("/");
-  await expect(page.getByTestId("home-place").first()).toBeVisible();
+  await expect(page.getByTestId("home-sections")).toBeVisible();
   await page.waitForLoadState("networkidle");
   await expect(page.locator(".kosiv-meta-block")).toHaveCount(0);
   expect(health).toEqual([]);
@@ -561,7 +571,7 @@ test("112: экран помощи, понятное имя, номер сам �
   await expect(page.getByRole("heading", { name: "Халепа?" })).toBeVisible();
 });
 
-test("главная: всё видно на месте — заголовки, поле, подсказки, теги, «Про заклад», места, приветствие", async ({
+test("главная: всё видно на месте — заголовки, поле, подсказки, «Про заклад», приветствие; без ленты мест и сезонных тегов", async ({
   page,
 }) => {
   await page.goto("/");
@@ -574,15 +584,15 @@ test("главная: всё видно на месте — заголовки, 
   await expect(page.getByTestId("assistant-send")).toBeVisible();
   await page.getByTestId("assistant-box").getByRole("searchbox").fill("");
   await expect(page.getByTestId("assistant-examples").getByRole("button").first()).toBeVisible();
-  await expect(page.getByTestId("season-tags").getByRole("link").first()).toBeVisible();
   await expect(page.locator(".modern-host-link")).toHaveText(/^Про заклад/);
   await expect(page.getByText("Wi-Fi")).toHaveCount(0);
   await expect(page.getByTestId("near-me")).toContainText("Місця поруч на карті");
   await expect(page.getByTestId("near-me")).toContainText("від 300 м");
-  const places = page.getByRole("heading", { name: "Цікаві місця" });
-  await places.scrollIntoViewIfNeeded();
-  await expect(places).toBeVisible();
-  await expect(page.getByTestId("home-place").first()).toBeVisible();
+  // Ленты мест и нижнего ряда сезонных тегов на главной нет.
+  await expect(page.getByRole("heading", { name: "Цікаві місця" })).toHaveCount(0);
+  await expect(page.getByTestId("home-places")).toHaveCount(0);
+  await expect(page.getByTestId("home-place")).toHaveCount(0);
+  await expect(page.getByTestId("season-tags")).toHaveCount(0);
   // Служебное туристу не показываем.
   await expect(page.getByTestId("health")).toHaveCount(0);
   await expect(page.getByTestId("role")).toHaveCount(0);
@@ -602,4 +612,27 @@ test("заголовок на небе: не пересекается с кон�
     // Самая высокая вершина картинки: 150 из 400 при высоте 512 px.
     expect(bottom, `${width}`).toBeLessThanOrEqual(192);
   }
+});
+
+test("главная не запрашивает места для ленты (/places/search)", async ({ page }) => {
+  const searches: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname.endsWith("/places/search")) searches.push(r.url());
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("home-sections")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect(searches).toEqual([]);
+});
+
+test("огонёк меню живой: анимация есть, раскладку не двигает; при reduced-motion — без анимации", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const flame = page.getByTestId("menu-btn").locator(".fire-flame");
+  await expect(flame).toBeVisible();
+  const animated = () => flame.evaluate((n) => n.getAnimations().length);
+  expect(await animated()).toBeGreaterThan(0);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(animated).toBe(0);
 });
