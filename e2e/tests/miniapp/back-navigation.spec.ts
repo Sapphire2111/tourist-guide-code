@@ -68,7 +68,7 @@ test.describe("в Telegram (QR отеля)", () => {
     await expect(page.getByTestId("venue-summary")).toBeAttached();
     expect(await backVisible(page)).toBe(false);
 
-    await page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page).toHaveURL(/#\/section\/eat$/);
     await page.getByRole("button", { name: "Кав'ярні" }).click();
     await page.getByLabel("Пошук за назвою").fill("Місце");
@@ -107,12 +107,12 @@ test.describe("в Telegram (QR отеля)", () => {
 
   test("новый заход в раздел — чистые фильтры (состояние только у возврата)", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await page.getByRole("button", { name: "Кав'ярні" }).click();
     await press(page);
     await press(page);
     await expect(page.getByTestId("home-sections")).toBeVisible();
-    await page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page.getByRole("button", { name: "Усі" })).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -354,7 +354,7 @@ test.describe("в Telegram (QR отеля)", () => {
     await expect(page.getByTestId("home-sections")).toBeVisible();
     await expect.poll(() => backVisible(page)).toBe(false);
 
-    await page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await expect(page).toHaveURL(/#\/section\/eat$/);
     await page.getByTestId("menu-btn").click();
     await expect(page.getByTestId("app-settings")).toBeVisible();
@@ -383,7 +383,7 @@ test.describe("в Telegram (QR отеля)", () => {
   test("двойное нажатие «Назад» — один шаг", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("venue-summary")).toBeAttached();
-    await page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" }).click();
+    await page.getByTestId("featured-eat").click();
     await page.getByTestId("place-list").getByRole("link").first().click();
     await expect(page).toHaveURL(/#\/place\//);
     await page.evaluate(() => {
@@ -421,7 +421,7 @@ test.describe("лимит истории и партнёр", () => {
 
   test("возврат: фокус на ссылке, с которой ушли", async ({ page }) => {
     await page.goto("/");
-    const link = page.getByTestId("home-sections").getByRole("link", { name: "Де поїсти" });
+    const link = page.getByTestId("featured-eat");
     await link.click();
     await expect(page).toHaveURL(/#\/section\/eat$/);
     await press(page);
