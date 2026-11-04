@@ -226,6 +226,8 @@ export const IMPORT_QUERIES: readonly string[] = [
 export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; name: Text; icon: string }[] =
   [
     { code: "fast-food", parent: "eat", name: { uk: "Фастфуд", en: "Fast food" }, icon: "burger" },
+    // Бари, паби й кальянні (04.11.2026): раньше лежали в «Кафе» — витрина кафе показывала кальянные детям.
+    { code: "bars", parent: "eat", name: { uk: "Бари", en: "Bars" }, icon: "beer" },
     { code: "groceries", parent: "shop", name: { uk: "Продукти", en: "Groceries" }, icon: "basket" },
     { code: "stores", parent: "shop", name: { uk: "Магазини", en: "Stores" }, icon: "store" },
     {
@@ -256,6 +258,8 @@ export const IMPORT_EXTRA_CATEGORIES: readonly { code: string; parent: string; n
       icon: "ticket",
     },
     { code: "sights", parent: "nearby", name: { uk: "Пам'ятки", en: "Sights" }, icon: "landmark" },
+    // Раздел «Вершини» (04.11.2026): вершины и данные маршрутов — places-import/peaks.ts, места — CLI peaks:sync.
+    { code: "peaks", parent: "nearby", name: { uk: "Вершини", en: "Peaks" }, icon: "mountain" },
     // Развлечения по аудитории (03.11.2026); entertainment остаётся для аттракционов «для всех»
     // (зиплайн, родельбан, кино) — уже импортированные места переразмечаются при следующем импорте.
     { code: "kids", parent: "fun", name: { uk: "Для дітей", en: "For kids" }, icon: "baby" },

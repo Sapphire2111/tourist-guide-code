@@ -13,6 +13,7 @@ import {
   type LonLat,
   type TagGroup,
 } from "../db/index.js";
+import { IMPORT_EXTRA_CATEGORIES } from "../places-import/config.js";
 import { seedUuid } from "./ids.js";
 import type { SeedRegionKey } from "./seed.js";
 
@@ -128,6 +129,13 @@ export const SEED_CATEGORIES: readonly {
     ],
   },
 ];
+
+/**
+ * Подкатегории импорта (IMPORT_EXTRA_CATEGORIES), которые seed заводит сразу, без прогона импорта: «Вершини» (места —
+ * peaks:sync и правило импорта по названию) и «Бари». Вставка — ON CONFLICT DO NOTHING по любому ключу, в т. ч.
+ * (region_id, code): категория, уже заведённая вручную или импортом (staging: peaks), не дублируется и не меняется.
+ */
+export const SEED_IMPORT_CATEGORY_CODES: readonly string[] = ["peaks", "bars"];
 
 export const SEED_TAGS: readonly { code: string; name: Text; group: TagGroup }[] = [
   { code: "kids", name: { uk: "З дітьми", en: "Kids friendly" }, group: "audience" },
@@ -430,6 +438,32 @@ export async function seedCatalog(
           .execute();
     }
 
+    for (const code of SEED_IMPORT_CATEGORY_CODES) {
+      const def = IMPORT_EXTRA_CATEGORIES.find((c) => c.code === code);
+      if (!def) continue;
+      const parent = await trx
+        .selectFrom("categories")
+        .select("id")
+        .where("region_id", "=", a)
+        .where("code", "=", def.parent)
+        .where("parent_id", "is", null)
+        .executeTakeFirst();
+      if (!parent) continue;
+      await trx
+        .insertInto("categories")
+        .values({
+          id: ids("category", def.code),
+          region_id: a,
+          parent_id: parent.id,
+          code: def.code,
+          name_i18n: def.name,
+          icon: def.icon,
+          sort_order: 500 + IMPORT_EXTRA_CATEGORIES.indexOf(def) * 10,
+        })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+    }
+
     await trx
       .insertInto("tags")
       .values(
@@ -557,7 +591,8 @@ export async function seedCatalog(
       .execute();
   });
   return {
-    categories: SEED_CATEGORIES.reduce((n, c) => n + 1 + c.children.length, 0),
+    categories:
+      SEED_CATEGORIES.reduce((n, c) => n + 1 + c.children.length, 0) + SEED_IMPORT_CATEGORY_CODES.length,
     tags: SEED_TAGS.length,
     localities: SEED_LOCALITIES.length,
     places: SEED_PLACES.length,
