@@ -154,6 +154,22 @@ describe("лимит истории браузера", () => {
     expect(navigate).toHaveBeenCalledWith("/plan/saved", { replace: true });
   });
 
+  it("быстрый возврат и новый заход на тот же адрес — не считается «молчанием» history.back()", async () => {
+    initNavigation();
+    push("#/plan");
+    push("#/plan/scenario/x");
+    const navigate = vi.fn();
+    await waitPop(() => goBack(navigate));
+    push("#/plan/scenario/x");
+    await new Promise((r) => setTimeout(r, BACK_TIMEOUT_MS + 50));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("#/plan/scenario/x");
+    // И защита от повторного нажатия уже снята: «Назад» сразу работает.
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    goBack(navigate);
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
   it("возврат случился вовремя — родитель не вызывается", async () => {
     initNavigation();
     push("#/plan");

@@ -156,6 +156,57 @@ test.describe("в Telegram (QR отеля)", () => {
     expect(state.searches.length).toBe(count);
   });
 
+  test("«Поруч»: раздел и режим карты возвращаются; строки поиска нет; радиус по умолчанию 1 км", async ({
+    page,
+  }) => {
+    await page.goto("/#/nearby");
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 1 км");
+    await expect(page.getByRole("searchbox")).toHaveCount(0);
+    await page.getByRole("button", { name: /Список/ }).click();
+    await expect(page.locator(".modern-nearby")).toHaveAttribute("data-map-mode", "split");
+    const filters = page.getByRole("group", { name: "Категорії місць поруч" });
+    await filters.getByRole("button", { name: /Де поїсти/ }).click();
+    await expect(filters.getByRole("button", { name: /Де поїсти/ })).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("place-list").getByRole("link").first().click();
+    await expect(page).toHaveURL(/#\/place\//);
+    await press(page);
+    await expect(page).toHaveURL(/#\/nearby$/);
+    await expect(page.locator(".modern-nearby")).toHaveAttribute("data-map-mode", "split");
+    await expect(filters.getByRole("button", { name: /Де поїсти/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("новая шапка и нижняя панель: 🔥-меню, QR и 112 на главной; «Назад» из 112 и с вкладок", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("venue-summary")).toBeAttached();
+    const top = page.getByTestId("app-top");
+    await expect(top.getByTestId("menu-btn")).toBeVisible();
+    await expect(top.getByTestId("scan-btn")).toBeVisible();
+    const sos = top.getByRole("link", { name: "Допомога" });
+    await expect(sos).toContainText("112");
+
+    await sos.click();
+    await expect(page).toHaveURL(/#\/help$/);
+    expect(await backVisible(page)).toBe(true);
+    await sos.click(); // повторный тап по 112 — без новой записи
+    await press(page);
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await expect.poll(() => backVisible(page)).toBe(false);
+
+    const nav = page.getByTestId("bottom-nav");
+    await nav.getByRole("link", { name: "Поруч", exact: true }).click();
+    await expect(page).toHaveURL(/#\/nearby$/);
+    await top.getByTestId("menu-btn").click();
+    await expect(page.getByTestId("app-settings")).toBeVisible();
+    await press(page);
+    await expect(page.getByTestId("app-settings")).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/nearby$/);
+    await nav.getByRole("link", { name: "Головна" }).click(); // тап по предыдущей вкладке — шаг назад
+    await expect(page.getByTestId("home-sections")).toBeVisible();
+    await expect.poll(() => backVisible(page)).toBe(false);
+  });
+
   test("«Поруч зі мною» → место → назад: геолокация остаётся, тап по вкладке не сбрасывает", async ({
     page,
     context,
@@ -375,7 +426,10 @@ test.describe("лимит истории и партнёр", () => {
     await expect(page).toHaveURL(/#\/section\/eat$/);
     await press(page);
     await expect(page.getByTestId("home-sections")).toBeVisible();
-    await expect(link).toBeFocused();
+    // Не toBeFocused: он требует document.hasFocus(), а при параллельных вкладках окно может быть не в фокусе.
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute("href")))
+      .toBe("#/section/eat");
   });
 });
 

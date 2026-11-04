@@ -437,8 +437,8 @@ function useFocusHeading(path: string) {
       link?.focus({ preventScroll: true });
       return Boolean(link);
     };
-    if (focusLink()) return;
-    let heading = focusScreenHeading();
+    // Экран может перерисоваться после возврата (ответ /me, флаги) — повторы возвращают потерянный фокус.
+    let heading = focusLink() || focusScreenHeading();
     const timers = [100, 300, 800, 1500, 3000].map((ms) =>
       window.setTimeout(() => {
         const active = document.activeElement;

@@ -145,7 +145,16 @@ test("«Назад» Telegram из карточки места: тот же сп
 test("вход по ссылке на карточку: «Назад» — на главную, из Mini App не выходит", async ({ page }) => {
   await installAssistantMock(page);
   await page.goto("/#/place/00000000-0000-4000-8000-000000000300");
-  await expect(page).toHaveURL(/#\/place\//);
+  // Кнопка появляется после старта (вход, контекст); адрес верен и до него — ждём саму кнопку.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { Telegram: { WebApp: { BackButton: { isVisible: boolean } } } }).Telegram
+            .WebApp.BackButton.isVisible,
+      ),
+    )
+    .toBe(true);
   await page.evaluate(() =>
     (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
   );

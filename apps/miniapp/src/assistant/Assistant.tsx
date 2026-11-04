@@ -766,7 +766,7 @@ function AddToMyPlan({
   if (planId && state !== "busy")
     return (
       <Link to={`/plan/saved/${planId}`} className="kosiv-cta" data-testid="assistant-plan-open">
-        {t("miniapp.assistant.plan.open")}
+        {t("miniapp.assistant.plan.openSaved")}
       </Link>
     );
   return (

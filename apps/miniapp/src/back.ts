@@ -167,6 +167,7 @@ function sync(): Entry {
   const stamp = stampOf(window.history.state);
   const hash = normalizeHash(window.location.hash);
   if (!stamp) {
+    backSettled();
     pendingFocus = undefined;
     const first = index < 0;
     if (first) stack = [];
@@ -197,6 +198,7 @@ function sync(): Entry {
     return current;
   }
   // Возврат или шаг вперёд; при первом вызове — перезагрузка страницы посреди истории.
+  backSettled();
   if (index < 0) stack = loadStack();
   let entry = stack[stamp.idx];
   if (entry?.key !== stamp.key) {
@@ -343,6 +345,16 @@ export const BACK_TIMEOUT_MS = 500;
 let backingUntil = 0;
 let backingFrom: string | null = null;
 let backTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Запись сменилась — возврат состоялся. Быстрый новый заход на тот же адрес не примется ни за «history.back() молчит»,
+ * ни за повторное нажатие.
+ */
+function backSettled(): void {
+  clearTimeout(backTimer);
+  backingUntil = 0;
+  backingFrom = null;
+}
 
 function backPending(now: () => number = Date.now): boolean {
   return now() < backingUntil && window.location.hash === backingFrom;
