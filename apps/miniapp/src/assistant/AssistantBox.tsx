@@ -7,6 +7,7 @@ import type { MessageKey } from "@tg/i18n";
 import { useT } from "@tg/ui";
 import { useErrorText } from "../host/errors.js";
 import { TEXT_MAX, type AssistantApi } from "./assistant-api.js";
+import { useThemeSymbol } from "../design/ThemeProvider.js";
 import { useRecorder } from "./recorder.js";
 import "./assistant.css";
 
@@ -37,6 +38,7 @@ export function AssistantBox({
   examples?: boolean;
 }) {
   const { t } = useT();
+  const symbol = useThemeSymbol();
   const errorText = useErrorText();
   const [draft, setDraft] = useState("");
   const [transcribing, setTranscribing] = useState(false);
@@ -156,7 +158,7 @@ export function AssistantBox({
               <MicIcon />
             ) : (
               <span className="fire-flame" aria-hidden="true">
-                🔥
+                {symbol}
               </span>
             )}
           </button>

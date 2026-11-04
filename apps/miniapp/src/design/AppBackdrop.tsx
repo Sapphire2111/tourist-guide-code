@@ -5,6 +5,7 @@
 // Искры — только CSS: transform и opacity, без обновлений React; при «уменьшить движение» стоят, в скрытой вкладке и под
 // листами на весь экран — на паузе (modern.css).
 import { memo, useEffect, useRef, type CSSProperties } from "react";
+import { useTheme } from "./ThemeProvider.js";
 
 /** Смереки переднего хребта рассвета: x, основание y, масштаб. */
 const SPRUCES: readonly (readonly [number, number, number])[] = [
@@ -69,6 +70,8 @@ function emberStyle([left, from, size, duration, delay, sway, drift, rise]: (typ
 }
 
 export const AppBackdrop = memo(function AppBackdrop() {
+  // Искры ватры — символ «Ніч»; в «День» их нет.
+  const { theme } = useTheme();
   // Скрытая вкладка (свёрнутый Telegram): искры на паузе. Атрибут — напрямую, без обновления React.
   const embers = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -179,11 +182,13 @@ export const AppBackdrop = memo(function AppBackdrop() {
         <circle cx="50" cy="50" r="6" fill="#FDE68A" stroke="#B83D18" strokeWidth="1.5" />
       </svg>
 
-      <div ref={embers} className="app-embers" data-testid="app-embers">
-        {EMBERS.map((e, i) => (
-          <i key={i} style={emberStyle(e)} />
-        ))}
-      </div>
+      {theme === "night" && (
+        <div ref={embers} className="app-embers" data-testid="app-embers">
+          {EMBERS.map((e, i) => (
+            <i key={i} style={emberStyle(e)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 });

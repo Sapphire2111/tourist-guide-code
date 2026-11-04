@@ -107,12 +107,12 @@ describe("сезон", () => {
       </SeasonProvider>,
     );
     // Цвета окна — по картинке фона и теме, сезон их не меняет: шапка — небо, низ окна и нижняя панель — низ картинки.
-    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.header);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
     expect(screen.getByRole("button", { name: "Осінь" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Зима" }));
     expect(document.documentElement.getAttribute("data-season")).toBe("winter");
-    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
-    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.bottom);
+    expect(webApp.setBackgroundColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
+    expect(webApp.setBottomBarColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.bottom);
     expect(JSON.parse(localStorage.getItem(SEASON_STORAGE_KEY)!).season).toBe("winter");
   });
 
@@ -133,7 +133,7 @@ describe("сезон", () => {
     handlers.get("fullscreenChanged")?.();
     handlers.get("themeChanged")?.();
     expect(webApp.setHeaderColor).toHaveBeenCalledTimes(before + 2);
-    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.day.header);
+    expect(webApp.setHeaderColor).toHaveBeenLastCalledWith(WINDOW_COLORS.night.header);
   });
 
   it("заставка: долгий вход (холодный старт api) — пояснение «сервер прокидається»", async () => {
@@ -222,7 +222,7 @@ describe("локації", () => {
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     const chip = screen.getByTestId("location-chip");
-    expect(chip.textContent).toContain("Усі локації");
+    expect(chip.textContent).toContain("Оберіть локацію");
     fireEvent.click(chip);
     const sheet = screen.getByRole("dialog", { name: "Локація" });
     // Пункт без мест не предлагается.
@@ -558,7 +558,7 @@ describe("локація: моє місцезнаходження", () => {
     expect(chip.textContent).toContain("Моє місцезнаходження");
   });
 
-  it("нет точки — по умолчанию «Усі локації» без сообщений; явный выбор при отказе — сообщение и откат", async () => {
+  it("нет точки — по умолчанию «Оберіть локацію» без сообщений; явный выбор при отказе — сообщение и откат", async () => {
     stubGeolocation(null);
     const search = vi.fn(async (_params: SearchParams) => [place]);
     mount(search);
@@ -566,7 +566,7 @@ describe("локація: моє місцезнаходження", () => {
     await flush();
     expect(search).toHaveBeenLastCalledWith({ excludeSections: ["stay"], limit: HOME_PLACES });
     const chip = screen.getByTestId("location-chip");
-    expect(chip.textContent).toContain("Усі локації");
+    expect(chip.textContent).toContain("Оберіть локацію");
     fireEvent.click(chip);
     expect(screen.queryByTestId("location-gps-failed")).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: "Моє місцезнаходження" }));

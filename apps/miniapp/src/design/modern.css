@@ -771,13 +771,21 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   --f-sub: var(--card-muted);
   --f-kicker: var(--card-accent);
 }
+/* Главная из двух: та же карточка, что «Де смачно поїсти», главность — акцентная обводка и кружок под компасом. */
 .modern-featured-near {
-  background-color: var(--near-bg);
-  background-image: var(--near-image);
-  border-color: var(--near-border);
-  --f-title: var(--near-title);
-  --f-sub: var(--near-muted);
-  --f-kicker: var(--near-accent);
+  border: 2px solid var(--card-accent);
+  padding: 13px;
+}
+.modern-featured-near .modern-featured-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--card-accent) 18%, transparent);
+  border: 1.5px solid var(--card-accent);
+  font-size: 18px;
 }
 .modern-featured-top {
   display: flex;
@@ -1785,4 +1793,12 @@ body:has(.kosiv-sheet-backdrop, .loc-backdrop, .wx-backdrop, .pc-lightbox) .mic-
   .assistant-pill[data-recording] .mic-waves i:first-child {
     opacity: 0.6;
   }
+}
+
+/* «День»: горы вместо огня — без мерцания; погода не прижата к кнопкам шапки. */
+html[data-theme="day"] .fire-flame {
+  animation: none;
+}
+html[data-theme="day"][data-screen="home"] .home-top-row {
+  padding-top: 10px;
 }

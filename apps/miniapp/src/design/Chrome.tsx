@@ -6,7 +6,7 @@ import { interceptBack } from "../telegram.js";
 import { ICONS, VaseIcon } from "./Ornament.js";
 import { SEASON_CONFIG, SEASONS } from "./season.js";
 import { useSeason } from "./SeasonProvider.js";
-import { useTheme } from "./ThemeProvider.js";
+import { useTheme, useThemeSymbol } from "./ThemeProvider.js";
 import { THEME_NAMES, THEMES } from "./theme.js";
 
 /** Через сколько мс заставки показать «сервер прокидається» (холодный старт api на Render free — 30–60 с). */
@@ -96,6 +96,7 @@ export function AppTop({
   location?: ReactNode;
 }) {
   const { t } = useT();
+  const symbol = useThemeSymbol();
   const home = path === "/";
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -151,7 +152,7 @@ export function AppTop({
         onClick={() => setOpen((v) => !v)}
       >
         <span className="fire-flame" aria-hidden="true">
-          🔥
+          {symbol}
         </span>
       </button>
       <div className="modern-top-brand">
