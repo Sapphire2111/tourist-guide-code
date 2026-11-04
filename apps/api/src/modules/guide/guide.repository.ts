@@ -83,6 +83,11 @@ const geom = (eb: ExpressionBuilder<Database, "places">) => eb.ref("places.locat
 const nameUk = sql<string>`places.name_i18n->>'uk'`;
 const nameEn = sql<string>`places.name_i18n->>'en'`;
 const addressUk = sql<string>`places.address_i18n->>'uk'`;
+/** Апострофы (' ʼ ’ ‘ `) — без них при поиске по названию: «Хом'як» = «Хомʼяк» = «Хомяк». */
+const APOSTROPHES = "'ʼ’‘`";
+const stripApostrophes = (s: string) => s.replace(/['ʼ’‘`]/g, "");
+const bareNameUk = sql<string>`translate(${nameUk}, ${APOSTROPHES}, '')`;
+const bareNameEn = sql<string>`translate(${nameEn}, ${APOSTROPHES}, '')`;
 
 @Injectable()
 export class GuideRepository {
@@ -273,16 +278,17 @@ export class GuideRepository {
       query = query.where("places.id", "in", [...s.ids]);
     }
     const pattern = text === undefined ? undefined : likeContains(text);
+    const bare = text === undefined ? undefined : likeContains(stripApostrophes(text));
     if (pattern !== undefined)
       query = query.where(
-        sql<boolean>`(${nameUk} ILIKE ${pattern} OR ${nameEn} ILIKE ${pattern} OR ${addressUk} ILIKE ${pattern})`,
+        sql<boolean>`(${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} OR ${addressUk} ILIKE ${pattern})`,
       );
     let rows = this.selectRow(query, origin);
     if (text !== undefined) {
-      const prefix = likeContains(text).slice(1);
+      const prefix = bare!.slice(1);
       rows = rows.orderBy(
-        sql`CASE WHEN ${nameUk} ILIKE ${prefix} OR ${nameEn} ILIKE ${prefix} THEN 0
-          WHEN ${nameUk} ILIKE ${pattern} OR ${nameEn} ILIKE ${pattern} THEN 1 ELSE 2 END`,
+        sql`CASE WHEN ${bareNameUk} ILIKE ${prefix} OR ${bareNameEn} ILIKE ${prefix} THEN 0
+          WHEN ${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} THEN 1 ELSE 2 END`,
       );
     }
     if (origin) rows = rows.orderBy("distance");

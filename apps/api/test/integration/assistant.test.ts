@@ -165,6 +165,18 @@ describe.skipIf(!dockerAvailable)(`Ассистент: ключевые слов
     expect(rows.map((r) => r.score)).toEqual([4, 4, 2, 1]);
   });
 
+  it("order distance: LIMIT отбирает ближайших из прошедших minScore (слабое совпадение рядом не отсекается)", async () => {
+    const q = { ...sushi(), categoryIds: [categoryId("eat")], origin: ORIGIN, radius: 5000, minScore: 1 };
+    expect(keysOf(await repo.keywordMatches(base.regions.a, { ...q, limit: 2 }))).toEqual([
+      "barberri",
+      "kitsune",
+    ]);
+    expect(keysOf(await repo.keywordMatches(base.regions.a, { ...q, limit: 2, order: "distance" }))).toEqual([
+      "kuma",
+      "review",
+    ]);
+  });
+
   it("без раздела и радиуса: весь регион, отели с ИИ-текстом тоже; минимальный вес отсекает одни отзывы", async () => {
     const rows = await repo.keywordMatches(base.regions.a, {
       ...sushi(),

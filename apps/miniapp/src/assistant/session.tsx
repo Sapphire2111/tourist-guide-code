@@ -133,6 +133,7 @@ export function AssistantSessionProvider({ children }: { children: ReactNode }) 
           ui.dayIndex === base.dayIndex &&
           ui.scrollY === base.scrollY &&
           ui.planId === base.planId &&
+          ui.sort === base.sort &&
           x.ui === base
           ? x
           : { ...x, ui };

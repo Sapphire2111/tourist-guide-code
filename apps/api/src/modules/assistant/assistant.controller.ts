@@ -148,6 +148,7 @@ export class AssistantController {
             start: body.previous.start ?? null,
             related: body.previous.related ?? [],
             scope: body.previous.scope ?? null,
+            sort: body.previous.sort ?? null,
             scopeLocalityIds: body.previous.scopeLocalityIds ?? [],
             transport: body.previous.transport ?? null,
           }

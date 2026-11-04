@@ -3706,6 +3706,11 @@ export interface components {
      * @enum {string}
      */
     AssistantPlanTransport: "car" | "foot";
+    /**
+     * @description Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу
+     * @enum {string}
+     */
+    AssistantSort: "rating";
     AssistantIntentDto: {
       /** @description places — места, tour — маршрут */
       kind: components["schemas"]["AssistantKind"];
@@ -3739,6 +3744,8 @@ export interface components {
       scopeLocalityIds?: string[];
       /** @description План: car — на авто, foot — пешком (дальнее — трансфер между днями); null — не названо */
       transport?: components["schemas"]["AssistantPlanTransport"] | null;
+      /** @description Порядок списка: rating — по рейтингу («найкращі»); null — от ближайшего к туристу */
+      sort?: components["schemas"]["AssistantSort"] | null;
     };
     AssistantQueryDto: {
       /**
@@ -3775,6 +3782,10 @@ export interface components {
       priceLevel: number | null;
       /** @description По данным Google: подходит для детей или есть дитяче меню */
       kidsFriendly: boolean;
+      /** @description Рейтинг Google 1–5 (сортировка «За рейтингом») */
+      rating?: number | null;
+      /** @description Число отзывов Google */
+      ratingCount?: number | null;
       /** @description Описание из обогащения (ИИ-текст, Google); текст статьи Вікіпедії не отдаётся */
       description: string | null;
       descriptionSource: components["schemas"]["AssistantDescriptionSource"] | null;

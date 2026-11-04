@@ -7,7 +7,14 @@ import type { ApiError } from "../../common/http/index.js";
 import type { GuideService, PlaceSummaryDto, ScheduleRows } from "../guide/index.js";
 import type { AssistantRepository, KeywordQuery, PlaceEnrichmentFacts } from "./assistant.repository.js";
 import type { RegionsRepository } from "../regions/index.js";
-import { AssistantService, describe as describePlace, shorten } from "./assistant.service.js";
+import {
+  AssistantService,
+  describe as describePlace,
+  nameHasStems,
+  nameStems,
+  shorten,
+  wantsBest,
+} from "./assistant.service.js";
 import { AssistantBudget } from "./budget.js";
 import { INTENT_TOOL, type AssistantIntent } from "./intent.js";
 import { AssistantUpstreamError, type AssistantLlm, type AssistantSpeech } from "./providers.js";
@@ -84,6 +91,7 @@ const intent = (over: Partial<AssistantIntent> = {}): AssistantIntent => ({
   scope: null,
   scopeLocalityIds: [],
   transport: null,
+  sort: null,
   ...over,
 });
 
@@ -99,6 +107,7 @@ type SearchArg = {
   categoryId?: string;
   ids?: readonly string[];
   radius?: number;
+  text?: string;
 };
 
 function setup(
@@ -623,7 +632,7 @@ describe("блюдо или кухня (ключевые слова)", () => {
   const sushi = (id: number, name: string, over: Partial<PlaceSummaryDto> = {}) =>
     place(id, { name: { uk: name }, categoryId: RESTAURANTS, ...over });
 
-  it("«суші»: поиск по названию, типу, описаниям и отзывам во всём разделе «Де поїсти»; порядок — совпадение и рейтинг", async () => {
+  it("«суші»: поиск по названию, типу, описаниям и отзывам во всём разделе «Де поїсти»; порядок — от ближайшего (релевантность — отбор)", async () => {
     const byName = sushi(1, "Суши Кафе");
     const byReview = sushi(2, "Family", { categoryId: CAFES });
     const byAi = sushi(3, "KUMA");
@@ -656,7 +665,7 @@ describe("блюдо или кухня (ключевые слова)", () => {
       expect.objectContaining({ ids: [byName.id, byAi.id, byReview.id], origin: YAREMCHE_AT }),
     );
     expect(guide.search).toHaveBeenCalledTimes(1);
-    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суши Кафе", "KUMA", "Family"]);
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Суши Кафе", "Family", "KUMA"]);
     expect(res.notes).toEqual([]);
   });
 
@@ -1139,7 +1148,7 @@ describe("широкое понимание и расширение поиска
     expect(r.notes).not.toContain("widened");
   });
 
-  it("связанные понятия: места категорий плюс найденные по словам; совпавшие — выше", async () => {
+  it("связанные понятия: места категорий плюс найденные по словам; с точкой — от ближайшего", async () => {
     const terrace = place(3);
     const { service, repo } = setup({
       llm: {
@@ -1154,7 +1163,200 @@ describe("широкое понимание и расширение поиска
     });
     const res = await service.query(REGION, USER, ask("романтичний вечір", { origin: YAREMCHE_AT }));
     expect(repo.keywordMatches).toHaveBeenCalled();
-    expect(res.items.map((i) => i.place.id)).toEqual([terrace.id, place(1).id, place(2).id]);
+    expect(res.items.map((i) => i.place.id)).toEqual([place(1).id, place(2).id, terrace.id]);
+  });
+});
+
+describe("порядок списка — по расстоянию от туриста", () => {
+  const near = place(1, { name: { uk: "Близька" }, distanceMeters: 300 });
+  const mid = place(2, { name: { uk: "Середня" }, distanceMeters: 1200 });
+  const far = place(3, { name: { uk: "Далека" }, distanceMeters: 4000 });
+  const chargers = (text: string, origin?: { lon: number; lat: number }) => {
+    const { service } = setup({
+      // Каталог/поиск отдаёт в порядке релевантности: дальняя — самая релевантная и с лучшим рейтингом.
+      searchAt: () => [far, mid, near],
+      keywordMatches: () => [
+        { id: far.id, score: 9 },
+        { id: mid.id, score: 5 },
+        { id: near.id, score: 2 },
+      ],
+      enrichment: {
+        [far.id]: { google: google({ rating: 5, ratingCount: 500 }), wiki: null, ai: null },
+        [mid.id]: { google: google({ rating: 3.9 }), wiki: null, ai: null },
+        [near.id]: { google: google({ rating: 4.2 }), wiki: null, ai: null },
+      },
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"], keywords: ["зарядка"] })))),
+      },
+    });
+    return service
+      .query(REGION, USER, ask(text, origin ? { origin } : {}))
+      .then((r) => r.items.map((i) => i.place.name.uk));
+  };
+
+  it("зарядки на разном удалении и с разным рейтингом — от ближайшей к дальней", async () => {
+    expect(await chargers("знайди електрозарядку", YAREMCHE_AT)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("явное «найкращий» — по рейтингу", async () => {
+    expect(await chargers("найкраща зарядка", YAREMCHE_AT)).toEqual(["Далека", "Близька", "Середня"]);
+  });
+
+  it("без точки — прежний порядок (релевантность и рейтинг)", async () => {
+    expect(await chargers("знайди електрозарядку")).toEqual(["Далека", "Середня", "Близька"]);
+  });
+
+  it("по категории без ключевых слов — тоже от ближайшего", async () => {
+    const { service } = setup({
+      searchAt: () => [far, near, mid],
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"] })))) },
+    });
+    const res = await service.query(REGION, USER, ask("де кава", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => i.place.name.uk)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("wantsBest", () => {
+    expect(wantsBest("з найвищим рейтингом")).toBe(true);
+    expect(wantsBest("топ кафе")).toBe(true);
+    expect(wantsBest("лучшее кафе")).toBe(true);
+    expect(wantsBest("знайди зарядку")).toBe(false);
+    expect(wantsBest("стопка млинців")).toBe(false);
+    for (const t of [
+      "best cafe",
+      "the best pizza",
+      "кращі кафе",
+      "найпопулярніші",
+      "top rated",
+      "high rated",
+    ])
+      expect(wantsBest(t)).toBe(true);
+    for (const t of ["покращення дороги", "кафе з рейтингом від 4", "bestseller"])
+      expect(wantsBest(t)).toBe(false);
+    expect(wantsBest("за рейтингом")).toBe(true);
+    for (const t of ["мені краще щось недороге", "що краще: кафе чи ресторан"])
+      expect(wantsBest(t)).toBe(false);
+  });
+
+  it("ключевые слова с точкой — кандидаты из репозитория ближайшие (order distance); «найкращі» и экскурсия — score", async () => {
+    const run = async (text: string, kind: "places" | "tour" = "places") => {
+      const { service, repo } = setup({
+        keywordMatches: () => [{ id: near.id, score: 1 }],
+        searchAt: () => [near],
+        llm: {
+          create: vi.fn(() =>
+            Promise.resolve(reply(intent({ kind, categories: ["cafes"], keywords: ["зарядка"] }))),
+          ),
+        },
+      });
+      await service.query(REGION, USER, ask(text, { origin: YAREMCHE_AT }));
+      return repo.keywordMatches.mock.calls[0]![1].order;
+    };
+    expect(await run("зарядка")).toBe("distance");
+    expect(await run("найкраща зарядка")).toBe("score");
+    expect(await run("екскурсія", "tour")).toBe("score");
+  });
+
+  it("«найкращі кафе» → «а дешевші?»: порядок по рейтингу сохраняется (sort в намерении); «ближчі» — сброс", async () => {
+    const mk = () =>
+      setup({
+        searchAt: () => [near, mid, far],
+        enrichment: {
+          [far.id]: { google: google({ rating: 5 }), wiki: null, ai: null },
+          [mid.id]: { google: google({ rating: 3.9 }), wiki: null, ai: null },
+          [near.id]: { google: google({ rating: 4.2 }), wiki: null, ai: null },
+        },
+        llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"] })))) },
+      });
+    const first = await mk().service.query(REGION, USER, ask("найкращі кафе", { origin: YAREMCHE_AT }));
+    expect(first.intent.sort).toBe("rating");
+    const names = (r: { items: { place: PlaceSummaryDto }[] }) => r.items.map((i) => i.place.name.uk);
+    const cheaper = await mk().service.query(
+      REGION,
+      USER,
+      ask("а дешевші?", { origin: YAREMCHE_AT, previous: first.intent as AssistantIntent }),
+    );
+    expect(cheaper.intent.sort).toBe("rating");
+    expect(names(cheaper)).toEqual(["Далека", "Близька", "Середня"]);
+    const nearer = await mk().service.query(
+      REGION,
+      USER,
+      ask("а ближчі?", { origin: YAREMCHE_AT, previous: first.intent as AssistantIntent }),
+    );
+    expect(nearer.intent.sort).toBeNull();
+    expect(names(nearer)).toEqual(["Близька", "Середня", "Далека"]);
+  });
+
+  it("«топ кафе» → «де аптека» — новая тема по расстоянию; «кращі кафе поруч» — «поруч» главнее", async () => {
+    const mk = (cats: string[]) =>
+      setup({
+        searchAt: () => [far, mid, near],
+        enrichment: { [far.id]: { google: google({ rating: 5 }), wiki: null, ai: null } },
+        llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: cats })))) },
+      });
+    const top = await mk(["cafes"]).service.query(REGION, USER, ask("топ кафе", { origin: YAREMCHE_AT }));
+    expect(top.intent.sort).toBe("rating");
+    const pharmacy = await mk(["museums"]).service.query(
+      REGION,
+      USER,
+      ask("де аптека", { origin: YAREMCHE_AT, previous: top.intent as AssistantIntent }),
+    );
+    expect(pharmacy.intent.sort).toBeNull();
+    expect(pharmacy.items.map((i) => i.place.name.uk)).toEqual(["Близька", "Середня", "Далека"]);
+    const nearBest = await mk(["cafes"]).service.query(
+      REGION,
+      USER,
+      ask("кращі кафе поруч", { origin: YAREMCHE_AT }),
+    );
+    expect(nearBest.intent.sort).toBeNull();
+  });
+
+  it("«з дітьми» с точкой — строго по расстоянию (пригодность — метка)", async () => {
+    const { service } = setup({
+      searchAt: () => [far, near, mid],
+      enrichment: { [far.id]: { google: google({ amenities: ["kids_menu"] }), wiki: null, ai: null } },
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: ["cafes"], withKids: true })))) },
+    });
+    const res = await service.query(REGION, USER, ask("кафе з дітьми", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => [i.place.name.uk, i.kidsFriendly])).toEqual([
+      ["Близька", false],
+      ["Середня", false],
+      ["Далека", true],
+    ]);
+  });
+
+  it("nameQuery: совпавшие по названию выше совпавших по адресу, внутри — по расстоянию", async () => {
+    const byAddress = place(1, {
+      name: { uk: "Кафе Смерека" },
+      address: { uk: "вул. Гуцулія, 1" },
+      distanceMeters: 50,
+    });
+    const farNamed = place(2, { name: { uk: "Гуцулія" }, distanceMeters: 5000 });
+    const nearNamed = place(3, { name: { uk: "Ресторан Гуцулія" }, distanceMeters: 900 });
+    const { service } = setup({
+      searchAt: () => [byAddress, farNamed, nearNamed],
+      llm: { create: vi.fn(() => Promise.resolve(reply(intent({ categories: [], nameQuery: "Гуцулія" })))) },
+    });
+    const res = await service.query(REGION, USER, ask("де Гуцулія?", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => i.place.id)).toEqual([farNamed.id, nearNamed.id, byAddress.id]);
+  });
+
+  it("экскурсия: остановки по релевантности — водопад не вытесняется местом с одним упоминанием в отзыве", async () => {
+    const waterfall = place(9, { name: { uk: "Водоспад Пробій" }, distanceMeters: 9000 });
+    const mentions = Array.from({ length: 12 }, (_, i) => place(20 + i, { distanceMeters: 100 + i }));
+    const { service } = setup({
+      searchAt: () => [...mentions, waterfall],
+      keywordMatches: () => [
+        { id: waterfall.id, score: 9 },
+        ...mentions.map((m) => ({ id: m.id, score: 1 })),
+      ],
+      llm: {
+        create: vi.fn(() =>
+          Promise.resolve(reply(intent({ kind: "tour", categories: ["cafes"], keywords: ["водоспад"] }))),
+        ),
+      },
+    });
+    const res = await service.query(REGION, USER, ask("екскурсія до водоспаду", { origin: YAREMCHE_AT }));
+    expect(res.items.map((i) => i.place.id)).toContain(waterfall.id);
   });
 });
 
@@ -1171,5 +1373,93 @@ describe("describe / shorten", () => {
     expect(s.length).toBeLessThanOrEqual(100);
     expect(s.endsWith(".")).toBe(true);
     expect(shorten("слово ".repeat(40), 50).endsWith("…")).toBe(true);
+  });
+});
+
+describe("названное место вне населённых пунктов (водоспад Гук, вершины)", () => {
+  const huk = place(40, {
+    name: { uk: "Водоспад Женецький Гук" },
+    categoryId: NATURE,
+    distanceMeters: 38_000,
+  });
+  const taxi = place(41, {
+    name: { uk: "Таксі Татарів Заросляк Говерла Водоспад Гук Трансфер" },
+    categoryId: TAXI,
+    distanceMeters: 2000,
+  });
+  const mountHuk = place(42, { name: { uk: "Гора Гук" }, categoryId: NATURE, distanceMeters: 500 });
+  const hoverla = place(43, { name: { uk: "Говерла" }, categoryId: NATURE, distanceMeters: 45_000 });
+  const khomiak = place(44, { name: { uk: "Хомʼяк" }, categoryId: NATURE, distanceMeters: 41_000 });
+  const brebeneskul = place(45, {
+    name: { uk: "гора Бребенескул" },
+    categoryId: NATURE,
+    distanceMeters: 60_000,
+  });
+  const nearby = place(46, { name: { uk: "Водоспад Пробій" }, categoryId: NATURE, distanceMeters: 300 });
+  const bare = (t: string) => t.toLocaleLowerCase("uk").replace(/['ʼ’]/g, "");
+  const all = [huk, taxi, mountHuk, hoverla, khomiak, brebeneskul, nearby];
+  // Как каталог: ILIKE по названию, радиус, пункт (у вершин и водопадов locality_id null — «Локація» их отсекает).
+  const run = (text: string, over: Partial<AssistantIntent>, kind: "places" | "tour" = "places") => {
+    const { service } = setup({
+      searchAt: (s) =>
+        all.filter(
+          (p) =>
+            (!s.text || bare(p.name.uk!).includes(bare(s.text))) &&
+            (s.radius === undefined || (p.distanceMeters ?? 0) <= s.radius) &&
+            (!s.categoryId || s.categoryId === NATURE || p.categoryId === s.categoryId),
+        ),
+      placeLocality: { [nearby.id]: YAREMCHE },
+      llm: {
+        create: vi.fn(() => Promise.resolve(reply(intent({ kind, categories: ["nature"], ...over })))),
+      },
+    });
+    return service
+      .query(REGION, USER, ask(text, { origin: YAREMCHE_AT, localityIds: [YAREMCHE] }))
+      .then((r) => r.items.map((i) => i.place.name.uk));
+  };
+
+  it("«екскурсія на водоспад Гук» — экскурсия к нему, хотя он вне выбранного пункта и далеко", async () => {
+    const names = await run("зроби мені екскурсію на водоспад Гук", { nameQuery: "водоспад Гук" }, "tour");
+    expect(names).toContain("Водоспад Женецький Гук");
+    expect(names).not.toContain("Гора Гук");
+  });
+
+  it("«водоспад Гук», «Женецький Гук», «як дістатися до Женецького Гуку» — водоспад первым (выше таксі)", async () => {
+    for (const nameQuery of ["водоспад Гук", "Женецький Гук", "Женецького Гуку"])
+      expect((await run(`де ${nameQuery}`, { nameQuery }))[0]).toBe("Водоспад Женецький Гук");
+  });
+
+  it("вершины без пункта: Говерла, Хом'як (другой апостроф), Бребенескул (падеж)", async () => {
+    expect((await run("гора Говерла", { nameQuery: "гора Говерла" }))[0]).toBe("Говерла");
+    expect((await run("екскурсія на Хом'як", { nameQuery: "Хом'як" }))[0]).toBe("Хомʼяк");
+    expect((await run("на Бребенескула", { nameQuery: "Бребенескула" }))[0]).toBe("гора Бребенескул");
+  });
+
+  it("nameStems: падеж и родовые слова", () => {
+    expect(nameStems("Женецького Гуку")).toEqual(["женецьк", "гук"]);
+    expect(nameStems("водоспад Гук")).toEqual(["гук"]);
+    expect(nameStems("гора Говерла")).toEqual(["говерл"]);
+    expect(nameStems("озеро Синевир")).toEqual(["синевир"]);
+    expect(nameStems("водопад Гук")).toEqual(["гук"]);
+    expect(nameStems("Хом'як")).toEqual(["хомяк"]);
+  });
+
+  it("короткая основа — только с начала слова; апостроф не важен", () => {
+    const named = (uk: string) => place(1, { name: { uk } });
+    expect(nameHasStems(named("Водоспад Гук"), ["гук"])).toBe(true);
+    expect(nameHasStems(named("Гуків"), ["гук"])).toBe(true);
+    expect(nameHasStems(named("Чугуківка"), ["гук"])).toBe(false);
+    expect(nameHasStems(named("Готель Буковель"), ["гук"])).toBe(false);
+    expect(nameHasStems(named("Хомʼяк"), nameStems("Хомяк"))).toBe(true);
+  });
+
+  it("«Хомяк» без апострофа находит «Хомʼяк»", async () => {
+    expect((await run("на Хомяк", { nameQuery: "Хомяк" }))[0]).toBe("Хомʼяк");
+  });
+
+  it("«найкращі» — названное место всё равно первым", async () => {
+    expect((await run("найкращий водоспад Гук", { nameQuery: "водоспад Гук" }))[0]).toBe(
+      "Водоспад Женецький Гук",
+    );
   });
 });

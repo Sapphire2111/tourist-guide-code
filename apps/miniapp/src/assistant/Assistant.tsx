@@ -8,6 +8,7 @@ import { Button, Link, Stack, useFeatureFlag, useRoute, useT } from "@tg/ui";
 import { useCategoryIndex, type CategoryIndex } from "../guide/categories.js";
 import { useGuide } from "../guide/context.js";
 import { nearestWithin, type LatLng } from "../guide/geo.js";
+import { SortToggle, sortPlaces, type PlaceSort } from "../guide/SortToggle.js";
 import { LOCATION_MAX, useLocationNames, useLocations } from "../guide/LocationProvider.js";
 import { MapSlot, preloadMap } from "../guide/MapSlot.js";
 import { useRadiusLabel } from "../guide/Nearby.js";
@@ -88,8 +89,12 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
     // Контекст — завершённые реплики этого диалога и намерение последнего ответа (с ответами на уточнения).
     const done = turns.filter((x) => x.state.status === "ready");
     const lastReady = done[done.length - 1];
+    const lastIntent = lastReady?.state.status === "ready" ? lastReady.state.data.intent : null;
+    // Выбор переключателя «Ближчі / Рейтинг» — в намерении для следующего уточнения.
+    const chosen = lastReady && session.ui?.turn === lastReady.id ? session.ui.sort : undefined;
     const previous =
-      previousOverride ?? (lastReady?.state.status === "ready" ? lastReady.state.data.intent : null);
+      previousOverride ??
+      (lastIntent && chosen ? { ...lastIntent, sort: chosen === "rating" ? "rating" : null } : lastIntent);
     askSession(api, {
       text,
       point,
@@ -198,6 +203,8 @@ function AssistantScreen({ api, initialQuery = "" }: { api: AssistantApi; initia
             onShown={(shown) => setUi({ shown })}
             dayIndex={ui?.dayIndex ?? 0}
             onDay={(dayIndex) => setUi({ dayIndex })}
+            sort={ui?.sort ?? null}
+            onSort={point && !result.intent.nameQuery ? (sort) => setUi({ sort }) : null}
           />
         )}
         {result && questions.length === 0 && result.intent.suggestions.length > 0 && (
@@ -471,6 +478,8 @@ function ResultView({
   onShown,
   dayIndex,
   onDay,
+  sort,
+  onSort,
 }: {
   result: AssistantResult;
   /** Сколько мест раскрыто («Показати ще») — из провайдера (переживает «Назад» из карточки). */
@@ -478,13 +487,35 @@ function ResultView({
   onShown: (n: number) => void;
   dayIndex: number;
   onDay: (i: number) => void;
+  /** Выбор переключателя; null — пользователь не выбирал, список в серверном порядке (с уровнем tier). */
+  sort: PlaceSort | null;
+  /** Нет точки или поиск по названию — переключателя нет; нет туриста — переключателя нет («Ближчі» без точки смысла не имеет). */
+  onSort: ((sort: PlaceSort) => void) | null;
 }) {
   const { t } = useT();
   const { base } = useGuide();
   const distance = useRadiusLabel();
   const setShown = (f: (n: number) => number) => onShown(f(shown));
+  const tour = result.intent.kind === "tour";
+  // Список «знайди» — в выбранном порядке (без нового запроса); экскурсия — порядок маршрута. Карта — тот же порядок.
+  const sortable = !tour && !result.plan && onSort !== null && result.items.length > 1;
+  // Сервер уже упорядочил по intent.sort с учётом tier (найденные по названию — первыми): пересортировываем,
+  // только когда пользователь выбрал другой порядок переключателем.
+  const serverSort: PlaceSort = result.intent.sort === "rating" ? "rating" : "distance";
+  const shownSort = sort ?? serverSort;
+  const items = useMemo(
+    () =>
+      sortable && sort !== null && sort !== serverSort
+        ? sortPlaces(result.items, sort, (i) => ({
+            ...i.place,
+            rating: i.rating,
+            ratingCount: i.ratingCount,
+          }))
+        : result.items,
+    [result, sort, sortable, serverSort],
+  );
   // Тот же массив между рендерами — карта не перестраивает маркеры при каждом рендере экрана.
-  const places = useMemo(() => result.items.map((i) => i.place), [result]);
+  const places = useMemo(() => items.map((i) => i.place), [items]);
   if (result.intent.clarify || !result.items.length) return null;
   const notes = result.notes.map((n) => (
     <p key={n} className="kosiv-muted" data-testid="assistant-note">
@@ -500,9 +531,8 @@ function ResultView({
         <PlanView plan={plan} result={result} dayIndex={dayIndex} onDay={onDay} />
       </Stack>
     );
-  const tour = result.intent.kind === "tour";
   // Экскурсия — все остановки (маршрут); список мест — по PAGE_SIZE, дальше «Показати ще».
-  const visible = tour ? result.items : result.items.slice(0, shown);
+  const visible = tour ? items : items.slice(0, shown);
   return (
     <Stack>
       {notes}
@@ -512,6 +542,11 @@ function ResultView({
             ? t("miniapp.assistant.tour", { n: places.length, len: distance(result.route.lengthMeters) })
             : t("miniapp.assistant.tourNoLine", { n: places.length })}
         </p>
+      )}
+      {sortable && onSort && (
+        <div className="sort-row sort-row--end">
+          <SortToggle value={shownSort} onChange={onSort} />
+        </div>
       )}
       <MapSlot places={places} center={base?.point ?? null} centerLabel={base?.name} route={tour} />
       <ol className="assistant-list" data-testid="assistant-places">

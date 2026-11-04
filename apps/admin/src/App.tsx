@@ -30,6 +30,7 @@ import { PlaceEditorScreen } from "./PlaceEditor.js";
 import { PlacesScreen } from "./Places.js";
 import { QrPrintScreen, QrScreen } from "./Qr.js";
 import { RegionScreen } from "./Region.js";
+import { ReviewsScreen } from "./Reviews.js";
 import { ScenariosScreen } from "./Scenarios.js";
 import { AdminContext, ErrorBox, inputStyle, SmallButton, useAdmin, useLoad, useLocalized } from "./ui.js";
 
@@ -45,6 +46,7 @@ export const SECTIONS: readonly Section[] = [
   { path: "/taxonomy", title: "admin.taxonomy" },
   { path: "/places", title: "admin.places" },
   { path: "/moderation", title: "admin.moderation" },
+  { path: "/reviews", title: "admin.reviews" },
   { path: "/qr", title: "admin.qr" },
   { path: "/scenarios", title: "admin.scenarios" },
   { path: "/emergency", title: "admin.emergency" },
@@ -64,6 +66,8 @@ function screenFor(section: string, rest: string[]): ReactNode {
       return rest.length ? <PlaceEditorScreen id={rest[0] === "new" ? null : rest[0]!} /> : <PlacesScreen />;
     case "/moderation":
       return <ModerationScreen id={rest[0]} />;
+    case "/reviews":
+      return <ReviewsScreen />;
     case "/qr":
       return rest[1] === "print" && rest[0] ? <QrPrintScreen id={rest[0]} /> : <QrScreen />;
     case "/scenarios":
