@@ -12,6 +12,7 @@ import {
   describe as describePlace,
   nameHasStems,
   nameStems,
+  placeTypeCategories,
   shorten,
   wantsBest,
 } from "./assistant.service.js";
@@ -1396,8 +1397,11 @@ describe("названное место вне населённых пункто
     distanceMeters: 60_000,
   });
   const nearby = place(46, { name: { uk: "Водоспад Пробій" }, categoryId: NATURE, distanceMeters: 300 });
+  // Магазин «Водоспад» (категория не природа) и кафе с точным названием — для поиска с типом места и без.
+  const shop = place(47, { name: { uk: "Водоспад" }, categoryId: CAFES, distanceMeters: 100 });
+  const smereka = place(48, { name: { uk: "Смерека" }, categoryId: CAFES, distanceMeters: 7000 });
   const bare = (t: string) => t.toLocaleLowerCase("uk").replace(/['ʼ’]/g, "");
-  const all = [huk, taxi, mountHuk, hoverla, khomiak, brebeneskul, nearby];
+  const all = [huk, taxi, mountHuk, hoverla, khomiak, brebeneskul, nearby, shop, smereka];
   // Как каталог: ILIKE по названию, радиус, пункт (у вершин и водопадов locality_id null — «Локація» их отсекает).
   const run = (text: string, over: Partial<AssistantIntent>, kind: "places" | "tour" = "places") => {
     const { service } = setup({
@@ -1455,6 +1459,44 @@ describe("названное место вне населённых пункто
 
   it("«Хомяк» без апострофа находит «Хомʼяк»", async () => {
     expect((await run("на Хомяк", { nameQuery: "Хомяк" }))[0]).toBe("Хомʼяк");
+  });
+
+  it("«водоспад» — тип места: водоспады, а не магазин «Водоспад» и не таксі «…Водоспад Гук»", async () => {
+    const names = await run("водоспад", { nameQuery: "водоспад", categories: [] });
+    expect(names).toContain("Водоспад Пробій");
+    expect(names).toContain("Водоспад Женецький Гук");
+    expect(names).not.toContain("Водоспад");
+    expect(names).not.toContain("Таксі Татарів Заросляк Говерла Водоспад Гук Трансфер");
+  });
+
+  it("«екскурсія на водоспад Гук» с nameQuery «Гук» — тип из текста запроса: без таксі", async () => {
+    const names = await run("екскурсія на водоспад Гук", { nameQuery: "Гук", categories: [] }, "tour");
+    expect(names).toContain("Водоспад Женецький Гук");
+    expect(names).not.toContain("Таксі Татарів Заросляк Говерла Водоспад Гук Трансфер");
+  });
+
+  it("тип не назван — точное название заведения находится в любой категории", async () => {
+    expect(await run("де Смерека", { nameQuery: "Смерека", categories: [] })).toContain("Смерека");
+  });
+
+  it("тип в запросе и раздел намерения: кафе, если турист сам выбрал «Де поїсти»", async () => {
+    const names = await run("кафе Водоспад", { nameQuery: "Водоспад", categories: ["cafes"] });
+    expect(names).toContain("Водоспад");
+  });
+
+  it("placeTypeCategories: водоспад, вершина, озеро — категории; без типа — null", () => {
+    expect([...placeTypeCategories("водоспад Гук")!].sort()).toEqual(["nature", "sights"]);
+    expect(placeTypeCategories("на вершину Хом'як")!.has("peaks")).toBe(true);
+    expect(placeTypeCategories("озеро Синевир")!.has("nature")).toBe(true);
+    expect(placeTypeCategories("Суші Барберрі")).toBeNull();
+    expect(placeTypeCategories("Гуцулія")).toBeNull();
+  });
+
+  it("«Вдсп», «вдсп.» в названии — водоспад (родовое слово совпадает)", () => {
+    const named = (uk: string) => place(1, { name: { uk } });
+    expect(nameHasStems(named("Вдсп. Женецький Гук"), ["водоспад", "гук"])).toBe(true);
+    expect(nameHasStems(named("вдсп Капливець"), ["водоспад"])).toBe(true);
+    expect(nameHasStems(named("Твдсп"), ["водоспад"])).toBe(false);
   });
 
   it("«найкращі» — названное место всё равно первым", async () => {

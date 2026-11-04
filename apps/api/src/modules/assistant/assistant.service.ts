@@ -230,26 +230,49 @@ function nameTier(p: PlaceSummaryDto, query: string): number {
   return names.some((n) => n.includes(q)) ? 1 : 2;
 }
 
-/** Апострофы (’ ʼ ` ') — один знак: «Хом'як» = «Хомʼяк». */
-const normName = (s: string) => s.toLocaleLowerCase("uk").replace(/[’ʼ`'‘]/g, "");
-/** Родовое слово в названии («водоспад Гук», «гора Говерла») — не обязательно: в каталоге «Говерла» без «гора». */
-const GENERIC_STEMS = new Set([
-  "водоспад",
-  "гор",
-  "вершин",
-  "озер",
-  "урочищ",
-  "скел",
-  "печер",
-  "річк",
-  "перевал",
-  "полонин",
-  "хребет",
+/**
+ * Апострофы (’ ʼ ` ') — один знак: «Хом'як» = «Хомʼяк». «Вдсп», «вдсп.» на метках Google — «водоспад» (родовое
+ * слово запроса «водоспад Гук» совпадает с «Вдсп. Гук»).
+ */
+const normName = (s: string) =>
+  s
+    .toLocaleLowerCase("uk")
+    .replace(/[’ʼ`'‘]/g, "")
+    .replace(/(^|[^\p{L}])вдсп(?!\p{L})\.?\s*/gu, "$1водоспад ");
+const NATURE_TYPE = ["nature", "sights"] as const;
+const MOUNTAIN_TYPE = ["peaks", "nature", "sights"] as const;
+/**
+ * Родовое слово в названии («водоспад Гук», «гора Говерла») — не обязательно: в каталоге «Говерла» без «гора». Оно же —
+ * тип места: категории, где такие места (импорт: природа, пам'ятки, вершини); магазин «Водоспад» или таксі
+ * «…Водоспад Гук» — не водоспад.
+ */
+const GENERIC_STEM_CATEGORIES: Readonly<Record<string, readonly string[]>> = {
+  водоспад: NATURE_TYPE,
+  гор: MOUNTAIN_TYPE,
+  вершин: MOUNTAIN_TYPE,
+  озер: NATURE_TYPE,
+  урочищ: NATURE_TYPE,
+  скел: NATURE_TYPE,
+  печер: NATURE_TYPE,
+  річк: NATURE_TYPE,
+  перевал: MOUNTAIN_TYPE,
+  полонин: MOUNTAIN_TYPE,
+  хребет: MOUNTAIN_TYPE,
   // «озеро» — окончание «-о» не срезается; русские родовые.
-  "озеро",
-  "водопад",
-  "скал",
-]);
+  озеро: NATURE_TYPE,
+  водопад: NATURE_TYPE,
+  скал: NATURE_TYPE,
+};
+const GENERIC_STEMS: ReadonlySet<string> = new Set(Object.keys(GENERIC_STEM_CATEGORIES));
+
+/**
+ * Тип места в тексте («водоспад», «на вершину», «озеро») → коды категорий, где такие места; тип не назван — null
+ * (поиск по названию заведения без ограничений).
+ */
+export function placeTypeCategories(text: string): ReadonlySet<string> | null {
+  const cats = stemWords(text).flatMap((w) => GENERIC_STEM_CATEGORIES[w] ?? []);
+  return cats.length ? new Set(cats) : null;
+}
 /** Служебные слова запроса — не часть названия. */
 const STOP_STEMS = new Set(["біл", "від", "через", "під", "над", "для"]);
 /** Окончания падежей (uk): «Гуку» → «гук», «Женецького» → «женецьк», «Говерлу» → «говерл». */
@@ -470,7 +493,7 @@ export class AssistantService {
     else if (wantsBest(q.text)) intent.sort = "rating";
     else if (q.previous?.sort === "rating" && sameSearch(q.previous, intent)) intent.sort = "rating";
     else if (q.previous && !sameSearch(q.previous, intent)) intent.sort = null;
-    return this.select(regionId, intent, catalog, scope);
+    return this.select(regionId, intent, catalog, scope, q.text);
   }
 
   async transcribe(regionId: string, userId: string, audio: Buffer, mime: AudioMime): Promise<string> {
@@ -574,6 +597,8 @@ export class AssistantService {
     intent: AssistantIntent,
     catalog: Catalog,
     scope: Scope,
+    /** Текст запроса туриста: тип места («екскурсія на водоспад Гук» при nameQuery «Гук»). */
+    text = "",
   ): Promise<AssistantResultDto> {
     const { origin, localityIds } = scope;
     const byLocality = localityIds.length > 0;
@@ -645,6 +670,19 @@ export class AssistantService {
         found = [...sorted, ...found.filter((p) => !named.has(p.id))];
         if (relevance) relevance = new Map([...relevance, ...sorted.map((p, i) => [p.id, 100 - i] as const)]);
       }
+    }
+
+    // Названо место с типом («водоспад», «водоспад Гук», «на вершину Хом'як»): совпадения по названию — только
+    // места этого типа (природа, пам'ятки, вершини) или разделов намерения; магазин «Водоспад» и таксі «…Водоспад
+    // Гук» — нет. Тип не назван («Гуцулія», «Суші Барберрі») — поиск по названию как был.
+    const types = intent.nameQuery ? placeTypeCategories(`${intent.nameQuery} ${text}`) : null;
+    if (types) {
+      const sections = new Set(this.sectionsOf(intent.categories, catalog));
+      found = found.filter(
+        (p) =>
+          types.has(catalog.codeOf.get(p.categoryId) ?? "") ||
+          sections.has(catalog.rootOf.get(p.categoryId) ?? p.categoryId),
+      );
     }
 
     if (!origin && !byLocality && intent.radiusMeters !== null) notes.push("no_origin");
