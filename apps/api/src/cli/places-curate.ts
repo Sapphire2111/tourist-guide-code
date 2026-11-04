@@ -1,7 +1,8 @@
 // CLI чистки мест по ручной разметке аудита категорий:
 //   pnpm --filter @tg/api places:curate -- --findings <curated_findings.csv> [--decisions <decisions.csv>]
 //     [--issues <issues_auto.csv>] [--todo-out <low_confidence_todo.csv>] [--report <report.json>]
-//     [--region test-region] [--dry-run]
+//     [--region test-region] [--reason <причина в аудите>] [--dry-run]
+// --findings можно не задавать, если есть --decisions (только ручные решения).
 // Файлы аудита — вне репозитория (репозиторий публичный), путь передаётся аргументом. Применяются строки с
 // уверенностью «высокая»/«средняя» и однозначным исправлением; остальные и неоднозначные — в --todo-out.
 // --dry-run выполняет всё в транзакции и откатывает её (план = результат). Только DATABASE_URL — роль приложения
@@ -12,12 +13,13 @@ import { curatePlaces, type TodoItem } from "../places-curate/apply.js";
 import { CurateInputError, parseCsv, parseDecisions, parseFindings } from "../places-curate/rules.js";
 
 type Args = {
-  findings: string;
+  findings?: string;
   decisions?: string;
   issues?: string;
   todoOut?: string;
   report?: string;
   region: string;
+  reason?: string;
   dryRun: boolean;
 };
 
@@ -38,9 +40,11 @@ function parseArgs(argv: readonly string[]): Args {
     else if (a === "--todo-out") out.todoOut = value();
     else if (a === "--report") out.report = value();
     else if (a === "--region") out.region = value();
+    else if (a === "--reason") out.reason = value();
     else throw new CurateInputError(`Неизвестный аргумент ${a}`);
   }
-  if (!out.findings) throw new CurateInputError("Нужен --findings <curated_findings.csv>");
+  if (!out.findings && !out.decisions)
+    throw new CurateInputError("Нужен --findings <curated_findings.csv> и/или --decisions <decisions.csv>");
   return out as Args;
 }
 
@@ -82,7 +86,7 @@ function todoCsv(items: readonly TodoItem[]): string {
 let db: Db | undefined;
 try {
   const args = parseArgs(process.argv.slice(2));
-  const findings = parseFindings(await readFile(args.findings, "utf8"));
+  const findings = args.findings ? parseFindings(await readFile(args.findings, "utf8")) : [];
   const decisions = args.decisions ? parseDecisions(await readFile(args.decisions, "utf8")) : [];
   const issues = args.issues ? parseCsv(await readFile(args.issues, "utf8")) : [];
   const localityIssueIds = issues.filter((r) => (r.issue ?? "").startsWith("Пункт")).map((r) => r.id ?? "");
@@ -107,6 +111,7 @@ try {
     decisions,
     localityIssueIds,
     dryRun: args.dryRun,
+    ...(args.reason ? { reason: args.reason } : {}),
   });
 
   console.log(`\nИзменено мест: ${report.changedPlaces}`);

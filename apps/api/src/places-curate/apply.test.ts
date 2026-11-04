@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vitest";
+import {
+  manualEditBlocker,
+  MERGE_BLOCKING_TABLES,
+  mergeSkipReason,
+  pickMain,
+  placeMergeBlockers,
+  tableBlocksMerge,
+} from "./apply.js";
+
+describe("placeMergeBlockers", () => {
+  it("место партнёра и ручное место — не сливаются автоматически; место Google — можно", () => {
+    expect(placeMergeBlockers({ id: "p", organizationId: "org-1", source: "google" })).toEqual([
+      "p: место партнёра",
+    ]);
+    expect(placeMergeBlockers({ id: "m", organizationId: null, source: "manual" })).toEqual([
+      "m: источник manual",
+    ]);
+    expect(placeMergeBlockers({ id: "g", organizationId: null, source: "google" })).toEqual([]);
+  });
+
+  it("брони, отзывы, медиа и расписание блокируют; аналитика — нет", () => {
+    for (const t of ["bookings", "reviews", "place_media", "place_schedules", "place_tags"])
+      expect(MERGE_BLOCKING_TABLES).toContain(t);
+    expect(MERGE_BLOCKING_TABLES).not.toContain("analytics_events");
+  });
+
+  it("расписание из импорта не блокирует, ручное (schedule.edit) — блокирует", () => {
+    for (const t of ["place_schedules", "place_schedule_exceptions"]) {
+      expect(tableBlocksMerge(t, false)).toBe(false);
+      expect(tableBlocksMerge(t, true)).toBe(true);
+    }
+    expect(tableBlocksMerge("bookings", false)).toBe(true);
+    // Теги импорт ставит сам — блокируют только при ручной правке.
+    expect(tableBlocksMerge("place_tags", false)).toBe(false);
+    expect(tableBlocksMerge("place_tags", true)).toBe(true);
+  });
+
+  it("обложки google/wikimedia не блокируют", () => {
+    expect(MERGE_BLOCKING_TABLES).not.toContain("place_cover_photos");
+    expect(tableBlocksMerge("place_cover_photos", false)).toBe(false);
+  });
+});
+
+describe("mergeSkipReason", () => {
+  const base = { main: "m", mainMerging: false, mainStatus: "published", blockers: [] as string[] };
+
+  it("опубликованная главная без блокеров — слияние идёт", () => {
+    expect(mergeSkipReason(base)).toBeNull();
+  });
+
+  it("главная сама сливается, не опубликована или есть блокеры — в todo", () => {
+    expect(mergeSkipReason({ ...base, mainMerging: true })).toMatch(/сама архивируется/);
+    expect(mergeSkipReason({ ...base, mainStatus: "archived" })).toMatch(/не опубликована \(archived\)/);
+    expect(mergeSkipReason({ ...base, mainStatus: undefined })).toMatch(/нет в БД/);
+    expect(mergeSkipReason({ ...base, blockers: ["d: место партнёра"] })).toMatch(/место партнёра/);
+  });
+});
+
+describe("pickMain", () => {
+  it("опубликованная с большим числом отзывов", () => {
+    const row = (id: string, status: string, ratingCount: number) => ({
+      id,
+      status,
+      ratingCount,
+      photos: 0,
+      hasAi: false,
+      description: null,
+    });
+    expect(
+      pickMain([row("a", "published", 5), row("b", "published", 50), row("c", "archived", 500)]).id,
+    ).toBe("b");
+  });
+});
+
+describe("manualEditBlocker", () => {
+  it("действие пользователя и чистка с названием/описанием/адресом блокируют; импорт и архив чистки — нет", () => {
+    expect(manualEditBlocker({ action: "place.edit", actor_type: "user", new_values: null })).toMatch(
+      /place\.edit/,
+    );
+    expect(
+      manualEditBlocker({ action: "place.curate", actor_type: "system", new_values: { name: "X" } }),
+    ).toMatch(/name/);
+    expect(
+      manualEditBlocker({ action: "place.curate", actor_type: "system", new_values: { status: "archived" } }),
+    ).toBeNull();
+    expect(manualEditBlocker({ action: "place.import", actor_type: "system", new_values: null })).toBeNull();
+  });
+});

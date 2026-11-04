@@ -38,6 +38,13 @@ export type CurateOptions = {
   dryRun: boolean;
   /** Радиус поиска основной записи для номеров Booking, м. */
   bookingRadiusM?: number;
+  /**
+   * Осторожные слияния (автоматика places:check): слияние пропускается (в todo), если у дубля или главной есть
+   * организация партнёра, источник не google или данные/ссылки, которые слияние не переносит (MERGE_BLOCKING_TABLES).
+   */
+  guardMerges?: boolean;
+  /** Начало причины в аудите (по умолчанию CURATE_REASON). */
+  reason?: string;
 };
 
 export type TodoItem = { line: number | null; id: string; name: string; finding?: Finding; reason: string };
@@ -55,6 +62,9 @@ type PlaceRow = {
   ratingCount: number;
   photos: number;
   hasAi: boolean;
+  addressI18n: LocalizedText | null;
+  organizationId: string | null;
+  source: string;
   phone: string | null;
   website: string | null;
 };
@@ -68,6 +78,9 @@ type Change = {
   description?: string;
   locality?: string;
   mergeInto?: string;
+  /** Архив → published (отмена ошибочного архива/слияния). */
+  restore?: boolean;
+  address?: string;
   /** Номера строк разметки / пометки решений — в причину аудита. */
   sources: string[];
 };
@@ -191,6 +204,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
   const log = (s: string) => lines.push(s);
   const todo: TodoItem[] = [];
   const radius = opts.bookingRadiusM ?? 2000;
+  const reasonPrefix = opts.reason ?? CURATE_REASON;
 
   const categories = new Map(
     (await trx.selectFrom("categories").select(["id", "code"]).execute()).map((c) => [c.code, c.id] as const),
@@ -209,6 +223,9 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       "p.description_i18n",
       "p.phone",
       "p.website",
+      "p.address_i18n",
+      "p.organization_id",
+      "p.source",
       sql<string | null>`p.address_i18n ->> 'uk'`.as("address"),
       "c.code as category",
       "p.status",
@@ -237,6 +254,9 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
         hasAi: Boolean(r.ai),
         phone: r.phone,
         website: r.website,
+        addressI18n: r.address_i18n,
+        organizationId: r.organization_id,
+        source: r.source,
       },
     ]),
   );
@@ -319,6 +339,12 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
         case "locality":
           if (!localities.has(d.locality)) addTodo(f, id, `пункта ${d.locality} нет в БД`);
           else change(id, src).locality = d.locality;
+          break;
+        case "restore":
+          change(id, src).restore = true;
+          break;
+        case "address":
+          change(id, src).address = d.address;
           break;
         case "skip":
           for (const ff of findingsById.get(id) ?? [undefined])
@@ -433,17 +459,49 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       mainName: nameOf(m.main),
       kind: "decision",
     });
-  // Главная не должна сама уходить в архив или быть дублем.
+  // Главная не должна сама уходить в архив или быть дублем и должна быть опубликована (в этой же транзакции).
   const dupSet = new Set(merges.map((m) => m.dup));
+  // Данные и ручные правки проверяются только у дубля (он уходит в архив); главная сохраняет своё —
+  // у неё только место партнёра/источник.
+  const blockers = opts.guardMerges
+    ? await mergeBlockers(trx, [...new Set(merges.map((m) => m.dup))], places)
+    : new Map<string, string[]>();
+  if (opts.guardMerges)
+    for (const m of merges) {
+      const p = places.get(m.main);
+      if (p && !blockers.has(m.main)) blockers.set(m.main, placeMergeBlockers(p));
+    }
   for (const m of [...merges]) {
-    if (dupSet.has(m.main) || changes.get(m.main)?.archive) {
+    const why = mergeSkipReason({
+      main: m.main,
+      mainMerging: dupSet.has(m.main) || Boolean(changes.get(m.main)?.archive),
+      mainStatus: changes.get(m.main)?.restore ? "published" : places.get(m.main)?.status,
+      blockers: [...(blockers.get(m.dup) ?? []), ...(blockers.get(m.main) ?? [])],
+    });
+    if (why) {
       merges.splice(merges.indexOf(m), 1);
-      addTodo(findingsById.get(m.dup)?.[0], m.dup, `главная запись ${m.main} сама архивируется/сливается`);
+      addTodo(findingsById.get(m.dup)?.[0], m.dup, why);
       continue;
     }
     const c = change(m.dup, "слияние");
     c.mergeInto = m.main;
     c.archive = true;
+  }
+
+  // Осторожный режим: архив без слияния (например «вне региона») — те же блокеры, что у слияния.
+  if (opts.guardMerges) {
+    const archOnly = [...changes.values()].filter((c) => c.archive && !c.mergeInto && !c.restore);
+    const archBlockers = await mergeBlockers(
+      trx,
+      archOnly.map((c) => c.id),
+      places,
+    );
+    for (const c of archOnly) {
+      const why = archBlockers.get(c.id);
+      if (!why?.length) continue;
+      c.archive = false;
+      addTodo(findingsById.get(c.id)?.[0], c.id, `архив не автоматический: ${why.join(", ")}`);
+    }
   }
 
   // Строка «слить» у главной записи выполнена слиянием её дубля — из «не применено» убрать.
@@ -535,6 +593,19 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       set.description_i18n = description;
       counts.describe! += 1;
     }
+    if (c.restore && p.status === "archived") {
+      oldValues.status = p.status;
+      newValues.status = "published";
+      set.status = "published";
+      counts.restore = (counts.restore ?? 0) + 1;
+    }
+    if (c.address && c.address !== p.address) {
+      oldValues.address = p.addressI18n;
+      const address: LocalizedText = { ...(p.addressI18n ?? {}), uk: c.address };
+      newValues.address = address;
+      set.address_i18n = address;
+      counts.address = (counts.address ?? 0) + 1;
+    }
     if (c.locality && c.locality !== p.locality) {
       oldValues.locality = p.locality;
       newValues.locality = c.locality;
@@ -593,8 +664,26 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       entityId: c.id,
       oldValues,
       newValues,
-      reason: `${CURATE_REASON}: ${c.sources.join("; ")}`.slice(0, 1000),
+      reason: `${reasonPrefix}: ${c.sources.join("; ")}`.slice(0, 1000),
     });
+  }
+
+  // --- Главная: какие дубли поглотила в этом прогоне (аудит у главной записи) ---
+  const absorbedBy = new Map<string, string[]>();
+  for (const d of details)
+    if (typeof d.new.mergedInto === "string")
+      absorbedBy.set(d.new.mergedInto, [...(absorbedBy.get(d.new.mergedInto) ?? []), d.id]);
+  for (const [mainId, absorbed] of absorbedBy) {
+    await audit.record(trx, {
+      actor: { type: "system" },
+      action: CURATE_ACTION,
+      entityType: "place",
+      entityId: mainId,
+      oldValues: {},
+      newValues: { absorbed },
+      reason: `${reasonPrefix}: главная запись слияния, поглощены ${absorbed.join(", ")}`.slice(0, 1000),
+    });
+    counts.absorbed = (counts.absorbed ?? 0) + absorbed.length;
   }
 
   // --- Контакты: у главной нет телефона/сайта, у дубля есть — перенести (этот и прошлые прогоны) ---
@@ -607,7 +696,15 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     const main = places.get(mainId);
     if (!main || main.status === "archived") continue;
     // Порядок дублей — как при выборе главной (больше отзывов/фото — надёжнее контакты).
-    const dups = dupIds.map((d) => places.get(d)).filter((d): d is PlaceRow => Boolean(d));
+    // Дубль, возвращённый в published (restore: слияние было ошибкой), — не источник контактов.
+    const dups = dupIds
+      .map((d) => places.get(d))
+      .filter(
+        (d): d is PlaceRow =>
+          Boolean(d) &&
+          !changes.get(d!.id)?.restore &&
+          (d!.status !== "published" || Boolean(changes.get(d!.id)?.mergeInto)),
+      );
     const ordered: PlaceRow[] = [];
     const pool = [...dups];
     while (pool.length) {
@@ -637,7 +734,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
         ...(siteFrom ? { website: main.website } : {}),
       },
       newValues,
-      reason: `${CURATE_REASON}: контакты слитого дубля на главную (у главной их не было)`,
+      reason: `${reasonPrefix}: контакты слитого дубля на главную (у главной их не было)`,
     });
     contactsMoved.push({
       main: mainId,
@@ -719,7 +816,7 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
       entityId: it.id,
       oldValues: { placeId: it.place_id, alternatives: it.alternatives },
       newValues: { placeId, alternatives: alts },
-      reason: `${CURATE_REASON}: ${why || "чистка альтернатив (само место пункта, повторы, архив чистки)"}`,
+      reason: `${reasonPrefix}: ${why || "чистка альтернатив (само место пункта, повторы, архив чистки)"}`,
     });
   }
   for (const [id, n] of stuck) archivedInScenarios.push({ id, name: nameOf(id), items: n });
@@ -755,6 +852,155 @@ async function run(trx: Db, opts: CurateOptions): Promise<CurateReport> {
     peaksCheck,
     lines,
   };
+}
+
+/**
+ * Таблицы со ссылкой на место, которые слияние не переносит (данные партнёра, брони, отзывы, медиа, расписание,
+ * теги…): при осторожном слиянии (guardMerges) их наличие у любой стороны — причина не сливать автоматически.
+ * analytics_events не блокирует.
+ */
+export const MERGE_BLOCKING_TABLES = [
+  "bookings",
+  "reviews",
+  "review_eligibilities",
+  "place_review_ratings",
+  "host_modules",
+  "offers",
+  "resources",
+  "service_requests",
+  "moderation_cases",
+  "promotions",
+  "partner_phone_consents",
+  "entry_contexts",
+  "place_media",
+  "place_schedules",
+  "place_schedule_exceptions",
+  "place_tags",
+  "place_badge_events",
+] as const;
+
+/**
+ * Расписание блокирует слияние, только если введено вручную. Импорт Google пишет его без своей
+ * записи в аудите (только place.import), а правка админа/партнёра (CatalogService.replaceSchedule)
+ * всегда пишет `schedule.edit` по месту. Обложки (place_cover_photos) — только google/wikimedia,
+ * их пишут автоматически, поэтому не блокируют.
+ */
+export const SCHEDULE_TABLES = ["place_schedules", "place_schedule_exceptions", "place_tags"] as const;
+export const MANUAL_SCHEDULE_ACTION = "schedule.edit";
+
+/**
+ * Блокирует ли строка таблицы слияние. Расписание и теги пишет и импорт Google (теги — автоматически по категории),
+ * поэтому они блокируют только при ручной правке места (schedule.edit для расписания, любая ручная правка для тегов).
+ */
+export function tableBlocksMerge(table: string, editedManually: boolean): boolean {
+  if ((SCHEDULE_TABLES as readonly string[]).includes(table)) return editedManually;
+  return (MERGE_BLOCKING_TABLES as readonly string[]).includes(table);
+}
+
+/** Почему слияние пропускается (в todo): главная сама уходит, не опубликована, есть блокеры осторожного режима. */
+export function mergeSkipReason(m: {
+  main: string;
+  mainMerging: boolean;
+  mainStatus: string | undefined;
+  blockers: readonly string[];
+}): string | null {
+  if (m.mainMerging) return `главная запись ${m.main} сама архивируется/сливается`;
+  if (m.mainStatus !== "published")
+    return `главная запись ${m.main} не опубликована (${m.mainStatus ?? "нет в БД"})`;
+  if (m.blockers.length) return `слияние не автоматическое: ${m.blockers.join(", ")}`;
+  return null;
+}
+
+/** Блокеры автоматического слияния по самому месту: место партнёра, источник не google. */
+export function placeMergeBlockers(p: {
+  id: string;
+  organizationId: string | null;
+  source: string;
+}): string[] {
+  const out: string[] = [];
+  if (p.organizationId) out.push(`${p.id}: место партнёра`);
+  if (p.source !== "google") out.push(`${p.id}: источник ${p.source}`);
+  return out;
+}
+
+/**
+ * Ручная правка места по записи аудита: любое действие пользователя (place.edit, schedule.edit, доп. категории…)
+ * или прошлая чистка place.curate, менявшая название/описание/адрес. Такие правки при слиянии потерялись бы.
+ */
+export function manualEditBlocker(a: {
+  action: string;
+  actor_type: string;
+  new_values: Record<string, unknown> | null;
+}): string | null {
+  if (a.actor_type === "user") return `ручная правка (${a.action})`;
+  if (a.action === CURATE_ACTION && a.new_values) {
+    const keys = ["name", "description", "address"].filter((k) => k in a.new_values!);
+    if (keys.length) return `ручная правка чисткой (${keys.join(", ")})`;
+  }
+  return null;
+}
+
+/** Почему место нельзя сливать автоматически: организация партнёра, источник не google, ссылки (таблица ×n). */
+async function mergeBlockers(
+  trx: Db,
+  ids: readonly string[],
+  places: ReadonlyMap<string, PlaceRow>,
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const add = (id: string, why: string) => out.set(id, [...(out.get(id) ?? []), why]);
+  for (const id of ids) {
+    const p = places.get(id);
+    if (p) for (const why of placeMergeBlockers(p)) add(id, why);
+  }
+  if (!ids.length) return out;
+  // ParseUUIDPipe не приводит регистр — entity_id сравниваем в нижнем регистре.
+  const audits = await trx
+    .selectFrom("audit_logs")
+    .select(["entity_id", "action", "actor_type", "new_values"])
+    .where("entity_type", "=", "place")
+    .where(
+      sql<string>`lower(entity_id)`,
+      "in",
+      ids.map((i) => i.toLowerCase()),
+    )
+    .where((w) => w.or([w("actor_type", "=", "user"), w("action", "=", CURATE_ACTION)]))
+    .execute();
+  const manualSchedule = new Set<string>();
+  const manualPlaces = new Set<string>();
+  for (const a of audits) {
+    if (!a.entity_id) continue;
+    const id = a.entity_id.toLowerCase();
+    if (a.action === MANUAL_SCHEDULE_ACTION) manualSchedule.add(id);
+    const why = manualEditBlocker(a);
+    if (why) manualPlaces.add(id);
+    if (why && !out.get(id)?.some((w) => w.startsWith(`${id}: ручн`))) add(id, `${id}: ${why}`);
+  }
+  const manualExtras = await trx
+    .selectFrom("place_extra_categories")
+    .select(["place_id", (eb) => eb.fn.countAll<string>().as("n")])
+    .where("place_id", "in", [...ids])
+    .where("source", "=", "manual")
+    .groupBy("place_id")
+    .execute();
+  for (const r of manualExtras) add(r.place_id, `${r.place_id}: ручные доп. категории ×${Number(r.n)}`);
+  for (const table of MERGE_BLOCKING_TABLES) {
+    const rows = await trx
+      .selectFrom(table)
+      .select(["place_id", (eb) => eb.fn.countAll<string>().as("n")])
+      .where("place_id", "in", [...ids])
+      .groupBy("place_id")
+      .execute();
+    for (const r of rows)
+      if (
+        r.place_id &&
+        tableBlocksMerge(
+          table,
+          table === "place_tags" ? manualPlaces.has(r.place_id) : manualSchedule.has(r.place_id),
+        )
+      )
+        add(r.place_id, `${r.place_id}: ${table} ×${Number(r.n)}`);
+  }
+  return out;
 }
 
 /** Перенос ссылок дубля на главную запись; что перенести нельзя — счётчики оставшихся. */
