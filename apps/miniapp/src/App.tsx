@@ -42,6 +42,7 @@ import { useFeatureFlags } from "./feature-flags.js";
 import { Profile } from "./Profile.js";
 import { fetchContext, getAnonymousId, type Me, type StartupState } from "./session.js";
 import { createAnalytics, type Analytics } from "./guide/analytics.js";
+import { AppBackdrop } from "./design/AppBackdrop.js";
 import { AppTop, Splash, type ScanControl } from "./design/Chrome.js";
 import { resolveScan, type ScanOutcome } from "./scan.js";
 import { LocationChip, LocationSheetHost } from "./guide/LocationPicker.js";
@@ -295,15 +296,16 @@ function HomeAssistant(props: RoutesProps) {
   const [, navigate] = useRoute();
   const { regionId } = useGuide();
   const api = useAssistantApi(props);
+  const { t } = useT();
+  // Без входа или региона запрос не отправить: честная подпись вместо поля, которое не работает.
   if (!regionId || !props.session) {
     return (
-      <div className="assistant" aria-hidden="true">
-        <div className="assistant-pill">
-          <span className="assistant-pill-icon">🎙️</span>
-          <input type="search" readOnly tabIndex={-1} placeholder="Натисни на ватру або напиши запит…" />
-          <span className="assistant-action">🔥</span>
-        </div>
-      </div>
+      <Feature flag="module.assistant">
+        <p className="modern-assistant-off" data-testid="assistant-off">
+          <span aria-hidden="true">🎙️ </span>
+          {t(props.session ? "miniapp.home.assistantNeedsRegion" : "miniapp.home.assistantNeedsTelegram")}
+        </p>
+      </Feature>
     );
   }
   return (
@@ -334,11 +336,16 @@ function Home(props: RoutesProps) {
   const { t } = useT();
   const { staff } = useHost();
   const partnerOrgs = usePartnerOrgs();
+  // Роль и состояние сервера — служебные: только разработка и персонал, туристу не показываем и /health не запрашиваем.
+  const diagnostics = import.meta.env.DEV || staff === "yes";
+  const partner = role === "partner" || partnerOrgs.length > 0;
   return (
     <>
-      <Welcome user={user} session={session} retryContext={retryContext} />
-      <div className="home-loc-row">
-        <HomeWeather {...props} />
+      <div className="home-top-row">
+        <Welcome user={user} session={session} retryContext={retryContext} />
+        <div className="home-loc-row">
+          <HomeWeather {...props} />
+        </div>
       </div>
       {session && !hasRequiredConsents(session.me) && (
         <div className="kosiv-card kosiv-panel">
@@ -361,18 +368,20 @@ function Home(props: RoutesProps) {
         }
       />
       <HomePlaces />
-      <div className="kosiv-meta-block">
-        <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
-        {(role === "partner" || partnerOrgs.length > 0) && (
-          // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
-          <Feature flag="module.partner_cabinet">
-            <Link to="/partner" data-testid="partner-link">
-              {t("miniapp.partner.open")}
-            </Link>
-          </Feature>
-        )}
-        <Health api={api} />
-      </div>
+      {(diagnostics || partner) && (
+        <div className="kosiv-meta-block">
+          {diagnostics && <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>}
+          {partner && (
+            // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
+            <Feature flag="module.partner_cabinet">
+              <Link to="/partner" data-testid="partner-link">
+                {t("miniapp.partner.open")}
+              </Link>
+            </Feature>
+          )}
+          {diagnostics && <Health api={api} />}
+        </div>
+      )}
     </>
   );
 }
@@ -801,6 +810,7 @@ function Shell({
   }, [path]);
   return (
     <>
+      <AppBackdrop />
       <NativeBack webApp={webApp} />
       <AppTop
         path={path}

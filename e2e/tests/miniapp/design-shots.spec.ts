@@ -63,6 +63,8 @@ const SHOTS: {
   height: number;
   night?: boolean;
   full?: boolean;
+  /** Прокрутить страницу перед снимком: проверка неподвижного фона. */
+  scrollY?: number;
   open?: string;
   click?: string;
   noMap?: boolean;
@@ -94,6 +96,41 @@ const SHOTS: {
   { name: "home-320-night", path: "/", width: 320, height: 740, night: true },
   { name: "home-full-390-day", path: "/", width: 390, height: 844, full: true },
   { name: "home-full-390-night", path: "/", width: 390, height: 844, night: true, full: true },
+  ...(["day", "night"] as const).flatMap((mode) =>
+    (
+      [
+        [390, 844, 420],
+        [320, 740, 420],
+        [430, 932, 420],
+        [430, 932, 0],
+        [320, 568, 0],
+      ] as const
+    ).map(([width, height, scrollY]) => ({
+      name: `home-${width}x${height}${scrollY ? "-scrolled" : ""}-${mode}`,
+      path: "/",
+      width,
+      height,
+      night: mode === "night",
+      scrollY,
+    })),
+  ),
+  ...(["day", "night"] as const).flatMap((mode) =>
+    (
+      [
+        ["catalog-viewport", "/#/section/eat", 320, 740],
+        ["catalog-viewport", "/#/section/eat", 430, 932],
+        ["help-viewport", "/#/help", 320, 740],
+        ["help-viewport", "/#/help", 430, 932],
+        ["profile-viewport", "/#/profile", 320, 740],
+      ] as const
+    ).map(([name, path, width, height]) => ({
+      name: `${name}-${width}-${mode}`,
+      path,
+      width,
+      height,
+      night: mode === "night",
+    })),
+  ),
   { name: "plan-390-day", path: "/#/plan", width: 390, height: 844, full: true },
   { name: "plan-390-night", path: "/#/plan", width: 390, height: 844, night: true, full: true },
   {
@@ -264,6 +301,7 @@ for (const shot of SHOTS.filter((s) => !ONLY || new RegExp(ONLY).test(s.name))) 
       await page.getByRole("button", { name: shot.click }).click();
       await page.waitForTimeout(400);
     }
+    if (shot.scrollY) await page.evaluate((y) => window.scrollTo(0, y), shot.scrollY);
     await page.screenshot({ path: `${DIR}/${shot.name}.png`, fullPage: shot.full ?? false });
   });
 }

@@ -32,6 +32,9 @@ test.describe("скан QR", () => {
     await page.getByRole("button", { name: "Сканувати QR-код" }).last().click();
     await emitTelegramEvent(page, "qrTextReceived", { data: "https://example.com/?startapp=demoHotel01" });
     await expect(page.getByTestId("scan-message")).toHaveText("Це не QR-код Гіда туриста");
+    // Сообщение на виду: плашка под полосой, не сжата кнопками (шире половины экрана).
+    await expect(page.getByTestId("scan-message")).toBeInViewport();
+    expect((await page.getByTestId("scan-message").boundingBox())!.width).toBeGreaterThan(160);
     expect(apiMockState.get(page)!.contextCalls).toBe(1);
     expect(await telegramCalls(page)).not.toContain("openLink");
   });

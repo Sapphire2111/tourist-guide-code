@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { NIGHT_WINDOW_COLORS } from "./theme.js";
+import { WINDOW_COLORS } from "./theme.js";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
@@ -26,16 +26,37 @@ describe("загрузочные атрибуты", () => {
     expect(read("index.html")).toMatch(/<html[^>]*\sdata-design="modern"/);
   });
 
-  it("цвета окна Telegram в «Ніч» одинаковы в theme.ts, season-boot.js и --top-bg", () => {
+  it("цвета окна Telegram одинаковы в theme.ts, season-boot.js и у картинки фона (шапка — верх неба, низ — низ)", () => {
     const boot = read("public", "season-boot.js");
-    const m = /theme === "night"\) colors = \["(#[0-9A-Fa-f]{6})", "(#[0-9A-Fa-f]{6})"\]/.exec(boot);
+    const m =
+      /theme === "night" \? \["(#[0-9A-Fa-f]{6})", "(#[0-9A-Fa-f]{6})"\] : \["(#[0-9A-Fa-f]{6})", "(#[0-9A-Fa-f]{6})"\]/.exec(
+        boot,
+      );
     expect(m).not.toBeNull();
-    expect(m![1]!.toLowerCase()).toBe(NIGHT_WINDOW_COLORS.bg.toLowerCase());
-    expect(m![2]!.toLowerCase()).toBe(NIGHT_WINDOW_COLORS.surface.toLowerCase());
-    const night = read("src", "design", "modern.css").split('html[data-theme="night"] {')[1] ?? "";
-    expect(/--top-bg:\s*(#[0-9a-f]{6})/i.exec(night)![1]!.toLowerCase()).toBe(
-      NIGHT_WINDOW_COLORS.surface.toLowerCase(),
-    );
+    expect([m![1], m![2]]).toEqual([WINDOW_COLORS.night.header, WINDOW_COLORS.night.bottom]);
+    expect([m![3], m![4]]).toEqual([WINDOW_COLORS.day.header, WINDOW_COLORS.day.bottom]);
+    expect(boot).toContain("tg.setBottomBarColor(colors[1])");
+    const css = read("src", "design", "modern.css");
+    const color = (re: RegExp, text = css) => re.exec(text)![1]!.toLowerCase();
+    expect(color(/--bar-sky:\s*(#[0-9a-f]{6})/i)).toBe(WINDOW_COLORS.day.header.toLowerCase());
+    const night = css.split('html[data-theme="night"] {')[1] ?? "";
+    expect(color(/--bar-sky:\s*(#[0-9a-f]{6})/i, night)).toBe(WINDOW_COLORS.night.header.toLowerCase());
+    expect(color(/--top-bg:\s*(#[0-9a-f]{6})/i, night)).toBe(WINDOW_COLORS.night.header.toLowerCase());
+    // Картинка: первый и последний цвет градиента фона.
+    const gradient = (block: string) => {
+      const stops = /linear-gradient\(\s*180deg,([^;]*?)\);/.exec(block)![1]!.match(/#[0-9a-f]{6}/gi)!;
+      return [stops[0]!.toLowerCase(), stops[stops.length - 1]!.toLowerCase()];
+    };
+    const day = css.slice(css.indexOf(".app-backdrop {"));
+    const dark = css.slice(css.indexOf('html[data-theme="night"] .app-backdrop {'));
+    expect(gradient(day)).toEqual([
+      WINDOW_COLORS.day.header.toLowerCase(),
+      WINDOW_COLORS.day.bottom.toLowerCase(),
+    ]);
+    expect(gradient(dark)).toEqual([
+      WINDOW_COLORS.night.header.toLowerCase(),
+      WINDOW_COLORS.night.bottom.toLowerCase(),
+    ]);
   });
 });
 
