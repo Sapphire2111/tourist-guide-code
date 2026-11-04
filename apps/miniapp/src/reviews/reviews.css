@@ -1,0 +1,135 @@
+/* Відгуки (блок 10): рейтинг, список, форма оцінки, жалоба. Токени сезона/теми (--app-*), цели нажатия ≥ 44 px.
+   Классы pc-* (карточка місця) подключает place-card.css в карточке; здесь — только своё. */
+
+.rv-stars {
+  color: var(--app-accent-2-ink, currentColor);
+  letter-spacing: 1px;
+}
+.rv-stars-off {
+  color: var(--app-border);
+}
+.rv-summary {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-item + .rv-item {
+  border-top: 1px solid var(--app-border);
+  padding-top: 14px;
+}
+.rv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.rv-text {
+  margin: 6px 0 0;
+  white-space: pre-line;
+  font-size: 0.9375rem;
+}
+.rv-reply {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--app-accent-ink, var(--app-border));
+  background: var(--app-surface-2, transparent);
+  border-radius: 10px;
+}
+.rv-reply-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+.rv-reply p:last-child {
+  margin: 0;
+  white-space: pre-line;
+}
+.rv-link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--app-accent-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.rv-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.rv-h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+.rv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+.rv-field textarea,
+.rv-field select {
+  font: inherit;
+  font-weight: 400;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+.rv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rv-stars-input {
+  display: flex;
+  gap: 4px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.rv-stars-input legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.rv-star {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1.5px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-border);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.rv-star[aria-checked="true"],
+.rv-star[data-on] {
+  color: var(--app-accent-2-ink, currentColor);
+  border-color: var(--app-accent-ink, currentColor);
+}
+.rv-meta {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.rv-booking-review {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
