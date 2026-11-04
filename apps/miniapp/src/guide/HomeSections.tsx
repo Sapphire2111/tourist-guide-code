@@ -107,19 +107,6 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
       </div>
 
       <div className="modern-featured-grid">
-        <Link to="/section/eat" className="modern-featured-card" data-testid="featured-eat">
-          <div className="modern-featured-top">
-            <span className="modern-featured-emoji" aria-hidden="true">
-              🍲
-            </span>
-            <span className="modern-featured-kicker" aria-hidden="true">
-              ✦ {t("miniapp.home.eatKicker")}
-            </span>
-          </div>
-          <strong className="modern-featured-title">{t("miniapp.home.eatTitle")}</strong>
-          <span className="modern-featured-sub">{t("miniapp.home.eatSub")}</span>
-        </Link>
-
         <Link to="/nearby/me" className="modern-featured-card modern-featured-near" data-testid="near-me">
           <div className="modern-featured-top">
             <span className="modern-featured-emoji" aria-hidden="true">
@@ -131,6 +118,19 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
           </div>
           <strong className="modern-featured-title">{t("miniapp.home.nearTitle")}</strong>
           <span className="modern-featured-sub">{t("miniapp.home.nearSub")}</span>
+        </Link>
+
+        <Link to="/section/eat" className="modern-featured-card" data-testid="featured-eat">
+          <div className="modern-featured-top">
+            <span className="modern-featured-emoji" aria-hidden="true">
+              🍲
+            </span>
+            <span className="modern-featured-kicker" aria-hidden="true">
+              ✦ {t("miniapp.home.eatKicker")}
+            </span>
+          </div>
+          <strong className="modern-featured-title">{t("miniapp.home.eatTitle")}</strong>
+          <span className="modern-featured-sub">{t("miniapp.home.eatSub")}</span>
         </Link>
       </div>
 
