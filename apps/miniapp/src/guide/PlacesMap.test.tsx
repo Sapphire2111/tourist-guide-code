@@ -380,6 +380,20 @@ describe("пунктирный круг радиуса", () => {
     expect(calls.paths).toHaveLength(2);
     expect(lines()).toBe(0);
   });
+
+  it("без базовой метки (геолокация) — круг 15 км вокруг radiusCenter, карта подгоняется под круг", async () => {
+    const me = { lat: 48.1, lng: 24.1 };
+    render(
+      wrap(<PlacesMap places={[place("a")]} center={null} radius={15_000} radiusCenter={me} floating />),
+    );
+    await flush();
+    expect(calls.circles.filter((c) => c.map)).toHaveLength(1);
+    expect(calls.paths).toHaveLength(1);
+    const dLat = (calls.paths[0]![0]!.lat - me.lat) * 111_195;
+    expect(Math.abs(dLat)).toBeGreaterThan(14_900);
+    expect(Math.abs(dLat)).toBeLessThan(15_100);
+    expect(calls.fit).toBe(1);
+  });
 });
 
 describe("PlacesMap (Google Maps)", () => {

@@ -240,7 +240,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
         limit: limit ?? 50,
       };
-      // max — догрузка страниц (api отдаёт не больше 50 за раз) до max мест: карта «Де жити» со всеми местами.
+      // max — догрузка страниц (страница — limit, по умолчанию 50) до max мест: карта «Де жити» со всеми местами.
       const items: PlaceSummary[] = [];
       let offset: number | null = 0;
       while (offset !== null) {

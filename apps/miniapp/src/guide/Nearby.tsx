@@ -18,7 +18,8 @@ export const DEFAULT_RADIUS = 1000;
 /** Задержка запроса при смене радиуса, мс. */
 export const RADIUS_DEBOUNCE_MS = 350;
 /** Не больше стольких ближайших мест в радиусе (до 20 км) (сервер сортирует по расстоянию). */
-export const NEARBY_LIMIT = 50;
+// 300: на радиусе 10–15 км 50 ближайших мест покрывали лишь ~3–5 км круга; маркеры кластеризуются.
+export const NEARBY_LIMIT = 300;
 /** Предел масштаба карты для выдачи вокруг устройства (приватность: тайлы OSM выдают район). */
 export const DEVICE_MAX_ZOOM = 14;
 
@@ -363,7 +364,8 @@ export function ModernNearbyResults({
             center={base}
             centerLabel={baseLabel}
             centerTag={baseTag}
-            radius={base ? radius : undefined}
+            radius={base || me ? radius : undefined}
+            radiusCenter={base ?? me}
             maxZoom={base ? undefined : DEVICE_MAX_ZOOM}
             me={me}
             onLocate={onLocate}

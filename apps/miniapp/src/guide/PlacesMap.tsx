@@ -34,6 +34,8 @@ export type PlacesMapProps = {
   /** false — только центрировать карту, без метки/круга/пункта легенды (середина выбранных локаций — не точка). */
   centerMarker?: boolean;
   radius?: number;
+  /** Центр круга радиуса, если базовой метки нет («Поруч» по геолокации — круг вокруг «Ви тут»). По умолчанию — center. */
+  radiusCenter?: LatLng | null;
   /** Предел приближения при fitBounds (по умолчанию 17). */
   maxZoom?: number;
   /** Маршрут: линия через места в порядке списка, номера остановок на маркерах (ассистент, план дня). */
@@ -315,6 +317,7 @@ export default function PlacesMap({
   centerLabel,
   centerMarker = true,
   radius,
+  radiusCenter,
   maxZoom = 17,
   route = false,
   me,
@@ -467,44 +470,46 @@ export default function PlacesMap({
         zIndex: 900,
       });
       o.other.push(() => (baseMarker.map = null));
-      if (radius) {
-        const dayColor = floating ? "#B8430F" : "#1d4ed8";
-        const ringColor = night ? RING_COLOR_NIGHT : dayColor;
-        // Лёгкая заливка — отдельный Circle без обводки; граница — пунктирная линия по точкам окружности
-        // (google.maps.Circle штрихов не умеет): видно, почему за кругом нет мест.
-        o.other.push(
-          detach(
-            new libs.maps.Circle({
-              map: m,
-              center,
-              radius,
-              strokeOpacity: 0,
-              strokeWeight: 0,
-              fillColor: night ? RING_COLOR_NIGHT : floating ? "#E06D2B" : "#1d4ed8",
-              fillOpacity: night ? 0.06 : floating ? 0.08 : 0.05,
-              clickable: false,
-            }),
-          ),
-          detach(
-            new libs.maps.Polyline({
-              map: m,
-              path: circlePath(center, radius),
-              strokeOpacity: 0,
-              clickable: false,
-              icons: [
-                {
-                  icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: ringColor, scale: 2 },
-                  offset: "0",
-                  repeat: "10px",
-                },
-              ],
-            }),
-          ),
-        );
-        // Карта подгоняется так, чтобы круг был виден целиком.
-        for (const p of circleExtremes(center, radius)) bounds.extend(p);
-        points++;
-      }
+    }
+    // Круг — вокруг базы или (без базы) вокруг точки запроса: при геолокации базы нет, а круг нужен.
+    const ringCenter = radiusCenter ?? (centerMarker ? center : null);
+    if (radius && ringCenter) {
+      const dayColor = floating ? "#B8430F" : "#1d4ed8";
+      const ringColor = night ? RING_COLOR_NIGHT : dayColor;
+      // Лёгкая заливка — отдельный Circle без обводки; граница — пунктирная линия по точкам окружности
+      // (google.maps.Circle штрихов не умеет): видно, почему за кругом нет мест.
+      o.other.push(
+        detach(
+          new libs.maps.Circle({
+            map: m,
+            center: ringCenter,
+            radius,
+            strokeOpacity: 0,
+            strokeWeight: 0,
+            fillColor: night ? RING_COLOR_NIGHT : floating ? "#E06D2B" : "#1d4ed8",
+            fillOpacity: night ? 0.06 : floating ? 0.08 : 0.05,
+            clickable: false,
+          }),
+        ),
+        detach(
+          new libs.maps.Polyline({
+            map: m,
+            path: circlePath(ringCenter, radius),
+            strokeOpacity: 0,
+            clickable: false,
+            icons: [
+              {
+                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: ringColor, scale: 2 },
+                offset: "0",
+                repeat: "10px",
+              },
+            ],
+          }),
+        ),
+      );
+      // Карта подгоняется так, чтобы круг был виден целиком.
+      for (const p of circleExtremes(ringCenter, radius)) bounds.extend(p);
+      points++;
     }
     if (center) {
       bounds.extend(center);
@@ -652,6 +657,7 @@ export default function PlacesMap({
     centerTag,
     centerMarker,
     radius,
+    radiusCenter,
     maxZoom,
     route,
     closestId,
