@@ -15049,6 +15049,12 @@
             "type": "boolean",
             "description": "По данным Google: подходит для детей или есть дитяче меню"
           },
+          "rating": {
+            "type": "number",
+            "nullable": true,
+            "description": "Рейтинг Google 1–5 (сортировка «За рейтингом»)"
+          },
+          "ratingCount": { "type": "integer", "nullable": true, "description": "Число отзывов Google" },
           "description": {
             "type": "string",
             "nullable": true,

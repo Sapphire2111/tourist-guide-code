@@ -309,6 +309,14 @@ export class AssistantPlaceDto {
   priceLevel!: number | null;
   @ApiProperty({ type: Boolean, description: "По данным Google: подходит для детей или есть дитяче меню" })
   kidsFriendly!: boolean;
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: "Рейтинг Google 1–5 (сортировка «За рейтингом»)",
+  })
+  rating?: number | null;
+  @ApiPropertyOptional({ type: "integer", nullable: true, description: "Число отзывов Google" })
+  ratingCount?: number | null;
   @ApiProperty({
     type: String,
     nullable: true,

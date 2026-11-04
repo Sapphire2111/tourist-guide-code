@@ -799,6 +799,8 @@ export class AssistantService {
       place,
       priceLevel: e?.google?.priceLevel ?? null,
       kidsFriendly: kidsFriendly(e),
+      rating: e?.google?.rating ?? null,
+      ratingCount: e?.google?.ratingCount ?? null,
       description: d.text,
       descriptionSource: d.source,
       descriptionUrl: d.url,
