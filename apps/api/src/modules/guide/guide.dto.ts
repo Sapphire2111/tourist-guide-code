@@ -29,6 +29,12 @@ import {
 } from "../../db/index.js";
 import { LonLatDto, ScheduleDto } from "../catalog/index.js";
 import { MediaLinkDto } from "../media/index.js";
+import {
+  PEAK_DIFFICULTIES,
+  PEAK_RANGES,
+  type PeakDifficulty,
+  type PeakRange,
+} from "../../places-import/peaks.js";
 import { GOOGLE_PHOTO_WIDTHS, type GooglePhotoWidth } from "./google-photos.js";
 
 // DTO публичного каталога туриста (блок 4, ADR-0019): категории, поиск и «Що поруч», картка місця, избранное.
@@ -333,6 +339,66 @@ export class CoverPhotoDto {
     | null;
 }
 
+export class PeakSourceDto {
+  @ApiProperty({ type: String, example: "Вікіпедія (uk): Говерла" }) title!: string;
+  @ApiProperty({ type: String, description: "Ссылка на версию статьи / страницу источника" }) url!: string;
+}
+
+export class PeakPointDto {
+  @ApiProperty({ type: Number }) lat!: number;
+  @ApiProperty({ type: Number }) lng!: number;
+}
+
+/** Маршрут на вершину туда-назад — только из источников; чего нет — null. */
+export class PeakRouteDto {
+  @ApiProperty({ type: LocalizedTextDto, description: "Старт (село, база)" }) start!: LocalizedText;
+  @ApiProperty({ type: PeakPointDto, nullable: true, description: "Точка старта; null — неизвестна" })
+  startLocation!: PeakPointDto | null;
+  @ApiProperty({ type: Number, nullable: true, description: "Туда-назад, км" }) roundTripKm!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: "Набор высоты, м" }) elevationGainM!:
+    | number
+    | null;
+  @ApiProperty({
+    enum: ["difference", "stated"],
+    enumName: "PeakGainKind",
+    nullable: true,
+    description: "difference — разница высот вершины и старта; stated — перепад из источника",
+  })
+  gainKind!: "difference" | "stated" | null;
+  @ApiProperty({ type: Number, nullable: true, description: "Подъём, ч" }) upHours!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: "Спуск, ч" }) downHours!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: "Туда-назад, ч (подъём + спуск)" })
+  totalHours!: number | null;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true, description: "Маркировка/путь" })
+  trail!: LocalizedText | null;
+}
+
+/** Данные вершины (раздел «Вершини»): высота, хребет, маршрут, сложность, источники. */
+export class PeakDto {
+  @ApiProperty({ type: String, example: "hoverla" }) slug!: string;
+  @ApiProperty({ type: Number, nullable: true, description: "Высота, м" }) heightM!: number | null;
+  @ApiProperty({ enum: PEAK_RANGES, enumName: "PeakRange", nullable: true }) range!: PeakRange | null;
+  @ApiProperty({
+    enum: PEAK_DIFFICULTIES,
+    enumName: "PeakDifficulty",
+    nullable: true,
+    description: "Сложность по правилу PEAK_DIFFICULTY_RULE; null — нет данных маршрута",
+  })
+  difficulty!: PeakDifficulty | null;
+  @ApiProperty({ type: PeakRouteDto, nullable: true }) route!: PeakRouteDto | null;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true }) note!: LocalizedText | null;
+  @ApiProperty({ type: [LocalizedTextDto], description: "Сезонность и предупреждения" })
+  warnings!: LocalizedText[];
+  @ApiProperty({ type: [PeakSourceDto] }) sources!: PeakSourceDto[];
+  @ApiProperty({
+    type: PeakPointDto,
+    nullable: true,
+    description:
+      "Горная точка прогноза погоды рядом с вершиной (GET /weather); null — у вершины прогноза нет",
+  })
+  weatherPoint!: PeakPointDto | null;
+}
+
 /** Место в выдаче (список, карта, избранное). */
 export class PlaceSummaryDto {
   @ApiProperty({ type: String, format: "uuid" }) id!: string;
@@ -373,6 +439,12 @@ export class PlaceSummaryDto {
     description: "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
   })
   coverPhoto!: CoverPhotoDto | null;
+  @ApiProperty({
+    type: PeakDto,
+    nullable: true,
+    description: "Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина",
+  })
+  peak!: PeakDto | null;
 }
 
 export class PlaceSearchResultDto {

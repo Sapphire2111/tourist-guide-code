@@ -790,7 +790,7 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   color: var(--f-sub);
 }
 
-/* Плитки: 4 в ряд, все ряды видны целиком (HomeSections.tsx). */
+/* Плитки: 9 = 3 ряда по 3, все ряды целые и видны сразу (HomeSections.tsx). */
 .modern-tiles {
   --tile-h: 64px;
   --tile-gap: 6px;
@@ -800,7 +800,7 @@ html[data-design="modern"] .modern-hero-glass .kosiv-tag {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: var(--tile-h);
   gap: var(--tile-gap);
 }

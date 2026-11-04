@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASSISTANT_MODEL,
+  CATEGORY_HINTS,
   INTENT_SYSTEM,
   INTENT_TOOL,
   intentRequest,
@@ -40,6 +41,14 @@ const valid = {
   transport: null,
   sort: null,
 };
+
+describe("CATEGORY_HINTS", () => {
+  it("«Вершини» — з підказкою для моделі, як і природа (водоспади, гори)", () => {
+    expect(CATEGORY_HINTS.peaks).toMatch(/вершини/);
+    expect(CATEGORY_HINTS.peaks).toMatch(/Говерла/);
+    expect(CATEGORY_HINTS.nature).toMatch(/водоспади/);
+  });
+});
 
 describe("intentTool", () => {
   it("strict, без лишних полей, категории — enum кодов региона", () => {

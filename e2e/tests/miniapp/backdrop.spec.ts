@@ -268,13 +268,13 @@ for (const dark of [false, true]) {
   });
 }
 
-// ---- Плитки: 2 ряда по 4, целиком ----
+// ---- Плитки: 3 ряда по 3, целиком ----
 
-test("плитки: все 8 видны целиком в два ряда, доступны клавиатурой", async ({ page }) => {
+test("плитки: все 9 видны целиком в три ряда по 3, доступны клавиатурой", async ({ page }) => {
   await page.goto("/");
   const list = page.getByTestId("home-sections");
   const links = list.getByRole("link");
-  await expect(links).toHaveCount(8);
+  await expect(links).toHaveCount(9);
   const box = await list.evaluate((n) => ({
     scrolls: n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1,
     overflow: getComputedStyle(n).overflowY,
@@ -283,7 +283,7 @@ test("плитки: все 8 видны целиком в два ряда, до�
   await expect(page.getByTestId("tiles-more")).toHaveCount(0);
   await links.first().focus();
   const hrefs: (string | null)[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 9; i++) {
     const info = await page.evaluate(() => {
       const a = document.activeElement as HTMLAnchorElement;
       const l = a.closest('[data-testid="home-sections"]')!;
@@ -295,7 +295,7 @@ test("плитки: все 8 видны целиком в два ряда, до�
     });
     expect(info.visible, String(info.href)).toBe(true);
     hrefs.push(info.href);
-    if (i < 7) await page.keyboard.press("Tab");
+    if (i < 8) await page.keyboard.press("Tab");
     await page.waitForTimeout(60);
   }
   expect(hrefs).toEqual([
@@ -304,6 +304,7 @@ test("плитки: все 8 видны целиком в два ряда, до�
     "#/section/shop",
     "#/section/fun",
     "#/section/ski",
+    "#/section/nearby",
     "#/section/transfer",
     "#/section/services",
     "#/favorites",
@@ -332,6 +333,7 @@ test("плитки: имена для скринридера и цель не м
     "Де купити",
     "Розваги",
     "Гірські лижі",
+    "Пам'ятки",
     "Авто",
     "Послуги",
     "Обране",

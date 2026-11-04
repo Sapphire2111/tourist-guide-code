@@ -160,6 +160,7 @@ function guide(enrichment: unknown, photosSvc?: GooglePhotosService) {
         recommended: false,
         location: { lon: 24.58, lat: 48.47 },
         distance: null,
+        google_place_id: null,
       }),
     findCategory: () => Promise.resolve(undefined),
     placeTags: () => Promise.resolve([]),

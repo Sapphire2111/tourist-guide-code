@@ -201,7 +201,7 @@ export const LANDMARKS: readonly Landmark[] = [
 ];
 
 /** Категории, где название — сам маршрут или место (не отель «Під Хом'яком» и не колиба «Говерла»). */
-const LANDMARK_CATEGORIES: ReadonlySet<string> = new Set(["nature", "sights"]);
+const LANDMARK_CATEGORIES: ReadonlySet<string> = new Set(["nature", "peaks", "sights"]);
 /**
  * Не сам маршрут, а сервис или заведение с вершиной в названии: прокат, тур, джип/квадро, отель, музей, памятник,
  * кафе, такси («Джип-тур на Говерлу», «Музей Олекси Довбуша», «Пам'ятник Довбушу»).
@@ -246,6 +246,9 @@ const WEATHER_MOUNTAIN_CATEGORIES: ReadonlySet<string> = new Set([
 /** Сезон: общая «горная» регулярка — только для маршрутов природы и активностей (не «Церква на горі»). */
 const SEASON_ROUTE_CATEGORIES: ReadonlySet<string> = new Set(["nature", "active"]);
 
+/** Раздел «Вершини»: место в нём — всегда сходження (погода и сезон), даже без горного слова в названии. */
+const PEAKS = "peaks";
+
 type MountainPlace = NamedPlace & { extraCategories?: readonly string[] | undefined };
 const catsOf = (p: MountainPlace) => [p.category, ...(p.extraCategories ?? [])];
 /** Известный маршрут на вершину или экскурсия на вершину (турфирма с вершиной в названии). */
@@ -253,13 +256,14 @@ const summitRoute = (p: MountainPlace) => landmarkOf(p)?.kind === "hike" || tour
 
 /**
  * Горное место для ПОГОДЫ (в грозу, сильный ветер, снегопад, гололёд не предлагаем и предупреждаем): маршрут или
- * экскурсия на вершину; природа/пам'ятки с горным названием без стоп-слов маршрута (готель, музей, кафе…); активности
+ * экскурсия на вершину; место раздела «Вершини»; природа/пам'ятки с горным названием без стоп-слов маршрута (готель, музей, кафе…); активности
  * и экскурсии в горах с горным названием — всегда, даже джип-/квадро-тур и прокат («Джип-тур на Говерлу», «Тур на
  * полонину»: в грозу на полонину не едут). «Вид на…» (оглядовий майданчик) — не горное.
  */
 export function isMountainHike(p: MountainPlace): boolean {
   if (summitRoute(p)) return true;
   const cats = catsOf(p);
+  if (cats.includes(PEAKS)) return true;
   if (!cats.some((c) => WEATHER_MOUNTAIN_CATEGORIES.has(c))) return false;
   if (p.names.some((n) => VIEW_RE.test(n))) return false;
   const activity = cats.includes("active") || cats.includes("excursions");
@@ -273,7 +277,7 @@ export function isMountainHike(p: MountainPlace): boolean {
  * импорт добавляет active всем подъёмникам, курортам и прокатам (mapping.ts), а «Витяг на гору» — не поход.
  */
 export function isSeasonalHike(p: MountainPlace): boolean {
-  if (summitRoute(p)) return true;
+  if (summitRoute(p) || p.category === PEAKS) return true;
   if (!SEASON_ROUTE_CATEGORIES.has(p.category)) return false;
   if (p.names.some((n) => NOT_ROUTE_RE.test(n) || VIEW_RE.test(n))) return false;
   return p.names.some((n) => MOUNTAIN_RE.test(n));
@@ -308,10 +312,15 @@ const ACTIVITY_BY_NAME: readonly { re: RegExp; minutes: number }[] = [
   { re: /оглядов|viewpoint|краєвид/iu, minutes: 30 },
 ];
 
+/** Вершина без известного маршрута, хв: одно значение для «Мій план» и плана ассистента. */
+export const PEAK_NO_ROUTE_MIN = 240;
+
 /** По категории (код подкатегории): типичное время на месте, хв. */
 export const CATEGORY_MINUTES: Readonly<Record<string, number>> = {
   sights: 40,
   nature: 75,
+  // Вершина без известного маршрута (LANDMARKS) — сходження на пів дня (и в плане ассистента).
+  peaks: PEAK_NO_ROUTE_MIN,
   museums: 60,
   excursions: 240,
   active: 120,
@@ -338,6 +347,7 @@ export const CATEGORY_MINUTES: Readonly<Record<string, number>> = {
 const KIND_OF_CATEGORY: Readonly<Record<string, VisitKind>> = {
   sights: "visit",
   nature: "walk",
+  peaks: "hike",
   museums: "visit",
   excursions: "tour",
   active: "activity",

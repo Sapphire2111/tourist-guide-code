@@ -15363,6 +15363,122 @@
         },
         "required": ["url", "width", "height", "source", "authors", "license", "sourceUrl"]
       },
+      "PeakRange": { "type": "string", "enum": ["chornohora", "gorgany", "svydovets"] },
+      "PeakDifficulty": {
+        "type": "string",
+        "enum": ["easy", "moderate", "hard", "expert"],
+        "description": "Сложность по правилу PEAK_DIFFICULTY_RULE; null — нет данных маршрута"
+      },
+      "PeakPointDto": {
+        "type": "object",
+        "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } },
+        "required": ["lat", "lng"]
+      },
+      "PeakGainKind": {
+        "type": "string",
+        "enum": ["difference", "stated"],
+        "description": "difference — разница высот вершины и старта; stated — перепад из источника"
+      },
+      "PeakRouteDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "description": "Старт (село, база)",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "startLocation": {
+            "nullable": true,
+            "description": "Точка старта; null — неизвестна",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PeakPointDto" }]
+          },
+          "roundTripKm": { "type": "number", "nullable": true, "description": "Туда-назад, км" },
+          "elevationGainM": { "type": "number", "nullable": true, "description": "Набор высоты, м" },
+          "gainKind": {
+            "nullable": true,
+            "description": "difference — разница высот вершины и старта; stated — перепад из источника",
+            "allOf": [{ "$ref": "#/components/schemas/PeakGainKind" }]
+          },
+          "upHours": { "type": "number", "nullable": true, "description": "Подъём, ч" },
+          "downHours": { "type": "number", "nullable": true, "description": "Спуск, ч" },
+          "totalHours": {
+            "type": "number",
+            "nullable": true,
+            "description": "Туда-назад, ч (подъём + спуск)"
+          },
+          "trail": {
+            "nullable": true,
+            "description": "Маркировка/путь",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          }
+        },
+        "required": [
+          "start",
+          "startLocation",
+          "roundTripKm",
+          "elevationGainM",
+          "gainKind",
+          "upHours",
+          "downHours",
+          "totalHours",
+          "trail"
+        ]
+      },
+      "PeakSourceDto": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "example": "Вікіпедія (uk): Говерла" },
+          "url": { "type": "string", "description": "Ссылка на версию статьи / страницу источника" }
+        },
+        "required": ["title", "url"]
+      },
+      "PeakDto": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string", "example": "hoverla" },
+          "heightM": { "type": "number", "nullable": true, "description": "Высота, м" },
+          "range": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/PeakRange" }] },
+          "difficulty": {
+            "nullable": true,
+            "description": "Сложность по правилу PEAK_DIFFICULTY_RULE; null — нет данных маршрута",
+            "allOf": [{ "$ref": "#/components/schemas/PeakDifficulty" }]
+          },
+          "route": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PeakRouteDto" }]
+          },
+          "note": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "warnings": {
+            "description": "Сезонность и предупреждения",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/LocalizedTextDto" }
+          },
+          "sources": { "type": "array", "items": { "$ref": "#/components/schemas/PeakSourceDto" } },
+          "weatherPoint": {
+            "nullable": true,
+            "description": "Горная точка прогноза погоды рядом с вершиной (GET /weather); null — у вершины прогноза нет",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PeakPointDto" }]
+          }
+        },
+        "required": [
+          "slug",
+          "heightM",
+          "range",
+          "difficulty",
+          "route",
+          "note",
+          "warnings",
+          "sources",
+          "weatherPoint"
+        ]
+      },
       "PlaceSummaryDto": {
         "type": "object",
         "properties": {
@@ -15409,6 +15525,12 @@
             "description": "Обложка из Google/Wikimedia, хранимая у нас — если нет своей cover",
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
+          },
+          "peak": {
+            "nullable": true,
+            "description": "Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PeakDto" }]
           }
         },
         "required": [
@@ -15423,7 +15545,8 @@
           "openNow",
           "phone",
           "cover",
-          "coverPhoto"
+          "coverPhoto",
+          "peak"
         ]
       },
       "PlaceSearchResultDto": {
@@ -15641,6 +15764,12 @@
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/CoverPhotoDto" }]
           },
+          "peak": {
+            "nullable": true,
+            "description": "Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина",
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/PeakDto" }]
+          },
           "regionId": { "type": "string", "format": "uuid" },
           "category": { "$ref": "#/components/schemas/GuideCategoryRefDto" },
           "description": {
@@ -15755,6 +15884,7 @@
           "phone",
           "cover",
           "coverPhoto",
+          "peak",
           "regionId",
           "category",
           "description",

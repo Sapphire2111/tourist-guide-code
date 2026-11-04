@@ -32,6 +32,7 @@ import { localityAliases } from "./locality-aliases.js";
 import { SEARCH_OFFSET_MAX } from "./guide.dto.js";
 import { GooglePhotosService, type GooglePhotoWidth } from "./google-photos.js";
 import { FAVORITES_MAX, GuideRepository, type PhotoRow, type PlaceRow } from "./guide.repository.js";
+import { peakOfPlace } from "./peak-dto.js";
 import { localMoment, openState, type LocalMoment, type ScheduleRows } from "./open-now.js";
 
 /**
@@ -376,6 +377,7 @@ export class GuideService {
       phone: r.phone,
       cover,
       coverPhoto,
+      peak: peakOfPlace(r.google_place_id),
     };
   }
 

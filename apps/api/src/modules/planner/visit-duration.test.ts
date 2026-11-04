@@ -203,3 +203,14 @@ describe("Женецький Гук и другие «Гук»", () => {
     expect(landmarkOf(p("nature", "Водоспад Гук"))?.code).toBe("huk");
   });
 });
+
+describe("«Вершини» (категория peaks)", () => {
+  it("известный маршрут — по LANDMARKS; без маршрута — пів дня походу; горное и сезонное всегда", () => {
+    expect(visitEstimate(p("peaks", "Говерла"))).toMatchObject({ kind: "hike", fixed: true });
+    expect(visitMinutes(p("peaks", "Говерла"))).toBeGreaterThanOrEqual(360);
+    expect(visitEstimate(p("peaks", "Туркул"))).toMatchObject({ minutes: 240, kind: "hike", fixed: false });
+    expect(isMountainHike(p("peaks", "Туркул"))).toBe(true);
+    expect(isSeasonalHike(p("peaks", "Туркул"))).toBe(true);
+    expect(placeFitsSeason({ ...p("peaks", "Туркул"), tags: [] }, "winter")).toBe(false);
+  });
+});

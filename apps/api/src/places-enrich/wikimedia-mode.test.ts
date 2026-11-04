@@ -27,13 +27,14 @@ import {
 import { parseEnrichArgs } from "./args.js";
 import { runCovers, type Resize } from "./covers.js";
 import { loadDbPlaces } from "./db-places.js";
-import { enrich, type EnrichedPlace } from "./enrich.js";
+import { DETAILS_PRIORITY, enrich, type EnrichedPlace } from "./enrich.js";
 import {
   allowedClasses,
   findWikipediaStrict,
   strictCandidates,
   strictNameScore,
   STRICT_MIN_SCORE,
+  WIKIMEDIA_CATEGORIES,
   wikiRadius,
 } from "./wiki-match.js";
 import { WIKI_CATEGORIES, WikipediaClient, WikiLimitError, WikiUnavailableError } from "./wikipedia.js";
@@ -602,6 +603,13 @@ describe("серьёзное 4: обычный режим как до режим
     expect(requestParams(facts).system).toBe(SYSTEM_PROMPT);
     expect(requestParams(facts, true).system).toContain(WIKI_RULE);
     expect(factsHash(facts, true)).not.toBe(factsHash(facts));
+  });
+
+  it("«Вершини» (peaks) — Вікіпедія, режим Wikimedia, радиус природы, Place Details в приоритете", () => {
+    expect(WIKI_CATEGORIES.has("peaks")).toBe(true);
+    expect(WIKIMEDIA_CATEGORIES.has("peaks")).toBe(true);
+    expect(wikiRadius("peaks")).toBe(wikiRadius("nature"));
+    expect(DETAILS_PRIORITY.has("peaks")).toBe(true);
   });
 
   it("категория markets — только в режиме", async () => {

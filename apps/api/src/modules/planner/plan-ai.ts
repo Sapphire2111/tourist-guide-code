@@ -59,8 +59,8 @@ export const CANDIDATE_JITTER = 2.5;
 
 /** Интересы туриста (теги сценариев) → категории в центре плана. */
 const INTEREST_FOCUS: Partial<Record<ScenarioTag, readonly string[]>> = {
-  hiking: ["nature", "sights", "active"],
-  mountains: ["nature", "active", "sights"],
+  hiking: ["nature", "peaks", "sights", "active"],
+  mountains: ["peaks", "nature", "active", "sights"],
   waterfalls: ["nature", "sights"],
   active: ["active", "entertainment", "nature"],
   culture: ["museums", "sights", "markets", "souvenirs"],

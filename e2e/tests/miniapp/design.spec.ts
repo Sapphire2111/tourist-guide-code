@@ -18,7 +18,7 @@ test("modern home (legacy saved choice ignored), nearby filters/map/list", async
   await expect(page.getByTestId("venue-summary")).toBeAttached();
   await expect(page.locator("html")).toHaveAttribute("data-design", "modern");
   await expect(page.getByRole("heading", { name: "Запитай у гір, чого бажаєш" })).toBeVisible();
-  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(8);
+  await expect(page.getByTestId("home-sections").getByRole("link")).toHaveCount(9);
   await expectNoSeriousA11yViolations(page);
   await page.screenshot({ path: testInfo.outputPath("implemented-modern-home.png"), fullPage: false });
   await page.reload();

@@ -33,6 +33,8 @@ export type PlaceRow = {
   recommended: boolean;
   location: LonLat | null;
   distance: number | null;
+  /** id места Google: данные вершины (places-import/peaks.ts) — по нему. */
+  google_place_id: string | null;
 };
 
 export type PlaceCardRow = PlaceRow & {
@@ -114,6 +116,7 @@ export class GuideRepository {
         "places.address_i18n",
         "places.phone",
         "places.recommended",
+        "places.google_place_id",
       ])
       .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
       .select((eb) =>

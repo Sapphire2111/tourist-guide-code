@@ -26,6 +26,8 @@ export const CATALOG_SECTIONS = [
   "relax",
   "fun",
   "ski",
+  // «Пам'ятки» на главной: каталог корня nearby с подразделами «Природа», «Пам'ятки», «Вершини».
+  "nearby",
   "transfer",
   "services",
 ] as const;
@@ -70,6 +72,36 @@ export type PlaceSummary = {
   recommended: boolean;
   /** Платное размещение: метка «Реклама» / «Партнер» показывается всегда (C-02, ТЗ §4.3). */
   adLabel: "advertising" | "partner" | null;
+  /** Вершина (раздел «Вершини»): высота, маршрут, сложность; не вершина — null/нет. */
+  peak?: Peak | null;
+};
+
+export const PEAK_DIFFICULTIES = ["easy", "moderate", "hard", "expert"] as const;
+export type PeakDifficulty = (typeof PEAK_DIFFICULTIES)[number];
+export type PeakRange = "chornohora" | "gorgany" | "svydovets";
+
+/** Данные вершины — только из источников (sources); чего нет — null. difficulty null — «немає даних». */
+export type Peak = {
+  slug: string;
+  heightM: number | null;
+  range: PeakRange | null;
+  difficulty: PeakDifficulty | null;
+  route: {
+    start: LocalizedText;
+    startLocation: LatLng | null;
+    roundTripKm: number | null;
+    elevationGainM: number | null;
+    gainKind: "difference" | "stated" | null;
+    upHours: number | null;
+    downHours: number | null;
+    totalHours: number | null;
+    trail: LocalizedText | null;
+  } | null;
+  note: LocalizedText | null;
+  warnings: LocalizedText[];
+  sources: { title: string; url: string }[];
+  /** Горная точка прогноза у вершины; null — погоды «на вершині» нет. */
+  weatherPoint: LatLng | null;
 };
 
 /** Автор фото или отзыва Google: подпись обязательна (правила Google Maps Platform). */

@@ -97,7 +97,7 @@ function setup(over: Partial<GuideEnv> = {}) {
 const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
 describe("главная C02", () => {
-  it("modern: одна сетка из 8 разделов (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
+  it("modern: одна сетка из 9 разделов (с «Пам'ятки» — каталог «Що поруч») (помощь — кнопка в полосе) (без «Що поруч») и кнопка «поруч зі мною» над ней; «Про заклад» — только при QR заведения (C-13)", () => {
     const { env } = setup();
     const view = (hasVenue: boolean) => (
       <GuideProvider value={env}>
@@ -105,7 +105,7 @@ describe("главная C02", () => {
       </GuideProvider>
     );
     const { rerender } = render(view(true));
-    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(8);
+    expect(within(screen.getByTestId("home-sections")).getAllByRole("link")).toHaveLength(9);
     const href = (name: string | RegExp) => screen.getByRole("link", { name }).getAttribute("href");
     // Еда — большая карточка, плитка не дублирует её.
     expect(href(/^Де смачно поїсти/)).toBe("#/section/eat");
@@ -115,6 +115,7 @@ describe("главная C02", () => {
     // Имена на плитках и подсказка «Де жити» — для скринридера.
     expect(href(/^Де жити.*Готелі, садиби/)).toBe("#/section/stay");
     expect(href("Обране")).toBe("#/favorites");
+    expect(href(/^Пам'ятки, природа й вершини/)).toBe("#/section/nearby");
     expect(href("Відпочити та зігрітися")).toBe("#/section/relax");
     expect(href("Розваги та враження")).toBe("#/section/fun");
     expect(
@@ -127,6 +128,7 @@ describe("главная C02", () => {
       "#/section/shop",
       "#/section/fun",
       "#/section/ski",
+      "#/section/nearby",
       "#/section/transfer",
       "#/section/services",
       "#/favorites",
@@ -206,6 +208,40 @@ describe("каталог C04", () => {
     fireEvent.click(screen.getByRole("button", { name: "Усі" }));
     await flush();
     expect(analytics.track.mock.calls.filter(([e]) => e === "search_used")).toHaveLength(1);
+  });
+
+  it("«Пам'ятки» (#/section/nearby): Природа, Пам'ятки, Вершини; у «Вершини» — ссылка на экран вершин", async () => {
+    const { env } = setup({
+      api: fakeApi({
+        categories: vi.fn(async () => [
+          {
+            id: "n",
+            parentId: null,
+            code: "nearby",
+            name: { uk: "Що поруч" },
+            homeSection: "nearby" as const,
+          },
+          { id: "nat", parentId: "n", code: "nature", name: { uk: "Природа" }, homeSection: null },
+          { id: "sig", parentId: "n", code: "sights", name: { uk: "Пам'ятки" }, homeSection: null },
+          { id: "pk", parentId: "n", code: "peaks", name: { uk: "Вершини" }, homeSection: null },
+        ]),
+      }),
+    });
+    render(
+      <GuideProvider value={env}>
+        <Catalog section="nearby" />
+      </GuideProvider>,
+    );
+    await flush();
+    // Заголовок — «Пам'ятки», а не «Що поруч» (тот ключ — у карты и экрана «Поруч»).
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Пам'ятки");
+    for (const name of ["Природа", "Пам'ятки", "Вершини"])
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.queryByTestId("catalog-peaks")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Вершини" }));
+    await flush();
+    expect(env.api.search).toHaveBeenLastCalledWith(expect.objectContaining({ categoryId: "pk" }));
+    expect(screen.getByTestId("catalog-peaks").getAttribute("href")).toBe("#/peaks");
   });
 
   it("раздел без категории — пустое состояние; сбой — повтор", async () => {
@@ -465,6 +501,7 @@ describe("адаптер api и аналитика", () => {
       openNow: null,
       phone: null,
       coverPhoto: null,
+      peak: null,
       cover: {
         mediaAssetId: P1,
         alt: { uk: "Фасад" },

@@ -7,6 +7,7 @@ import { isAllDay, uk } from "@tg/i18n";
 import type { LonLat } from "../../db/index.js";
 import { openState, type ScheduleRows } from "../guide/index.js";
 import type { DayPart, PlanTransport } from "./intent.js";
+import { PEAK_NO_ROUTE_MIN } from "../planner/index.js";
 import { haversineMeters } from "./route.js";
 
 export type PlanRole = "see" | "fun" | "eat" | "relax";
@@ -16,6 +17,8 @@ export const PLAN_TRAVELS: readonly PlanTravel[] = ["walk", "car"];
 
 /** Категории каталога по роли в плане (коды подкатегорий). */
 const SEE = ["sights", "nature", "museums"] as const;
+/** «Вершини» — роль see, но только первым пунктом ранку (сходження на пів дня), не взимку (eligible). */
+const PEAKS = ["peaks"] as const;
 // «Екскурсії» — турфирмы (записаться заранее), не пункт плана на час; в план не берём.
 const FUN = ["active", "entertainment", "kids", "adult-fun", "ski-resorts"] as const;
 const LUNCH = ["restaurants", "kolyby", "cafes"] as const;
@@ -26,7 +29,7 @@ const RELAX = ["chany", "spa"] as const;
 export const PLAN_SECTIONS = ["nearby", "fun", "eat", "relax", "ski"] as const;
 
 export const ROLE_OF: Readonly<Record<string, PlanRole>> = {
-  ...Object.fromEntries(SEE.map((c) => [c, "see"])),
+  ...Object.fromEntries([...SEE, ...PEAKS].map((c) => [c, "see"])),
   ...Object.fromEntries(FUN.map((c) => [c, "fun"])),
   ...Object.fromEntries(LUNCH.map((c) => [c, "eat"])),
   ...Object.fromEntries(RELAX.map((c) => [c, "relax"])),
@@ -36,6 +39,7 @@ export const ROLE_OF: Readonly<Record<string, PlanRole>> = {
 export const DURATION_OF: Readonly<Record<string, number>> = {
   sights: 45,
   nature: 90,
+  peaks: PEAK_NO_ROUTE_MIN,
   museums: 60,
   active: 120,
   entertainment: 90,
@@ -61,7 +65,7 @@ const EVENING_ONLY = { from: 17 * 60, to: 23 * 60 };
 type Slot = readonly string[];
 /** Порядок пунктов части дня: какие категории подходят на каждый пункт. */
 const TEMPLATES: Readonly<Record<DayPart, readonly Slot[]>> = {
-  morning: [SEE, [...SEE, ...FUN], SEE],
+  morning: [[...PEAKS, ...SEE], [...SEE, ...FUN], SEE],
   afternoon: [LUNCH, [...SEE, ...FUN], [...SEE, ...FUN], SEE],
   evening: [DINNER, RELAX],
 };
@@ -85,6 +89,8 @@ export const AREA = {
 const AREA_TOP = 4;
 /** Опоздание за конец части дня, мин, — допустимо (вечеря может затянуться). */
 const OVERRUN_MIN = 30;
+/** Вершина — на пів дня: сходження може затягнутися до обіду (обід зсувається). */
+const PEAK_OVERRUN_MIN = 90;
 
 export type PlanCandidate = {
   id: string;
@@ -278,7 +284,8 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
           if (d !== null && d > maxHop) continue;
           const arrive = t + (d === null ? 0 : travelOf(d, transport).minutes);
           const duration = DURATION_OF[c.category] ?? 60;
-          if (arrive + duration > window.to + OVERRUN_MIN) continue;
+          if (arrive + duration > window.to + (c.category === "peaks" ? PEAK_OVERRUN_MIN : OVERRUN_MIN))
+            continue;
           const open = openDuring(c.schedule, day, arrive, arrive + duration);
           if (open === false) continue;
           let s = score.get(c.id)! - (d === null ? 0 : distancePenalty(d));
@@ -316,7 +323,10 @@ export function buildPlan(candidates: readonly PlanCandidate[], o: PlanOptions):
   return { days, lengthMeters: Math.round(lengthMeters) };
 }
 
-/** Кандидаты, которые вообще могут попасть в план: роль известна, «з дітьми» — без «Для дорослих», лыжи — зимой. */
+/**
+ * Кандидаты, которые вообще могут попасть в план: роль известна, «з дітьми» — без «Для дорослих», лыжи — зимой,
+ * вершины — не зимой.
+ */
 function eligible(
   candidates: readonly PlanCandidate[],
   o: Pick<PlanOptions, "withKids" | "month">,
@@ -326,7 +336,8 @@ function eligible(
     (c) =>
       ROLE_OF[c.category] !== undefined &&
       !(o.withKids && c.category === "adult-fun") &&
-      (winter || c.category !== "ski-resorts"),
+      (winter || c.category !== "ski-resorts") &&
+      !(winter && c.category === "peaks"),
   );
 }
 

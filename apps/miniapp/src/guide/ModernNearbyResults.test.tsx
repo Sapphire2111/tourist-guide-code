@@ -99,6 +99,50 @@ describe("ModernNearbyResults", () => {
     expect(seen[seen.length - 1]).toHaveLength(2);
   });
 
+  it("подразделы «Що поруч»: Природа / Пам'ятки / Вершини — фильтр по подкатегории (все водоспади)", async () => {
+    const api = {
+      categories: vi.fn(async () => [
+        { id: "n", parentId: null, code: "nearby", name: { uk: "Що поруч" }, homeSection: "nearby" as const },
+        { id: "nat", parentId: "n", code: "nature", name: { uk: "Природа" }, homeSection: null },
+        { id: "sig", parentId: "n", code: "sights", name: { uk: "Пам'ятки" }, homeSection: null },
+        { id: "pk", parentId: "n", code: "peaks", name: { uk: "Вершини" }, homeSection: null },
+        { id: "c1", parentId: null, code: "eat", name: { uk: "Кафе" }, homeSection: "eat" as const },
+      ]),
+    } as unknown as GuideApi;
+    const env = {
+      api,
+      analytics: { track: vi.fn(), flush: vi.fn(), dispose: vi.fn() },
+      base: null,
+      regionId: "r",
+      signedIn: true,
+    } as unknown as GuideEnv;
+    const list = [
+      { ...place("w1", "Водоспад Пробій"), categoryId: "nat" },
+      { ...place("w2", "Водоспад Гук"), categoryId: "nat" },
+      { ...place("p1", "Туркул"), categoryId: "pk" },
+      { ...place("s1", "Міст"), categoryId: "sig" },
+      place("k", "Кафе"),
+    ];
+    render(
+      <GuideProvider value={env}>
+        <ModernNearbyResults list={list} radius={5000} base={null} me={null} loading={false} />
+      </GuideProvider>,
+    );
+    await flush();
+    const filters = within(screen.getByRole("group", { name: "Категорії місць поруч" }));
+    expect(filters.getAllByRole("button").map((b) => b.textContent?.replace(/^\P{L}+/u, ""))).toEqual(
+      expect.arrayContaining(["Природа", "Пам'ятки", "Вершини"]),
+    );
+    expect(screen.getByTestId("nearby-sub-nature").nextElementSibling).toBe(
+      screen.getByTestId("nearby-sub-sights"),
+    );
+    fireEvent.click(screen.getByTestId("nearby-sub-nature"));
+    expect(screen.getByTestId("nearby-sub-nature").getAttribute("aria-pressed")).toBe("true");
+    expect(seen[seen.length - 1]!.map((p) => p.id).sort()).toEqual(["w1", "w2"]);
+    fireEvent.click(screen.getByTestId("nearby-sub-peaks"));
+    expect(seen[seen.length - 1]!.map((p) => p.id)).toEqual(["p1"]);
+  });
+
   it("выстраивает места от ближайшего к более далёкому", async () => {
     const api = {
       categories: vi.fn(async () => [

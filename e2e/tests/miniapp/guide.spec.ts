@@ -22,15 +22,16 @@ test.describe("QR отеля demoHotel01", () => {
     await page.getByRole("button", { name: "Меню" }).click();
     await expect(page.getByTestId("season-switcher")).toBeVisible();
     await page.keyboard.press("Escape");
-    // Концепт Б: 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + блок из 8 плиток с вертикальной прокруткой.
+    // Концепт Б: 2 крупные карточки («Де смачно поїсти» и «Що поруч зараз») + блок из 9 плиток (3 целых ряда по 3).
     const intentions = page.getByTestId("home-sections").getByRole("link");
-    await expect(intentions).toHaveCount(8);
+    await expect(intentions).toHaveCount(9);
     expect(await intentions.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual([
       "#/section/stay",
       "#/section/relax",
       "#/section/shop",
       "#/section/fun",
       "#/section/ski",
+      "#/section/nearby",
       "#/section/transfer",
       "#/section/services",
       "#/favorites",

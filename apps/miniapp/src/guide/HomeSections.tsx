@@ -1,6 +1,6 @@
 // C02: главная по Концепту Б «Мольфарська Ватра» поверх общего фона (AppBackdrop): заголовок над горами, поле ассистента
 // с подсказками и сезонными тегами, карточка заведения (при QR), две большие карточки («поесть», «рядом») и блок из
-// 8 плиток: 2 ряда по 4, целиком. «Про заклад» — только при QR заведения (C-13).
+// 9 плиток: 3 ряда по 3, целиком. «Про заклад» — только при QR заведения (C-13).
 import type { MessageKey } from "@tg/i18n";
 import type { ReactNode } from "react";
 import { Link, useT } from "@tg/ui";
@@ -42,13 +42,20 @@ const TILES: readonly Tile[] = [
   { to: sectionPath("shop"), icon: "🛍️", name: "miniapp.section.shop" },
   { to: sectionPath("fun"), icon: "🎡", name: "miniapp.home.tile.fun", aria: "miniapp.modern.fun" },
   { to: sectionPath("ski"), icon: "⛷️", name: "miniapp.section.ski" },
+  // «Пам'ятки»: каталог «Що поруч» — Природа, Пам'ятки, Вершини (#/peaks — из подраздела и из «Поруч»).
+  {
+    to: "/section/nearby",
+    icon: "🏛️",
+    name: "miniapp.home.tile.sights",
+    aria: "miniapp.home.tile.sightsAria",
+  },
   { to: sectionPath("transfer"), icon: "🚕", name: "miniapp.section.transfer" },
   { to: sectionPath("services"), icon: SERVICES_EMOJI_WIDE, name: "miniapp.section.services" },
   // Без профиля «Обране» в доке; с профилем это единственный путь на экран кроме меню.
   { to: "/favorites", icon: "❤️", name: "miniapp.nav.favorites" },
 ];
 
-/** Плитки: 4 в ряд, все ряды видны сразу. */
+/** Плитки: 3 в ряд (9 = 3 целых ряда), все ряды видны сразу. */
 function HomeTiles() {
   const { t } = useT();
   return (

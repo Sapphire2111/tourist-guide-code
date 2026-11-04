@@ -14,6 +14,7 @@ import { useAsync, useGuide } from "./context.js";
 import { interceptBack } from "../telegram.js";
 import { googleRouteUrl } from "./geo.js";
 import { Badge, ExtLink, PlaceBadges, useDistance } from "./parts.js";
+import { PeakDetails } from "./Peaks.js";
 import "./place-card.css";
 import {
   NotFoundError,
@@ -561,6 +562,10 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
         )}
 
+        {place.peak && (
+          <PeakDetails peak={place.peak} placeId={place.id} name={name} placeLocation={place.location} />
+        )}
+
         {about && (
           <Section
             title={t("miniapp.place.about")}
@@ -587,13 +592,16 @@ function PlaceView({ place }: { place: PlaceDetail }) {
 
         {amenities.length > 0 && <Offers amenities={amenities} />}
 
-        <Section title={t("miniapp.place.schedule")}>
-          {place.schedule.length ? (
-            <Schedule schedule={place.schedule} />
-          ) : (
-            <p className="pc-muted pc-m0">{t("miniapp.place.scheduleUnknown")}</p>
-          )}
-        </Section>
+        {/* У вершини графіка немає — «Графік невідомий» не показуємо. */}
+        {!(place.peak && !place.schedule.length) && (
+          <Section title={t("miniapp.place.schedule")}>
+            {place.schedule.length ? (
+              <Schedule schedule={place.schedule} />
+            ) : (
+              <p className="pc-muted pc-m0">{t("miniapp.place.scheduleUnknown")}</p>
+            )}
+          </Section>
+        )}
 
         {(place.address || place.phone || place.website || place.googleMapsUri) && (
           <Section title={t("miniapp.place.contacts")} testId="place-contacts">

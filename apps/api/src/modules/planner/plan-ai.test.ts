@@ -175,6 +175,11 @@ describe("живой план: запрос к Claude", () => {
     expect(b.theme.ask).toContain("пішки");
     expect(b.theme.ask).toContain(accentOf(7));
   });
+
+  it("походи и гори — «Вершини» в центре плана", () => {
+    expect(planBrief(params({ interests: ["hiking"] })).theme.focus).toContain("peaks");
+    expect(planBrief(params({ interests: ["mountains"] })).theme.focus).toContain("peaks");
+  });
 });
 
 describe("живой план: генерация", () => {

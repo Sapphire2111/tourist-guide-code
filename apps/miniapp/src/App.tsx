@@ -60,6 +60,7 @@ import { Help } from "./guide/Help.js";
 import { HomeSections } from "./guide/HomeSections.js";
 import type { LatLng } from "./guide/geo.js";
 import { Nearby } from "./guide/Nearby.js";
+import { Peaks } from "./guide/Peaks.js";
 import { PlaceCard } from "./guide/PlaceCard.js";
 import { CATALOG_SECTIONS, type CatalogSection, type GuideApi } from "./guide/types.js";
 import { Health } from "./Health.js";
@@ -622,6 +623,14 @@ function Routes(props: RoutesProps) {
         </RequireRegion>
       </Screen>
     );
+  if (path === "/peaks")
+    return (
+      <Screen webApp={webApp}>
+        <RequireRegion>
+          <Peaks />
+        </RequireRegion>
+      </Screen>
+    );
   if (path === "/help")
     return (
       <Screen webApp={webApp}>
@@ -913,8 +922,20 @@ export function App({
       base: venueName ? { name: venueName, point: basePoint, pending: basePending } : null,
       regionId,
       signedIn,
+      weather: props.weatherApi ?? createWeatherApi(props.api, regionId, API_URL),
     }),
-    [api, tracker, props.webApp, venueName, basePoint, basePending, regionId, signedIn],
+    [
+      api,
+      tracker,
+      props.webApp,
+      venueName,
+      basePoint,
+      basePending,
+      regionId,
+      signedIn,
+      props.weatherApi,
+      props.api,
+    ],
   );
   const hApi = useMemo(() => hostApi ?? createHostApi(props.api, regionId), [hostApi, props.api, regionId]);
   // Режим персонала (D-50): признак staffMode из /me (сервер считает роли ORG_STAFF/ORG_OWNER), только при

@@ -106,6 +106,7 @@ export const DETAILS_PRIORITY: ReadonlySet<string> = new Set([
   "spa",
   "sights",
   "nature",
+  "peaks",
 ]);
 /** Без Place Details: банкоматы, АЗС, электрозарядки — отзывы и удобства туристу не нужны. */
 export const DEFAULT_SKIP_DETAILS: ReadonlySet<string> = new Set(["atm", "fuel", "ev-charging"]);

@@ -10,8 +10,8 @@ import type { PlaceEnrichmentWiki } from "../db/index.js";
 import { haversineMeters } from "../places-import/mapping.js";
 import { httpsUrl } from "./details.js";
 
-/** Категории, для которых ищется Вікіпедія: пам'ятки, природа, музеи. */
-export const WIKI_CATEGORIES: ReadonlySet<string> = new Set(["sights", "nature", "museums"]);
+/** Категории, для которых ищется Вікіпедія: пам'ятки, природа, вершины, музеи. */
+export const WIKI_CATEGORIES: ReadonlySet<string> = new Set(["sights", "nature", "peaks", "museums"]);
 
 /** Радиус поиска статьи от точки места, м: дальше — другое место. */
 export const WIKI_RADIUS_M = 1500;
