@@ -1,10 +1,11 @@
 // Одна кнопка вместо ряда чипов подкатегорий/фильтров: «Шукати все ▾» или «<выбранное> ▾».
 // Нажатие открывает нижний лист (тот же вид, что у «Локація») с радио-выбором; выбор применяется сразу и закрывает лист.
-// Закрытие: тап по фону, Escape, «Закрити», «Назад» Telegram.
+// Закрытие: тап по фону, Escape, «Закрити», «Назад» Telegram. Радио — кнопки role="radio" с одной Tab-остановкой:
+// стрелки только двигают фокус, применяют Enter / Space / тап (WCAG 3.2.2: фокус не меняет контекст).
 import { useT } from "@tg/ui";
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { interceptBack } from "../telegram.js";
+import { useSheet } from "./use-sheet.js";
 import "./location.css";
 import "./subcategory-select.css";
 
@@ -16,8 +17,8 @@ export interface SubcategoryOption {
 }
 
 /**
- * `options[0]` — пункт «Шукати все» (его id — значение «ничего не выбрано»); подпись берётся из общего ключа.
- * `title` — название списка (заголовок листа и часть доступного имени кнопки).
+ * `options[0]` — пункт «все» (его id — значение «ничего не выбрано», подпись задаёт вызывающий:
+ * «Шукати все», «Усі складності»). `title` — название списка (заголовок листа и часть имени кнопки).
  */
 export function SubcategorySelect({
   title,
@@ -34,25 +35,29 @@ export function SubcategorySelect({
   className?: string;
   testId?: string;
 }) {
-  const { t } = useT();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
-  const allId = options[0]?.id;
-  const current = options.find((o) => o.id === value);
-  const label = !current || current.id === allId ? t("miniapp.subcategory.all") : current.label;
+  const all = options[0];
+  const current = options.find((o) => o.id === value) ?? all;
+  const active = current !== undefined && current !== all;
   return (
     <>
       <button
         type="button"
         className={className ? `subcat-trigger ${className}` : "subcat-trigger"}
         data-testid={testId}
-        data-all={!current || current.id === allId ? "true" : undefined}
+        data-active={active ? "true" : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`${title}: ${label}`}
+        aria-label={`${title}: ${current?.label ?? ""}`}
         onClick={() => setOpen(true)}
       >
-        <span className="subcat-trigger-text">{label}</span>
+        {active && current.icon != null && (
+          <span className="subcat-trigger-icon" aria-hidden="true">
+            {current.icon}
+          </span>
+        )}
+        <span className="subcat-trigger-text">{current?.label}</span>
         <span className="subcat-trigger-caret" aria-hidden="true">
           ▾
         </span>
@@ -61,7 +66,7 @@ export function SubcategorySelect({
         <SubcategorySheet
           title={title}
           options={options}
-          value={current?.id ?? allId ?? ""}
+          value={current?.id ?? ""}
           onPick={(id) => {
             onChange(id);
             close();
@@ -89,39 +94,24 @@ function SubcategorySheet({
   const { t } = useT();
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const sheet = sheetRef.current;
-    (
-      sheet?.querySelector<HTMLElement>("input:checked") ?? sheet?.querySelector<HTMLElement>("input")
-    )?.focus();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const releaseBack = interceptBack(onClose);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Tab" && sheetRef.current) {
-        const items = [...sheetRef.current.querySelectorAll<HTMLElement>("input, button")];
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
+  const listRef = useRef<HTMLDivElement>(null);
+  useSheet(sheetRef, onClose);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const keys: Record<string, (i: number, n: number) => number> = {
+      ArrowDown: (i, n) => (i + 1) % n,
+      ArrowRight: (i, n) => (i + 1) % n,
+      ArrowUp: (i, n) => (i - 1 + n) % n,
+      ArrowLeft: (i, n) => (i - 1 + n) % n,
+      Home: () => 0,
+      End: (_, n) => n - 1,
     };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      releaseBack();
-      opener?.focus();
-    };
-  }, [onClose]);
-  const name = useId();
+    const move = keys[e.key];
+    if (!move) return;
+    const radios = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [])];
+    const at = radios.indexOf(document.activeElement as HTMLElement);
+    e.preventDefault();
+    radios[move(Math.max(at, 0), radios.length)]?.focus();
+  };
   return createPortal(
     <div className="loc-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div
@@ -133,24 +123,29 @@ function SubcategorySheet({
         data-testid="subcategory-sheet"
       >
         <h2 id={titleId}>{title}</h2>
-        <ul className="loc-list" role="radiogroup" aria-labelledby={titleId}>
-          {options.map((o, i) => (
-            <li key={o.id} role="presentation">
-              <label className="loc-option">
-                <input
-                  type="radio"
-                  name={name}
-                  checked={o.id === value}
-                  onChange={() => onPick(o.id)}
-                  // Повторный тап по уже выбранному пункту тоже закрывает лист.
-                  onClick={() => o.id === value && onPick(o.id)}
-                />
-                {o.icon != null && <span aria-hidden="true">{o.icon}</span>}
-                <span>{i === 0 ? t("miniapp.subcategory.all") : o.label}</span>
-              </label>
-            </li>
+        <div
+          ref={listRef}
+          className="loc-list"
+          role="radiogroup"
+          aria-labelledby={titleId}
+          onKeyDown={onKeyDown}
+        >
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={o.id === value}
+              tabIndex={o.id === value ? 0 : -1}
+              className="loc-option subcat-option"
+              onClick={() => onPick(o.id)}
+            >
+              <span className="subcat-radio" aria-hidden="true" />
+              {o.icon != null && <span aria-hidden="true">{o.icon}</span>}
+              <span>{o.label}</span>
+            </button>
           ))}
-        </ul>
+        </div>
         <button type="button" className="loc-done" onClick={onClose}>
           {t("miniapp.menu.close")}
         </button>

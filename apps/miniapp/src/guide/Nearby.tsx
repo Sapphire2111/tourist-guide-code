@@ -338,7 +338,7 @@ export function ModernNearbyResults({
               title={t("miniapp.modern.filters")}
               testId="nearby-filter"
               options={[
-                { id: "all", label: t("miniapp.modern.all"), icon: "✦" },
+                { id: "all", label: t("miniapp.subcategory.all"), icon: "✦" },
                 ...subs.map((c) => ({
                   id: `cat:${c.id}`,
                   label: pickLocalized(c.name, locale),
@@ -349,6 +349,8 @@ export function ModernNearbyResults({
                   label: t(`miniapp.section.${x}`),
                   icon: SECTION_EMOJI[x] ?? SECTION_EMOJI.other,
                 })),
+                // Справочник категорий ещё грузится: сохранённый подраздел виден как выбранный, а не «Шукати все».
+                ...(section.startsWith("cat:") && !selectedSub ? [{ id: section, label: "…" }] : []),
               ]}
               value={section}
               onChange={(id) => setSection(id as NearbyFilter)}

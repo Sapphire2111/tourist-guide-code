@@ -121,7 +121,7 @@ describe("значок і список", () => {
     // Фильтров без вершин в списке нет: «Дуже складна» отсутствует.
     fireEvent.click(screen.getByTestId("peak-filter"));
     expect(within(screen.getByRole("dialog")).queryByRole("radio", { name: "Дуже складна" })).toBeNull();
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("radio", { name: "Шукати все" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("radio", { name: "Усі складності" }));
     fireEvent.click(screen.getByTestId("peak-sort-distance"));
     expect(names()[0]).toBe("Маковиця");
     fireEvent.click(screen.getByTestId("peak-sort-height"));

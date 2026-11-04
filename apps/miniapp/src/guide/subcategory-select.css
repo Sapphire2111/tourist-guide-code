@@ -25,3 +25,38 @@
   outline: 2px solid var(--app-accent);
   outline-offset: 2px;
 }
+.subcat-trigger-icon {
+  display: inline-flex;
+}
+/* Выбран не «все» — акцентная кнопка, как раньше чип с aria-pressed. */
+.subcat-trigger[data-active="true"] {
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color: #ffffff;
+}
+.subcat-trigger[data-active="true"] .peak-shape {
+  color: #ffffff;
+}
+.subcat-option {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.subcat-option:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 1px;
+}
+.subcat-radio {
+  flex: none;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--app-accent);
+}
+.subcat-option[aria-checked="true"] .subcat-radio {
+  background: radial-gradient(circle, var(--app-accent) 0 45%, transparent 50%);
+}

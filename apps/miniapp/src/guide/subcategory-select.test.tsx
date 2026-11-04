@@ -8,7 +8,7 @@ import { SubcategorySelect } from "./SubcategorySelect.js";
 afterEach(cleanup);
 
 const OPTIONS = [
-  { id: "all", label: "Усі" },
+  { id: "all", label: "Шукати все" },
   { id: "a", label: "Гірські лижі" },
   { id: "b", label: "Сноуборд", icon: "🏂" },
 ];
@@ -47,13 +47,9 @@ describe("SubcategorySelect", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(within(dialog).getByRole("radiogroup")).toBeTruthy();
-    const radios = within(dialog).getAllByRole("radio") as HTMLInputElement[];
-    expect(radios.map((r) => r.closest("label")!.textContent)).toEqual([
-      "Шукати все",
-      "Гірські лижі",
-      "🏂Сноуборд",
-    ]);
-    expect(radios.map((r) => r.checked)).toEqual([true, false, false]);
+    const radios = within(dialog).getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual(["Шукати все", "Гірські лижі", "🏂Сноуборд"]);
+    expect(radios.map((r) => r.getAttribute("aria-checked") === "true")).toEqual([true, false, false]);
 
     fireEvent.click(within(dialog).getByRole("radio", { name: "Гірські лижі" }));
     expect(onChange).toHaveBeenCalledWith("a");
@@ -64,7 +60,7 @@ describe("SubcategorySelect", () => {
     );
 
     fireEvent.click(screen.getByTestId("subcategory-select"));
-    expect((screen.getByRole("radio", { name: "Гірські лижі" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("radio", { name: "Гірські лижі" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("radio", { name: "Шукати все" }));
     expect(onChange).toHaveBeenLastCalledWith("all");
     expect(screen.getByTestId("subcategory-select").textContent).toContain("Шукати все");
@@ -95,5 +91,68 @@ describe("SubcategorySelect", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(hasBackIntercept()).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("фокус: на выбранном радио; закрытие возвращает фокус на кнопку", () => {
+    render(<Harness />);
+    const btn = screen.getByTestId("subcategory-select");
+    btn.focus();
+    fireEvent.click(btn);
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Шукати все" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it("Tab-ловушка по реальным остановкам: выбранное радио + «Закрити»; Shift+Tab с выбранного не уводит из листа", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByTestId("subcategory-select"));
+    // Выбранное радио — не первое.
+    fireEvent.click(screen.getByRole("radio", { name: "Сноуборд" }));
+    fireEvent.click(screen.getByTestId("subcategory-select"));
+    const picked = screen.getByRole("radio", { name: "Сноуборд" });
+    const close = screen.getByRole("button", { name: "Закрити" });
+    expect(document.activeElement).toBe(picked);
+    expect(fireEvent.keyDown(document, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(close);
+    expect(fireEvent.keyDown(document, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(picked);
+    // Фокус, ушедший из листа, возвращается внутрь.
+    screen.getByTestId("subcategory-select").focus();
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+  });
+
+  it("клавиатура: стрелки двигают фокус и не применяют; Enter/Space (click) применяют; повторный тап по выбранному закрывает", () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    fireEvent.click(screen.getByTestId("subcategory-select"));
+    const group = screen.getByRole("radiogroup");
+    fireEvent.keyDown(group, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Гірські лижі" }));
+    fireEvent.keyDown(group, { key: "ArrowDown" });
+    fireEvent.keyDown(group, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Шукати все" }));
+    fireEvent.keyDown(group, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Сноуборд" }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    // Enter/Space на кнопке дают click.
+    fireEvent.click(document.activeElement!);
+    expect(onChange).toHaveBeenCalledWith("b");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("subcategory-select"));
+    fireEvent.click(screen.getByRole("radio", { name: "Сноуборд" }));
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("выбран не «все» — кнопка акцентная (data-active) и показывает значок пункта", () => {
+    render(<Harness />);
+    const btn = screen.getByTestId("subcategory-select");
+    expect(btn.getAttribute("data-active")).toBeNull();
+    fireEvent.click(btn);
+    fireEvent.click(screen.getByRole("radio", { name: "Сноуборд" }));
+    expect(btn.getAttribute("data-active")).toBe("true");
+    expect(btn.textContent).toContain("🏂");
   });
 });

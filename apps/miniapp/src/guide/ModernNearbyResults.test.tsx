@@ -97,7 +97,7 @@ describe("ModernNearbyResults", () => {
     expect(container.querySelector(".modern-map-spot")).toBeNull();
     fireEvent.click(screen.getByTestId("nearby-filter"));
     const options = within(screen.getByRole("dialog")).getAllByRole("radio");
-    expect(options.map((r) => r.closest("label")!.textContent)).toEqual(["✦Шукати все", "🍲Де поїсти"]);
+    expect(options.map((r) => r.textContent)).toEqual(["✦Шукати все", "🍲Де поїсти"]);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(seen[seen.length - 1]).toHaveLength(2);
   });
@@ -136,7 +136,7 @@ describe("ModernNearbyResults", () => {
     expect(trigger.textContent).toContain("Шукати все");
     fireEvent.click(trigger);
     const radios = within(screen.getByRole("dialog")).getAllByRole("radio");
-    expect(radios.map((r) => r.closest("label")!.textContent?.replace(/^\P{L}+/u, ""))).toEqual(
+    expect(radios.map((r) => r.textContent?.replace(/^\P{L}+/u, ""))).toEqual(
       expect.arrayContaining(["Шукати все", "Природа", "Пам'ятки", "Вершини"]),
     );
     fireEvent.keyDown(document, { key: "Escape" });
