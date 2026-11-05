@@ -2,13 +2,27 @@
 // → редактор P06 нового черновика. Статус модерации и отправка — в P06.
 import { useEffect, useId, useRef, useState } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, Stack, useRoute, useT } from "@tg/ui";
+import { Button, Link, Stack, useRoute, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
-import { AsyncView, card, listStyle } from "../guide/parts.js";
+import { AsyncView } from "../guide/parts.js";
 import { useErrorText } from "../host/errors.js";
 import { usePartner } from "./context.js";
 import { keepsIdempotencyKey } from "./partner-api.js";
-import { Live, newKey, type Message } from "./parts.js";
+import { Live, newKey, PartnerHeader, type Message } from "./parts.js";
+
+/** Иконка плитки по коду шаблона; незнакомый код — общая метка. */
+const iconOf = (code: string) =>
+  /hotel|stay|lodg|садиб/i.test(code)
+    ? "🏨"
+    : /cafe|restaurant|food|bar/i.test(code)
+      ? "🍽️"
+      : /shop|store|market/i.test(code)
+        ? "🛍️"
+        : /guide|tour|excurs/i.test(code)
+          ? "🧭"
+          : /charg|fuel|auto|car/i.test(code)
+            ? "🔌"
+            : "📍";
 
 export function PartnerOnboarding() {
   const { t, locale } = useT();
@@ -22,7 +36,6 @@ export function PartnerOnboarding() {
   const [code, setCode] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("");
   const [name, setName] = useState("");
-  const [orgName, setOrgName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   // Один ключ на попытку создания: повтор после сбоя сети не создаст второе заведение.
@@ -30,14 +43,20 @@ export function PartnerOnboarding() {
   const key = useRef(newKey());
   useEffect(() => {
     key.current = newKey();
-  }, [code, categoryId, name, orgName]);
-  const ids = { category: useId(), name: useId(), org: useId() };
+  }, [code, categoryId, name]);
+  const ids = { category: useId(), name: useId() };
   if (!enabled) return <p role="alert">{t("miniapp.partner.needsLogin")}</p>;
 
   return (
     <Stack>
-      <h1>{t("miniapp.partner.become")}</h1>
-      <p>{t("miniapp.partner.onboarding.intro")}</p>
+      <PartnerHeader title={t("miniapp.partner.onboarding.title")} />
+      <p>{t("miniapp.partner.onboarding.lead")}</p>
+      <p className="kosiv-card" data-testid="onboarding-exists" style={{ margin: 0 }}>
+        {t("miniapp.partner.onboarding.exists")}{" "}
+        <Link to="/search" className="partner-back">
+          {t("miniapp.partner.onboarding.search")}
+        </Link>
+      </p>
       <AsyncView state={templates} retry={retry} errorText={t("miniapp.partner.loadError")}>
         {(items) => {
           const available = items.filter((x) => x.categories.length > 0);
@@ -57,7 +76,8 @@ export function PartnerOnboarding() {
                   templateCode: template.code,
                   categoryId,
                   name: { uk: name.trim() },
-                  ...(orgName.trim() ? { organizationName: orgName.trim() } : {}),
+                  // Организация по умолчанию называется как заведение (поле не показываем).
+                  organizationName: name.trim(),
                 },
                 key.current,
               );
@@ -75,33 +95,30 @@ export function PartnerOnboarding() {
           };
           return (
             <>
-              <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-                <legend>{t("miniapp.partner.onboarding.template")}</legend>
-                <ul style={listStyle}>
-                  {available.map((x) => (
-                    <li key={x.id} style={card}>
-                      <label>
-                        <input
-                          type="radio"
-                          name="template"
-                          value={x.code}
-                          checked={code === x.code}
-                          onChange={() => {
-                            setCode(x.code);
-                            setCategoryId(x.categories.length === 1 ? x.categories[0]!.id : "");
-                          }}
-                        />{" "}
-                        <strong>{pickLocalized(x.name, locale)}</strong>
-                      </label>
-                      {x.description && (
-                        <p style={{ margin: "4px 0 0" }}>{pickLocalized(x.description, locale)}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              <fieldset className="partner-types">
+                <legend>{t("miniapp.partner.onboarding.typeLegend")}</legend>
+                {available.map((x) => (
+                  <label key={x.id} className="partner-type">
+                    <input
+                      type="radio"
+                      name="template"
+                      value={x.code}
+                      checked={code === x.code}
+                      onChange={() => {
+                        setCode(x.code);
+                        setCategoryId(x.categories.length === 1 ? x.categories[0]!.id : "");
+                      }}
+                    />
+                    <span className="partner-tile-icon" aria-hidden="true">
+                      {iconOf(x.code)}
+                    </span>
+                    <strong>{pickLocalized(x.name, locale)}</strong>
+                    {x.description && <small>{pickLocalized(x.description, locale)}</small>}
+                  </label>
+                ))}
               </fieldset>
-              {template && (
-                <label htmlFor={ids.category}>
+              {template && template.categories.length > 1 && (
+                <label htmlFor={ids.category} className="partner-field">
                   {t("miniapp.partner.field.category")}
                   <select
                     id={ids.category}
@@ -117,18 +134,9 @@ export function PartnerOnboarding() {
                   </select>
                 </label>
               )}
-              <label htmlFor={ids.name}>
+              <label htmlFor={ids.name} className="partner-field">
                 {t("miniapp.partner.onboarding.name")}
                 <input id={ids.name} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
-              </label>
-              <label htmlFor={ids.org}>
-                {t("miniapp.partner.onboarding.orgName")}
-                <input
-                  id={ids.org}
-                  value={orgName}
-                  maxLength={200}
-                  onChange={(e) => setOrgName(e.target.value)}
-                />
               </label>
               <Live message={message} testId="onboarding-message" />
               <Button onClick={() => void create()} disabled={busy}>

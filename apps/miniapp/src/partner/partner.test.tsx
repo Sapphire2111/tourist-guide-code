@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import { ApiCallError, ConflictError } from "../host/types.js";
@@ -18,6 +18,7 @@ import {
   type PartnerApi,
   type PartnerOrganization,
   type PartnerPlace,
+  type PartnerPlaceSummary,
 } from "./partner-api.js";
 import { patchOf, PlaceEditor, scheduleOf } from "./PlaceEditor.js";
 import { PartnerStaff } from "./Staff.js";
@@ -220,16 +221,77 @@ describe("P01/P13 дашборд", () => {
   });
 
   it("владелец: статус, комментарий модератора, ссылки P06/P07/P09/P10", async () => {
-    setup(<PartnerDashboard />, { me: () => Promise.resolve({ organizations: [org()] }) });
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      place: () => Promise.resolve(place({ missingFields: ["photo"] })),
+    });
     expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібні правки");
+    // h1 — название заведения, не «Мій заклад»; «Ваша роль» у владельца нет.
+    expect(screen.getByRole("heading", { level: 1, name: "Садиба Смерека" })).toBeDefined();
+    expect(screen.queryByText(/Ваша роль/)).toBeNull();
     expect(screen.getByTestId("moderator-comment").textContent).toContain("Додайте фото фасаду");
-    expect(screen.getByRole("link", { name: "Редагувати заклад" }).getAttribute("href")).toBe(
+    // Один главный призыв для статуса — «Виправити» в редактор.
+    expect(screen.getByRole("link", { name: "Виправити" }).getAttribute("href")).toBe(
       `#/partner/place/${PLACE}`,
     );
-    expect(screen.getByRole("link", { name: "Акції (діють: 1)" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Співробітники" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Заявки гостей (відкриті: 2)" })).toBeDefined();
-    expect(screen.getByTestId("mode-switch")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe(
+      `#/partner/place/${PLACE}`,
+    );
+    expect(screen.getByRole("link", { name: /Акції/ }).textContent).toContain("діють: 1");
+    expect(screen.getByRole("link", { name: "Команда" }).getAttribute("href")).toBe(
+      `#/partner/org/${ORG}/staff`,
+    );
+    expect(screen.getByRole("link", { name: /Заявки гостей/ }).textContent).toContain("відкриті: 2");
+    expect(screen.getByRole("link", { name: "← Для туриста" }).getAttribute("href")).toBe("#/");
+    expect(screen.queryByTestId("mode-switch")).toBeNull();
+    // Прогресс по шаблону (обязательные: name, photo; не хватает photo) и шаг «Що далі» в секцию редактора.
+    expect((await screen.findByTestId("partner-progress")).textContent).toContain("Заповнено 1 з 2");
+    expect(
+      within(screen.getByTestId("next-steps"))
+        .getByRole("link", { name: "Додайте фото" })
+        .getAttribute("href"),
+    ).toBe(`#/partner/place/${PLACE}?section=photos`);
+  });
+
+  it("одно действие на статус: draft — продолжить, опубликовано — как турист, на проверке — без действия", async () => {
+    const withStatus = (status: PartnerPlaceSummary["status"]) => ({
+      me: () =>
+        Promise.resolve({
+          organizations: [org({ places: [{ ...org().places[0]!, status, moderation: null }] })],
+        }),
+    });
+    setup(<PartnerDashboard />, withStatus("draft"));
+    expect((await screen.findByRole("link", { name: "Продовжити заповнення" })).getAttribute("href")).toBe(
+      `#/partner/place/${PLACE}`,
+    );
+    cleanup();
+    setup(<PartnerDashboard />, withStatus("published"));
+    expect((await screen.findByRole("link", { name: "Подивитись як турист" })).getAttribute("href")).toBe(
+      `#/place/${PLACE}`,
+    );
+    expect(screen.queryByRole("link", { name: "Виправити" })).toBeNull();
+    cleanup();
+    setup(<PartnerDashboard />, withStatus("pending_moderation"));
+    expect((await screen.findByTestId("place-status")).textContent).toBe("На перевірці");
+    for (const name of ["Продовжити заповнення", "Виправити", "Подивитись як турист"])
+      expect(screen.queryByRole("link", { name })).toBeNull();
+  });
+
+  it("несколько заведений — чипы вместо select; выбор меняет h1; организация — select только при >1", async () => {
+    const second = {
+      ...org().places[0]!,
+      id: "00000000-0000-4000-8000-00000000b002",
+      name: { uk: "Кафе Смерека" },
+    };
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org({ places: [org().places[0]!, second] })] }),
+    });
+    const group = await screen.findByRole("group", { name: "Заклади" });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    const chips = within(group).getAllByRole("button");
+    expect(chips.map((c) => c.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    fireEvent.click(within(group).getByRole("button", { name: "Кафе Смерека" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Кафе Смерека" })).toBeDefined();
   });
 
   it("менеджер: без сотрудников; модуль заявок выключен — без ссылки на заявки", async () => {
@@ -241,8 +303,9 @@ describe("P01/P13 дашборд", () => {
       },
       { "module.host_requests": false },
     );
-    expect(await screen.findByRole("link", { name: "Редагувати заклад" })).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Співробітники" })).toBeNull();
+    expect(await screen.findByRole("link", { name: "Виправити" })).toBeDefined();
+    expect(screen.getByTestId("partner-org").textContent).toContain("Ваша роль: менеджер");
+    expect(screen.queryByRole("link", { name: "Команда" })).toBeNull();
     expect(screen.queryByRole("link", { name: /Заявки гостей/ })).toBeNull();
   });
 });
@@ -424,17 +487,22 @@ describe("исправления ревью", () => {
         ]),
       onboard,
     });
-    fireEvent.click(await screen.findByLabelText("Готель / садиба"));
+    expect(screen.getByRole("heading", { level: 1, name: "Додайте свій заклад" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Знайти в гіді" }).getAttribute("href")).toBe("#/search");
+    fireEvent.click(await screen.findByRole("radio", { name: /Готель . садиба/ }));
     fireEvent.change(screen.getByLabelText("Назва закладу"), { target: { value: "Смерека" } });
     const create = () =>
       act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "Створити заклад" }));
+        fireEvent.click(screen.getByRole("button", { name: "Створити і продовжити" }));
       });
     await create();
     await create();
     await create();
     expect(keys[1]).not.toBe(keys[0]); // 422 сохранён сервером — новый ключ
     expect(keys[2]).toBe(keys[1]); // сеть — исход неизвестен, тот же ключ
+    // Только тип и название; организация называется как заведение.
+    expect(onboard.mock.calls[0]![0]).toMatchObject({ name: { uk: "Смерека" }, organizationName: "Смерека" });
+    expect(screen.queryByLabelText(/організації/)).toBeNull();
     expect(keepsIdempotencyKey(new ConflictError(null, "IDEMPOTENCY_IN_PROGRESS"))).toBe(true);
     expect(keepsIdempotencyKey(new ApiCallError(503, null))).toBe(true);
     expect(keepsIdempotencyKey(new ApiCallError(400, null))).toBe(false);
@@ -633,7 +701,7 @@ describe("исправления ревью", () => {
       me: () => Promise.resolve({ organizations: [org({ role: "ORG_STAFF", abilities: abilities(false) })] }),
     });
     expect(await screen.findByTestId("partner-org")).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Створити ще одну організацію" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Додати ще заклад" })).toBeNull();
   });
 
   it("часовой пояс: запасной Europe/Kiev для старых ICU; дни перехода на летнее/зимнее время", () => {
