@@ -51,7 +51,7 @@ describe("главная", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Гід туриста" })).toBeDefined();
     expect(screen.getByTestId("tg-user").textContent).toBe("Вітаємо, Олена!");
     expect(screen.getByTestId("role").textContent).toBe("Режим: гість");
-    expect(screen.queryByRole("link", { name: "Кабінет партнера" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Мій заклад" })).toBeNull();
     expect(await screen.findByText("Сервер працює")).toBeDefined();
   });
 
@@ -89,18 +89,17 @@ describe("роутинг и ролевой режим", () => {
     expect(webApp.BackButton.hide).toHaveBeenCalledTimes(1);
   });
 
-  it("партнёр: ссылка в кабинет и экран кабинета", async () => {
+  it("партнёр: на главной нет дубля входа, экран кабинета открывается по пути", async () => {
     render(<App api={apiWith(200)} role="partner" />);
     expect(screen.getByTestId("role").textContent).toBe("Режим: партнер");
-    const link = await screen.findByRole("link", { name: "Кабінет партнера" });
+    expect(screen.queryByRole("link", { name: "Мій заклад" })).toBeNull();
     await act(async () => {
-      link.click();
       window.location.hash = "#/partner"; // jsdom не переходит по href сам
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeDefined();
     // Без сессии Telegram кабинет не открывается (данные — /partner/* с сессией).
-    expect(screen.getByText("Кабінет партнера відкривається в Telegram.")).toBeDefined();
+    expect(screen.getByText("Цей розділ відкривається в Telegram.")).toBeDefined();
   });
 
   it("партнёр: модуль кабинета выключен флагом — пункта нет", async () => {
@@ -109,7 +108,7 @@ describe("роутинг и ролевой режим", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(screen.queryByRole("link", { name: "Кабінет партнера" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Мій заклад" })).toBeNull();
   });
 
   it("партнёр: модуль кабинета выключен флагом — прямой путь /partner ведёт на «не найдено»", async () => {
@@ -120,7 +119,7 @@ describe("роутинг и ролевой режим", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByRole("heading", { level: 1, name: "Сторінку не знайдено" })).toBeDefined();
-    expect(screen.queryByText("Кабінет партнера відкривається в Telegram.")).toBeNull();
+    expect(screen.queryByText("Цей розділ відкривається в Telegram.")).toBeNull();
   });
 
   it("гость в кабинете партнёра — отказ; «Назад» ведёт на главную без новой записи истории", async () => {

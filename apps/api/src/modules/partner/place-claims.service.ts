@@ -53,7 +53,7 @@ export const PLACE_CLAIM_AUDIT = {
   approve: "place_claim.approve",
   reject: "place_claim.reject",
   autoReject: "place_claim.auto_reject",
-  /** На месте (entity place): место «трогали» — импорт не перезаписывает его поля (places-import/writer.ts). */
+  /** На месте (entity place): привязка к организации; импорт защищает место по organization_id (places-import/writer.ts). */
   placeAssign: "place.claim_assign",
 } as const;
 export const NOTIFICATION_TEMPLATE_CLAIM_OPENED = "place_claim.opened";

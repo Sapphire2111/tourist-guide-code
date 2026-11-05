@@ -612,8 +612,12 @@ export class CatalogService {
       await this.assertPublishable({ ...before, ...applied(before, input) }, moved ? "move" : "edit");
     }
     const after = (await guarded(() => this.repo.updatePlace(id, patch))) ?? notFound();
-    const tagIds = input.tagIds ? [...new Set(input.tagIds)].sort() : tagsBefore;
-    if (input.tagIds) await this.repo.replacePlaceTags(id, tagIds);
+    // uuid из БД — в нижнем регистре: сравнение и разница — по нему же.
+    const tagIds = input.tagIds ? [...new Set(input.tagIds.map((t) => t.toLowerCase()))].sort() : tagsBefore;
+    // Админка присылает теги всегда: тот же набор — строки не трогаем, иначе — по разнице (источник оставшихся тегов
+    // import/reviews сохраняется, «за відгуками Google» не пропадает).
+    if (input.tagIds && tagIds.join() !== tagsBefore.join())
+      await this.repo.syncPlaceTags(id, tagsBefore, tagIds);
     const extraCategoryIds = extraWanted ? [...new Set(extraWanted)].sort() : extrasBefore;
     // Набор не изменился — строки не трогаем (иначе import молча стал бы manual).
     const extrasChanged = !!extraWanted && extraCategoryIds.join() !== extrasBefore.join();

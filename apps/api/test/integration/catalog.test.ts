@@ -305,6 +305,32 @@ describe.skipIf(!dockerAvailable)(`Каталог (блок 3, миграция 
       )
     ).rows[0].id as string;
 
+  it("теги в правке места: тот же набор — строки не трогаются; изменение — по разнице, источник оставшихся сохраняется (0029)", async () => {
+    const place = placeId("spa-ranok");
+    const tag = (code: string) => seedUuid(`catalog:a:tag:${code}`);
+    await sql(`DELETE FROM place_tags WHERE place_id = $1`, [place]);
+    await sql(
+      `INSERT INTO place_tags (region_id, place_id, tag_id, source) VALUES ($1, $2, $3, 'reviews'), ($1, $2, $4, 'import')`,
+      [base.regions.a, place, tag("pool"), tag("kids")],
+    );
+    const rows = async () =>
+      (
+        await sql(
+          `SELECT t.code, pt.source FROM place_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.place_id = $1 ORDER BY t.code`,
+          [place],
+        )
+      ).rows.map((r) => `${r.code}:${r.source}`);
+    // Админка присылает теги всегда — тот же набор (в другом порядке): ничего не меняется.
+    const r1 = await inRegionA(() =>
+      svc().updatePlace(actor, place, { phone: "+380501112233", tagIds: [tag("pool"), tag("kids")] }),
+    );
+    expect(r1.tagIds).toEqual([tag("kids"), tag("pool")].sort());
+    expect(await rows()).toEqual(["kids:import", "pool:reviews"]);
+    // Сняли «З дітьми», добавили Wi-Fi: «Басейн» остаётся по отзывам, Wi-Fi — manual.
+    await inRegionA(() => svc().updatePlace(actor, place, { tagIds: [tag("pool"), tag("wifi")] }));
+    expect(await rows()).toEqual(["pool:reviews", "wifi:manual"]);
+  });
+
   it("курсор: страницы без пересечений и пропусков, новые сверху; последняя — без следующей", async () => {
     const all = await inRegionA(() => svc().listPlaces({ limit: 100 }));
     const seen: string[] = [];

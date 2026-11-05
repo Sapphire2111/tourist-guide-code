@@ -2,13 +2,13 @@
 // приглашения (ссылка t.me/<бот>?startapp=inv_<токен> показывается один раз, с копированием) и их отзыв.
 import { useId, useState } from "react";
 import type { MessageKey } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Stack, useT } from "@tg/ui";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { useErrorText } from "../host/errors.js";
 import { formatDateTime } from "../host/format.js";
 import { useKeptAsync, usePartner, usePartnerOrgs } from "./context.js";
 import type { StaffInviteCreated, StaffInviteRole } from "./partner-api.js";
-import { Live, roleKey, type Message } from "./parts.js";
+import { EmptyState, Live, PartnerHeader, roleKey, type Message } from "./parts.js";
 
 const INVITE_ROLES: readonly StaffInviteRole[] = ["ORG_MANAGER", "ORG_STAFF"];
 
@@ -90,8 +90,7 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
   const invite = () => run(async () => setCreated(await api.invite(orgId, role)), null);
   return (
     <Stack>
-      <h1>{t("miniapp.partner.staff.title")}</h1>
-      <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
+      <PartnerHeader title={t("miniapp.partner.staff.title")} />
       {!allowed ? (
         <p role="alert">{t("miniapp.partner.staff.forbidden")}</p>
       ) : (
@@ -175,7 +174,13 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                   })}
                 </ul>
                 <h2>{t("miniapp.partner.staff.invites")}</h2>
-                {!invites.length && <p>{t("miniapp.partner.staff.invitesEmpty")}</p>}
+                {!invites.length && (
+                  <EmptyState
+                    text={t("miniapp.partner.staff.invitesEmpty")}
+                    icon="✉️"
+                    testId="staff-invites-empty"
+                  />
+                )}
                 <ul style={listStyle} data-testid="staff-invites">
                   {invites.map((i) => (
                     <li key={i.id} style={card} data-testid="staff-invite">
@@ -193,16 +198,21 @@ export function PartnerStaff({ orgId }: { orgId: string }) {
                           {t("miniapp.partner.staff.acceptedBy", { name: i.acceptedByName })}
                         </small>
                       )}
-                      {i.state === "active" && (
-                        <Button
-                          disabled={busy}
-                          onClick={() =>
-                            void run(() => api.revokeInvite(orgId, i.id), "miniapp.partner.staff.revoked")
-                          }
-                        >
-                          {t("miniapp.partner.staff.revoke")}
-                        </Button>
-                      )}
+                      {i.state === "active" &&
+                        (confirm === `invite:${i.id}` ? (
+                          <Button
+                            disabled={busy}
+                            onClick={() =>
+                              void run(() => api.revokeInvite(orgId, i.id), "miniapp.partner.staff.revoked")
+                            }
+                          >
+                            {t("miniapp.partner.staff.revokeConfirm")}
+                          </Button>
+                        ) : (
+                          <Button disabled={busy} onClick={() => setConfirm(`invite:${i.id}`)}>
+                            {t("miniapp.partner.staff.revoke")}
+                          </Button>
+                        ))}
                     </li>
                   ))}
                 </ul>

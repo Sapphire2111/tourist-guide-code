@@ -1,13 +1,13 @@
 // P07 акции заведения (Offer): список, создание, правка, архив (вместо удаления). Отзывы — блок 10, здесь нет.
 import { useId, useState } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
+import { Button, Stack, useT } from "@tg/ui";
 import { useBackStep } from "../screen-state.js";
 import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { useErrorText } from "../host/errors.js";
 import { orgOfPlace, useKeptAsync, usePartnerOrgs, usePartner } from "./context.js";
 import type { Offer, OfferInput } from "./partner-api.js";
-import { Live, type Message } from "./parts.js";
+import { EmptyState, Live, PartnerHeader, type Message } from "./parts.js";
 
 type Draft = { title: string; description: string; startsAt: string; endsAt: string };
 const EMPTY: Draft = { title: "", description: "", startsAt: "", endsAt: "" };
@@ -225,11 +225,10 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
   const date = (iso: string) => new Date(iso).toLocaleDateString(locale, { timeZone: OFFER_ZONE });
   return (
     <Stack>
-      <h1>{t("miniapp.partner.offers.title")}</h1>
+      <PartnerHeader title={t("miniapp.partner.offers.title")} />
       {OFFER_ZONE === undefined && (
         <p data-testid="offers-device-tz">{t("miniapp.partner.offers.deviceTz")}</p>
       )}
-      <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
       {forbidden ? (
         <p role="alert">{t("miniapp.partner.offers.forbidden")}</p>
       ) : (
@@ -266,7 +265,7 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
                           </small>
                         )}
                         {o.status === "active" && (
-                          <span style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                          <span className="partner-row" style={{ marginTop: 8 }}>
                             <Button disabled={busy || confirm === o.id} onClick={() => setEditing(o)}>
                               {t("miniapp.partner.offers.editAction", { title })}
                             </Button>
@@ -291,7 +290,7 @@ export function PartnerOffers({ placeId }: { placeId: string }) {
                   })}
                 </ul>
               ) : (
-                <p>{t("miniapp.partner.offers.empty")}</p>
+                <EmptyState text={t("miniapp.partner.offers.empty")} icon="🏷️" testId="offers-empty" />
               )
             }
           </AsyncView>

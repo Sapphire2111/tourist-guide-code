@@ -277,6 +277,23 @@ describe("картка: устойчивость и описание", () => {
     expect(screen.getByTestId("place-about")).toBeDefined();
   });
 
+  it("удобства по отзывам Google — отдельные чипы с пометкой «за відгуками Google»; без них пометки нет", async () => {
+    await renderCard({
+      ...base,
+      tags: [{ uk: "З дітьми" }],
+      reviewTags: [{ uk: "Басейн" }, { uk: "Чан / джакузі" }],
+    });
+    const box = screen.getByTestId("place-review-tags");
+    expect(box.textContent).toContain("Басейн");
+    expect(box.textContent).toContain("Чан / джакузі");
+    expect(box.textContent).toContain("за відгуками Google");
+    expect(box.textContent).not.toContain("З дітьми");
+    cleanup();
+    await renderCard({ ...base, tags: [{ uk: "З дітьми" }] });
+    expect(screen.queryByTestId("place-review-tags")).toBeNull();
+    expect(screen.getByText("З дітьми")).toBeDefined();
+  });
+
   it("атрибуция Google — и при одном лишь типе места от Google", async () => {
     await renderCard({ ...base, typeLabel: "Ресторан" });
     expect(screen.getByTestId("place-google-attribution")).toBeDefined();

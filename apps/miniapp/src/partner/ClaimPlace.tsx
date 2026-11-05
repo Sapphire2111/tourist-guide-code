@@ -6,14 +6,14 @@ import { pickLocalized } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { normalizePhone } from "../bookings/format.js";
 import { useAsync, useGuide } from "../guide/context.js";
-import { AsyncView, card } from "../guide/parts.js";
+import { AsyncView } from "../guide/parts.js";
 import { NotFoundError, type PlaceDetail } from "../guide/types.js";
 import { useErrorText } from "../host/errors.js";
 import type { TelegramWebApp } from "../telegram.js";
 import { usePartner, usePartnerOrgs } from "./context.js";
 import { keepsIdempotencyKey, type PlaceClaim, type PlaceClaimRole } from "./partner-api.js";
 import { ClaimStatus } from "./ClaimsList.js";
-import { Live, newKey, type Message } from "./parts.js";
+import { Live, newKey, PartnerHeader, type Message } from "./parts.js";
 
 /** Bot API 6.9+: запрос номера пользователя; номер — в responseUnsafe.contact. */
 type ContactResponse = { responseUnsafe?: { contact?: { phone_number?: string } } };
@@ -78,8 +78,12 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
   if (pending)
     return (
       <Stack>
-        <h1>{t("miniapp.claim.title")}</h1>
-        <section style={card} data-testid="claim-pending">
+        <PartnerHeader
+          title={t("miniapp.claim.title")}
+          backTo={`/place/${place.id}`}
+          backLabel={`← ${placeName}`}
+        />
+        <section className="partner-status" data-testid="claim-pending">
           <h2 style={{ margin: 0 }}>{placeName}</h2>
           <ClaimStatus claim={pending} />
           <p role="status">{t(sent ? "miniapp.claim.sent" : "miniapp.claim.pendingExists")}</p>
@@ -92,7 +96,11 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
   if (place.claimable === false)
     return (
       <Stack>
-        <h1>{t("miniapp.claim.title")}</h1>
+        <PartnerHeader
+          title={t("miniapp.claim.title")}
+          backTo={`/place/${place.id}`}
+          backLabel={`← ${placeName}`}
+        />
         <p role="alert">{t("miniapp.claim.claimed")}</p>
       </Stack>
     );
@@ -146,7 +154,11 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
 
   return (
     <Stack>
-      <h1>{t("miniapp.claim.title")}</h1>
+      <PartnerHeader
+        title={t("miniapp.claim.title")}
+        backTo={`/place/${place.id}`}
+        backLabel={`← ${placeName}`}
+      />
       <p>{t("miniapp.claim.intro", { place: placeName })}</p>
       <form
         noValidate
@@ -171,7 +183,7 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
               </label>
             ))}
           </fieldset>
-          <label htmlFor={ids.phone}>
+          <label htmlFor={ids.phone} className="partner-field">
             {t("miniapp.claim.phone")}
             <input
               id={ids.phone}
@@ -188,7 +200,7 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
               }}
             />
           </label>
-          <p id={ids.phoneHint} className="kosiv-muted" style={{ margin: 0 }}>
+          <p id={ids.phoneHint} className="partner-field-hint" style={{ margin: 0 }}>
             {t("miniapp.claim.privacy")}
           </p>
           {typeof tg?.requestContact === "function" && (
@@ -225,7 +237,7 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
           ) : null}
           {org === NEW_ORG && (
             <>
-              <label htmlFor={ids.org}>
+              <label htmlFor={ids.org} className="partner-field">
                 {t("miniapp.claim.orgName")}
                 <input
                   id={ids.org}
@@ -235,12 +247,12 @@ function ClaimForm({ place, claims }: { place: PlaceDetail; claims: PlaceClaim[]
                   onChange={(e) => setOrgName(e.target.value)}
                 />
               </label>
-              <p id={ids.orgHint} className="kosiv-muted" style={{ margin: 0 }}>
+              <p id={ids.orgHint} className="partner-field-hint" style={{ margin: 0 }}>
                 {t("miniapp.claim.orgNameHint")}
               </p>
             </>
           )}
-          <label htmlFor={ids.comment}>
+          <label htmlFor={ids.comment} className="partner-field">
             {t("miniapp.claim.comment")}
             <textarea
               id={ids.comment}

@@ -1,4 +1,4 @@
-// Блок 6: «Стати партнером» → редактор (поля, график, фото) → «Надіслати на модерацію»; приглашение сотрудника
+// Блок 6: «Стати партнером» → редактор (поля, график, фото) → «Надіслати на перевірку»; приглашение сотрудника
 // по start_param inv_<токен> → «Прийняти» → кабинет. api не поднят — support/partner-mock.ts.
 import { expectNoSeriousA11yViolations } from "../../support/a11y.js";
 import { apiMockState } from "../../support/api-mock.js";
@@ -37,13 +37,13 @@ test("онбординг → редактор → отправка на моде
 
   // P06: черновик, незаполненные поля шаблона.
   await expect(page.getByRole("heading", { level: 1, name: "Садиба «Смерека»" })).toBeVisible();
-  await expect(page.getByTestId("place-status")).toHaveText("Чернетка");
+  await expect(page.getByTestId("place-status")).toHaveText("Не опубліковано");
   // Форма создания заменена: «Назад» с черновика не вернёт на неё (второе заведение).
   expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
   await expect(page.getByTestId("missing-fields")).toHaveText(
-    "Для модерації заповніть: Адреса, Телефон, Графік роботи, Фото",
+    "Щоб надіслати на перевірку, додайте: Адреса, Телефон, Графік роботи, Фото.",
   );
-  await expect(page.getByRole("button", { name: "Надіслати на модерацію" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Надіслати на перевірку" })).toBeDisabled();
   await expectNoSeriousA11yViolations(page);
 
   await page.getByLabel("Адреса").fill("Косів, вул. Ринкова, 1");
@@ -53,12 +53,12 @@ test("онбординг → редактор → отправка на моде
   await page.getByRole("button", { name: "Зберегти графік" }).click();
   await expect(page.getByTestId("schedule-message")).toHaveText("Графік збережено.");
   await expect(page.getByTestId("missing-fields")).toHaveText(
-    "Для модерації заповніть: Адреса, Телефон, Фото",
+    "Щоб надіслати на перевірку, додайте: Адреса, Телефон, Фото.",
   );
   await expect(page.getByLabel("Адреса")).toHaveValue("Косів, вул. Ринкова, 1");
   await expect(page.getByLabel("Телефон")).toHaveValue("+380501112233");
   await page.getByRole("button", { name: "Зберегти", exact: true }).click();
-  await expect(page.getByTestId("missing-fields")).toHaveText("Для модерації заповніть: Фото");
+  await expect(page.getByTestId("missing-fields")).toHaveText("Щоб надіслати на перевірку, додайте: Фото.");
   await expect(page.getByTestId("schedule-rows").getByRole("listitem")).toHaveCount(1);
   await expect(page.getByTestId("schedule-message")).toHaveText("Графік збережено.");
 
@@ -74,18 +74,25 @@ test("онбординг → редактор → отправка на моде
   await page
     .getByLabel("Коментар для модератора (як підтвердити право керувати закладом)")
     .fill("Телефонуйте");
-  await page.getByRole("button", { name: "Надіслати на модерацію" }).click();
-  await expect(page.getByTestId("place-status")).toHaveText("На модерації");
+  await page.getByRole("button", { name: "Надіслати на перевірку" }).click();
+  await expect(page.getByTestId("place-status")).toHaveText("На перевірці");
   await expect(page.getByTestId("editor-readonly")).toBeVisible();
   expect(state.partner.submitNote).toBe("Телефонуйте");
   await expectNoSeriousA11yViolations(page);
 
   // P01: статус в кабинете, переключатель режима.
-  await page.getByRole("link", { name: "До кабінету" }).first().click();
-  await expect(page.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeVisible();
-  await expect(page.getByTestId("partner-place").getByTestId("place-status")).toHaveText("На модерації");
+  await page.getByRole("link", { name: "Мій заклад" }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
+  await expect(page.getByTestId("partner-place").getByTestId("place-status")).toHaveText("На перевірці");
   await expect(page.getByRole("link", { name: "Співробітники" })).toBeVisible();
   await expectNoSeriousA11yViolations(page);
+
+  // Профиль → карточка «Мій заклад» (название и статус) → кабинет.
+  await page.goto("/#/profile");
+  const cabinetEntry = page.getByTestId("partner-entry");
+  await expect(cabinetEntry.getByTestId("partner-entry-status")).toHaveText("На перевірці");
+  await cabinetEntry.getByRole("link", { name: "Мій заклад" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
 });
 
 test.describe("приглашение сотрудника", () => {
@@ -104,7 +111,7 @@ test.describe("приглашение сотрудника", () => {
     await expectNoSeriousA11yViolations(page);
     await page.getByRole("button", { name: "Прийняти" }).click();
 
-    await expect(page.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
     await expect(page.getByTestId("partner-org")).toContainText("Ваша роль: працівник");
     // Працівник: без редактора и сотрудников.
     await expect(page.getByRole("link", { name: "Редагувати заклад" })).toHaveCount(0);

@@ -4,7 +4,7 @@ import type { MessageKey } from "@tg/i18n";
 import { pickLocalized } from "@tg/i18n";
 import { Stack, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
-import { Badge, card, listStyle } from "../guide/parts.js";
+import { Badge, listStyle } from "../guide/parts.js";
 import { usePartner } from "./context.js";
 import type { PlaceClaim, PlaceClaimStatus } from "./partner-api.js";
 
@@ -21,7 +21,7 @@ export function ClaimStatus({ claim }: { claim: PlaceClaim }) {
         </Badge>
       </span>
       {claim.decisionComment && (
-        <p data-testid="claim-comment" style={{ margin: 0, whiteSpace: "pre-line" }}>
+        <p data-testid="claim-comment" className="partner-status-quote">
           {t("miniapp.claim.moderatorComment", { comment: claim.decisionComment })}
         </p>
       )}
@@ -53,7 +53,7 @@ export function MyClaims() {
         </h2>
         <ul style={listStyle}>
           {state.data.map((c) => (
-            <li key={c.id} style={card} data-testid="my-claim">
+            <li key={c.id} className="partner-status" data-testid="my-claim">
               <strong>{pickLocalized(c.placeName, locale)}</strong>
               <ClaimStatus claim={c} />
             </li>

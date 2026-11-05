@@ -1,0 +1,176 @@
+/* Кабинет партнёра: поля, плитки, статус, прогресс, липкая панель действий. Цвета — токены --app-* сезонов
+   (Day/Night переключаются сами). Тап-цели не меньше 44 px. */
+
+.partner-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.partner-header h1 {
+  margin: 0;
+}
+.partner-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  align-self: flex-start;
+  font-weight: 600;
+}
+
+/* Поле: подпись над полем, фокус-кольцо. */
+.partner-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+.partner-field > :is(input, select, textarea) {
+  font-weight: 400;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-sizing: border-box;
+  font: inherit;
+}
+.partner-field > :is(input, select, textarea):focus-visible {
+  outline: 2.5px solid var(--app-accent-ink);
+  outline-offset: 2px;
+}
+.partner-field-hint {
+  font-weight: 400;
+  font-size: 0.875rem;
+  color: var(--app-muted);
+}
+
+/* Плитки разделов: две колонки, как карточки главной. */
+.partner-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.partner-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  background-color: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+  color: var(--app-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.partner-tile small {
+  font-weight: 400;
+  color: var(--app-muted);
+}
+.partner-tile:focus-visible {
+  outline: 2.5px solid var(--app-accent-ink);
+  outline-offset: 2px;
+}
+
+/* Карточка статуса заведения. */
+.partner-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background-color: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+}
+.partner-status p {
+  margin: 0;
+}
+.partner-status-quote {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 4px solid var(--app-accent);
+  background: var(--app-surface-2);
+  border-radius: 0 12px 12px 0;
+  white-space: pre-line;
+}
+.partner-status-quote figcaption {
+  display: block;
+  font-style: normal;
+  font-size: 0.875rem;
+  color: var(--app-muted);
+}
+
+/* Липкая панель главных действий внизу экрана. */
+.partner-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--app-bg);
+  border-top: 1px solid var(--app-border);
+}
+.partner-sticky-actions > * {
+  flex: 1 1 140px;
+  min-height: 44px;
+}
+
+/* Прогресс заполнения. */
+.partner-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.partner-progress-bar {
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+  overflow: hidden;
+}
+.partner-progress-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--app-accent);
+  border-radius: 9999px;
+}
+.partner-next {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.partner-next a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* Общие строки и списки подэкранов. */
+.partner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.partner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

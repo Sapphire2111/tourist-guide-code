@@ -38,6 +38,7 @@ function fakeService() {
     categories: vi.fn(() => Promise.resolve({ items: [] })),
     localities: vi.fn(() => Promise.resolve({ items: [] })),
     search: vi.fn(() => Promise.resolve({ items: [], nextOffset: null, radiusMeters: null })),
+    tagCounts: vi.fn(() => Promise.resolve({ items: [] })),
     place: vi.fn((_r: string, id: string) => Promise.resolve(id === PLACE ? { id } : undefined)),
     favorites: vi.fn(() => Promise.resolve({ items: [] })),
     addFavorite: vi.fn((_r: string, _u: string, placeId: string) =>
@@ -127,6 +128,21 @@ describe("GET /categories, /emergency-contacts", () => {
 });
 
 describe("GET /places/search", () => {
+  it("tags (удобства «Де жити», И): через запятую и повтором; пусто — без фильтра; не код тега или больше 10 — 400", async () => {
+    const { http, service } = await start();
+    await http().get(`/places/search?regionId=${REGION}&tags=pool,hot-tub&tags=sauna`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ tagCodes: ["pool", "hot-tub", "sauna"] }),
+    );
+    await http().get(`/places/search?regionId=${REGION}`).expect(200);
+    expect(service.search).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ tagCodes: undefined }));
+    await http().get(`/places/search?regionId=${REGION}&tags=Pool`).expect(400);
+    await http().get(`/places/search?regionId=${REGION}&tags=pool%27--`).expect(400);
+    const many = Array.from({ length: 11 }, (_, i) => `t${i}`).join(",");
+    await http().get(`/places/search?regionId=${REGION}&tags=${many}`).expect(400);
+  });
+
   it("без точки — весь регион: радиус не применяется, лимит и сдвиг по умолчанию, q обрезан", async () => {
     const { http, service } = await start();
     await http().get(`/places/search?regionId=${REGION}&q=%20кава%20&radius=1000`).expect(200);
@@ -365,5 +381,29 @@ describe("likeContains", () => {
   it("экранирует % _ \\ — текст ищется буквально", () => {
     expect(likeContains("кава")).toBe("%кава%");
     expect(likeContains("50%_off\\")).toBe("%50\\%\\_off\\\\%");
+  });
+});
+
+describe("GET /places/tag-counts", () => {
+  it("категория и пункты доходят до сервиса; маршрут не путается с /places/:id; regionId обязателен", async () => {
+    const { http, service } = await start();
+    const A = "0190f5c2-7d3e-7000-8000-0000000000c1";
+    await http().get(`/places/tag-counts?regionId=${REGION}&category=${PLACE}&localityIds=${A}`).expect(200);
+    expect(service.tagCounts).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ categoryId: PLACE, localityIds: [A], origin: undefined, radius: undefined }),
+    );
+    // Те же фильтры, что у списка: точка с радиусом по умолчанию 500 м (как поиск), явный радиус, текст.
+    await http().get(`/places/tag-counts?regionId=${REGION}&lat=48.4&lng=24.5&q=%20вілла%20`).expect(200);
+    expect(service.tagCounts).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ origin: { lon: 24.5, lat: 48.4 }, radius: 500, text: "вілла" }),
+    );
+    await http().get(`/places/tag-counts?regionId=${REGION}&lat=48.4&lng=24.5&radius=10000`).expect(200);
+    expect(service.tagCounts).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ radius: 10_000 }));
+    await http().get(`/places/tag-counts?regionId=${REGION}&tags=pool`).expect(400);
+    expect(service.place).not.toHaveBeenCalled();
+    await http().get(`/places/tag-counts`).expect(400);
+    await http().get(`/places/tag-counts?regionId=${REGION}&category=x`).expect(400);
   });
 });

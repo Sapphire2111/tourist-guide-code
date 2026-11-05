@@ -453,6 +453,68 @@ describe("C15 профиль", () => {
   });
 });
 
+describe("профиль: карточка «Мій заклад»", () => {
+  const PLACE_ID = "00000000-0000-4000-8000-00000000b001";
+  const orgs = (organizations: unknown[]) => ({ organizations });
+  const org = {
+    id: "00000000-0000-4000-8000-00000000a001",
+    regionId: REGION.id,
+    name: "ТОВ Смерека",
+    role: "ORG_OWNER",
+    assignmentId: "as1",
+    abilities: {},
+    places: [
+      {
+        id: PLACE_ID,
+        name: { uk: "Садиба Смерека" },
+        status: "draft",
+        templateCode: "hotel",
+        modules: [],
+        moderation: null,
+        openServiceRequests: 0,
+        activeOffers: 0,
+      },
+    ],
+  };
+  const open = async (cabinet: boolean, me: unknown) => {
+    const { api } = fakeApi({
+      "POST /auth/telegram": login(),
+      "GET /context/*": () => Response.json(hotelContext),
+      "GET /me": () => Response.json(meWith(true)),
+      "GET /feature-flags": () =>
+        Response.json({ regionId: null, items: [{ key: "module.partner_cabinet", enabled: cabinet }] }),
+      "GET /partner/me": () => Response.json(me),
+    });
+    window.location.hash = "#/profile";
+    render(<App api={api} role="guest" startup={createStartup(api, webApp())} />);
+    await screen.findByLabelText("Мова");
+    await flush();
+  };
+
+  it("партнёр: название заведения, статус и ссылка в кабинет", async () => {
+    await open(true, orgs([org]));
+    const entry = await screen.findByTestId("partner-entry");
+    expect(within(entry).getByText("Садиба Смерека")).toBeDefined();
+    expect(within(entry).getByTestId("partner-entry-status").textContent).toBe("Не опубліковано");
+    expect(within(entry).getByRole("link", { name: "Мій заклад" }).getAttribute("href")).toBe("#/partner");
+  });
+
+  it("не партнёр: нейтральный заголовок и «Стати партнером»", async () => {
+    await open(true, orgs([]));
+    const entry = await screen.findByTestId("partner-entry");
+    expect(within(entry).getByRole("heading", { name: "Для бізнесу" })).toBeDefined();
+    expect(within(entry).getByRole("link", { name: "Стати партнером" }).getAttribute("href")).toBe(
+      "#/partner/new",
+    );
+  });
+
+  it("модуль кабинета выключен — карточки нет", async () => {
+    await open(false, orgs([org]));
+    await flush();
+    expect(screen.queryByTestId("partner-entry")).toBeNull();
+  });
+});
+
 describe("утилиты", () => {
   it("start_param: initDataUnsafe, затем tgWebAppStartParam в query и hash", () => {
     expect(getStartParam(webApp(), { search: "", hash: "" })).toBe("demoHotel01");

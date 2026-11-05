@@ -33,9 +33,9 @@ test("персонал: роль и статус api (связка фронт �
 test("партнёр: кабинет и нативная BackButton", async ({ page }) => {
   await page.goto("/?role=partner");
   await expect(page.getByTestId("role")).toHaveCount(0);
-  await expect(page.getByTestId("partner-link")).toBeVisible();
-  await page.getByRole("link", { name: "Кабінет партнера" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeVisible();
+  await expect(page.getByTestId("partner-link")).toHaveCount(0);
+  await page.goto("/?role=partner#/partner");
+  await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
   expect(await telegramCalls(page)).toEqual(
     expect.arrayContaining(["BackButton.onClick", "BackButton.show"]),
   );

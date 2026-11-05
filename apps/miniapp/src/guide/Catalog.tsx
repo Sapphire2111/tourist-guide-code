@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { ICONS } from "../design/Ornament.js";
+import { AmenityFilter } from "./AmenityFilter.js";
 import { useBackStep, useScreenState } from "../screen-state.js";
 import { loadCategories } from "./categories.js";
 import { useAsync, useGuide } from "./context.js";
@@ -107,6 +108,10 @@ function CategoryPlaces({
   // «Де жити» — карта главная (все места ночёвки сразу на карте, до STAY_MAP_MAX), список вторичен.
   const mapFirst = root?.homeSection === "stay";
   const [view, setView] = useScreenState<"list" | "map">("catalog.view", mapFirst ? "map" : "list");
+  // Удобства «Де жити» (басейн, сауна…): только места со всеми отмеченными; в других разделах фильтра нет.
+  const [amenities, setAmenities] = useScreenState<string[]>("catalog.amenities", []);
+  const activeAmenities = mapFirst ? amenities : [];
+  const amenityKey = activeAmenities.join(",");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
   const byLocation = localityIds.length > 0;
   const point = gps ?? base?.point ?? null;
@@ -148,6 +153,7 @@ function CategoryPlaces({
             categoryId,
             q: q || undefined,
             ...(byLocation ? { localityIds } : {}),
+            ...(activeAmenities.length ? { tags: activeAmenities } : {}),
             ...(mapFirst
               ? {
                   max: STAY_MAP_MAX,
@@ -164,6 +170,7 @@ function CategoryPlaces({
               regionWide: false,
               partial,
               used: radiusNumber,
+              scope: { point, ...(radiusNumber ? { radius: radiusNumber } : {}) },
             };
           // Явный радиус отключает расширение до 10 км; «Усі місця» — без радиуса; по умолчанию — 3 км с расширением.
           const near =
@@ -184,17 +191,86 @@ function CategoryPlaces({
               regionWide: true,
               partial,
               used: null,
+              scope: { point: gps },
             };
-          return { list: near.list, regionWide: false, partial, used: near.radius };
+          return {
+            list: near.list,
+            regionWide: false,
+            partial,
+            used: near.radius,
+            scope: { point: gps, ...(near.radius ? { radius: near.radius } : {}) },
+          };
         })
-        .then(({ list, regionWide, partial, used }) => ({ list, regionWide, partial, used, submitId })),
+        // scope — точка и радиус, с которыми получен список: по ним же считаются счётчики удобств.
+        .then(({ list, regionWide, partial, used, scope }) => ({
+          list,
+          regionWide,
+          partial,
+          used,
+          scope: scope as { point: LatLng | null; radius?: number },
+          submitId,
+        })),
 
-    [api, categoryId, q, submitId, base?.pending, point?.lat, point?.lng, localityIds, gps, activeRadius],
+    [
+      api,
+      categoryId,
+      q,
+      submitId,
+      base?.pending,
+      point?.lat,
+      point?.lng,
+      localityIds,
+      gps,
+      activeRadius,
+      amenityKey,
+    ],
     {
       slot: "catalog.places",
-      key: JSON.stringify([categoryId, q, submitId, base?.pending, point, localityIds, gps, activeRadius]),
+      key: JSON.stringify([
+        categoryId,
+        q,
+        submitId,
+        base?.pending,
+        point,
+        localityIds,
+        gps,
+        activeRadius,
+        amenityKey,
+      ]),
     },
   );
+  // Счётчики удобств — после первого открытия листа, с теми же фильтрами, что у показанного списка (раздел, текст,
+  // локации, точка и радиус), без учёта отметок удобств; сбой — без счётчиков.
+  const [countsWanted, setCountsWanted] = useState(false);
+  const countsQuery =
+    places.status === "ready"
+      ? {
+          categoryId,
+          q: q || undefined,
+          ...(byLocation ? { localityIds } : {}),
+          ...places.data.scope,
+        }
+      : null;
+  const countsKey = countsQuery ? JSON.stringify(countsQuery) : null;
+  const [amenityCounts, setAmenityCounts] = useState<{ key: string; data: Record<string, number> } | null>(
+    null,
+  );
+  const countsFor = useRef<string | null>(null);
+  useEffect(() => {
+    // Пока список перезагружается (смена отметок), ключ пропадает и возвращается — тот же ключ не перезапрашиваем.
+    if (!countsWanted || !api.tagCounts || !countsQuery || !countsKey || countsFor.current === countsKey)
+      return;
+    countsFor.current = countsKey;
+    // Ответ хранится со своим ключом: устаревший не показывается (лист сверяет ключ), отменять не нужно.
+    api
+      .tagCounts(countsQuery)
+      .then((data) => setAmenityCounts({ key: countsKey, data }))
+      .catch(() => {
+        if (countsFor.current === countsKey) countsFor.current = null;
+      });
+    // countsQuery — по ключу (объект новый на каждом рендере).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, countsWanted, countsKey]);
   if (places.status === "ready" && places.data.used) usedRadius.current = places.data.used;
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -217,16 +293,29 @@ function CategoryPlaces({
 
   return (
     <Stack>
-      {subcategories.length > 0 && root && (
-        <SubcategorySelect
-          title={t("miniapp.catalog.subcategories")}
-          options={[root, ...subcategories].map((c) => ({
-            id: c.id,
-            label: c.id === root.id ? t("miniapp.subcategory.all") : pickLocalized(c.name, locale),
-          }))}
-          value={categoryId ?? root.id}
-          onChange={setCategoryId}
-        />
+      {((subcategories.length > 0 && root) || mapFirst) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {subcategories.length > 0 && root && (
+            <SubcategorySelect
+              title={t("miniapp.catalog.subcategories")}
+              options={[root, ...subcategories].map((c) => ({
+                id: c.id,
+                label: c.id === root.id ? t("miniapp.subcategory.all") : pickLocalized(c.name, locale),
+              }))}
+              value={categoryId ?? root.id}
+              onChange={setCategoryId}
+            />
+          )}
+          {mapFirst && (
+            <AmenityFilter
+              value={amenities}
+              onChange={setAmenities}
+              // Пока список перезагружается — прежние счётчики (строки листа не прыгают под пальцем).
+              counts={amenityCounts?.data ?? null}
+              onOpen={() => setCountsWanted(true)}
+            />
+          )}
+        </div>
       )}
       {subcategories.find((c) => c.id === categoryId)?.code === "peaks" && (
         // Подраздел «Вершини»: свой экран со сложностью, высотой и маршрутом (#/peaks).
@@ -304,12 +393,13 @@ function CategoryPlaces({
                   {t("miniapp.location.change")}
                 </Button>
               )}
-              {(q || categoryId !== rootId) && (
+              {(q || categoryId !== rootId || activeAmenities.length > 0) && (
                 <Button
                   onClick={() => {
                     setDraft("");
                     setQ("");
                     setCategoryId(rootId);
+                    setAmenities([]);
                   }}
                 >
                   {t("miniapp.catalog.reset")}
