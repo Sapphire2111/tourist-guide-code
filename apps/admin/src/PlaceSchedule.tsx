@@ -46,7 +46,7 @@ function Editor({ placeId, schedule }: { placeId: string; schedule: Schedule }) 
     <Stack gap={2}>
       <p style={{ margin: 0 }}>{t("admin.schedule.hint", { timezone: schedule.timezone })}</p>
       {DAYS.map((day) => {
-        const dayName = tDynamic(`admin.day.${day}`);
+        const dayName = tDynamic(`common.weekday.${day}`);
         const items = weekly.map((x, i) => ({ x, i })).filter(({ x }) => x.dayOfWeek === day);
         return (
           <fieldset key={day} style={{ border: "1px solid #c4c7cc", borderRadius: 6, margin: 0 }}>

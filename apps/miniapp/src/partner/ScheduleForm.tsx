@@ -115,7 +115,7 @@ export function ScheduleForm({
   const common = commonTime(rows);
   const active = activePreset(rows);
   const days = openDays(rows);
-  const dayName = (d: number) => t(`admin.day.${d}` as MessageKey);
+  const dayName = (d: number) => t(`common.weekday.${d}` as MessageKey);
   const dayShort = (d: number) => t(`miniapp.partner.schedule.dayShort.${d}` as MessageKey);
   const update = (i: number, patch: Partial<Row>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));

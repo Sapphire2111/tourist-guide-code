@@ -1,5 +1,6 @@
 // Web-админка (блок 3): вход, выбор региона (SUPERADMIN), боковое меню и экраны каталога, QR, контактов, журнала.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import "@tg/i18n/admin";
 import { DEFAULT_LOCALE, type Locale, type MessageKey } from "@tg/i18n";
 import {
   FeatureFlagsProvider,

@@ -2,7 +2,7 @@
 // (без QR — GET /context; ровно один раз за открытие) и GET /me. Токен — в памяти и sessionStorage (ADR-0009),
 // anonymousId — в localStorage.
 import type { ApiClient, ApiSchemas } from "@tg/api-client";
-import type { MessageKey } from "@tg/i18n";
+import { loadLocale, resolveLocale, SUPPORTED_LOCALES, type MessageKey } from "@tg/i18n";
 import type { TelegramWebApp } from "./telegram.js";
 import { inviteTokenOf } from "./partner/partner-api.js";
 
@@ -153,6 +153,10 @@ export function createStartup(api: ApiClient, webApp?: TelegramWebApp): () => Pr
 async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupState> {
   if (!webApp?.initData) return { status: "browser" };
   attachAuth(api);
+  // Словарь не-uk локали — параллельно со входом (по языку Telegram), чтобы не мигал uk.
+  const preload = (lang?: string | null) =>
+    loadLocale(resolveLocale(lang, SUPPORTED_LOCALES)).catch(() => undefined);
+  void preload(webApp.initDataUnsafe?.user?.language_code);
   try {
     setToken(null);
     const auth = await api.POST("/auth/telegram", {
@@ -167,6 +171,8 @@ async function run(api: ApiClient, webApp?: TelegramWebApp): Promise<StartupStat
     // Контекст и /me независимы (оба — с токеном входа) — параллельно: заставка ждёт на один запрос меньше.
     const [context, me] = await Promise.all([fetchContext(api, startParam || undefined), api.GET("/me")]);
     if (!me.data) return { status: "error", messageKey: errorKey(me.response.status) };
+    // Язык профиля может отличаться от языка Telegram; сбой загрузки — останется uk.
+    await preload(me.data.language);
     return {
       status: "ready",
       login: auth.data,

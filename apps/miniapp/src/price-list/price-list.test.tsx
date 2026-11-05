@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { createTranslator } from "@tg/i18n";
+import { createTranslator, loadLocale } from "@tg/i18n";
 import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import type { Analytics } from "../guide/analytics.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
@@ -37,7 +37,7 @@ describe("ціна", () => {
       expect(parsePrice(bad), bad).toBeNull();
   });
 
-  it("priceInput і priceText: «від», одиниця, копійки лише коли є", () => {
+  it("priceInput і priceText: «від», одиниця, копійки лише коли є", async () => {
     expect(priceInput(18000)).toBe("180");
     expect(priceInput(9905)).toBe("99,05");
     const { t } = createTranslator("uk");
@@ -46,6 +46,7 @@ describe("ціна", () => {
       "від 1 500 грн за 2 години",
     );
     expect(priceText(t, "uk", { priceMinor: 9950, priceFrom: false })).toBe("99,50 грн");
+    await loadLocale("en");
     const en = createTranslator("en");
     expect(priceText(en.t, "en", { priceMinor: 18000, priceFrom: true })).toBe("from UAH 180");
   });

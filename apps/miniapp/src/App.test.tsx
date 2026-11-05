@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import "@tg/i18n/en";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createApiClient } from "@tg/api-client";
 import { App } from "./App.js";
