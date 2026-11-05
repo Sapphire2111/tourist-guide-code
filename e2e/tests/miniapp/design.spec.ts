@@ -94,7 +94,7 @@ test("modern narrow screen retains working list", async ({ page }) => {
       chips: box(".modern-filters button"),
     };
   });
-  expect(Math.round(track.height)).toBeLessThanOrEqual(34);
+  expect(Math.round(track.height)).toBe(44);
   expect(chips.y).toBeGreaterThanOrEqual(track.y + track.height);
   // Ряд радиуса (капсула и цели 44 px) целиком над видимым чипом.
   expect(chips.y).toBeGreaterThanOrEqual(radius.y + radius.height);

@@ -1,11 +1,13 @@
 // Нижняя навигация (ТЗ §4, ярус 4): Головна | Поруч | Мій план | Обране, а при профиле — Профіль вместо Обране
 // (тогда «Обране» — плитка на главной и пункт меню). «Мій план» — только при module.host_requests.
+import { useThemeSymbol } from "../design/ThemeProvider.js";
 import { Link, useFeatureFlag, useRoute, useT } from "@tg/ui";
 
 export function BottomNav({ profile = false }: { profile?: boolean }) {
   const { t } = useT();
+  const symbol = useThemeSymbol();
   const items = [
-    { to: "/", key: "miniapp.nav.home", icon: "🔥" },
+    { to: "/", key: "miniapp.nav.home", icon: symbol },
     { to: "/nearby", key: "miniapp.modern.nearby", icon: "🧭" },
     { to: "/plan", key: "miniapp.nav.plan", icon: "✨" },
     profile

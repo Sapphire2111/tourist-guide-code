@@ -16,12 +16,12 @@
     // Хранилище недоступно — сезон по дате.
   }
   document.documentElement.setAttribute("data-season", season);
-  // Тема: «День» (по умолчанию) или «Ніч»; повреждённое значение и недоступное хранилище — «День». Как в src/design/theme.ts.
-  var theme = "day";
+  // Тема: «Ніч» (по умолчанию) или «День»; повреждённое значение и недоступное хранилище — «Ніч». Как в src/design/theme.ts.
+  var theme = "night";
   try {
-    if (window.localStorage.getItem("tg.theme") === "night") theme = "night";
+    if (window.localStorage.getItem("tg.theme") === "day") theme = "day";
   } catch (e) {
-    // Хранилище недоступно — «День».
+    // Хранилище недоступно — «Ніч».
   }
   document.documentElement.setAttribute("data-theme", theme);
   // [шапка, низ]: верх неба и низ картинки фона, как WINDOW_COLORS (theme.ts).

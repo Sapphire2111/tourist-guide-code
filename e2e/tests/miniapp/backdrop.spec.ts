@@ -155,6 +155,7 @@ test("фон не двигается при прокрутке, блоки дв�
 });
 
 test("искры: 15–25, только transform и opacity, разные траектории и задержки", async ({ page }) => {
+  await night(page); // искры — только в «Ніч»
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
   const embers = await page
@@ -207,6 +208,7 @@ test("искры не вызывают постоянной раскладки �
 });
 
 test("«уменьшить движение»: искры неподвижны", async ({ page }) => {
+  await night(page); // искры — только в «Ніч»
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
@@ -414,6 +416,7 @@ test("служебный блок: туристу нет, /health не запр�
 });
 
 test("искры на паузе под листом на весь экран и в скрытой вкладке", async ({ page }) => {
+  await night(page); // искры — только в «Ніч»
   await page.goto("/");
   await expect(page.getByTestId("home-sections")).toBeVisible();
   const states = () =>
@@ -537,6 +540,7 @@ test("главная не запрашивает места для ленты (/
 test("огонёк меню живой: анимация есть, раскладку не двигает; при reduced-motion — без анимации", async ({
   page,
 }) => {
+  await night(page); // огонь — символ «Ніч»
   await page.goto("/");
   const flame = page.getByTestId("menu-btn").locator(".fire-flame");
   await expect(flame).toBeVisible();

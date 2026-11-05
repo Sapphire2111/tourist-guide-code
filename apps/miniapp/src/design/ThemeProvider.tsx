@@ -5,7 +5,7 @@ import { isTheme, readTheme, saveTheme, type Theme } from "./theme.js";
 
 type ThemeState = { theme: Theme; setTheme: (t: Theme) => void };
 
-const ThemeContext = createContext<ThemeState>({ theme: "day", setTheme: () => undefined });
+const ThemeContext = createContext<ThemeState>({ theme: "night", setTheme: () => undefined });
 
 function initialTheme(): Theme {
   const attr = document.documentElement.getAttribute("data-theme");
@@ -23,6 +23,13 @@ export function ThemeProvider({ children }: { children?: ReactNode }) {
   }, []);
   const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+/** Символ темы: «Ніч» — огонь, «День» — горы (единый для логотипа, ассистента и вкладки «Головна»). */
+export const THEME_SYMBOL: Record<Theme, string> = { night: "🔥", day: "⛰️" };
+
+export function useThemeSymbol(): string {
+  return THEME_SYMBOL[useTheme().theme];
 }
 
 export function useTheme(): ThemeState {

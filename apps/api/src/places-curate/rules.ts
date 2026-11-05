@@ -115,14 +115,27 @@ export type Decision =
   | { kind: "rename"; id: string; name: string; note: string }
   | { kind: "describe"; id: string; description: string; note: string }
   | { kind: "locality"; id: string; locality: string; note: string }
+  | { kind: "restore"; id: string; note: string }
+  | { kind: "address"; id: string; address: string; note: string }
   | { kind: "skip"; id: string; note: string };
 
-export const DECISION_KINDS = ["move", "archive", "merge", "rename", "describe", "locality", "skip"] as const;
+export const DECISION_KINDS = [
+  "move",
+  "archive",
+  "merge",
+  "rename",
+  "describe",
+  "locality",
+  "restore",
+  "address",
+  "skip",
+] as const;
 
 /**
  * Файл решений: `id;action;value;note`. action: move (value — `категория[+доп+доп]`), archive, merge (value — id
- * главной записи), rename / describe (value — текст uk), locality (value — код пункта), skip (в список «не
- * применено», value не нужен). У одного id может быть несколько решений; решения по id заменяют автоматический
+ * главной записи), rename / describe (value — текст uk), locality (value — код пункта), restore (архив → снова
+ * published: отмена ошибочного архива/слияния), address (value — адрес uk), skip (в список «не применено», value
+ * не нужен). У одного id может быть несколько решений; решения по id заменяют автоматический
  * разбор всех его строк разметки.
  */
 export function parseDecisions(text: string): Decision[] {
@@ -140,8 +153,12 @@ export function parseDecisions(text: string): Decision[] {
         return { kind: "move", id, category, extras, note };
       }
       case "archive":
+      case "restore":
       case "skip":
         return { kind: action, id, note };
+      case "address":
+        if (!value) throw new CurateInputError(`Решения, строка ${line}: address без текста`);
+        return { kind: "address", id, address: value, note };
       case "merge":
         if (!UUID.test(value)) throw new CurateInputError(`Решения, строка ${line}: merge — value не uuid`);
         if (value.toLowerCase() === id)

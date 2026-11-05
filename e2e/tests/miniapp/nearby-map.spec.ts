@@ -344,7 +344,7 @@ test.describe("ползунок радиуса", () => {
         await expect(slider).toHaveAttribute("aria-valuetext", "1 км");
         await expect(page.getByTestId("radius-slider-value")).toHaveText("1 км");
         const capsule = (await page.locator(".kosiv-radius-overlay").boundingBox())!;
-        expect(Math.round(capsule.height)).toBeLessThanOrEqual(34);
+        expect(Math.round(capsule.height)).toBe(44);
         const input = (await slider.boundingBox())!;
         expect(Math.round(input.height)).toBeGreaterThanOrEqual(44);
         const chip = await page.evaluate(() => {
@@ -352,10 +352,10 @@ test.describe("ползунок радиуса", () => {
           return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c, "::after").top);
         });
         expect(input.y + input.height).toBeLessThanOrEqual(chip);
-        // Панель над картой: не больше 92 px от верха окна карты.
+        // Панель над картой: отступ 8 + капсула 44 + 2 + ряд чипов 44 — не больше 98 px от верха окна карты.
         const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
         const map = (await page.getByTestId("places-map").boundingBox())!;
-        expect(panel.y + panel.height - map.y).toBeLessThanOrEqual(92);
+        expect(panel.y + panel.height - map.y).toBeLessThanOrEqual(98);
         await expectNoSeriousA11yViolations(page);
       });
     }

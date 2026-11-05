@@ -83,3 +83,25 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* Локация ещё не выбрана туристом: заметная пилюля с акцентной обводкой, одна пульсация. */
+.loc-chip[data-unpicked="true"] {
+  min-height: 44px;
+  border-color: var(--app-accent);
+}
+.loc-chip[data-unpicked="true"][data-pulse="true"] {
+  animation: loc-chip-pulse 1.4s ease-out 0.4s 1;
+}
+@keyframes loc-chip-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loc-chip[data-unpicked="true"][data-pulse="true"] {
+    animation: none;
+  }
+}

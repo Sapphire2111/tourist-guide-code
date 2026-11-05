@@ -26,6 +26,7 @@
     "places:enrich": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-enrich.js",
     "places:curate": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-curate.js",
     "places:amenities": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-amenities.js",
+    "places:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/places-check.js",
     "scenarios:generate": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/cli/scenarios-generate.js"
   },
   "dependencies": {

@@ -166,7 +166,7 @@ vi.mock("./google-maps.js", async (orig) => {
           icons?: { icon: { strokeColor?: string } }[];
         }) {
           super(o);
-          if (o.path) {
+          if (o.path && o.icons) {
             calls.paths.push(o.path);
             calls.lines.push(this);
           }
@@ -717,13 +717,16 @@ describe("PlacesMap (Google Maps)", () => {
   });
 
   it("режим сцены задаёт проп floating", async () => {
+    // Цвет маршрута зависит от темы: без провайдера по умолчанию «Ніч», здесь проверяется «День».
+    document.documentElement.setAttribute("data-theme", "day");
+    const dayWrap = (node: React.ReactNode) => <ThemeProvider>{wrap(node)}</ThemeProvider>;
     const center = { lat: 48.45, lng: 24.56 };
-    const view = render(wrap(<PlacesMap places={[]} center={center} radius={500} />));
+    const view = render(dayWrap(<PlacesMap places={[]} center={center} radius={500} />));
     await flush();
     expect(calls.routeColors.at(-1)).toBe("#1d4ed8");
-    view.rerender(wrap(<PlacesMap places={[]} center={center} radius={500} floating />));
+    view.rerender(dayWrap(<PlacesMap places={[]} center={center} radius={500} floating />));
     await flush();
-    expect(calls.routeColors.at(-1)).toBe("#B8430F");
+    expect(calls.routeColors.at(-1)).toBe("#c2521a");
   });
 
   it("смена высоты окна карты — новый размер карте и повторная подгонка границ", async () => {

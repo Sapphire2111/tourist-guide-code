@@ -30,7 +30,7 @@ export function useBookings(): BookingsEnv {
 
 /**
  * Ресурсы бронирования места для карточки (C06 → C07): null — модуль выключен, нет региона, ещё грузится или
- * ошибка (тогда карточка показывает «Уточнити доступність», как без модуля).
+ * ошибка (тогда карточка без бейджа доступности, как без модуля).
  */
 export function usePlaceResources(placeId: string, regionId: string | null): Resource[] | null {
   const env = useMaybeBookings();

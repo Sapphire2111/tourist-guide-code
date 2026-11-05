@@ -5,6 +5,7 @@ import type { MessageKey } from "@tg/i18n";
 import type { ReactNode } from "react";
 import { Link, useT } from "@tg/ui";
 import { SERVICES_EMOJI_WIDE } from "../design/Ornament.js";
+import { useTheme } from "../design/ThemeProvider.js";
 import { useGuide } from "./context.js";
 import type { HomeSection } from "./types.js";
 
@@ -85,13 +86,14 @@ function HomeTiles() {
 
 export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: ReactNode }) {
   const { t } = useT();
+  const { theme } = useTheme();
   const { base } = useGuide();
   return (
     <section className="modern-home" aria-labelledby="sections-title">
       <div className="modern-hero" data-testid="modern-hero">
         <div className="modern-hero-head">
           <span className="modern-hero-kicker" aria-hidden="true">
-            ✨ {t("miniapp.home.heroKicker")}
+            {theme === "day" ? `☀️ ${t("miniapp.home.heroKickerDay")}` : `✨ ${t("miniapp.home.heroKicker")}`}
           </span>
           <h2 id="sections-title">{t("miniapp.modern.title")}</h2>
         </div>
@@ -120,7 +122,7 @@ export function HomeSections({ hasVenue, hero }: { hasVenue: boolean; hero?: Rea
               🧭
             </span>
             <span className="modern-featured-kicker" aria-hidden="true">
-              {t("miniapp.home.nearKicker")}
+              ✦ {t("miniapp.home.nearKicker")}
             </span>
           </div>
           <strong className="modern-featured-title">{t("miniapp.home.nearTitle")}</strong>
