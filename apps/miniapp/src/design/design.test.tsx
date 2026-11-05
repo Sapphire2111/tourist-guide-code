@@ -774,6 +774,26 @@ describe("поиск мест /search", () => {
     expect(screen.getAllByTestId("place-item")).toHaveLength(1);
     expect(screen.queryByRole("group", { name: "Підкатегорії" })).toBeNull();
   });
+
+  it("claim (из анкеты партнёра): «Знайдіть свій заклад», место ведёт к заявке, без карты", async () => {
+    const search = vi.fn(async () => [place]);
+    render(
+      <GuideProvider value={env(search)}>
+        <LocationProvider>
+          <PlaceSearch initialQuery="чан" claim />
+        </LocationProvider>
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    expect(screen.getByRole("heading", { level: 1, name: "Знайдіть свій заклад" })).toBeDefined();
+    expect(screen.getByTestId("search-claim-hint").textContent).toContain("Оберіть свій заклад");
+    const item = screen.getByTestId("place-item");
+    expect(item.querySelector(".kosiv-place-title")?.getAttribute("href")).toBe(
+      `#/partner/claim/${place.id}`,
+    );
+    expect(screen.queryByRole("group", { name: "Карта" })).toBeNull();
+  });
 });
 
 describe("главная без сезонных тегов", () => {

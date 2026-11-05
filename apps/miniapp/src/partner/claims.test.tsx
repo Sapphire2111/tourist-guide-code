@@ -112,6 +112,9 @@ describe("карточка места: «Це мій заклад?»", () => {
     const link = screen.getByTestId("place-claim");
     expect(link.textContent).toBe("Це мій заклад?");
     expect(link.getAttribute("href")).toBe(`#/partner/claim/${PLACE}`);
+    // Заметная кнопка под действиями, а не ссылка в подвале карточки.
+    expect(link.classList.contains("kosiv-action")).toBe(true);
+    expect(link.closest("footer")).toBeNull();
   });
 
   it("нет ссылки: место уже с организацией, без сессии или модуль выключен", async () => {

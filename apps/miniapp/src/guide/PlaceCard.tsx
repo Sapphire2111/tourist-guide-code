@@ -609,6 +609,17 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           )}
         </div>
         <BookingEntry placeId={place.id} resources={resources} signedIn={signedIn} />
+        {canClaim && (
+          // Заметная вторичная кнопка под действиями, а не ссылка в подвале: владелец приходит сюда из поиска.
+          <Link
+            to={`/partner/claim/${encodeURIComponent(place.id)}`}
+            className="kosiv-action pc-claim"
+            data-variant="ghost"
+            data-testid="place-claim"
+          >
+            {t("miniapp.claim.link")}
+          </Link>
+        )}
         {!signedIn && <p className="pc-muted pc-small">{t("miniapp.place.favoriteNeedsLogin")}</p>}
         {favError && (
           <p role="alert">{t(favError === "auth" ? "miniapp.auth.again" : "miniapp.place.favoriteError")}</p>
@@ -761,11 +772,6 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         <footer className="pc-footer">
           {verified && <p data-testid="place-verified">{t("miniapp.place.verified", { date: verified })}</p>}
           {hasGoogle && <p data-testid="place-google-attribution">{t("miniapp.place.googleAttribution")}</p>}
-          {canClaim && (
-            <Link to={`/partner/claim/${place.id}`} className="pc-claim" data-testid="place-claim">
-              {t("miniapp.claim.link")}
-            </Link>
-          )}
         </footer>
       </Stack>
     </article>
