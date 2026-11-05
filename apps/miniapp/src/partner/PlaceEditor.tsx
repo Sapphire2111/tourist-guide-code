@@ -1,25 +1,45 @@
-// P06 редактор заведения: поля по шаблону, график, фото; статус модерации и «Надіслати на модерацію» (P12).
-// Права — abilities/editable из ответа API: менеджер не правит поля личности, у опубликованного они заблокированы
-// (409 identityChangeRequiresModeration — через админа региона). PATCH — только изменённые поля.
-import { useId, useState, type ReactNode } from "react";
-import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Link, Stack, useT } from "@tg/ui";
-import { card, listStyle } from "../guide/parts.js";
+// P06 редактор заведения: секции-аккордеон (#basic, #photos, #schedule, #extra), одна липкая панель «Зберегти» /
+// «Надіслати на перевірку», модерация внизу. Права — abilities/editable из ответа API: менеджер не правит поля
+// личности, у опубликованного они заблокированы (409 identityChangeRequiresModeration — через админа региона).
+// «Зберегти» шлёт все изменённые поля всех секций одним PATCH и, если менялся график, PUT /schedule.
+// Раздел открывается по ?section=basic|photos|schedule|extra в адресе (ссылки с дашборда).
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { pickLocalized } from "@tg/i18n";
+import { Button, useT } from "@tg/ui";
 import { NotFoundError } from "../guide/types.js";
 import { useErrorText } from "../host/errors.js";
 import { ApiCallError } from "../host/types.js";
 import { useKeptAsync, usePartner } from "./context.js";
-import {
-  UploadRejectedError,
-  type PartnerField,
-  type PartnerPlace,
-  type PlacePatch,
-  type Schedule,
-} from "./partner-api.js";
-import { fieldKey, Live, PlaceStatusInfo, type Message } from "./parts.js";
+import { LocationPicker } from "./LocationPicker.js";
+import type { PartnerField, PartnerPlace, PlacePatch, Schedule } from "./partner-api.js";
+import { fieldKey, Live, PartnerHeader, PlaceStatusCard, type Message } from "./parts.js";
+import { Photos } from "./Photos.js";
+import { sameSchedule, ScheduleForm, type Row } from "./ScheduleForm.js";
 
 const SUBMITTABLE = new Set(["draft", "changes_requested", "rejected"]);
-const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+export const SECTIONS = ["basic", "photos", "schedule", "extra"] as const;
+export type SectionId = (typeof SECTIONS)[number];
+
+/** В какой секции редактируется обязательное поле шаблона. */
+export function sectionOf(f: PartnerField): SectionId {
+  if (f === "photo") return "photos";
+  if (f === "schedule") return "schedule";
+  if (f === "location") return "extra";
+  return "basic";
+}
+
+/** Порядок в подсказке «Ще потрібно». */
+const FIELD_ORDER: PartnerField[] = [
+  "name",
+  "category",
+  "address",
+  "location",
+  "phone",
+  "description",
+  "schedule",
+  "photo",
+];
 
 type Form = {
   name: string;
@@ -85,226 +105,6 @@ export function patchOf(
   return patch;
 }
 
-function Field({ label, children }: { label: string; children: (id: string) => ReactNode }) {
-  const id = useId();
-  return (
-    <label htmlFor={id} style={{ display: "block" }}>
-      {label}
-      {children(id)}
-    </label>
-  );
-}
-
-function MissingFields({ fields }: { fields: readonly PartnerField[] }) {
-  const { t } = useT();
-  if (!fields.length) return <p data-testid="missing-fields">{t("miniapp.partner.editor.complete")}</p>;
-  return (
-    <p data-testid="missing-fields">
-      {t("miniapp.partner.editor.missing", { fields: fields.map((f) => t(fieldKey(f))).join(", ") })}
-    </p>
-  );
-}
-
-function SubmitPanel({ place, onDone }: { place: PartnerPlace; onDone: () => void }) {
-  const { t } = useT();
-  const { api, reloadMe } = usePartner();
-  const errorText = useErrorText();
-  const [terms, setTerms] = useState(false);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message>(null);
-  const [missing, setMissing] = useState<PartnerField[] | null>(null);
-  const submit = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      await api.submit(place.id, note);
-      setMessage({ text: t("miniapp.partner.submit.sent"), alert: false });
-      setMissing(null);
-      reloadMe();
-      onDone();
-    } catch (err) {
-      const fields = err instanceof ApiCallError ? err.details?.missingFields : undefined;
-      if (Array.isArray(fields)) setMissing(fields as PartnerField[]);
-      setMessage({ text: errorText(err, "miniapp.partner.submit.error"), alert: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <section style={card} aria-labelledby="submit-title">
-      <h2 id="submit-title">{t("miniapp.partner.submit.title")}</h2>
-      <PlaceStatusInfo status={place.status} moderation={place.moderation} />
-      <MissingFields fields={missing ?? place.missingFields} />
-      <Live message={message} testId="submit-message" />
-      {place.status === "pending_moderation" && <p>{t("miniapp.partner.submit.pending")}</p>}
-      {SUBMITTABLE.has(place.status) &&
-        (place.abilities.submit ? (
-          <Stack>
-            <label>
-              <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />{" "}
-              {t("miniapp.partner.submit.terms")}
-            </label>
-            <Field label={t("miniapp.partner.submit.note")}>
-              {(id) => (
-                <textarea
-                  id={id}
-                  value={note}
-                  maxLength={1000}
-                  rows={3}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-              )}
-            </Field>
-            <Button onClick={() => void submit()} disabled={busy || !terms || place.missingFields.length > 0}>
-              {t("miniapp.partner.submit.button")}
-            </Button>
-          </Stack>
-        ) : (
-          <p>{t("miniapp.partner.submit.ownerOnly")}</p>
-        ))}
-    </section>
-  );
-}
-
-function MainForm({ place, onSaved }: { place: PartnerPlace; onSaved: () => void }) {
-  const { t, locale } = useT();
-  const { api } = usePartner();
-  const errorText = useErrorText();
-  const [form, setForm] = useState(() => formOf(place));
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message>(null);
-  const identity = place.abilities.editIdentity && place.status !== "published";
-  const set = (k: keyof Form) => (e: { target: { value: string } }) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
-  const save = async () => {
-    const patch = patchOf(place, form, identity);
-    if (patch === "empty_name") {
-      setMessage({ text: t("miniapp.partner.editor.nameRequired"), alert: true });
-      return;
-    }
-    if (patch === "bad_location") {
-      setMessage({ text: t("miniapp.partner.editor.badLocation"), alert: true });
-      return;
-    }
-    if (!Object.keys(patch).length) {
-      setMessage({ text: t("miniapp.partner.editor.noChanges"), alert: false });
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      // Форма — из ответа сервера (только своя: правки других форм не трогаем).
-      setForm(formOf(await api.updatePlace(place.id, patch)));
-      setMessage({ text: t("miniapp.partner.editor.saved"), alert: false });
-      onSaved();
-    } catch (err) {
-      setMessage({ text: errorText(err, "miniapp.partner.editor.saveError"), alert: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-  const disabled = !place.editable;
-  return (
-    <section style={card} aria-labelledby="main-title">
-      <h2 id="main-title">{t("miniapp.partner.editor.main")}</h2>
-      {!identity && (
-        <p data-testid="identity-locked">
-          {t(
-            place.abilities.editIdentity
-              ? "miniapp.partner.editor.identityPublished"
-              : "miniapp.partner.editor.identityRole",
-          )}
-        </p>
-      )}
-      <fieldset disabled={disabled || busy} style={{ border: 0, padding: 0, margin: 0 }}>
-        <Stack>
-          <Field label={t("miniapp.partner.field.name")}>
-            {(id) => (
-              <input id={id} value={form.name} maxLength={200} disabled={!identity} onChange={set("name")} />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.field.category")}>
-            {(id) => (
-              <select id={id} value={form.categoryId} disabled={!identity} onChange={set("categoryId")}>
-                {place.template.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {pickLocalized(c.name, locale)}
-                  </option>
-                ))}
-                {!place.template.categories.some((c) => c.id === form.categoryId) && (
-                  <option value={form.categoryId}>—</option>
-                )}
-              </select>
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.field.address")}>
-            {(id) => (
-              <input
-                id={id}
-                value={form.address}
-                maxLength={200}
-                disabled={!identity}
-                onChange={set("address")}
-              />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.editor.lat")}>
-            {(id) => (
-              <input
-                id={id}
-                inputMode="decimal"
-                value={form.lat}
-                disabled={!identity}
-                onChange={set("lat")}
-              />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.editor.lon")}>
-            {(id) => (
-              <input
-                id={id}
-                inputMode="decimal"
-                value={form.lon}
-                disabled={!identity}
-                onChange={set("lon")}
-              />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.field.description")}>
-            {(id) => (
-              <textarea
-                id={id}
-                rows={4}
-                maxLength={4000}
-                value={form.description}
-                onChange={set("description")}
-              />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.field.phone")}>
-            {(id) => (
-              <input id={id} type="tel" placeholder="+380…" value={form.phone} onChange={set("phone")} />
-            )}
-          </Field>
-          <Field label={t("miniapp.partner.editor.website")}>
-            {(id) => <input id={id} type="url" value={form.website} onChange={set("website")} />}
-          </Field>
-          <Field label={t("miniapp.partner.editor.telegram")}>
-            {(id) => <input id={id} value={form.telegram} onChange={set("telegram")} />}
-          </Field>
-          <Live message={message} testId="editor-message" />
-          <Button onClick={() => void save()} disabled={busy}>
-            {t("miniapp.partner.editor.save")}
-          </Button>
-        </Stack>
-      </fieldset>
-    </section>
-  );
-}
-
-type Row = { dayOfWeek: number; opensAt: string; closesAt: string };
-
 export function scheduleOf(place: PartnerPlace, weekly: readonly Row[]): Schedule {
   return {
     weekly: weekly.map((r) => ({ dayOfWeek: r.dayOfWeek, opensAt: r.opensAt, closesAt: r.closesAt })),
@@ -317,199 +117,488 @@ export function scheduleOf(place: PartnerPlace, weekly: readonly Row[]): Schedul
   };
 }
 
-function ScheduleForm({ place, onSaved }: { place: PartnerPlace; onSaved: () => void }) {
-  const { t } = useT();
-  const { api } = usePartner();
-  const errorText = useErrorText();
-  const [rows, setRows] = useState<Row[]>(() => place.schedule.weekly.map((w) => ({ ...w })));
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message>(null);
-  const update = (i: number, patch: Partial<Row>) =>
-    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const save = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      await api.putSchedule(place.id, scheduleOf(place, rows));
-      setMessage({ text: t("miniapp.partner.schedule.saved"), alert: false });
-      onSaved();
-    } catch (err) {
-      setMessage({ text: errorText(err, "miniapp.partner.editor.saveError"), alert: true });
-    } finally {
-      setBusy(false);
+/** Что ещё нужно для отправки: обязательные поля шаблона и пустые на сервере, с учётом ещё не сохранённых правок. */
+export function neededFields(place: PartnerPlace, form: Form, rows: readonly Row[]): PartnerField[] {
+  const candidates = new Set<PartnerField>([...place.missingFields, ...place.template.requiredFields]);
+  const filled = (f: PartnerField): boolean => {
+    switch (f) {
+      case "name":
+        return !!form.name.trim();
+      case "category":
+        return !!form.categoryId;
+      case "description":
+        return !!form.description.trim();
+      case "address":
+        return !!form.address.trim();
+      case "phone":
+        return !!form.phone.trim();
+      case "location": {
+        const lat = Number(form.lat.replace(",", "."));
+        const lon = Number(form.lon.replace(",", "."));
+        return !!form.lat.trim() && !!form.lon.trim() && Number.isFinite(lat) && Number.isFinite(lon);
+      }
+      case "schedule":
+        return rows.length > 0;
+      default:
+        // Фото загружаются сразу: правда — на сервере.
+        return !place.missingFields.includes(f);
     }
   };
+  return FIELD_ORDER.filter((f) => candidates.has(f) && !filled(f));
+}
+
+function sectionFromHash(): SectionId | null {
+  const q = window.location.hash.split("?")[1];
+  const s = new URLSearchParams(q ?? "").get("section");
+  return (SECTIONS as readonly string[]).includes(s ?? "") ? (s as SectionId) : null;
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: (id: string, describedBy: string | undefined) => ReactNode;
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
-    <section style={card} aria-labelledby="schedule-title">
-      <h2 id="schedule-title">{t("miniapp.partner.field.schedule")}</h2>
-      <fieldset disabled={!place.editable} style={{ border: 0, padding: 0, margin: 0 }}>
-        {!rows.length && <p>{t("miniapp.partner.schedule.empty")}</p>}
-        <ul style={listStyle} data-testid="schedule-rows">
-          {rows.map((r, i) => (
-            <li key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "end" }}>
-              <Field label={t("miniapp.partner.schedule.day")}>
-                {(id) => (
-                  <select
-                    id={id}
-                    value={r.dayOfWeek}
-                    onChange={(e) => update(i, { dayOfWeek: Number(e.target.value) })}
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                      <option key={d} value={d}>
-                        {t(`admin.day.${d}` as MessageKey)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              <Field label={t("miniapp.partner.schedule.opens")}>
-                {(id) => (
-                  <input
-                    id={id}
-                    type="time"
-                    value={r.opensAt}
-                    onChange={(e) => update(i, { opensAt: e.target.value })}
-                  />
-                )}
-              </Field>
-              <Field label={t("miniapp.partner.schedule.closes")}>
-                {(id) => (
-                  <input
-                    id={id}
-                    type="time"
-                    value={r.closesAt}
-                    onChange={(e) => update(i, { closesAt: e.target.value })}
-                  />
-                )}
-              </Field>
-              <Button onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
-                {t("miniapp.partner.schedule.remove")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-        <Stack>
-          <Button
-            onClick={() => setRows((rs) => [...rs, { dayOfWeek: 1, opensAt: "09:00", closesAt: "18:00" }])}
-          >
-            {t("miniapp.partner.schedule.add")}
-          </Button>
-          <Live message={message} testId="schedule-message" />
-          <Button onClick={() => void save()} disabled={busy}>
-            {t("miniapp.partner.schedule.save")}
-          </Button>
-        </Stack>
-      </fieldset>
+    <div className="partner-field">
+      <label htmlFor={id}>{label}</label>
+      {children(id, hint ? hintId : undefined)}
+      {hint && (
+        <span id={hintId} className="partner-field-hint">
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Section({
+  id,
+  title,
+  open,
+  needed,
+  onToggle,
+  children,
+}: {
+  id: SectionId;
+  title: string;
+  open: boolean;
+  needed: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useT();
+  const body = useId();
+  return (
+    <section id={id} className="partner-section" aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`}>
+        <button
+          type="button"
+          id={`${id}-toggle`}
+          className="partner-section-head"
+          aria-expanded={open}
+          aria-controls={body}
+          onClick={onToggle}
+        >
+          <span>{title}</span>
+          {needed && (
+            <span className="kosiv-chip" data-tone="accent2">
+              {t("miniapp.partner.editor.sectionNeeded")}
+            </span>
+          )}
+          <span aria-hidden="true" className="partner-section-caret" data-open={open || undefined}>
+            ▾
+          </span>
+        </button>
+      </h2>
+      <div id={body} hidden={!open} className="partner-section-body">
+        {children}
+      </div>
     </section>
   );
 }
 
-function Photos({ place, onChanged }: { place: PartnerPlace; onChanged: () => void }) {
+function EditorBody({
+  place,
+  reload,
+  refreshError,
+}: {
+  place: PartnerPlace;
+  reload: () => void;
+  refreshError: unknown;
+}) {
   const { t, locale } = useT();
-  const { api } = usePartner();
+  const { api, reloadMe } = usePartner();
   const errorText = useErrorText();
-  const [file, setFile] = useState<File | null>(null);
-  const [alt, setAlt] = useState("");
+  const [form, setForm] = useState(() => formOf(place));
+  const [rows, setRows] = useState<Row[]>(() => place.schedule.weekly.map((w) => ({ ...w })));
+  const [terms, setTerms] = useState(false);
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
-  const [inputKey, setInputKey] = useState(0);
-  const upload = async () => {
-    if (!file) return;
-    if (!PHOTO_TYPES.includes(file.type)) {
-      setMessage({ text: t("miniapp.partner.photos.badType"), alert: true });
+  const [submitMessage, setSubmitMessage] = useState<Message>(null);
+  const [serverMissing, setServerMissing] = useState<PartnerField[] | null>(null);
+  const termsRef = useRef<HTMLInputElement>(null);
+  const target = useRef(sectionFromHash());
+
+  const identity = place.abilities.editIdentity && place.status !== "published";
+  const locked = !place.editable || busy;
+  const set = (k: keyof Form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const needed = neededFields(place, form, rows);
+  const neededIn = (s: SectionId) => needed.some((f) => sectionOf(f) === s);
+  const [open, setOpen] = useState<Record<SectionId, boolean>>(() => ({
+    basic: true,
+    photos: !place.editable || neededIn("photos") || target.current === "photos",
+    schedule: !place.editable || neededIn("schedule") || target.current === "schedule",
+    extra: !place.editable || neededIn("extra") || target.current === "extra",
+  }));
+
+  const reveal = (s: SectionId) => {
+    setOpen((o) => ({ ...o, [s]: true }));
+    requestAnimationFrame(() => {
+      const el = document.getElementById(s);
+      el?.scrollIntoView?.({ block: "start" });
+      document.getElementById(`${s}-toggle`)?.focus({ preventScroll: true });
+    });
+  };
+  // Ссылка с дашборда: ?section=… — открыть и показать раздел при загрузке и при смене адреса.
+  useEffect(() => {
+    if (target.current) reveal(target.current);
+    const onHash = () => {
+      const s = sectionFromHash();
+      if (s) reveal(s);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const patch = patchOf(place, form, identity);
+  const scheduleDirty = !sameSchedule(rows, place.schedule.weekly);
+  const dirty = typeof patch === "string" || Object.keys(patch).length > 0 || scheduleDirty;
+  // Закрытие вкладки с несохранёнными правками: браузерное предупреждение.
+  useEffect(() => {
+    if (!dirty || !place.editable) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, place.editable]);
+
+  /** Одно сохранение всех секций: PATCH изменённых полей, затем PUT графика, если менялся. */
+  const save = async (): Promise<boolean> => {
+    if (patch === "empty_name") {
+      setMessage({ text: t("miniapp.partner.editor.nameRequired"), alert: true });
+      reveal("basic");
+      return false;
+    }
+    if (patch === "bad_location") {
+      setMessage({ text: t("miniapp.partner.editor.badLocation"), alert: true });
+      reveal("extra");
+      return false;
+    }
+    const hasPatch = Object.keys(patch).length > 0;
+    if (!hasPatch && !scheduleDirty) {
+      setMessage({ text: t("miniapp.partner.editor.noChanges"), alert: false });
+      return true;
+    }
+    setBusy(true);
+    setMessage(null);
+    let changed = false;
+    try {
+      if (hasPatch) {
+        // Форма — из ответа сервера (нормализованные значения), иначе «@name» вечно считался бы правкой.
+        setForm(formOf(await api.updatePlace(place.id, patch)));
+        changed = true;
+      }
+      if (scheduleDirty) {
+        await api.putSchedule(place.id, scheduleOf(place, rows));
+        changed = true;
+      }
+      setServerMissing(null);
+      setMessage({ text: t("miniapp.partner.editor.saved"), alert: false });
+      return true;
+    } catch (err) {
+      setMessage({ text: errorText(err, "miniapp.partner.editor.saveError"), alert: true });
+      return false;
+    } finally {
+      setBusy(false);
+      if (changed) reload();
+    }
+  };
+
+  const submit = async () => {
+    if (!terms) {
+      setSubmitMessage({ text: t("miniapp.partner.editor.termsRequired"), alert: true });
+      termsRef.current?.focus();
       return;
     }
+    setSubmitMessage(null);
+    // Несохранённые правки уходят вместе с отправкой: сначала сохраняем.
+    if (dirty && !(await save())) return;
     setBusy(true);
-    setMessage(null);
     try {
-      await api.uploadPhoto(place.id, file, alt.trim());
-      setMessage({ text: t("miniapp.partner.photos.uploaded"), alert: false });
-      setFile(null);
-      setAlt("");
-      setInputKey((k) => k + 1);
-      onChanged();
+      await api.submit(place.id, note);
+      setSubmitMessage({ text: t("miniapp.partner.submit.sent"), alert: false });
+      setServerMissing(null);
+      reloadMe();
+      reload();
     } catch (err) {
-      setMessage({
-        text:
-          err instanceof UploadRejectedError
-            ? t("miniapp.partner.photos.uploadRejected")
-            : errorText(err, "miniapp.partner.photos.error"),
-        alert: true,
-      });
+      const fields = err instanceof ApiCallError ? err.details?.missingFields : undefined;
+      if (Array.isArray(fields)) setServerMissing(fields as PartnerField[]);
+      setSubmitMessage({ text: errorText(err, "miniapp.partner.submit.error"), alert: true });
     } finally {
       setBusy(false);
     }
   };
-  const remove = async (assetId: string) => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      await api.deletePhoto(place.id, assetId);
-      setMessage({ text: t("miniapp.partner.photos.deleted"), alert: false });
-      onChanged();
-    } catch (err) {
-      setMessage({ text: errorText(err, "miniapp.partner.photos.deleteError"), alert: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-  const media = [...place.media].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const missing = serverMissing ?? needed;
+  const canSubmit = SUBMITTABLE.has(place.status) && place.abilities.submit;
+  const toggle = (s: SectionId) => () => setOpen((o) => ({ ...o, [s]: !o[s] }));
+  const identityNote = !identity && (
+    <p data-testid="identity-locked">
+      {t(
+        place.abilities.editIdentity
+          ? "miniapp.partner.editor.identityPublished"
+          : "miniapp.partner.editor.identityRole",
+      )}
+    </p>
+  );
+
   return (
-    <section style={card} aria-labelledby="photos-title">
-      <h2 id="photos-title">{t("miniapp.partner.field.photo")}</h2>
-      <fieldset disabled={!place.editable || busy} style={{ border: 0, padding: 0, margin: 0 }}>
-        {!media.length && <p>{t("miniapp.partner.photos.empty")}</p>}
-        <ul style={{ ...listStyle, flexDirection: "row", flexWrap: "wrap" }} data-testid="photos">
-          {media.map((m, i) => {
-            const url = place.mediaPreview[m.mediaAssetId];
-            const label = m.alt
-              ? pickLocalized(m.alt, locale)
-              : `${t("miniapp.partner.field.photo")} ${i + 1}`;
-            return (
-              <li key={m.mediaAssetId} style={{ width: 160 }}>
-                {url ? (
-                  <img src={url} alt={label} width={160} style={{ borderRadius: 12, display: "block" }} />
-                ) : (
-                  <p>{t("miniapp.partner.photos.processing")}</p>
+    <div className="partner-screen">
+      <PartnerHeader title={pickLocalized(place.name, locale)} />
+      <PlaceStatusCard status={place.status} moderation={place.moderation} />
+      {refreshError !== null && (
+        <p role="alert" data-testid="editor-refresh-error">
+          {t("miniapp.partner.refreshError")}
+        </p>
+      )}
+      {!place.abilities.editPlace ? (
+        <p role="alert">{t("miniapp.partner.editor.forbidden")}</p>
+      ) : (
+        <>
+          {!place.editable && <p data-testid="editor-readonly">{t("miniapp.partner.editor.readonly")}</p>}
+          <Section
+            id="basic"
+            title={t("miniapp.partner.editor.section.basic")}
+            open={open.basic}
+            needed={neededIn("basic")}
+            onToggle={toggle("basic")}
+          >
+            {identityNote}
+            <fieldset disabled={locked} className="partner-fieldset">
+              <Field label={t("miniapp.partner.field.name")}>
+                {(id) => (
+                  <input
+                    id={id}
+                    value={form.name}
+                    maxLength={200}
+                    disabled={!identity}
+                    onChange={set("name")}
+                  />
                 )}
-                {m.isCover && <small>{t("miniapp.partner.photos.cover")}</small>}
-                <Button
-                  aria-label={`${t("miniapp.partner.photos.delete")}: ${label}`}
-                  onClick={() => void remove(m.mediaAssetId)}
-                >
-                  {t("miniapp.partner.photos.delete")}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-        <Stack>
-          <Field label={t("miniapp.partner.photos.alt")}>
-            {(id) => <input id={id} value={alt} maxLength={200} onChange={(e) => setAlt(e.target.value)} />}
-          </Field>
-          <Field label={t("miniapp.partner.photos.file")}>
-            {(id) => (
-              <input
-                key={inputKey}
-                id={id}
-                type="file"
-                accept={PHOTO_TYPES.join(",")}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              </Field>
+              <Field label={t("miniapp.partner.field.category")}>
+                {(id) => (
+                  <select id={id} value={form.categoryId} disabled={!identity} onChange={set("categoryId")}>
+                    {place.template.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {pickLocalized(c.name, locale)}
+                      </option>
+                    ))}
+                    {!place.template.categories.some((c) => c.id === form.categoryId) && (
+                      <option value={form.categoryId}>—</option>
+                    )}
+                  </select>
+                )}
+              </Field>
+              <Field label={t("miniapp.partner.field.address")}>
+                {(id) => (
+                  <input
+                    id={id}
+                    value={form.address}
+                    maxLength={200}
+                    disabled={!identity}
+                    onChange={set("address")}
+                  />
+                )}
+              </Field>
+              <Field label={t("miniapp.partner.field.description")}>
+                {(id) => (
+                  <textarea
+                    id={id}
+                    rows={4}
+                    maxLength={4000}
+                    value={form.description}
+                    onChange={set("description")}
+                  />
+                )}
+              </Field>
+              <Field label={t("miniapp.partner.field.phone")}>
+                {(id) => (
+                  <input id={id} type="tel" placeholder="+380…" value={form.phone} onChange={set("phone")} />
+                )}
+              </Field>
+            </fieldset>
+          </Section>
+
+          <Section
+            id="photos"
+            title={t("miniapp.partner.editor.section.photos")}
+            open={open.photos}
+            needed={neededIn("photos")}
+            onToggle={toggle("photos")}
+          >
+            <Photos place={place} onChanged={reload} />
+          </Section>
+
+          <Section
+            id="schedule"
+            title={t("miniapp.partner.editor.section.schedule")}
+            open={open.schedule}
+            needed={neededIn("schedule")}
+            onToggle={toggle("schedule")}
+          >
+            <ScheduleForm rows={rows} onChange={setRows} disabled={locked} />
+          </Section>
+
+          <Section
+            id="extra"
+            title={t("miniapp.partner.editor.section.extra")}
+            open={open.extra}
+            needed={neededIn("extra")}
+            onToggle={toggle("extra")}
+          >
+            <fieldset disabled={locked} className="partner-fieldset">
+              <Field
+                label={t("miniapp.partner.editor.fieldWebsite")}
+                hint={t("miniapp.partner.editor.websiteHint")}
+              >
+                {(id, d) => (
+                  <input
+                    id={id}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://…"
+                    aria-describedby={d}
+                    value={form.website}
+                    onChange={set("website")}
+                  />
+                )}
+              </Field>
+              <Field
+                label={t("miniapp.partner.editor.telegram")}
+                hint={t("miniapp.partner.editor.telegramHint")}
+              >
+                {(id, d) => (
+                  <input id={id} aria-describedby={d} value={form.telegram} onChange={set("telegram")} />
+                )}
+              </Field>
+              {!identity && <p>{t("miniapp.partner.editor.identityLockedHere")}</p>}
+              <LocationPicker
+                lat={form.lat}
+                lon={form.lon}
+                disabled={!identity}
+                onChange={(lat, lon) => setForm((f) => ({ ...f, lat, lon }))}
               />
-            )}
-          </Field>
-          <Live message={message} testId="photos-message" />
-          <Button onClick={() => void upload()} disabled={!file}>
-            {t("miniapp.partner.photos.upload")}
-          </Button>
-        </Stack>
-      </fieldset>
-    </section>
+            </fieldset>
+          </Section>
+
+          {(place.status === "pending_moderation" || SUBMITTABLE.has(place.status)) && (
+            <section id="moderation" className="partner-section" aria-labelledby="submit-title">
+              <h2 id="submit-title">{t("miniapp.partner.submit.title")}</h2>
+              <div className="partner-section-body">
+                {place.status === "pending_moderation" && <p>{t("miniapp.partner.submit.pending")}</p>}
+                {SUBMITTABLE.has(place.status) &&
+                  (place.abilities.submit ? (
+                    <>
+                      <label className="partner-check">
+                        <input
+                          ref={termsRef}
+                          type="checkbox"
+                          checked={terms}
+                          onChange={(e) => setTerms(e.target.checked)}
+                        />
+                        {t("miniapp.partner.submit.terms")}
+                      </label>
+                      <details className="partner-details">
+                        <summary>{t("miniapp.partner.submit.addNote")}</summary>
+                        <Field label={t("miniapp.partner.submit.note")}>
+                          {(id) => (
+                            <textarea
+                              id={id}
+                              value={note}
+                              maxLength={1000}
+                              rows={3}
+                              onChange={(e) => setNote(e.target.value)}
+                            />
+                          )}
+                        </Field>
+                      </details>
+                    </>
+                  ) : (
+                    <p>{t("miniapp.partner.submit.ownerOnly")}</p>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          {place.editable && (
+            <div className="partner-sticky-actions" data-testid="editor-actions">
+              <div className="partner-sticky-note">
+                <Live message={message} testId="editor-message" />
+                <Live message={submitMessage} testId="submit-message" />
+                {dirty && (
+                  <p className="partner-unsaved" data-testid="editor-unsaved">
+                    {t("miniapp.partner.editor.unsaved")}
+                  </p>
+                )}
+                {canSubmit && (
+                  <div data-testid="missing-fields" className="partner-needed">
+                    {missing.length ? (
+                      <>
+                        <span>{t("miniapp.partner.editor.stillNeeded")}</span>
+                        {missing.map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            className="partner-chip"
+                            onClick={() => reveal(sectionOf(f))}
+                          >
+                            {t(fieldKey(f))}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <span>{t("miniapp.partner.editor.complete")}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <Button onClick={() => void save()} disabled={busy || !dirty}>
+                {t("miniapp.partner.editor.save")}
+              </Button>
+              {canSubmit && (
+                <Button onClick={() => void submit()} disabled={busy || missing.length > 0}>
+                  {t("miniapp.partner.submit.button")}
+                </Button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
 export function PlaceEditor({ id }: { id: string }) {
-  const { t, locale } = useT();
+  const { t } = useT();
   const { api, enabled } = usePartner();
   const [state, reload, refreshError] = useKeptAsync(
     () => (enabled ? api.place(id) : Promise.reject(new NotFoundError())),
@@ -524,8 +613,8 @@ export function PlaceEditor({ id }: { id: string }) {
     );
   if (state.status === "error")
     return (
-      <Stack>
-        <h1>{t("miniapp.partner.editPlace")}</h1>
+      <div className="partner-screen">
+        <PartnerHeader title={t("miniapp.partner.editPlace")} />
         <p role="alert" data-testid="editor-error">
           {state.error instanceof NotFoundError ||
           (state.error instanceof ApiCallError && state.error.status === 403)
@@ -535,31 +624,8 @@ export function PlaceEditor({ id }: { id: string }) {
         {!(state.error instanceof NotFoundError) && (
           <Button onClick={reload}>{t("miniapp.guide.retry")}</Button>
         )}
-        <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
-      </Stack>
+      </div>
     );
-  const place = state.data;
-  return (
-    <Stack>
-      <h1>{pickLocalized(place.name, locale)}</h1>
-      <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
-      {refreshError !== null && (
-        <p role="alert" data-testid="editor-refresh-error">
-          {t("miniapp.partner.refreshError")}
-        </p>
-      )}
-      <SubmitPanel place={place} onDone={reload} />
-      {!place.abilities.editPlace ? (
-        <p role="alert">{t("miniapp.partner.editor.forbidden")}</p>
-      ) : (
-        <>
-          {!place.editable && <p data-testid="editor-readonly">{t("miniapp.partner.editor.readonly")}</p>}
-          {/* Без key: формы не перемонтируются после чужого сохранения (несохранённые правки остаются). */}
-          <MainForm place={place} onSaved={reload} />
-          <ScheduleForm place={place} onSaved={reload} />
-          <Photos place={place} onChanged={reload} />
-        </>
-      )}
-    </Stack>
-  );
+  // Без key: формы не перемонтируются после чужого сохранения (несохранённые правки остаются).
+  return <EditorBody place={state.data} reload={reload} refreshError={refreshError} />;
 }
