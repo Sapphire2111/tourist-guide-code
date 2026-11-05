@@ -21,6 +21,7 @@ import {
 } from "./partner-api.js";
 import { patchOf, PlaceEditor, scheduleOf } from "./PlaceEditor.js";
 import { PartnerStaff } from "./Staff.js";
+import { PartnerHeader } from "./parts.js";
 
 afterEach(() => {
   cleanup();
@@ -285,7 +286,7 @@ describe("P06 редактор", () => {
     setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place({ missingFields: [] })), submit });
     fireEvent.click(await screen.findByLabelText("Погоджуюся з умовами для партнерів"));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Надіслати на модерацію" }));
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
     });
     expect(screen.getByTestId("missing-fields").textContent).toBe(
       "Щоб надіслати на перевірку, додайте: Фото, Графік роботи.",
@@ -299,7 +300,7 @@ describe("P06 редактор", () => {
     });
     expect(await screen.findByTestId("editor-readonly")).toBeDefined();
     expect(screen.getByText("Заклад на перевірці в модератора.")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Надіслати на модерацію" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Надіслати на перевірку" })).toBeNull();
   });
 });
 
@@ -682,5 +683,59 @@ describe("исправления ревью", () => {
     });
     expect(window.location.hash).toBe("#/partner");
     expect(screen.getByTestId("partner-notice").textContent).toBe("Ви вже працюєте в цьому закладі.");
+  });
+});
+
+describe("PartnerHeader", () => {
+  const withTelegram = (native: boolean) => {
+    (window as unknown as { Telegram?: unknown }).Telegram = native
+      ? { WebApp: { platform: "android", BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} } } }
+      : undefined;
+  };
+  afterEach(() => withTelegram(false));
+
+  it("в браузере — ссылка «← Мій заклад» и h1", () => {
+    withTelegram(false);
+    setup(<PartnerHeader title="Співробітники" />, {});
+    expect(screen.getByRole("heading", { level: 1, name: "Співробітники" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "← Мій заклад" }).getAttribute("href")).toBe("#/partner");
+  });
+
+  it("в Telegram с BackButton ссылки нет", () => {
+    withTelegram(true);
+    setup(<PartnerHeader title="Співробітники" />, {});
+    expect(screen.queryByRole("link", { name: "← Мій заклад" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Співробітники" })).toBeDefined();
+  });
+});
+
+describe("Staff: отзыв приглашения", () => {
+  it("сначала подтверждение, запрос — только после «Так, відкликати»", async () => {
+    const revokeInvite = vi.fn(() => Promise.resolve());
+    setup(<PartnerStaff orgId={ORG} />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      staff: () =>
+        Promise.resolve({
+          members: [],
+          invites: [
+            {
+              id: "i1",
+              role: "ORG_STAFF",
+              state: "active",
+              expiresAt: "2026-11-05T00:00:00Z",
+              createdAt: "2026-11-02T00:00:00Z",
+              acceptedAt: null,
+              acceptedByName: null,
+            },
+          ],
+        }),
+      revokeInvite,
+    } as Partial<PartnerApi>);
+    fireEvent.click(await screen.findByRole("button", { name: "Відкликати запрошення" }));
+    expect(revokeInvite).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Так, відкликати" }));
+    });
+    expect(revokeInvite).toHaveBeenCalledWith(ORG, "i1");
   });
 });

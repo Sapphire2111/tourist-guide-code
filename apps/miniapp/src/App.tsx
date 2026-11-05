@@ -68,7 +68,7 @@ import { About } from "./host/About.js";
 import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/context.js";
 import { createHostApi } from "./host/host-api.js";
 import type { HostApi } from "./host/types.js";
-import { PartnerProvider, usePartnerOrgs } from "./partner/context.js";
+import { PartnerProvider, resolveSelection, usePartner } from "./partner/context.js";
 import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
 import { Badge } from "./guide/parts.js";
 import { statusKey } from "./partner/parts.js";
@@ -478,19 +478,27 @@ function partnerScreen(
   return null;
 }
 
-/** C15 → P13/P12: переключатель режима для партнёра, иначе «Стати партнером». */
+/**
+ * C15 → P13/P12: карточка в профиле. Партнёру — «Мій заклад» с тем заведением, что откроет кабинет (сохранённый
+ * выбор), иначе «Стати партнером». Пока /partner/me грузится — пусто; сбой — ссылка в кабинет, а не онбординг.
+ */
 function PartnerEntry() {
   const { t, locale } = useT();
-  const orgs = usePartnerOrgs();
-  const place = orgs[0]?.places[0] ?? null;
+  const { me, selection } = usePartner();
+  if (me.status === "loading") return null;
+  const orgs = me.status === "ready" ? me.data.organizations : [];
+  const { place } = resolveSelection(orgs, selection);
   return (
     <div className="kosiv-card kosiv-panel" data-testid="partner-entry">
-      <h2>{t("miniapp.partner.title")}</h2>
-      {orgs.length ? (
+      {me.status === "error" ? (
+        <Link to="/partner" className="kosiv-cta" data-testid="partner-link">
+          {t("miniapp.partner.entry.retry")}
+        </Link>
+      ) : orgs.length ? (
         <>
           {place && (
             <p style={{ margin: 0 }}>
-              {pickLocalized(place.name, locale)}{" "}
+              <strong>{pickLocalized(place.name, locale)}</strong>{" "}
               <Badge testId="partner-entry-status">{t(statusKey(place.status))}</Badge>
             </p>
           )}
@@ -499,9 +507,12 @@ function PartnerEntry() {
           </Link>
         </>
       ) : (
-        <Link to="/partner/new" className="kosiv-cta">
-          {t("miniapp.partner.become")}
-        </Link>
+        <>
+          <h2>{t("miniapp.partner.entry.title")}</h2>
+          <Link to="/partner/new" className="kosiv-cta">
+            {t("miniapp.partner.become")}
+          </Link>
+        </>
       )}
     </div>
   );

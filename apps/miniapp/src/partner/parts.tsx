@@ -163,16 +163,16 @@ export function PlaceStatusCard({
   const showComment =
     moderation?.comment && (status === "changes_requested" || status === "rejected" || moderation.decision);
   return (
-    <section className="partner-status" data-status={status} aria-label={t(statusKey(status))}>
+    <section className="partner-status" data-status={status}>
       <span>
         <Badge testId="place-status">{t(statusKey(status))}</Badge>
       </span>
       <p>{t(`miniapp.partner.status.text.${status}` as MessageKey)}</p>
       {showComment && (
-        <blockquote className="partner-status-quote" data-testid="moderator-comment">
-          <cite>{t("miniapp.partner.moderator.title")}</cite>
-          {moderation!.comment}
-        </blockquote>
+        <figure className="partner-status-quote" data-testid="moderator-comment" style={{ margin: 0 }}>
+          <figcaption>{t("miniapp.partner.moderator.title")}</figcaption>
+          <blockquote style={{ margin: 0 }}>{moderation!.comment}</blockquote>
+        </figure>
       )}
       {action}
     </section>
@@ -182,6 +182,7 @@ export function PlaceStatusCard({
 /** «Заповнено N з M» с полосой прогресса. */
 export function ProgressBar({ done, total }: { done: number; total: number }) {
   const { t } = useT();
+  if (total <= 0) return null;
   const pct = total > 0 ? Math.round((Math.min(done, total) / total) * 100) : 0;
   return (
     <div className="partner-progress" data-testid="partner-progress">

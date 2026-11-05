@@ -102,7 +102,7 @@
   border-radius: 0 12px 12px 0;
   white-space: pre-line;
 }
-.partner-status-quote cite {
+.partner-status-quote figcaption {
   display: block;
   font-style: normal;
   font-size: 0.875rem;
