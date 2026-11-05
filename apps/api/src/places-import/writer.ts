@@ -88,6 +88,13 @@ export type WriteOptions = {
   pinCategory?: boolean;
 };
 
+/** Действия заявки «Це мій заклад» над местом (0031): не правка полей и тегов — импорт их не учитывает. */
+export const CLAIM_PLACE_ACTIONS = [
+  "place.claim_assign",
+  "place.claim_unassign",
+  "place.claim_cleanup",
+] as const;
+
 export type PlacesEb = ExpressionBuilder<Database, "places">;
 /**
  * Место «трогали»: в журнале есть любое действие над ним, кроме самого импорта (правка и курирование в админке,
@@ -101,14 +108,9 @@ const touched = (eb: PlacesEb) =>
       .selectFrom("audit_logs as a")
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
-      // place.claim_assign (заявка «Це мій заклад», 0031) — не правка полей: место партнёра защищено отдельно
+      // Действия заявки «Це мій заклад» (0031) — не правка полей: место партнёра защищено отдельно
       // (organization_id), а touched оставляет обычные правила импорта для остального.
-      .where("a.action", "not in", [
-        "place.import",
-        "place.amenities",
-        "place.claim_assign",
-        "place.claim_unassign",
-      ])
+      .where("a.action", "not in", ["place.import", "place.amenities", ...CLAIM_PLACE_ACTIONS])
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
   );
 /**
@@ -144,6 +146,8 @@ export const tagsTouched = (eb: PlacesEb) =>
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      // Привязка/отмена/очистка по заявке «Це мій заклад» (0031) — не правка тегов.
+      .where("a.action", "not in", [...CLAIM_PLACE_ACTIONS])
       .where((w) =>
         w.or([
           w("a.actor_type", "=", "user"),

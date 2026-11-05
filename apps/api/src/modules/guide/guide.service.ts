@@ -13,7 +13,7 @@ import {
   type Region,
   type HomeSection,
 } from "../../db/index.js";
-import { isClaimableCategory, toScheduleDto } from "../catalog/index.js";
+import { CATEGORY_CHAIN_MAX_DEPTH, isClaimableCategory, toScheduleDto } from "../catalog/index.js";
 import { EmergencyContactsRepository } from "../emergency-contacts/index.js";
 import { MediaService } from "../media/index.js";
 import { RegionsRepository } from "../regions/index.js";
@@ -223,7 +223,7 @@ export class GuideService {
         website: row.website,
         telegram: row.telegram,
         verifiedAt: row.verified_at?.toISOString() ?? null,
-        claimable: row.organization_id === null && isClaimableCategory(category?.code),
+        claimable: row.organization_id === null && isClaimableCategory(await this.categoryChain(category)),
         photos: photoDtos,
         tags: tags.map((t) => ({
           id: t.id,
@@ -301,6 +301,19 @@ export class GuideService {
     if (!name || !this.googlePhotos) return undefined;
     // Вне транзакции региона: запрос к Google не держит соединение с БД открытым.
     return (await this.googlePhotos.uri(name, width)) ?? undefined;
+  }
+
+  /** Коды категории места и её родителей — для «Це мій заклад?» (подкатегория природы тоже не заявляется). */
+  private async categoryChain(
+    category: { code: string; parent_id: string | null } | undefined,
+  ): Promise<string[]> {
+    const codes: string[] = [];
+    let c = category;
+    for (let i = 0; c && i < CATEGORY_CHAIN_MAX_DEPTH; i++) {
+      codes.push(c.code);
+      c = c.parent_id ? await this.repo.findCategory(c.parent_id) : undefined;
+    }
+    return codes;
   }
 
   /** Поля богатой карточки из обогащения; нет данных — пустые (блоки карточка не покажет). */

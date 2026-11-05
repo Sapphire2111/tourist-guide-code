@@ -924,7 +924,7 @@ export class PartnerService {
     const category = await this.catalogRepo.findCategory(categoryId.toLowerCase());
     // Базовый шаблон (0031): любая категория с хозяином-бизнесом.
     const allowed = isAnyCategoryTemplate(template)
-      ? isClaimableCategory(category?.code)
+      ? !!category && isClaimableCategory(await this.catalogRepo.categoryChainCodes(category.id))
       : !!category && template.category_codes.includes(category.code);
     if (category && !allowed)
       throw new ApiError("UNPROCESSABLE", {

@@ -359,6 +359,36 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
   const placeOf = async (googleId: string) =>
     (await sql(`SELECT id FROM places WHERE google_place_id = $1`, [googleId])).rows[0].id as string;
 
+  it("подкатегория категории без бизнеса (екстрена допомога → рятувальники) — тоже не заявляется", async () => {
+    const root = (
+      await sql(
+        `INSERT INTO categories (region_id, code, name_i18n) VALUES ($1, 'emergency', '{"uk": "Екстрена допомога"}')
+         RETURNING id`,
+        [base.regions.a],
+      )
+    ).rows[0].id as string;
+    await sql(
+      `INSERT INTO categories (region_id, code, parent_id, name_i18n)
+       VALUES ($1, 'rescue-claim-test', $2, '{"uk": "Рятувальники"}')`,
+      [base.regions.a, root],
+    );
+    const lake = (
+      await sql(
+        `INSERT INTO places (region_id, category_id, name_i18n, description_i18n, address_i18n, location, status,
+           first_published_at)
+         SELECT $1, c.id, '{"uk": "Озеро"}', '{"uk": "Озеро"}', '{"uk": "Яремче"}',
+           ST_SetSRID(ST_MakePoint(24.5, 48.4), 4326), 'published', now()
+         FROM categories c WHERE c.region_id = $1 AND c.code = 'rescue-claim-test' RETURNING id`,
+        [base.regions.a],
+      )
+    ).rows[0].id as string;
+    expect((await guide.place(base.regions.a, lake, {}))?.claimable).toBe(false);
+    expect(await failure(claims.create(RIVAL, claimInput({ placeId: lake }), meta(RIVAL)))).toMatchObject({
+      status: 409,
+      reason: "not_claimable",
+    });
+  });
+
   it("не бизнес (вершина): ссылки нет, заявка — 409 not_claimable", async () => {
     await writePlaces(
       appDb,
@@ -399,6 +429,25 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
   it("отмена одобрения: место без организации, заявка revoked, ORG_OWNER новой организации снят, AuditLog", async () => {
     const [mine] = (await claims.mine(CLAIMANT, base.regions.a)).items;
     expect(mine!.status).toBe("approved");
+    // Данные владельца на месте: акция и прайс (раздел + позиция).
+    await sql(
+      `INSERT INTO offers (region_id, place_id, title_i18n, status) VALUES ($1, $2, '{"uk": "Знижка 10%"}', 'active')`,
+      [base.regions.a, placeId],
+    );
+    const section = (
+      await sql(
+        `INSERT INTO price_list_sections (region_id, place_id, title_i18n) VALUES ($1, $2, '{"uk": "Страви"}')
+         RETURNING id`,
+        [base.regions.a, placeId],
+      )
+    ).rows[0].id as string;
+    await sql(
+      `INSERT INTO price_list_items (region_id, place_id, section_id, name_i18n, price_minor)
+       VALUES ($1, $2, $3, '{"uk": "Банош"}', 25000)`,
+      [base.regions.a, placeId, section],
+    );
+    const shown = await guide.place(base.regions.a, placeId, {});
+    expect(shown?.hasPriceList).toBe(true);
     expect(await failure(claims.revoke(MODERATOR_A, mine!.id, "  ", meta(MODERATOR_A)))).toMatchObject({
       status: 400,
     });
@@ -410,6 +459,14 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
     expect(place).toEqual({ organization_id: null, partner_template_id: null, status: "published" });
     expect((await partner.me(CLAIMANT)).organizations).toEqual([]);
     expect((await guide.place(base.regions.a, placeId, {}))?.claimable).toBe(true);
+    // Акции и прайс прежнего владельца — в архиве (не всплывут у следующего).
+    const left = await sql(
+      `SELECT (SELECT array_agg(DISTINCT status) FROM offers WHERE place_id = $1) AS offers,
+              (SELECT array_agg(DISTINCT status) FROM price_list_sections WHERE place_id = $1) AS sections,
+              (SELECT array_agg(DISTINCT status) FROM price_list_items WHERE place_id = $1) AS items`,
+      [placeId],
+    );
+    expect(left.rows[0]).toEqual({ offers: ["archived"], sections: ["archived"], items: ["archived"] });
     expect(await failure(claims.revoke(MODERATOR_A, mine!.id, "ще раз", meta(MODERATOR_A)))).toMatchObject({
       status: 409,
     });
@@ -425,6 +482,10 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
   it("одобрение на организацию, где заявитель больше не владелец, — 409 claimant_not_owner", async () => {
     const first = await claims.create(RIVAL, claimInput({ organizationName: "ТОВ Суперник" }), meta(RIVAL));
     await claims.decide(MODERATOR_A, first.id, "approve", undefined, meta(MODERATOR_A));
+    // Новый владелец: акций и прайса прежнего в карточке нет.
+    const card = await guide.place(base.regions.a, placeId, {});
+    expect(card?.hasPriceList).toBe(false);
+    expect(card?.offers ?? []).toEqual([]);
     const org = (await partner.me(RIVAL)).organizations[0]!;
     const place2 = await placeOf("ChIJclaimTestPlace02");
     const second = await claims.create(

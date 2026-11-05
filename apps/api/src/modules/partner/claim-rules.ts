@@ -15,11 +15,12 @@ export type ClaimBlocker = "place_claimed" | "place_not_published" | "not_claima
  */
 export function claimBlocker(
   place: { status: PlaceStatus; organization_id: string | null },
-  categoryCode: string | null | undefined,
+  /** Код категории места или цепочка «категория → родители». */
+  categoryCodes: string | readonly string[] | null | undefined,
 ): ClaimBlocker | null {
   if (place.organization_id !== null) return "place_claimed";
   if (place.status !== "published") return "place_not_published";
-  if (!isClaimableCategory(categoryCode)) return "not_claimable";
+  if (!isClaimableCategory(categoryCodes)) return "not_claimable";
   return null;
 }
 

@@ -30,7 +30,7 @@ describe("заявка «Це мій заклад» (0031): правила", () 
   });
 
   it("категории: природа, вершины, пам'ятки, лікарні, банкомати — не заявляются; бизнесы — да", () => {
-    for (const code of ["nature", "peaks", "sights", "hospitals", "atm", "post", "parking", "help"])
+    for (const code of ["nature", "peaks", "sights", "hospitals", "atm", "post", "parking", "emergency"])
       expect(isClaimableCategory(code)).toBe(false);
     for (const code of [
       "hotels",
@@ -50,6 +50,15 @@ describe("заявка «Це мій заклад» (0031): правила", () 
       "pharmacies",
     ])
       expect(isClaimableCategory(code)).toBe(true);
+    // Цепочка «категория → родители»: подкатегория природы не заявляется.
+    expect(isClaimableCategory(["rescue", "emergency"])).toBe(false);
+    // Аптеки в корне «Допомога» — бизнес.
+    expect(isClaimableCategory(["pharmacies", "help"])).toBe(true);
+    expect(isClaimableCategory(["cafes", "eat"])).toBe(true);
+    expect(isClaimableCategory([])).toBe(false);
+    expect(claimBlocker({ status: "published", organization_id: null }, ["rescue", "emergency"])).toBe(
+      "not_claimable",
+    );
   });
 
   it("организация: ровно одно — своя (ORG_OWNER) или новая по названию", () => {

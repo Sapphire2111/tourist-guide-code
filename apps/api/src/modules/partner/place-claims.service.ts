@@ -60,6 +60,7 @@ export const PLACE_CLAIM_AUDIT = {
   /** На месте (entity place): привязка к организации; импорт защищает место по organization_id (places-import/writer.ts). */
   placeAssign: "place.claim_assign",
   placeUnassign: "place.claim_unassign",
+  placeCleanup: "place.claim_cleanup",
   revoke: "place_claim.revoke",
   withdraw: "place_claim.withdraw",
 } as const;
@@ -145,8 +146,7 @@ export class PlaceClaimsService {
     const { dto, notify } = await withTenant(this.db, regionContext(regionId), async () => {
       const place = await this.catalogRepo.lockPlace(input.placeId.toLowerCase());
       if (!place) throw notFound();
-      const category = await this.catalogRepo.findCategory(place.category_id);
-      const blocker = claimBlocker(place, category?.code);
+      const blocker = claimBlocker(place, await this.catalogRepo.categoryChainCodes(place.category_id));
       // Неопубликованное место туристу не видно — как несуществующее.
       if (blocker === "place_not_published") throw notFound();
       if (blocker === "place_claimed") throw alreadyClaimed();
@@ -308,12 +308,12 @@ export class PlaceClaimsService {
             messageKey: "errors.placeClaim.placeNotPublished",
             details: { reason: "place_not_published", status: place.status },
           });
-        const category = await this.catalogRepo.findCategory(place.category_id);
-        if (!isClaimableCategory(category?.code)) throw notClaimable();
+        const chain = await this.catalogRepo.categoryChainCodes(place.category_id);
+        if (!isClaimableCategory(chain)) throw notClaimable();
         organizationId = await this.claimantOrganization(trx, claim, audited, regionId);
         const template = place.partner_template_id
           ? null
-          : templateForCategory(await this.partners.listTemplates(), category?.code);
+          : templateForCategory(await this.partners.listTemplates(), chain[0]);
         const assigned = await this.claims.assignPlace(place.id, organizationId, template?.id ?? null);
         if (!assigned) throw alreadyClaimed();
         await this.record(audited, {
@@ -412,7 +412,7 @@ export class PlaceClaimsService {
       if (!isClaimRevocable(claim.status)) throw alreadyDecided(claim);
       const orgId = claim.organization_id!;
       const unassigned = await this.claims.unassignPlace(place.id, orgId);
-      if (unassigned)
+      if (unassigned) {
         await this.record(audited, {
           action: PLACE_CLAIM_AUDIT.placeUnassign,
           entityType: "place",
@@ -422,6 +422,29 @@ export class PlaceClaimsService {
           newValues: { organizationId: null, partnerTemplateId: null, claimId: claim.id },
           regionId,
         });
+        // Данные прежнего владельца не должны всплыть у следующего: акции, прайс, ресурсы — в архив, его фото —
+        // откреплены. Люди организации — до отзыва ролей (ниже).
+        const members = new Set([
+          claim.user_id,
+          ...(await this.partners.staffOf(orgId)).map((m) => m.user_id),
+        ]);
+        const cleaned = await this.claims.cleanupPartnerData(place.id, orgId, [...members]);
+        await this.record(audited, {
+          action: PLACE_CLAIM_AUDIT.placeCleanup,
+          entityType: "place",
+          entityId: place.id,
+          reason,
+          newValues: {
+            claimId: claim.id,
+            archivedOffers: cleaned.offers,
+            archivedPriceSections: cleaned.priceSections,
+            archivedPriceItems: cleaned.priceItems,
+            archivedResources: cleaned.resources,
+            detachedMedia: cleaned.media,
+          },
+          regionId,
+        });
+      }
       // Роль владельца — только если организацию создала эта заявка и мест у неё не осталось.
       const revokedRoles: string[] = [];
       if (claim.new_organization_name !== null && (await this.claims.placeCount(orgId)) === 0) {

@@ -142,6 +142,79 @@ export class PlaceClaimsRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Данные партнёра на месте после отмены одобрения (иначе они вернулись бы при следующем владельце): акции и прайс
+   * (разделы и позиции) — в архив, ресурсы бронирования организации — в архив, фото, загруженные людьми организации,
+   * — откреплены от места (сам файл остаётся). Возвращает id изменённого — в аудит.
+   */
+  async cleanupPartnerData(
+    placeId: string,
+    organizationId: string,
+    memberIds: readonly string[],
+  ): Promise<{
+    offers: string[];
+    priceSections: string[];
+    priceItems: string[];
+    resources: string[];
+    media: string[];
+  }> {
+    const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
+    const offers = await this.q
+      .updateTable("offers")
+      .set({ status: "archived" })
+      .where("place_id", "=", placeId)
+      .where("status", "<>", "archived")
+      .returning("id")
+      .execute();
+    const priceItems = await this.q
+      .updateTable("price_list_items")
+      .set((eb) => ({ status: "archived", version: eb("version", "+", 1) }))
+      .where("place_id", "=", placeId)
+      .where("status", "<>", "archived")
+      .returning("id")
+      .execute();
+    const priceSections = await this.q
+      .updateTable("price_list_sections")
+      .set((eb) => ({ status: "archived", version: eb("version", "+", 1) }))
+      .where("place_id", "=", placeId)
+      .where("status", "<>", "archived")
+      .returning("id")
+      .execute();
+    const resources = await this.q
+      .updateTable("resources")
+      .set({ status: "archived" })
+      .where("place_id", "=", placeId)
+      .where("organization_id", "=", organizationId)
+      .where("status", "<>", "archived")
+      .returning("id")
+      .execute();
+    const media =
+      memberIds.length === 0
+        ? []
+        : await this.q
+            .deleteFrom("place_media")
+            .where("place_id", "=", placeId)
+            .where((eb) =>
+              eb(
+                "media_asset_id",
+                "in",
+                eb
+                  .selectFrom("media_assets")
+                  .select("id")
+                  .where("created_by", "in", [...memberIds]),
+              ),
+            )
+            .returning("media_asset_id as id")
+            .execute();
+    return {
+      offers: ids(offers),
+      priceSections: ids(priceSections),
+      priceItems: ids(priceItems),
+      resources: ids(resources),
+      media: ids(media),
+    };
+  }
+
   /** Сколько мест у организации (любой статус). */
   async placeCount(organizationId: string): Promise<number> {
     const row = await this.q
