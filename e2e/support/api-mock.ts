@@ -142,6 +142,8 @@ const card = (p: (typeof places)[number], favorite: boolean | null) => ({
   website: "https://place.example",
   telegram: null,
   verifiedAt: "2026-10-01T00:00:00Z",
+  // «Це мій заклад?» (0031): места мока без организации-партнёра.
+  claimable: true,
   photos: [
     {
       mediaAssetId: p.id,

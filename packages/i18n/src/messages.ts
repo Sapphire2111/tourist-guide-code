@@ -1655,7 +1655,7 @@ export const uk = {
   "admin.moderation.returned": "Заявку повернуто на доопрацювання.",
   "admin.moderation.rejected": "Заявку відхилено.",
   "admin.moderation.refresh": "Оновити",
-  "admin.moderation.tabs": "Розділи модерації",
+  "admin.moderation.tabs": "Черги модерації",
   "admin.moderation.tab.cases": "Публікації закладів",
   "admin.moderation.tab.claims": "Заявки на заклад",
   "admin.claims.hint":
@@ -1995,7 +1995,7 @@ export const en: Messages = {
   "admin.moderation.method.other": "Other",
   "admin.moderation.alreadyDecided": "Another moderator has already decided this case; data refreshed.",
   "admin.moderation.forbidden": "You are not allowed to moderate cases in this region.",
-  "admin.moderation.tabs": "Moderation sections",
+  "admin.moderation.tabs": "Moderation queues",
   "admin.moderation.tab.cases": "Place publications",
   "admin.moderation.tab.claims": "Place claims",
   "admin.claims.hint":
