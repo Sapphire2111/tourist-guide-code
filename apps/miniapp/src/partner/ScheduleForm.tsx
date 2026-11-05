@@ -74,6 +74,23 @@ export function withCommonTime(rows: readonly Row[], time: Time): Row[] {
   return openDays(rows).map((dayOfWeek) => ({ dayOfWeek, ...time }));
 }
 
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const fromMin = (m: number) =>
+  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/** Новый интервал дня после последнего: от его закрытия на 2 часа (до 23:59); места нет — null. */
+export function nextInterval(dayRows: readonly Row[]): Time | null {
+  const last = dayRows.reduce<Row | null>(
+    (a, r) => (!a || toMin(r.closesAt) > toMin(a.closesAt) ? r : a),
+    null,
+  );
+  if (!last) return DEFAULT_TIME;
+  const from = toMin(last.closesAt);
+  // Закрытие после полуночи (closes <= opens) или конец суток — добавить некуда.
+  if (toMin(last.closesAt) <= toMin(last.opensAt) || from >= 23 * 60 + 58) return null;
+  return { opensAt: fromMin(from), closesAt: fromMin(Math.min(from + 120, 23 * 60 + 59)) };
+}
+
 /** Сравнение без учёта порядка: «изменён ли график». */
 export function sameSchedule(a: readonly Row[], b: readonly Row[]): boolean {
   const key = (rs: readonly Row[]) =>
@@ -165,6 +182,7 @@ export function ScheduleForm({
                 id={ids.opens}
                 type="time"
                 value={time.opensAt}
+                disabled={common === "mixed"}
                 onChange={(e) =>
                   e.target.value && onChange(withCommonTime(rows, { ...time, opensAt: e.target.value }))
                 }
@@ -176,6 +194,7 @@ export function ScheduleForm({
                 id={ids.closes}
                 type="time"
                 value={time.closesAt}
+                disabled={common === "mixed"}
                 onChange={(e) =>
                   e.target.value && onChange(withCommonTime(rows, { ...time, closesAt: e.target.value }))
                 }
@@ -217,7 +236,7 @@ export function ScheduleForm({
                       className="partner-time"
                       aria-label={`${t("miniapp.partner.schedule.opens")}, ${dayName(d)}`}
                       value={r.opensAt}
-                      onChange={(e) => update(i, { opensAt: e.target.value })}
+                      onChange={(e) => e.target.value && update(i, { opensAt: e.target.value })}
                     />
                     <span aria-hidden="true">–</span>
                     <input
@@ -225,7 +244,7 @@ export function ScheduleForm({
                       className="partner-time"
                       aria-label={`${t("miniapp.partner.schedule.closes")}, ${dayName(d)}`}
                       value={r.closesAt}
-                      onChange={(e) => update(i, { closesAt: e.target.value })}
+                      onChange={(e) => e.target.value && update(i, { closesAt: e.target.value })}
                     />
                     <Button
                       aria-label={`${t("miniapp.partner.schedule.remove")}, ${dayName(d)}`}
@@ -238,7 +257,11 @@ export function ScheduleForm({
                 {mine.length > 0 && (
                   <Button
                     aria-label={`${t("miniapp.partner.schedule.add")}, ${dayName(d)}`}
-                    onClick={() => onChange([...rows, { dayOfWeek: d, opensAt: "09:00", closesAt: "18:00" }])}
+                    disabled={!nextInterval(mine.map((x) => x.r))}
+                    onClick={() => {
+                      const next = nextInterval(mine.map((x) => x.r));
+                      if (next) onChange([...rows, { dayOfWeek: d, ...next }]);
+                    }}
                   >
                     {t("miniapp.partner.schedule.add")}
                   </Button>

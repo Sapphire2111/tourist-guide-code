@@ -88,11 +88,16 @@ export function Photos({ place, onChanged }: { place: PartnerPlace; onChanged: (
     if (input.current) input.current.value = "";
     if (!list.length) return;
     setMessage(null);
-    const alt = caption.trim();
+    const typed = caption.trim();
     setCaption("");
     const queued: Upload[] = [];
+    const base = place.media.length + uploads.length;
     for (const file of list) {
       const key = ++seq.current;
+      // Сервер требует подпись у каждого фото: без своей — «Название — Фото N».
+      const alt =
+        typed ||
+        `${pickLocalized(place.name, locale)} — ${t("miniapp.partner.field.photo")} ${base + queued.length + 1}`;
       if (!PHOTO_TYPES.includes(file.type)) {
         queued.push({
           key,

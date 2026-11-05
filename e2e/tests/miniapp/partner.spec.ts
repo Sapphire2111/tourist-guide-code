@@ -65,7 +65,7 @@ test("онбординг → редактор → отправка на моде
   await expect(needed).toContainText("Фото");
 
   // Фото: подпись, «Додати фото» — загрузка сразу без отдельной кнопки.
-  await page.getByLabel("Підпис до фото (необов'язково)").fill("Фасад садиби");
+  await page.getByLabel("Підпис до фото").fill("Фасад садиби");
   await page
     .getByTestId("photo-input")
     .setInputFiles({ name: "facade.jpg", mimeType: "image/jpeg", buffer: JPEG });
@@ -94,13 +94,16 @@ test("онбординг → редактор → отправка на моде
   await expectNoSeriousA11yViolations(page);
 
   // P01: статус в кабинете, переключатель режима.
-  // Назад: в Telegram — нативная кнопка (текстовой ссылки нет, чтобы «Назад» не двоилась), в браузере — «← Мій заклад».
-  const back = page.getByRole("link", { name: "← Мій заклад" });
-  if (await back.count()) await back.click();
-  else
-    await page.evaluate(() => {
-      window.location.hash = "#/partner";
-    });
+  // Назад: в Telegram — только нативная BackButton, текстовой ссылки «← Мій заклад» нет (иначе «Назад» двоится).
+  await expect(page.getByRole("link", { name: "← Мій заклад" })).toHaveCount(0);
+  await page.evaluate(() =>
+    (window as unknown as { __telegramPress(b: string): void }).__telegramPress("BackButton"),
+  );
+  // Нативная «Назад» идёт по истории приложения: вход был из профиля.
+  await expect(page.getByRole("heading", { level: 1, name: "Профіль" })).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash = "#/partner";
+  });
   await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
   await expect(page.getByTestId("partner-place").getByTestId("place-status")).toHaveText("На перевірці");
   await expect(page.getByRole("link", { name: "Співробітники" })).toBeVisible();

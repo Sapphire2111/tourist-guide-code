@@ -10,6 +10,7 @@ import { Photos } from "./Photos.js";
 import {
   activePreset,
   commonTime,
+  nextInterval,
   presetRows,
   ScheduleForm,
   sameSchedule,
@@ -100,6 +101,27 @@ describe("ScheduleForm", () => {
     expect(screen.getByTestId("schedule-mixed")).toBeDefined();
   });
 
+  it("разное время по дням: общие поля времени отключены, интервалы не затираются", () => {
+    render(<Harness initial={[row(1), row(2, "10:00", "20:00")]} />);
+    expect((screen.getByLabelText("Закриття") as HTMLInputElement).disabled).toBe(true);
+    expect(rowsOut()).toEqual([row(1), row(2, "10:00", "20:00")]);
+  });
+
+  it("«Додати інтервал» ставит интервал после последнего; места нет — кнопка отключена; пустое время не принимается", () => {
+    render(<Harness initial={[row(1, "08:00", "12:00")]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Додати інтервал, Понеділок" }));
+    expect(rowsOut()).toEqual([row(1, "08:00", "12:00"), row(1, "12:00", "14:00")]);
+    fireEvent.change(screen.getAllByLabelText("Відкриття, Понеділок")[1]!, { target: { value: "" } });
+    expect(rowsOut()[1]).toEqual(row(1, "12:00", "14:00"));
+    cleanup();
+    render(<Harness initial={[row(1, "18:00", "02:00")]} />);
+    expect(
+      (screen.getByRole("button", { name: "Додати інтервал, Понеділок" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(nextInterval([row(1, "09:00", "23:59")])).toBeNull();
+    expect(nextInterval([])).toEqual({ opensAt: "09:00", closesAt: "18:00" });
+  });
+
   it("«Цілодобово» после будней — все семь дней 00:00–23:59", () => {
     render(<Harness initial={presetRows("weekdays")} />);
     fireEvent.click(screen.getByRole("button", { name: "Цілодобово" }));
@@ -186,6 +208,7 @@ describe("Photos", () => {
   const placeWith = (media: PartnerPlace["media"] = []): PartnerPlace =>
     ({
       id: PLACE_ID,
+      name: { uk: "Смерека" },
       editable: true,
       media,
       mediaPreview: Object.fromEntries(
@@ -209,7 +232,7 @@ describe("Photos", () => {
     const uploadPhoto = vi.fn(() => Promise.resolve());
     const onChanged = vi.fn();
     render(view(placeWith(), { uploadPhoto }, onChanged));
-    fireEvent.change(screen.getByLabelText("Підпис до фото (необов'язково)"), { target: { value: "Фасад" } });
+    fireEvent.change(screen.getByLabelText("Підпис до фото"), { target: { value: "Фасад" } });
     const input = screen.getByTestId("photo-input") as HTMLInputElement;
     expect(input.multiple).toBe(true);
     await act(async () => {
@@ -227,6 +250,21 @@ describe("Photos", () => {
     expect(onChanged).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("photo-uploads").textContent).toContain("c.gif");
     expect(screen.getByTestId("photo-uploads").textContent).toContain("JPEG, PNG або WebP");
+  });
+
+  it("без подписи сервер всё равно получает alt: «Назва — Фото N» с учётом уже загруженных", async () => {
+    const uploadPhoto = vi.fn(() => Promise.resolve());
+    const media = [
+      { mediaAssetId: ASSET, sortOrder: 0, isCover: true, alt: { uk: "x" } },
+    ] as unknown as PartnerPlace["media"];
+    render(view(placeWith(media), { uploadPhoto }));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("photo-input"), {
+        target: { files: [jpeg("a.jpg"), jpeg("b.jpg")] },
+      });
+    });
+    expect(uploadPhoto).toHaveBeenNthCalledWith(1, PLACE_ID, expect.anything(), "Смерека — Фото 2");
+    expect(uploadPhoto).toHaveBeenNthCalledWith(2, PLACE_ID, expect.anything(), "Смерека — Фото 3");
   });
 
   it("ошибка загрузки — на файле, «Повторити» пробует снова", async () => {

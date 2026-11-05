@@ -550,6 +550,92 @@ describe("исправления ревью", () => {
     expect(screen.queryByRole("button", { name: "Надіслати на перевірку" })).toBeNull();
   });
 
+  it("редактор: несохранённая правка основной формы переживает перечитывание (загрузка фото)", async () => {
+    const loadPlace = vi.fn(() => Promise.resolve(place()));
+    const uploadPhoto = vi.fn(() => Promise.resolve());
+    setup(<PlaceEditor id={PLACE} />, { place: loadPlace, uploadPhoto });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Чернетка" } });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("photo-input"), {
+        target: { files: [new File(["x"], "a.jpg", { type: "image/jpeg" })] },
+      });
+    });
+    expect(uploadPhoto).toHaveBeenCalledTimes(1);
+    expect(loadPlace).toHaveBeenCalledTimes(2);
+    expect((screen.getByLabelText("Опис") as HTMLTextAreaElement).value).toBe("Чернетка");
+  });
+
+  it("редактор: сохранение не удалось — отправки нет", async () => {
+    const updatePlace = vi.fn(() => Promise.reject(new ApiCallError(500, null)));
+    const submit = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: [] })),
+      updatePlace,
+      submit,
+    });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Новий" } });
+    fireEvent.click(screen.getByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("editor-message").textContent).toContain("Не вдалося зберегти");
+  });
+
+  it("редактор: PATCH прошёл, PUT графика упал — отправки нет", async () => {
+    const updatePlace = vi.fn(() => Promise.resolve(place({ description: { uk: "Новий" } })));
+    const putSchedule = vi.fn(() => Promise.reject(new ApiCallError(500, null)));
+    const submit = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: [] })),
+      updatePlace,
+      putSchedule,
+      submit,
+    });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Новий" } });
+    fireEvent.click(screen.getByRole("button", { name: "Години роботи" }));
+    fireEvent.click(screen.getByRole("button", { name: "Пн–Сб" }));
+    fireEvent.click(screen.getByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(putSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("редактор: список «не вистачає» от сервера (422) сбрасывается после перечитывания места", async () => {
+    let version = 0;
+    const loadPlace = vi.fn(() =>
+      Promise.resolve(place({ missingFields: [], updatedAt: `2026-11-02T00:00:0${version}Z` })),
+    );
+    const submit = vi.fn(() =>
+      Promise.reject(
+        new ApiCallError(422, "errors.partner.requiredFieldsMissing", "UNPROCESSABLE", {
+          missingFields: ["photo"],
+        }),
+      ),
+    );
+    const uploadPhoto = vi.fn(() => {
+      version += 1;
+      return Promise.resolve();
+    });
+    setup(<PlaceEditor id={PLACE} />, { place: loadPlace, submit, uploadPhoto });
+    fireEvent.click(await screen.findByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    const send = () => screen.getByRole("button", { name: "Надіслати на перевірку" }) as HTMLButtonElement;
+    expect(send().disabled).toBe(true);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("photo-input"), {
+        target: { files: [new File(["x"], "a.jpg", { type: "image/jpeg" })] },
+      });
+    });
+    expect(send().disabled).toBe(false);
+  });
+
   it("редактор: пустое название — сообщение, без запроса", async () => {
     const updatePlace = vi.fn();
     setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place()), updatePlace });

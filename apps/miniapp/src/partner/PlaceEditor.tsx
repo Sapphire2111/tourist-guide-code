@@ -94,6 +94,7 @@ export function patchOf(
         const lon = Number(form.lon.replace(",", "."));
         if (!form.lat.trim() || !form.lon.trim() || !Number.isFinite(lat) || !Number.isFinite(lon))
           return "bad_location";
+        if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return "bad_location";
         patch.location = { lat, lon };
       }
     }
@@ -135,7 +136,14 @@ export function neededFields(place: PartnerPlace, form: Form, rows: readonly Row
       case "location": {
         const lat = Number(form.lat.replace(",", "."));
         const lon = Number(form.lon.replace(",", "."));
-        return !!form.lat.trim() && !!form.lon.trim() && Number.isFinite(lat) && Number.isFinite(lon);
+        return (
+          !!form.lat.trim() &&
+          !!form.lon.trim() &&
+          Number.isFinite(lat) &&
+          Number.isFinite(lon) &&
+          Math.abs(lat) <= 90 &&
+          Math.abs(lon) <= 180
+        );
       }
       case "schedule":
         return rows.length > 0;
@@ -245,6 +253,12 @@ function EditorBody({
   const [serverMissing, setServerMissing] = useState<PartnerField[] | null>(null);
   const termsRef = useRef<HTMLInputElement>(null);
   const target = useRef(sectionFromHash());
+
+  // Список от сервера (422) устаревает, как только место перечитано (загрузили фото, сохранили): считаем заново.
+  const missingKey = place.missingFields.join();
+  useEffect(() => {
+    setServerMissing(null);
+  }, [place.updatedAt, missingKey]);
 
   const identity = place.abilities.editIdentity && place.status !== "published";
   const locked = !place.editable || busy;
@@ -384,6 +398,8 @@ function EditorBody({
       ) : (
         <>
           {!place.editable && <p data-testid="editor-readonly">{t("miniapp.partner.editor.readonly")}</p>}
+          {/* После отправки правка закрыта и панели нет: итог отправки остаётся на экране. */}
+          {!place.editable && <Live message={submitMessage} testId="submit-message" />}
           <Section
             id="basic"
             title={t("miniapp.partner.editor.section.basic")}

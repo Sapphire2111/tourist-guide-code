@@ -68,6 +68,7 @@ export default function LocationMap({
           if (!pos) return;
           const lat = typeof pos.lat === "function" ? pos.lat() : pos.lat;
           const lng = typeof pos.lng === "function" ? pos.lng() : pos.lng;
+          initial.current = { lat, lng };
           onPickRef.current({ lat, lng });
         });
       } else marker.position = p;
@@ -78,6 +79,7 @@ export default function LocationMap({
       if (!ll) return;
       const p = { lat: ll.lat(), lng: ll.lng() };
       place(p);
+      initial.current = p;
       onPickRef.current(p);
     });
     return () => {
@@ -89,7 +91,7 @@ export default function LocationMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libs, night]);
 
-  if (failed) return <p role="alert">{t("miniapp.map.error")}</p>;
+  if (failed) return <p role="alert">{t("miniapp.partner.location.mapError")}</p>;
   return (
     <div
       ref={host}

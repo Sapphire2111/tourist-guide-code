@@ -91,7 +91,7 @@ function MapSheet({
         <h2 id={title}>{t("miniapp.partner.location.sheetTitle")}</h2>
         <p className="partner-field-hint">{t("miniapp.partner.location.mapHint")}</p>
         {mapsAvailable() ? (
-          <MapBoundary fallback={<p role="alert">{t("miniapp.map.error")}</p>}>
+          <MapBoundary fallback={<p role="alert">{t("miniapp.partner.location.mapError")}</p>}>
             <Suspense fallback={<p role="status">{t("miniapp.guide.loading")}</p>}>
               <LocationMap
                 point={coords ? { lat: coords.lat, lng: coords.lon } : null}
@@ -101,7 +101,7 @@ function MapSheet({
           </MapBoundary>
         ) : (
           <p role="note" className="partner-field-hint" data-testid="map-unavailable">
-            {t("miniapp.map.unavailable")}
+            {t("miniapp.partner.location.mapUnavailable")}
           </p>
         )}
         <p data-testid="location-sheet-coords">
