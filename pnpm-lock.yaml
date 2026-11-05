@@ -66,6 +66,9 @@ importers:
       '@tg/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@types/google.maps':
+        specifier: 3.58.1
+        version: 3.58.1
       '@types/react':
         specifier: 19.1.8
         version: 19.1.8

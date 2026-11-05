@@ -35,7 +35,17 @@ export {
   type TenantContext,
 } from "./tenant-context.js";
 export { TenantGuardPlugin, type TenantGuardOptions } from "./tenant-guard.plugin.js";
-export { distanceMeters, lonLatOf, point, withinMeters, SRID, type Geometry, type LonLat } from "./geo.js";
+export {
+  distanceMeters,
+  lonLatOf,
+  point,
+  withinBox,
+  withinMeters,
+  SRID,
+  type BoundingBox,
+  type Geometry,
+  type LonLat,
+} from "./geo.js";
 export {
   AUDIT_ACTOR_TYPES,
   CONSENT_CHANNELS,

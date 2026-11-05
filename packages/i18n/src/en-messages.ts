@@ -118,7 +118,7 @@ export const en: Messages = {
   "miniapp.partner.onboarding.title": "Add your venue",
   "miniapp.partner.onboarding.lead":
     "It takes 2 minutes. Tourists will see the venue in the guide after review.",
-  "miniapp.partner.onboarding.exists": "Already in the guide? Find it and tap “Is this your place?”",
+  "miniapp.partner.onboarding.exists": "Already in the guide? Find it in search and send a claim",
   "miniapp.partner.onboarding.search": "Find in the guide",
   "miniapp.partner.onboarding.typeLegend": "What kind of venue is it?",
   "miniapp.partner.nextSteps.title": "What next",
@@ -565,6 +565,8 @@ export const en: Messages = {
   "miniapp.location.caption": "Location: {names}",
   "miniapp.location.done": "Done",
   "miniapp.search.title": "Find places",
+  "miniapp.search.claimTitle": "Find your place",
+  "miniapp.search.claimHint": "Pick your place from the list to send a claim to manage it.",
   "miniapp.about.empty": "The venue has not added information yet. Please contact the reception.",
   "miniapp.about.wifi": "Wi-Fi",
   "miniapp.about.wifiNetwork": "Network: {ssid}",

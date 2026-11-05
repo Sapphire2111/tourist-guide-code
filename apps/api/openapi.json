@@ -3957,6 +3957,34 @@
             "schema": { "maxLength": 100, "type": "string" }
           },
           {
+            "name": "minLat",
+            "required": false,
+            "in": "query",
+            "description": "Рамка карты: южная граница (широта). minLat, maxLat, minLng, maxLng — все четыре или ни одного",
+            "schema": { "minimum": -90, "maximum": 90, "type": "number" }
+          },
+          {
+            "name": "maxLat",
+            "required": false,
+            "in": "query",
+            "description": "Рамка карты: северная граница (широта), не меньше minLat",
+            "schema": { "minimum": -90, "maximum": 90, "type": "number" }
+          },
+          {
+            "name": "minLng",
+            "required": false,
+            "in": "query",
+            "description": "Рамка карты: западная граница (долгота)",
+            "schema": { "minimum": -180, "maximum": 180, "type": "number" }
+          },
+          {
+            "name": "maxLng",
+            "required": false,
+            "in": "query",
+            "description": "Рамка карты: восточная граница (долгота), не меньше minLng",
+            "schema": { "minimum": -180, "maximum": 180, "type": "number" }
+          },
+          {
             "name": "X-Request-Id",
             "in": "header",
             "description": "Correlation id; иначе генерируется",
@@ -4018,7 +4046,7 @@
           }
         },
         "security": [{ "session": [] }],
-        "summary": "Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию",
+        "summary": "Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию, рамка карты",
         "tags": ["admin"]
       },
       "post": {
