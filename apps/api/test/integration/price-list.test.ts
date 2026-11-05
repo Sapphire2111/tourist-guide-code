@@ -308,7 +308,7 @@ describe.skipIf(!dockerAvailable)(`Прайс заведения (миграци
   it("карточка: черновик — 404; опубликованное — только видимые; скрытые и архивные не видны; чужой регион — 404", async () => {
     expect(await guide.priceList(base.regions.a, placeId)).toBeUndefined();
     await sql(
-      `UPDATE places SET status = 'published', description_i18n = '{"uk": "Колиба"}',
+      `UPDATE places SET status = 'published', first_published_at = now(), description_i18n = '{"uk": "Колиба"}',
          address_i18n = '{"uk": "Косів"}', location = ST_SetSRID(ST_MakePoint(25.09, 48.31), 4326)
        WHERE id = $1`,
       [placeId],
