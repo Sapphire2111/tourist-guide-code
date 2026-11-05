@@ -355,4 +355,102 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
     const schedule = await sql(`SELECT day_of_week FROM place_schedules WHERE place_id = $1`, [placeId]);
     expect(schedule.rows.map((r) => r.day_of_week)).toEqual([1]);
   });
+
+  const placeOf = async (googleId: string) =>
+    (await sql(`SELECT id FROM places WHERE google_place_id = $1`, [googleId])).rows[0].id as string;
+
+  it("не бизнес (вершина): ссылки нет, заявка — 409 not_claimable", async () => {
+    await writePlaces(
+      appDb,
+      "test-region",
+      [mapped({ googlePlaceId: "ChIJclaimTestPeak01", categoryCode: "peaks", name: "Говерла" })],
+      new Date("2026-11-03T10:00:00Z"),
+    );
+    const peak = await placeOf("ChIJclaimTestPeak01");
+    expect((await guide.place(base.regions.a, peak, {}))?.claimable).toBe(false);
+    expect(await failure(claims.create(RIVAL, claimInput({ placeId: peak }), meta(RIVAL)))).toMatchObject({
+      status: 409,
+      reason: "not_claimable",
+    });
+  });
+
+  it("своя заявка модератора — 403 own_claim; другой регион — 403; отзыв заявителем — только своей и на рассмотрении", async () => {
+    await writePlaces(
+      appDb,
+      "test-region",
+      [mapped({ googlePlaceId: "ChIJclaimTestPlace02", name: "Колиба «Друга»" })],
+      new Date("2026-11-03T10:00:00Z"),
+    );
+    const place2 = await placeOf("ChIJclaimTestPlace02");
+    const own = await claims.create(MODERATOR_A, claimInput({ placeId: place2 }), meta(MODERATOR_A));
+    expect(
+      await failure(claims.decide(MODERATOR_A, own.id, "approve", undefined, meta(MODERATOR_A))),
+    ).toMatchObject({ status: 403, reason: "own_claim" });
+    expect(await failure(claims.decide(ADMIN_B, own.id, "reject", "x", meta(ADMIN_B)))).toMatchObject({
+      status: 403,
+    });
+    expect(await failure(claims.withdraw(RIVAL, own.id, meta(RIVAL)))).toMatchObject({ status: 404 });
+    expect((await claims.withdraw(MODERATOR_A, own.id, meta(MODERATOR_A))).status).toBe("withdrawn");
+    expect(await failure(claims.withdraw(MODERATOR_A, own.id, meta(MODERATOR_A)))).toMatchObject({
+      status: 409,
+    });
+  });
+
+  it("отмена одобрения: место без организации, заявка revoked, ORG_OWNER новой организации снят, AuditLog", async () => {
+    const [mine] = (await claims.mine(CLAIMANT, base.regions.a)).items;
+    expect(mine!.status).toBe("approved");
+    expect(await failure(claims.revoke(MODERATOR_A, mine!.id, "  ", meta(MODERATOR_A)))).toMatchObject({
+      status: 400,
+    });
+    const revoked = await claims.revoke(MODERATOR_A, mine!.id, "Помилкове схвалення", meta(MODERATOR_A));
+    expect(revoked).toMatchObject({ status: "revoked", revokeReason: "Помилкове схвалення" });
+    const place = (
+      await sql(`SELECT organization_id, partner_template_id, status FROM places WHERE id = $1`, [placeId])
+    ).rows[0];
+    expect(place).toEqual({ organization_id: null, partner_template_id: null, status: "published" });
+    expect((await partner.me(CLAIMANT)).organizations).toEqual([]);
+    expect((await guide.place(base.regions.a, placeId, {}))?.claimable).toBe(true);
+    expect(await failure(claims.revoke(MODERATOR_A, mine!.id, "ще раз", meta(MODERATOR_A)))).toMatchObject({
+      status: 409,
+    });
+    const audit = await sql(
+      `SELECT action FROM audit_logs WHERE action IN ('place_claim.revoke', 'place.claim_unassign', 'role.revoke')`,
+    );
+    expect(audit.rows.map((r) => r.action).sort()).toEqual(
+      expect.arrayContaining(["place.claim_unassign", "place_claim.revoke"]),
+    );
+    await expect.poll(() => sent.some((s) => s.text.includes("скасовано"))).toBe(true);
+  });
+
+  it("одобрение на организацию, где заявитель больше не владелец, — 409 claimant_not_owner", async () => {
+    const first = await claims.create(RIVAL, claimInput({ organizationName: "ТОВ Суперник" }), meta(RIVAL));
+    await claims.decide(MODERATOR_A, first.id, "approve", undefined, meta(MODERATOR_A));
+    const org = (await partner.me(RIVAL)).organizations[0]!;
+    const place2 = await placeOf("ChIJclaimTestPlace02");
+    const second = await claims.create(
+      RIVAL,
+      claimInput({ placeId: place2, organizationName: undefined, organizationId: org.id }),
+      meta(RIVAL),
+    );
+    await sql(`UPDATE role_assignments SET revoked_at = now() WHERE id = $1`, [org.assignmentId]);
+    expect(
+      await failure(claims.decide(MODERATOR_A, second.id, "approve", undefined, meta(MODERATOR_A))),
+    ).toMatchObject({ status: 409, reason: "claimant_not_owner" });
+  });
+
+  it("очистка ПДн: телефон и комментарий решённых заявок старше 90 дней стираются, на рассмотрении — нет", async () => {
+    await sql(`ALTER TABLE place_claims DISABLE TRIGGER place_claims_set_updated_at`);
+    await sql(`UPDATE place_claims SET updated_at = now() - interval '120 days'`);
+    await sql(`ALTER TABLE place_claims ENABLE TRIGGER place_claims_set_updated_at`);
+    await expect(sql(`SELECT place_claims_purge_expired_pii(10, 100)`)).rejects.toThrow();
+    const n = (await sql(`SELECT place_claims_purge_expired_pii(90, 100) AS n`)).rows[0].n as number;
+    expect(n).toBeGreaterThan(0);
+    const rows = (await sql(`SELECT status, phone, comment, pii_purged_at FROM place_claims`)).rows;
+    for (const r of rows)
+      if (r.status === "pending") expect(r.phone).not.toBeNull();
+      else expect(r).toMatchObject({ phone: null, comment: null });
+    // Detail модератора после очистки: телефона нет.
+    const purged = rows.length;
+    expect(purged).toBeGreaterThan(0);
+  });
 });

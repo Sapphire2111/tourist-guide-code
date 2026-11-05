@@ -138,3 +138,27 @@ export function scheduleProblems(
 export function likePattern(q: string): string {
   return `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
+
+// «Це мій заклад» (0031): какие категории места можно заявить партнёру.
+/**
+ * Категории без хозяина-бизнеса (природа, вершины, пам'ятки и храмы, лікарні, банкомати, пошта, парковки, корень
+ * «Допомога»): у таких мест ссылки «Це мій заклад?» нет, заявка — 409 not_claimable. Остальные категории каталога
+ * (житло, їжа, чани, прокат, підйомники й курорти, магазини, сервіси, зарядки…) — заявляемые.
+ */
+export const NOT_CLAIMABLE_CATEGORY_CODES: ReadonlySet<string> = new Set([
+  "nature",
+  "peaks",
+  "sights",
+  "churches",
+  "viewpoints",
+  "waterfalls",
+  "help",
+  "hospitals",
+  "emergency",
+  "atm",
+  "post",
+  "parking",
+]);
+
+export const isClaimableCategory = (code: string | null | undefined): boolean =>
+  !!code && !NOT_CLAIMABLE_CATEGORY_CODES.has(code);

@@ -27,10 +27,14 @@ import {
   AUTO_REJECT_COMMENT,
   CLAIM_DECISION_STATUS,
   claimBlocker,
+  isClaimableCategory,
   claimDecisionText,
   claimOrganization,
   DECIDED_CLAIM_STATUSES,
   isClaimDecidable,
+  isClaimRevocable,
+  isClaimWithdrawable,
+  MY_CLAIMS_RECENT_DAYS,
   templateForCategory,
   type ClaimDecision,
 } from "./claim-rules.js";
@@ -55,6 +59,9 @@ export const PLACE_CLAIM_AUDIT = {
   autoReject: "place_claim.auto_reject",
   /** На месте (entity place): привязка к организации; импорт защищает место по organization_id (places-import/writer.ts). */
   placeAssign: "place.claim_assign",
+  placeUnassign: "place.claim_unassign",
+  revoke: "place_claim.revoke",
+  withdraw: "place_claim.withdraw",
 } as const;
 export const NOTIFICATION_TEMPLATE_CLAIM_OPENED = "place_claim.opened";
 export const NOTIFICATION_TEMPLATE_CLAIM_DECISION = "place_claim.decision";
@@ -71,6 +78,22 @@ const alreadyDecided = (claim?: Pick<PlaceClaim, "status" | "decided_by">) =>
       ...(claim ? { status: claim.status, decidedBy: claim.decided_by } : {}),
     },
   });
+const notClaimable = () =>
+  new ApiError("CONFLICT", {
+    messageKey: "errors.placeClaim.notClaimable",
+    details: { reason: "not_claimable" },
+  });
+/** Взаимоблокировка или сбой сериализации (две транзакции над одним местом) — повторить запрос. */
+function rethrowTxConflict(e: unknown): never {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === "40P01" || code === "40001")
+    throw new ApiError("CONFLICT", {
+      messageKey: "errors.conflict",
+      details: { reason: "retry", retryable: true },
+      cause: e,
+    });
+  throw e;
+}
 const alreadyClaimed = () =>
   new ApiError("CONFLICT", {
     messageKey: "errors.placeClaim.alreadyClaimed",
@@ -122,10 +145,12 @@ export class PlaceClaimsService {
     const { dto, notify } = await withTenant(this.db, regionContext(regionId), async () => {
       const place = await this.catalogRepo.lockPlace(input.placeId.toLowerCase());
       if (!place) throw notFound();
-      const blocker = claimBlocker(place);
+      const category = await this.catalogRepo.findCategory(place.category_id);
+      const blocker = claimBlocker(place, category?.code);
       // Неопубликованное место туристу не видно — как несуществующее.
       if (blocker === "place_not_published") throw notFound();
       if (blocker === "place_claimed") throw alreadyClaimed();
+      if (blocker === "not_claimable") throw notClaimable();
       let claim: PlaceClaim;
       try {
         claim = await this.claims.insert({
@@ -182,7 +207,9 @@ export class PlaceClaimsService {
   async mine(userId: string, regionId: string): Promise<PlaceClaimListDto> {
     const region = await this.regions.findById(regionId.toLowerCase());
     if (region?.status !== "active") throw notFound();
-    const rows = await withTenant(this.db, regionContext(region.id), () => this.claims.mine(userId));
+    const rows = await withTenant(this.db, regionContext(region.id), () =>
+      this.claims.mine(userId, new Date(this.now().getTime() - MY_CLAIMS_RECENT_DAYS * 86_400_000)),
+    );
     return { items: rows.map(toClaimDto) };
   }
 
@@ -267,13 +294,11 @@ export class PlaceClaimsService {
       });
     const audited: AuditMeta = { ...meta, roleAssignmentId: grant.id };
     const { dto, notify } = await withTenant(this.db, regionContext(regionId), async (trx) => {
-      const claim = await this.claims.find(id.toLowerCase(), true);
-      if (!claim) throw notFound();
+      // Порядок блокировок — как у подачи и отмены: место, затем заявка (иначе взаимоблокировка двух решений).
+      const { claim, place } = await this.lockClaimAndPlace(id);
       if (isOwn(grants, userId, claim, this.now()))
         throw forbidden(claim.user_id === userId ? "own_claim" : "own_organization");
       if (!isClaimDecidable(claim.status)) throw alreadyDecided(claim);
-      const place = await this.catalogRepo.lockPlace(claim.place_id);
-      if (!place) throw notFound();
       const drafts: NotificationDraft[] = [];
       let organizationId: string | undefined;
       if (decision === "approve") {
@@ -283,8 +308,9 @@ export class PlaceClaimsService {
             messageKey: "errors.placeClaim.placeNotPublished",
             details: { reason: "place_not_published", status: place.status },
           });
-        organizationId = await this.claimantOrganization(trx, claim, audited, regionId);
         const category = await this.catalogRepo.findCategory(place.category_id);
+        if (!isClaimableCategory(category?.code)) throw notClaimable();
+        organizationId = await this.claimantOrganization(trx, claim, audited, regionId);
         const template = place.partner_template_id
           ? null
           : templateForCategory(await this.partners.listTemplates(), category?.code);
@@ -354,12 +380,128 @@ export class PlaceClaimsService {
       const row = await this.claims.row(claim.id);
       if (!row) throw notFound();
       return { dto: toSummaryDto(row, false), notify };
-    });
+    }).catch(rethrowTxConflict);
     this.notifications.dispatchInBackground(regionId, notify);
     return dto;
   }
 
+  /**
+   * Отмена ошибочного одобрения (причина обязательна): организация снимается с места, только если место всё ещё за
+   * организацией заявки; заявка → revoked. ORG_OWNER заявителя отзывается, только если организацию создала эта заявка
+   * и других мест у неё нет (иначе роль остаётся). AuditLog; заявителю — уведомление ботом.
+   */
+  async revoke(
+    userId: string,
+    id: string,
+    rawReason: string,
+    meta: AuditMeta,
+  ): Promise<PlaceClaimSummaryDto> {
+    const { regionId, grant, grants } = await this.claimAccess(userId, id);
+    const reason = rawReason.trim();
+    if (!reason)
+      throw new ApiError("VALIDATION_FAILED", {
+        details: {
+          fields: [{ field: "reason", constraint: "isDefined", messageKey: "errors.validation.isDefined" }],
+        },
+      });
+    const audited: AuditMeta = { ...meta, roleAssignmentId: grant.id };
+    const { dto, notify } = await withTenant(this.db, regionContext(regionId), async (trx) => {
+      const { claim, place } = await this.lockClaimAndPlace(id);
+      if (isOwn(grants, userId, claim, this.now()))
+        throw forbidden(claim.user_id === userId ? "own_claim" : "own_organization");
+      if (!isClaimRevocable(claim.status)) throw alreadyDecided(claim);
+      const orgId = claim.organization_id!;
+      const unassigned = await this.claims.unassignPlace(place.id, orgId);
+      if (unassigned)
+        await this.record(audited, {
+          action: PLACE_CLAIM_AUDIT.placeUnassign,
+          entityType: "place",
+          entityId: place.id,
+          reason,
+          oldValues: { organizationId: orgId, partnerTemplateId: place.partner_template_id },
+          newValues: { organizationId: null, partnerTemplateId: null, claimId: claim.id },
+          regionId,
+        });
+      // Роль владельца — только если организацию создала эта заявка и мест у неё не осталось.
+      const revokedRoles: string[] = [];
+      if (claim.new_organization_name !== null && (await this.claims.placeCount(orgId)) === 0) {
+        const owners = (await this.partners.staffOf(orgId)).filter(
+          (m) => m.user_id === claim.user_id && m.role === "ORG_OWNER",
+        );
+        for (const o of owners) {
+          await this.roles.revoke(trx, {
+            assignmentId: o.assignment_id,
+            actor: { type: "system" },
+            reason: "place_claim_revoked",
+            requestId: meta.requestId ?? null,
+          });
+          revokedRoles.push(o.assignment_id);
+        }
+      }
+      const revoked = await this.claims.revoke(claim.id, { revoked_by: userId, revoke_reason: reason });
+      if (!revoked) throw alreadyDecided();
+      await this.record(audited, {
+        action: PLACE_CLAIM_AUDIT.revoke,
+        entityType: PLACE_CLAIM_ENTITY,
+        entityId: claim.id,
+        reason,
+        oldValues: { status: "approved", placeId: place.id, organizationId: orgId },
+        newValues: { status: "revoked", placeUnassigned: !!unassigned, revokedAssignments: revokedRoles },
+        regionId,
+      });
+      const notify = await this.notifications.enqueue([
+        {
+          recipientUserId: claim.user_id,
+          template: NOTIFICATION_TEMPLATE_CLAIM_DECISION,
+          entityType: PLACE_CLAIM_ENTITY,
+          entityId: claim.id,
+          body: claimDecisionText("revoke", place.name_i18n.uk, reason),
+        },
+      ]);
+      const row = await this.claims.row(claim.id);
+      if (!row) throw notFound();
+      return { dto: toSummaryDto(row, false), notify };
+    }).catch(rethrowTxConflict);
+    this.notifications.dispatchInBackground(regionId, notify);
+    return dto;
+  }
+
+  /** Заявитель отзывает свою заявку на рассмотрении; чужая — 404, уже решённая — 409. */
+  async withdraw(userId: string, id: string, meta: AuditMeta): Promise<PlaceClaimDto> {
+    const regionId = await this.claims.claimRegion(id.toLowerCase());
+    if (!regionId) throw notFound();
+    return withTenant(this.db, regionContext(regionId), async () => {
+      const claim = await this.claims.find(id.toLowerCase());
+      if (claim?.user_id !== userId) throw notFound();
+      if (!isClaimWithdrawable(claim.status)) throw alreadyDecided(claim);
+      const done = await this.claims.withdraw(claim.id, userId);
+      if (!done) throw alreadyDecided();
+      await this.record(meta, {
+        action: PLACE_CLAIM_AUDIT.withdraw,
+        entityType: PLACE_CLAIM_ENTITY,
+        entityId: claim.id,
+        oldValues: { status: "pending" },
+        newValues: { status: "withdrawn" },
+        regionId,
+      });
+      const row = await this.claims.row(claim.id);
+      if (!row) throw notFound();
+      return toClaimDto(row);
+    }).catch(rethrowTxConflict);
+  }
+
   // --- внутреннее ---
+
+  /** Место заявки (FOR UPDATE), затем сама заявка (FOR UPDATE) — единый порядок блокировок. */
+  private async lockClaimAndPlace(id: string) {
+    const peek = await this.claims.find(id.toLowerCase());
+    if (!peek) throw notFound();
+    const place = await this.catalogRepo.lockPlace(peek.place_id);
+    if (!place) throw notFound();
+    const claim = await this.claims.find(peek.id, true);
+    if (!claim) throw notFound();
+    return { claim, place };
+  }
 
   /**
    * Организация одобряемой заявки: существующая — заявитель должен оставаться её ORG_OWNER (иначе 409); новая —
@@ -490,6 +632,7 @@ export function toClaimDto(r: PlaceClaimRow): PlaceClaimDto {
     organizationId: r.organization_id,
     organizationName: r.organization_name ?? "",
     decisionComment: r.decision_comment,
+    revokeReason: r.revoke_reason,
     createdAt: r.created_at.toISOString(),
     decidedAt: r.decided_at?.toISOString() ?? null,
   };

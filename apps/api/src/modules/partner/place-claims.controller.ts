@@ -101,6 +101,20 @@ export class PlaceClaimsController {
   create(@Body() body: CreatePlaceClaimDto, @Req() req: AuthedRequest): Promise<PlaceClaimDto> {
     return this.claims.create(userOf(req), body, auditFromRequest(req));
   }
+
+  @Post(":id/withdraw")
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: "withdrawPlaceClaim",
+    summary: "Отозвать свою заявку на рассмотрении → withdrawn",
+    description: "404 — заявки нет или она чужая; 409 errors.placeClaim.alreadyDecided — уже решена.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiOkResponse({ type: PlaceClaimDto })
+  @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "NOT_FOUND", "CONFLICT", "RATE_LIMITED")
+  withdraw(@Param("id", uuid) id: string, @Req() req: AuthedRequest): Promise<PlaceClaimDto> {
+    return this.claims.withdraw(userOf(req), id, auditFromRequest(req));
+  }
 }
 
 const ERRORS = ["VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND"] as const;
@@ -179,5 +193,26 @@ export class PlaceClaimsModerationController {
     @Req() req: AuthedRequest,
   ): Promise<PlaceClaimSummaryDto> {
     return this.claims.decide(userOf(req), id, "reject", body.reason, auditFromRequest(req));
+  }
+
+  @Post(":id/revoke")
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: "revokePlaceClaim",
+    summary: "Скасувати схвалення: место без организации, заявка → revoked (причина обязательна)",
+    description:
+      "Организация снимается, только если место всё ещё за организацией заявки; ORG_OWNER заявителя отзывается, " +
+      "только если организацию создала эта заявка и других мест у неё нет. 409 — заявка не одобрена. AuditLog; " +
+      "заявителю — уведомление ботом.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiOkResponse({ type: PlaceClaimSummaryDto })
+  @ApiErrors(...ERRORS, "CONFLICT")
+  revoke(
+    @Param("id", uuid) id: string,
+    @Body() body: RejectPlaceClaimDto,
+    @Req() req: AuthedRequest,
+  ): Promise<PlaceClaimSummaryDto> {
+    return this.claims.revoke(userOf(req), id, body.reason, auditFromRequest(req));
   }
 }

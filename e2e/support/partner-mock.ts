@@ -274,6 +274,7 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
           organizationId: b.organizationId ?? null,
           organizationName: b.organizationName ?? "",
           decisionComment: null,
+          revokeReason: null,
           createdAt: "2026-11-05T10:00:00Z",
           decidedAt: null,
         };

@@ -57,6 +57,7 @@ const claim = (over: Partial<PlaceClaim> = {}): PlaceClaim => ({
   organizationId: null,
   organizationName: "ФОП Гуцул",
   decisionComment: null,
+  revokeReason: null,
   createdAt: "2026-11-05T10:00:00Z",
   decidedAt: null,
   ...over,
@@ -247,5 +248,28 @@ describe("кабинет: мои заявки", () => {
     cleanup();
     await setup(<MyClaims />, { api: { claims: async () => [] } });
     expect(screen.queryByTestId("my-claims")).toBeNull();
+  });
+});
+
+describe("кабинет: отзыв заявки", () => {
+  it("«Відкликати заявку» — с подтверждением; после отзыва список перечитывается", async () => {
+    let list = [claim()];
+    const withdrawClaim = vi.fn(async () => {
+      list = [claim({ status: "withdrawn" })];
+      return list[0]!;
+    });
+    await setup(<MyClaims />, { api: { claims: async () => list, withdrawClaim } });
+    fireEvent.click(screen.getByTestId("claim-withdraw"));
+    expect(screen.getByText("Відкликати заявку на «Wood Stone»?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Залишити заявку" }));
+    expect(withdrawClaim).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("claim-withdraw"));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("claim-withdraw-yes"));
+    });
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(withdrawClaim).toHaveBeenCalledWith(claim().id);
+    expect(screen.getByTestId("claim-status").textContent).toBe("Відкликано");
+    expect(screen.queryByTestId("claim-withdraw")).toBeNull();
   });
 });

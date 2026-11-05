@@ -1,17 +1,25 @@
 // Правила заявки «Це мій заклад» (0031) без БД и Nest: какое место можно заявить, выбор организации, переходы
 // статуса, шаблон партнёра для места каталога, тексты уведомлений заявителю.
 import type { PlaceClaimStatus, PlaceStatus } from "../../db/index.js";
+import { isClaimableCategory } from "../catalog/index.js";
+
+// Список категорий без хозяина-бизнеса — в каталоге (его читает и карточка места guide).
+export { isClaimableCategory, NOT_CLAIMABLE_CATEGORY_CODES } from "../catalog/index.js";
 
 /** Почему место нельзя заявить; null — можно. */
-export type ClaimBlocker = "place_claimed" | "place_not_published";
+export type ClaimBlocker = "place_claimed" | "place_not_published" | "not_claimable";
 
-/** Заявить можно только опубликованное место без организации (место импорта Google или админки). */
-export function claimBlocker(place: {
-  status: PlaceStatus;
-  organization_id: string | null;
-}): ClaimBlocker | null {
+/**
+ * Заявить можно только опубликованное место без организации (место импорта Google или админки) в категории с
+ * хозяином-бизнесом.
+ */
+export function claimBlocker(
+  place: { status: PlaceStatus; organization_id: string | null },
+  categoryCode: string | null | undefined,
+): ClaimBlocker | null {
   if (place.organization_id !== null) return "place_claimed";
   if (place.status !== "published") return "place_not_published";
+  if (!isClaimableCategory(categoryCode)) return "not_claimable";
   return null;
 }
 
@@ -27,9 +35,27 @@ export const CLAIM_DECISION_STATUS: Readonly<
 };
 
 export const isClaimDecidable = (s: PlaceClaimStatus): boolean => s === "pending";
+/** Отозвать может заявитель — только заявку на рассмотрении. */
+export const isClaimWithdrawable = (s: PlaceClaimStatus): boolean => s === "pending";
+/** Отменить (ошибочное одобрение) может модератор — только одобренную. */
+export const isClaimRevocable = (s: PlaceClaimStatus): boolean => s === "approved";
 
 /** Решённые заявки (фильтр «Розглянуті» очереди). */
-export const DECIDED_CLAIM_STATUSES: readonly PlaceClaimStatus[] = ["approved", "rejected", "withdrawn"];
+export const DECIDED_CLAIM_STATUSES: readonly PlaceClaimStatus[] = [
+  "approved",
+  "rejected",
+  "withdrawn",
+  "revoked",
+];
+
+/** «Мої заявки»: на рассмотрении — всегда, решённые — столько дней после последнего изменения. */
+export const MY_CLAIMS_RECENT_DAYS = 30;
+
+export function isRecentClaim(c: { status: PlaceClaimStatus; updated_at: Date }, now: Date): boolean {
+  return (
+    c.status === "pending" || now.getTime() - c.updated_at.getTime() <= MY_CLAIMS_RECENT_DAYS * 86_400_000
+  );
+}
 
 /** Организация заявки: существующая (где заявитель ORG_OWNER) или новая по названию — ровно одно. */
 export type ClaimOrganizationChoice =
@@ -53,19 +79,25 @@ export function claimOrganization(
   return { kind: "new", name: name! };
 }
 
+/** category_codes базового шаблона (0031): любая категория. */
+export const ANY_CATEGORY = "*";
+
+export const isAnyCategoryTemplate = (t: { category_codes: readonly string[] }): boolean =>
+  t.category_codes.includes(ANY_CATEGORY);
+
 /**
- * Шаблон партнёра для места каталога по коду его категории (первый по sort_order из активных): с шаблоном у
- * одобренного места работает редактор кабинета (P06). Нет подходящего — null (место привязано, редактора нет).
+ * Шаблон партнёра для места каталога по коду его категории (первый по sort_order из активных); нет подходящего —
+ * базовый шаблон (category_codes '*'): у каждого одобренного места есть редактор кабинета (P06).
  */
 export function templateForCategory<T extends { category_codes: readonly string[]; sort_order: number }>(
   templates: readonly T[],
   categoryCode: string | null | undefined,
 ): T | null {
-  if (!categoryCode) return null;
+  const sorted = [...templates].sort((a, b) => a.sort_order - b.sort_order);
   return (
-    [...templates]
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .find((t) => t.category_codes.includes(categoryCode)) ?? null
+    (categoryCode ? sorted.find((t) => t.category_codes.includes(categoryCode)) : undefined) ??
+    sorted.find(isAnyCategoryTemplate) ??
+    null
   );
 }
 
@@ -74,13 +106,15 @@ export const AUTO_REJECT_COMMENT = "Заклад підтверджено за �
 
 /** Текст уведомления заявителю ботом. */
 export function claimDecisionText(
-  decision: ClaimDecision,
+  decision: ClaimDecision | "revoke",
   placeName: string,
   comment: string | null,
 ): string {
   const head =
     decision === "approve"
-      ? `Заявку «Це мій заклад» на «${placeName}» схвалено. Заклад тепер у вашому кабінеті партнера.`
-      : `Заявку «Це мій заклад» на «${placeName}» відхилено.`;
+      ? `Заявку «Це мій заклад» на «${placeName}» схвалено. Заклад тепер у розділі «Мій заклад».`
+      : decision === "revoke"
+        ? `Схвалення заявки «Це мій заклад» на «${placeName}» скасовано модератором.`
+        : `Заявку «Це мій заклад» на «${placeName}» відхилено.`;
   return comment ? `${head} Коментар модератора: ${comment}` : head;
 }

@@ -35,6 +35,7 @@ const CLAIM = {
   organizationId: null,
   organizationName: "ФОП Гуцул",
   decisionComment: null,
+  revokeReason: null,
   createdAt: "2026-11-05T10:00:00Z",
   decidedAt: null,
   userId: "00000000-0000-4000-8000-000000000b03",
@@ -151,7 +152,7 @@ describe("заявки на заклад", () => {
       "https://maps.google.com/?cid=1",
     );
     expect(screen.getByRole("link", { name: "+380501112233" })).toBeDefined();
-    expect(screen.getByText(/з Telegram/)).toBeDefined();
+    expect(screen.getByText(/вказано через Telegram .не перевірено./)).toBeDefined();
     expect(
       screen.getByText("Схвалення цієї заявки автоматично відхилить інші заявки на розгляді."),
     ).toBeDefined();
@@ -209,5 +210,52 @@ describe("заявки на заклад", () => {
     await open(api, `#/moderation/claims/${CLAIM_ID}`);
     expect(screen.getByText(/рішення ухвалює інший модератор/)).toBeDefined();
     expect(screen.queryByRole("form", { name: "Схвалити" })).toBeNull();
+  });
+
+  it("одобренная: «Скасувати схвалення» — причина обязательна, подтверждение, POST revoke", async () => {
+    const approved = {
+      ...DETAIL,
+      status: "approved",
+      organizationId: "00000000-0000-4000-8000-000000000b05",
+    };
+    const { api, calls } = fakeApi((m, p) =>
+      m === "POST" && p.endsWith("/revoke")
+        ? [200, { ...CLAIM, status: "revoked" }]
+        : p === `/admin/moderation/claims/${CLAIM_ID}`
+          ? [200, approved]
+          : undefined,
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await open(api, `#/moderation/claims/${CLAIM_ID}`);
+    const form = screen.getByRole("form", { name: "Скасувати схвалення" });
+    fireEvent.submit(form);
+    await flush();
+    expect(within(form).getByRole("alert").textContent).toBe("Вкажіть причину — партнер її побачить.");
+    fireEvent.change(within(form).getByLabelText("Причина скасування (бачить заявник)"), {
+      target: { value: "Помилкове схвалення" },
+    });
+    fireEvent.submit(form);
+    await flush();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    fireEvent.submit(form);
+    await flush();
+    await flush();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(calls.find((c) => c.method === "POST")).toMatchObject({
+      path: `/admin/moderation/claims/${CLAIM_ID}/revoke`,
+      body: { reason: "Помилкове схвалення" },
+    });
+    expect(screen.getByText("Схвалення скасовано: заклад знято з організації.")).toBeDefined();
+    confirm.mockRestore();
+  });
+
+  it("телефон заявителя стёрт по сроку — подпись вместо номера", async () => {
+    const { api } = fakeApi((_m, p) =>
+      p === `/admin/moderation/claims/${CLAIM_ID}`
+        ? [200, { ...DETAIL, status: "rejected", phone: null }]
+        : undefined,
+    );
+    await open(api, `#/moderation/claims/${CLAIM_ID}`);
+    expect(screen.getByText(/стерто через 90 днів після рішення/)).toBeDefined();
   });
 });

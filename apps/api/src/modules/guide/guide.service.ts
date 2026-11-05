@@ -13,7 +13,7 @@ import {
   type Region,
   type HomeSection,
 } from "../../db/index.js";
-import { toScheduleDto } from "../catalog/index.js";
+import { isClaimableCategory, toScheduleDto } from "../catalog/index.js";
 import { EmergencyContactsRepository } from "../emergency-contacts/index.js";
 import { MediaService } from "../media/index.js";
 import { RegionsRepository } from "../regions/index.js";
@@ -209,7 +209,7 @@ export class GuideService {
         website: row.website,
         telegram: row.telegram,
         verifiedAt: row.verified_at?.toISOString() ?? null,
-        claimable: row.organization_id === null,
+        claimable: row.organization_id === null && isClaimableCategory(category?.code),
         photos: photoDtos,
         tags: tags.map((t) => ({
           id: t.id,

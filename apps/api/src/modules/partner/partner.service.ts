@@ -41,6 +41,7 @@ import {
 } from "../rbac/index.js";
 import { RegionsRepository } from "../regions/index.js";
 import { RoleAssignmentError, RoleAssignmentService } from "../role-assignments/index.js";
+import { isAnyCategoryTemplate, isClaimableCategory } from "./claim-rules.js";
 import {
   abilitiesOf,
   higherRole,
@@ -161,7 +162,8 @@ export class PartnerService {
   async templates(regionId: string): Promise<PartnerTemplateListDto> {
     const region = await this.activeRegion(regionId);
     return withTenant(this.db, regionContext(region), async () => {
-      const templates = await this.repo.listTemplates();
+      // Базовый шаблон мест каталога (0031, category_codes '*') в онбординге не предлагается.
+      const templates = (await this.repo.listTemplates()).filter((t) => !isAnyCategoryTemplate(t));
       const categories = await this.repo.categoriesByCodes([
         ...new Set(templates.flatMap((t) => t.category_codes)),
       ]);
@@ -915,7 +917,11 @@ export class PartnerService {
 
   private async checkTemplateCategory(template: PartnerTemplate, categoryId: string): Promise<void> {
     const category = await this.catalogRepo.findCategory(categoryId.toLowerCase());
-    if (category && !template.category_codes.includes(category.code))
+    // Базовый шаблон (0031): любая категория с хозяином-бизнесом.
+    const allowed = isAnyCategoryTemplate(template)
+      ? isClaimableCategory(category?.code)
+      : !!category && template.category_codes.includes(category.code);
+    if (category && !allowed)
       throw new ApiError("UNPROCESSABLE", {
         messageKey: "errors.partner.categoryNotInTemplate",
         details: { reason: "category_not_in_template", allowed: template.category_codes },
@@ -932,7 +938,12 @@ export class PartnerService {
       this.catalogRepo.placeTagIds(place.id),
       this.catalog.getSchedule(place.id).catch(rethrowCatalogError),
       this.catalogRepo.placeMedia(place.id),
-      this.repo.categoriesByCodes(template.category_codes),
+      // Базовый шаблон: в списке — текущая категория места (смена — на любую заявляемую, проверка сервера).
+      isAnyCategoryTemplate(template)
+        ? this.catalogRepo
+            .findCategory(place.category_id)
+            .then((c) => this.repo.categoriesByCodes(c ? [c.code] : []))
+        : this.repo.categoriesByCodes(template.category_codes),
       this.repo.lastCases([place.id]),
     ]);
     const preview: Record<string, string> = {};

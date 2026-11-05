@@ -11303,6 +11303,85 @@
         "tags": ["partner"]
       }
     },
+    "/partner/claims/{id}/withdraw": {
+      "post": {
+        "description": "404 — заявки нет или она чужая; 409 errors.placeClaim.alreadyDecided — уже решена.",
+        "operationId": "withdrawPlaceClaim",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Отозвать свою заявку на рассмотрении → withdrawn",
+        "tags": ["partner"]
+      }
+    },
     "/admin/moderation/claims": {
       "get": {
         "description": "403 — нет права place_claim.decide ни в одном регионе (или в regionId).",
@@ -11620,6 +11699,93 @@
         },
         "security": [{ "session": [] }],
         "summary": "«Відхилити» (причина обязательна, видна заявителю)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/claims/{id}/revoke": {
+      "post": {
+        "description": "Организация снимается, только если место всё ещё за организацией заявки; ORG_OWNER заявителя отзывается, только если организацию создала эта заявка и других мест у неё нет. 409 — заявка не одобрена. AuditLog; заявителю — уведомление ботом.",
+        "operationId": "revokePlaceClaim",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RejectPlaceClaimDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimSummaryDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Скасувати схвалення: место без организации, заявка → revoked (причина обязательна)",
         "tags": ["admin"]
       }
     },
@@ -19409,7 +19575,10 @@
         "required": ["reason"]
       },
       "PlaceClaimRole": { "type": "string", "enum": ["owner", "manager"] },
-      "PlaceClaimStatus": { "type": "string", "enum": ["pending", "approved", "rejected", "withdrawn"] },
+      "PlaceClaimStatus": {
+        "type": "string",
+        "enum": ["pending", "approved", "rejected", "withdrawn", "revoked"]
+      },
       "PlaceClaimDto": {
         "type": "object",
         "properties": {
@@ -19433,6 +19602,11 @@
             "nullable": true,
             "description": "Комментарий модератора (обязателен при отказе)"
           },
+          "revokeReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина отмены одобрения (status = revoked)"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
         },
@@ -19446,6 +19620,7 @@
           "organizationId",
           "organizationName",
           "decisionComment",
+          "revokeReason",
           "createdAt",
           "decidedAt"
         ]
@@ -19527,6 +19702,11 @@
             "nullable": true,
             "description": "Комментарий модератора (обязателен при отказе)"
           },
+          "revokeReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина отмены одобрения (status = revoked)"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
           "userId": { "type": "string", "format": "uuid" },
@@ -19560,6 +19740,7 @@
           "organizationId",
           "organizationName",
           "decisionComment",
+          "revokeReason",
           "createdAt",
           "decidedAt",
           "userId",
@@ -19639,6 +19820,11 @@
             "nullable": true,
             "description": "Комментарий модератора (обязателен при отказе)"
           },
+          "revokeReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина отмены одобрения (status = revoked)"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
           "userId": { "type": "string", "format": "uuid" },
@@ -19661,7 +19847,11 @@
             "type": "boolean",
             "description": "Своя заявка или организация модератора: решить нельзя — 403 own_claim / own_organization"
           },
-          "phone": { "type": "string", "description": "Телефон заявителя (E.164)" },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Телефон заявителя (E.164); null — стёрт через 90 дней после решения"
+          },
           "phoneSource": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimPhoneSource" }] },
           "comment": { "type": "string", "nullable": true, "description": "Комментарий заявителя" },
           "place": { "$ref": "#/components/schemas/PlaceClaimPlaceDto" },
@@ -19681,6 +19871,7 @@
           "organizationId",
           "organizationName",
           "decisionComment",
+          "revokeReason",
           "createdAt",
           "decidedAt",
           "userId",

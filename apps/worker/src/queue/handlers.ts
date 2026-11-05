@@ -66,6 +66,12 @@ export interface ServiceRequestsAnonymizer {
   anonymizeExpired(): Promise<number>;
 }
 
+/** Стирание телефона и комментария решённых заявок «Це мій заклад» по сроку (функция БД 0031). */
+export interface PlaceClaimsPiiPurger {
+  /** Стирает ПДн решённых заявок старше срока; возвращает их число. */
+  purgeExpired(): Promise<number>;
+}
+
 export type { BookingsDueProcessor, BookingsDueResult } from "@tg/queue-contract";
 
 /** Очистка dead-letter от записей с истёкшим сроком хранения (dead-letter.ts, DEAD_LETTER_RETENTION_MS). */
@@ -107,6 +113,8 @@ export interface HandlerDeps {
   readonly deadLetter?: DeadLetterPurger;
   readonly media?: MediaDeps;
   readonly serviceRequests?: ServiceRequestsAnonymizer;
+  /** ПДн заявок «Це мій заклад» — в той же суточной задаче сроков хранения, что и заявки гостиницы. */
+  readonly placeClaims?: PlaceClaimsPiiPurger;
   readonly bookings?: BookingsDueProcessor;
 }
 
@@ -157,7 +165,11 @@ export function createHandlers(deps: HandlerDeps = {}): JobHandlers {
         throw new UnrecoverableError("Обезличивание заявок: у воркера нет подключения к БД (DATABASE_URL)");
       const anonymized = await deps.serviceRequests.anonymizeExpired();
       logger.log(`Заявки гостиницы: обезличено по сроку хранения — ${anonymized}`);
-      return { anonymized };
+      // Та же суточная задача сроков хранения: телефон и комментарий решённых заявок «Це мій заклад» (0031).
+      if (!deps.placeClaims) return { anonymized };
+      const claimsPurged = await deps.placeClaims.purgeExpired();
+      logger.log(`Заявки «Це мій заклад»: стёрто ПДн по сроку — ${claimsPurged}`);
+      return { anonymized, claimsPurged };
     },
     // Повтор безопасен: функции БД берут только брони с наступившим сроком в текущем статусе (SKIP LOCKED).
     "bookings.process-due": async (_payload, { logger }) => {

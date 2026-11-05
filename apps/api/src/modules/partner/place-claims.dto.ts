@@ -109,6 +109,8 @@ export class PlaceClaimDto {
     description: "Комментарий модератора (обязателен при отказе)",
   })
   decisionComment!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "Причина отмены одобрения (status = revoked)" })
+  revokeReason!: string | null;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time", nullable: true }) decidedAt!: string | null;
 }
@@ -180,7 +182,12 @@ export class PlaceClaimPlaceDto {
 }
 
 export class PlaceClaimDetailDto extends PlaceClaimSummaryDto {
-  @ApiProperty({ type: String, description: "Телефон заявителя (E.164)" }) phone!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Телефон заявителя (E.164); null — стёрт через 90 дней после решения",
+  })
+  phone!: string | null;
   @ApiProperty({ enum: PLACE_CLAIM_PHONE_SOURCES, enumName: "PlaceClaimPhoneSource" })
   phoneSource!: PlaceClaimPhoneSource;
   @ApiProperty({ type: String, nullable: true, description: "Комментарий заявителя" }) comment!:

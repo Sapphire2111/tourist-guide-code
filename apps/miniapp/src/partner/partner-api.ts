@@ -84,6 +84,8 @@ export type PartnerApi = {
   /** «Це мій заклад» (0031): мои заявки в регионе (новые сверху). */
   claims(regionId: string): Promise<PlaceClaim[]>;
   createClaim(input: PlaceClaimInput, idempotencyKey: string): Promise<PlaceClaim>;
+  /** Отозвать свою заявку на рассмотрении. */
+  withdrawClaim(id: string): Promise<PlaceClaim>;
 };
 
 /** Ответ без тела (204): ok() ждёт data — проверяем статус сами, ошибки — через ok(). */
@@ -175,6 +177,7 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
     acceptInvite: (token) => ok(api.POST("/partner/invites/{token}/accept", { params: { path: { token } } })),
     claims: async (regionId) =>
       (await ok(api.GET("/partner/claims", { params: { query: { regionId } } }))).items,
+    withdrawClaim: (id) => ok(api.POST("/partner/claims/{id}/withdraw", { params: { path: { id } } })),
     createClaim: (body, key) =>
       ok(api.POST("/partner/claims", { params: { header: { "Idempotency-Key": key } }, body })),
   };

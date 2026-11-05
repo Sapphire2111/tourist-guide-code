@@ -108,6 +108,50 @@ export class PlaceClaimsRepository {
       .execute();
   }
 
+  /** Заявитель отзывает свою заявку на рассмотрении; иначе — undefined. */
+  withdraw(id: string, userId: string): Promise<PlaceClaim | undefined> {
+    return this.q
+      .updateTable("place_claims")
+      .set({ status: "withdrawn", withdrawn_at: new Date() })
+      .where("id", "=", id)
+      .where("user_id", "=", userId)
+      .where("status", "=", "pending")
+      .returningAll()
+      .executeTakeFirst();
+  }
+
+  /** Модератор отменяет одобрение; не одобренная (уже отменена) — undefined. */
+  revoke(id: string, patch: { revoked_by: string; revoke_reason: string }): Promise<PlaceClaim | undefined> {
+    return this.q
+      .updateTable("place_claims")
+      .set({ ...patch, status: "revoked", revoked_at: new Date() })
+      .where("id", "=", id)
+      .where("status", "=", "approved")
+      .returningAll()
+      .executeTakeFirst();
+  }
+
+  /** Снять организацию заявки с места (только если место всё ещё за ней); иначе — undefined. */
+  unassignPlace(placeId: string, organizationId: string): Promise<{ id: string } | undefined> {
+    return this.q
+      .updateTable("places")
+      .set({ organization_id: null, partner_template_id: null })
+      .where("id", "=", placeId)
+      .where("organization_id", "=", organizationId)
+      .returning("id")
+      .executeTakeFirst();
+  }
+
+  /** Сколько мест у организации (любой статус). */
+  async placeCount(organizationId: string): Promise<number> {
+    const row = await this.q
+      .selectFrom("places")
+      .select((eb) => eb.fn.countAll<string>().as("n"))
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirstOrThrow();
+    return Number(row.n);
+  }
+
   /** Привязать место без организации; уже с организацией — undefined. */
   assignPlace(
     placeId: string,
@@ -126,10 +170,11 @@ export class PlaceClaimsRepository {
       .executeTakeFirst();
   }
 
-  /** Заявки пользователя в регионе (новые сверху). */
-  mine(userId: string): Promise<PlaceClaimRow[]> {
+  /** Заявки пользователя в регионе (новые сверху): на рассмотрении и решённые не раньше since. */
+  mine(userId: string, since: Date): Promise<PlaceClaimRow[]> {
     return this.rows()
       .where("c.user_id", "=", userId)
+      .where((eb) => eb.or([eb("c.status", "=", "pending"), eb("c.updated_at", ">=", since)]))
       .orderBy("c.created_at", "desc")
       .limit(50)
       .execute() as Promise<PlaceClaimRow[]>;

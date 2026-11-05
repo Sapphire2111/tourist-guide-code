@@ -394,7 +394,7 @@ export class GuideRepository {
   findCategory(id: string) {
     return this.q
       .selectFrom("categories")
-      .select(["id", "parent_id", "name_i18n", "icon"])
+      .select(["id", "code", "parent_id", "name_i18n", "icon"])
       .where("id", "=", id)
       .executeTakeFirst();
   }

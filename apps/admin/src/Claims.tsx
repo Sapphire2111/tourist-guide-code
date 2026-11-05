@@ -240,8 +240,15 @@ function ClaimCard({
             <Claimant c={c} />
           </p>
           <p style={{ margin: 0 }}>
-            {t("admin.claims.claimantPhone")}: {claimantTel ? <a href={claimantTel}>{c.phone}</a> : c.phone} (
-            {tDynamic(`admin.claims.phoneSource.${c.phoneSource}`)})
+            {t("admin.claims.claimantPhone")}:{" "}
+            {c.phone === null ? (
+              t("admin.claims.phonePurged")
+            ) : (
+              <>
+                {claimantTel ? <a href={claimantTel}>{c.phone}</a> : c.phone} (
+                {tDynamic(`admin.claims.phoneSource.${c.phoneSource}`)})
+              </>
+            )}
           </p>
           <p style={{ margin: 0 }}>
             {t("admin.claims.role")}: {tDynamic(`admin.claims.role.${c.role}`)}
@@ -317,12 +324,66 @@ function ClaimCard({
                 {t("admin.claims.decisionComment")}: {c.decisionComment}
               </p>
             )}
+            {c.revokeReason && (
+              <p style={{ margin: 0 }}>
+                {t("admin.claims.revokedReason")}: {c.revokeReason}
+              </p>
+            )}
+            {c.status === "approved" && !c.own && <Revoke c={c} reload={reload} onOutcome={onOutcome} />}
           </Stack>
         </section>
       ) : c.own ? null : (
         <Decisions c={c} reload={reload} onOutcome={onOutcome} />
       )}
     </Stack>
+  );
+}
+
+/** Отмена ошибочного одобрения: причина обязательна, подтверждение перед запросом. */
+function Revoke({
+  c,
+  reload,
+  onOutcome,
+}: {
+  c: Detail;
+  reload: () => void;
+  onOutcome: (o: Outcome) => void;
+}) {
+  const { api } = useAdmin();
+  const { t } = useT();
+  const [reason, setReason] = useState("");
+  const [local, setLocal] = useState<string | null>(null);
+  const [busy, act] = useBusy();
+  const revoke = async () => {
+    const body = reasonBody(reason);
+    if (!body) return setLocal(t("admin.moderation.reasonRequired"));
+    setLocal(null);
+    if (!window.confirm(t("admin.claims.revokeConfirm", { name: c.organizationName }))) return;
+    const res = await call(
+      api.POST("/admin/moderation/claims/{id}/revoke", { params: { path: { id: c.id } }, body }),
+    );
+    onOutcome(
+      res.ok ? { notice: t("admin.claims.revoked"), error: null } : { notice: null, error: res.error },
+    );
+    if (res.ok || res.error.status === 409) reload();
+  };
+  return (
+    <Form
+      label={t("admin.claims.revoke")}
+      submitLabel={t("admin.claims.revoke")}
+      busy={busy}
+      onSubmit={() => act(revoke)}
+    >
+      <p style={{ margin: 0 }}>{t("admin.claims.revokeHint")}</p>
+      <Field
+        label={t("admin.claims.revokeReason")}
+        value={reason}
+        multiline
+        maxLength={COMMENT_MAX}
+        onChange={setReason}
+      />
+      {local && <p role="alert">{local}</p>}
+    </Form>
   );
 }
 

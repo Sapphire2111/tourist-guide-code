@@ -103,7 +103,12 @@ const touched = (eb: PlacesEb) =>
       .where("a.entity_type", "=", "place")
       // place.claim_assign (заявка «Це мій заклад», 0031) — не правка полей: место партнёра защищено отдельно
       // (organization_id), а touched оставляет обычные правила импорта для остального.
-      .where("a.action", "not in", ["place.import", "place.amenities", "place.claim_assign"])
+      .where("a.action", "not in", [
+        "place.import",
+        "place.amenities",
+        "place.claim_assign",
+        "place.claim_unassign",
+      ])
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
   );
 /**
@@ -343,6 +348,7 @@ export async function writePlaces(
               "google_place_id",
               "category_id",
               "import_category_id",
+              "organization_id",
               (eb) => touched(eb).as("touched"),
             ])
             .where(
@@ -361,7 +367,13 @@ export async function writePlaces(
       for (const p of batch) {
         const b = before.get(p.googlePlaceId);
         const next = categoryId.get(p.categoryCode);
-        if (b && !b.touched && b.import_category_id === b.category_id && b.category_id !== next)
+        if (
+          b &&
+          !b.touched &&
+          b.organization_id === null &&
+          b.import_category_id === b.category_id &&
+          b.category_id !== next
+        )
           stats.recategorized++;
       }
       const rows = await trx

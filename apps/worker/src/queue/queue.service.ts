@@ -73,6 +73,7 @@ export class QueueService implements OnApplicationBootstrap, OnApplicationShutdo
         handlers: createHandlers({
           auditPii: db?.purger,
           serviceRequests: db?.serviceRequests,
+          placeClaims: db?.placeClaims,
           bookings: db?.bookings,
           analytics: db?.analytics,
           // Очередь dead-letter открывает рантайм — геттер читает её на момент задачи.

@@ -5,12 +5,14 @@ import type {
   AuditPiiPurger,
   BookingsDueProcessor,
   MediaAssetStore,
+  PlaceClaimsPiiPurger,
   ServiceRequestsAnonymizer,
 } from "../queue/handlers.js";
 import { analyticsWriter } from "./analytics-writer.js";
 import { auditPiiPurger } from "./audit-pii-purger.js";
 import { BotApiTelegramSender, bookingsDueProcessor } from "@tg/queue-contract";
 import { mediaAssetStore } from "./media-assets-store.js";
+import { placeClaimsPiiPurger } from "./place-claims-pii-purger.js";
 import { serviceRequestsAnonymizer } from "./service-requests-anonymizer.js";
 
 /** Доступ воркера к БД: только вызовы фиксированных функций БД поверх одного пула. */
@@ -19,6 +21,7 @@ export interface WorkerDb {
   analytics: AnalyticsWriter;
   media: MediaAssetStore;
   serviceRequests: ServiceRequestsAnonymizer;
+  placeClaims: PlaceClaimsPiiPurger;
   bookings: BookingsDueProcessor;
   close(): Promise<void>;
 }
@@ -45,6 +48,7 @@ export function createWorkerDb(connectionString: string, options: WorkerDbOption
     analytics: analyticsWriter(pool),
     media: mediaAssetStore(pool),
     serviceRequests: serviceRequestsAnonymizer(pool, options.serviceRequestRetentionDays),
+    placeClaims: placeClaimsPiiPurger(pool),
     bookings: bookingsDueProcessor(pool, {
       sender: options.telegramBotToken ? new BotApiTelegramSender(options.telegramBotToken) : null,
     }),
