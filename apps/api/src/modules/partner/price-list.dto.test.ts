@@ -75,6 +75,11 @@ describe("DTO прайса", () => {
     expect(errors(UpdatePriceItemDto, { status: "archived" })).toContain("status:whitelistValidation");
   });
 
+  it("длина — в кодпоинтах, как char_length в БД: 80 эмодзи в названии раздела — можно, 81 — нет", () => {
+    expect(errors(CreatePriceSectionDto, { title: { uk: "🍲".repeat(80) } })).toEqual([]);
+    expect(errors(CreatePriceSectionDto, { title: { uk: "🍲".repeat(81) } })).toContain("title.uk:maxLength");
+  });
+
   it("▲▼: только up | down", () => {
     expect(errors(MovePriceListEntryDto, { direction: "up" })).toEqual([]);
     expect(errors(MovePriceListEntryDto, { direction: "left" })).toContain("direction:isIn");

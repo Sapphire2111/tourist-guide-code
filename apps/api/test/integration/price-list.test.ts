@@ -39,6 +39,7 @@ const APP_PASSWORD = "tg_api_price_list_test";
 const OWNER = seedUuid("price-list-test:user:owner");
 const MANAGER = seedUuid("price-list-test:user:manager");
 const CASHIER = seedUuid("price-list-test:user:cashier");
+const OTHER = seedUuid("price-list-test:user:other-org");
 
 const meta = (userId: string): PartnerAuditMeta => ({
   actor: { type: "user", userId },
@@ -77,6 +78,7 @@ describe.skipIf(!dockerAvailable)(`Прайс заведения (миграци
       [OWNER, 990000000701],
       [MANAGER, 990000000702],
       [CASHIER, 990000000703],
+      [OTHER, 990000000704],
     ] as const) {
       await sql(`INSERT INTO users (id, status, language, display_name) VALUES ($1, 'active', 'uk', $2)`, [
         id,
@@ -232,6 +234,55 @@ describe.skipIf(!dockerAvailable)(`Прайс заведения (миграци
     ]);
   });
 
+  it("чужая организация — 403; раздел/позиция другого места в пути — 404", async () => {
+    const other = await partner.onboard(
+      OTHER,
+      {
+        regionId: base.regions.a,
+        templateCode: "food",
+        categoryId: seedUuid("catalog:a:category:cafes"),
+        name: { uk: "Кафе «Інше»" },
+      },
+      meta(OTHER),
+    );
+    const otherPlace = other.place.id;
+    expect(await failure(prices.get(OTHER, placeId))).toMatchObject({ status: 403, reason: "not_partner" });
+    expect(
+      await failure(prices.createSection(OTHER, placeId, { title: { uk: "Злам" } }, meta(OTHER))),
+    ).toMatchObject({ status: 403 });
+
+    let theirs = await prices.createSection(OTHER, otherPlace, { title: { uk: "Кава" } }, meta(OTHER));
+    const otherSection = theirs.sections[0]!.id;
+    theirs = await prices.createItem(
+      OTHER,
+      otherPlace,
+      { sectionId: otherSection, name: { uk: "Лате" }, priceMinor: 6000 },
+      meta(OTHER),
+    );
+    const otherItem = theirs.sections[0]!.items[0]!.id;
+    expect(
+      await failure(prices.updateSection(OWNER, placeId, otherSection, { hidden: true }, meta(OWNER))),
+    ).toMatchObject({ status: 404 });
+    expect(await failure(prices.archiveItem(OWNER, placeId, otherItem, meta(OWNER)))).toMatchObject({
+      status: 404,
+    });
+    expect(
+      await failure(
+        prices.createItem(
+          OWNER,
+          placeId,
+          { sectionId: otherSection, name: { uk: "x" }, priceMinor: 1 },
+          meta(OWNER),
+        ),
+      ),
+    ).toMatchObject({ status: 404 });
+    // Чужие строки не тронуты.
+    expect((await prices.get(OTHER, otherPlace)).sections[0]).toMatchObject({
+      hidden: false,
+      items: [expect.objectContaining({ id: otherItem })],
+    });
+  });
+
   it("БД: цена ≥ 0, позиция не уходит в раздел чужого места", async () => {
     const section = await sql(`SELECT id FROM price_list_sections WHERE place_id = $1 LIMIT 1`, [placeId]);
     await expect(
@@ -262,6 +313,7 @@ describe.skipIf(!dockerAvailable)(`Прайс заведения (миграци
        WHERE id = $1`,
       [placeId],
     );
+    expect((await guide.place(base.regions.a, placeId, {}))?.hasPriceList).toBe(true);
     let card = await guide.priceList(base.regions.a, placeId);
     expect(card!.sections.map((s) => [s.title.uk, s.items.map((i) => i.name.uk)])).toEqual([
       ["Напої", ["Узвар"]],

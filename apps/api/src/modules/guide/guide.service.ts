@@ -178,15 +178,18 @@ export class GuideService {
       const row = await this.repo.findPublished(id, opts.origin);
       if (!row) return undefined;
       const at = localMoment(this.now(), region.timezone);
-      const [category, tags, photos, schedules, labels, favorite, enrichment] = await Promise.all([
-        this.repo.findCategory(row.category_id),
-        this.repo.placeTags(id),
-        this.repo.photos([id]),
-        this.repo.schedules([id], { from: at.previousDate }),
-        this.repo.adLabels([id]),
-        opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
-        this.repo.enrichment(id),
-      ]);
+      const [category, tags, photos, schedules, labels, favorite, enrichment, hasPriceList] =
+        await Promise.all([
+          this.repo.findCategory(row.category_id),
+          this.repo.placeTags(id),
+          this.repo.photos([id]),
+          this.repo.schedules([id], { from: at.previousDate }),
+          this.repo.adLabels([id]),
+          opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
+          this.repo.enrichment(id),
+          // Прайс (0030) — только у мест партнёра: карточка грузит «Ціни» отдельным запросом лишь при true.
+          row.organization_id ? this.repo.hasPriceList(id) : Promise.resolve(false),
+        ]);
       const schedule = schedules.get(id) ?? { weekly: [], exceptions: [] };
       const state = openState(schedule, at);
       const photoDtos = await Promise.all(photos.map((p) => this.photo(p)));
@@ -236,6 +239,7 @@ export class GuideService {
         }),
         openUntil: state.openUntil,
         favorite,
+        hasPriceList,
         ...this.enriched(region.id, id, enrichment, exhausted),
       };
     });

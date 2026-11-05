@@ -184,4 +184,12 @@ describe("GuideRepository.countFavorites (SQL)", () => {
     expect(q!.sql).toMatch(/order by "s"\."sort_order", "s"\."id", "i"\."sort_order", "i"\."id"/);
     expect(q!.params).toEqual(expect.arrayContaining([PLACE, "active", A]));
   });
+
+  it("признак прайса для карточки (0030): EXISTS-выборка с limit 1, те же условия видимости", async () => {
+    const [q] = await capture((r) => r.hasPriceList(PLACE));
+    expect(q!.sql).toMatch(/select "i"\."id" from "price_list_items" as "i"/);
+    expect(q!.sql).toMatch(/"p"\."organization_id" is not null/);
+    expect(q!.sql).toMatch(/"s"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/limit \$\d+$/);
+  });
 });

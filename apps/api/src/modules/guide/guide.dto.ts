@@ -636,6 +636,11 @@ export class PlaceCardDto extends PlaceSummaryDto {
   openUntil!: string | null;
   @ApiProperty({ type: Boolean, nullable: true, description: "В избранном; null — без сессии" })
   favorite!: boolean | null;
+  @ApiProperty({
+    type: Boolean,
+    description: "Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list",
+  })
+  hasPriceList!: boolean;
   @ApiProperty({ type: String, nullable: true, example: "Піцерія", description: "Тип места по Google (uk)" })
   typeLabel!: string | null;
   @ApiProperty({ type: String, nullable: true, description: "Описание Google (editorialSummary)" })

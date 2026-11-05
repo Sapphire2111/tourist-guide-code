@@ -3879,6 +3879,8 @@ export interface components {
       openUntil: string | null;
       /** @description В избранном; null — без сессии */
       favorite: boolean | null;
+      /** @description Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list */
+      hasPriceList: boolean;
       /**
        * @description Тип места по Google (uk)
        * @example Піцерія

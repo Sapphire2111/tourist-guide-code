@@ -128,6 +128,8 @@ export type WikipediaInfo = {
 export type ScheduleInterval = { weekday: number; opens: string; closes: string };
 
 export type PlaceDetail = PlaceSummary & {
+  /** Есть видимый прайс (0030) — только тогда карточка запрашивает «Ціни». */
+  hasPriceList?: boolean;
   description: LocalizedText | null;
   phone: string | null;
   website: string | null;
@@ -224,7 +226,6 @@ export class UnauthorizedError extends Error {
   }
 }
 
-/** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
 /** «Ціни» карточки (прайс заведения партнёра, миграция 0030): только видимые туристу позиции. */
 export type PriceListView = {
   sections: {
@@ -241,6 +242,7 @@ export type PriceListView = {
   }[];
 };
 
+/** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
 export type GuideApi = {
   categories(): Promise<Category[]>;
   localities(): Promise<LocalityOption[]>;

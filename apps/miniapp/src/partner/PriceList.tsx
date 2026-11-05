@@ -4,7 +4,7 @@
 // типовыми разделами. Права — abilities.managePriceList (ORG_OWNER, ORG_MANAGER); сервер проверяет сам.
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { pickLocalized, type MessageKey } from "@tg/i18n";
+import { createTranslator, pickLocalized, type MessageKey } from "@tg/i18n";
 import { Stack, useT } from "@tg/ui";
 import { AsyncView } from "../guide/parts.js";
 import { useSheet } from "../guide/use-sheet.js";
@@ -31,6 +31,11 @@ const UNITS: readonly MessageKey[] = [
   "miniapp.partner.prices.unit.night",
 ];
 
+/** Название типового раздела хранится на uk и en, какой бы ни был язык интерфейса партнёра. */
+const UK = createTranslator("uk");
+const EN = createTranslator("en");
+export const suggestedTitle = (key: MessageKey) => ({ uk: UK.t(key), en: EN.t(key) });
+
 type Sheet = { sectionId: string; item: PriceItem | null } | null;
 type Run = (action: () => Promise<PriceList>, done?: MessageKey) => Promise<boolean>;
 
@@ -43,8 +48,13 @@ export function PartnerPriceList({ placeId }: { placeId: string }) {
     () => (enabled ? api.priceList(placeId) : Promise.reject(new Error("disabled"))),
     [api, placeId, enabled],
   );
-  // Ответ изменения — прайс целиком: показываем его, пока не перечитаем с сервера.
-  const [fresh, setFresh] = useState<PriceList | null>(null);
+  const loadedData = loaded.status === "ready" ? loaded.data : null;
+  const loadedRef = useRef(loadedData);
+  loadedRef.current = loadedData;
+  // Ответ изменения — прайс целиком. Действует, пока загруженные данные те же, от которых он получен: новое чтение
+  // с сервера (повтор, перечитывание после конфликта) его вытесняет.
+  const [fresh, setFresh] = useState<{ base: PriceList | null; list: PriceList } | null>(null);
+  const current = fresh && fresh.base === loadedData ? fresh.list : loadedData;
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -54,16 +64,19 @@ export function PartnerPriceList({ placeId }: { placeId: string }) {
       setBusy(true);
       setMessage(null);
       try {
-        setFresh(await action());
+        const list = await action();
+        setFresh({ base: loadedRef.current, list });
         if (done) setMessage({ text: t(done), alert: false });
         return true;
       } catch (err) {
-        setMessage({ text: errorText(err, "miniapp.partner.prices.error"), alert: true });
-        // Версия разошлась (правили с другого устройства) — перечитать прайс.
+        // Версия разошлась (правили с другого устройства): лист со старой версией закрываем — иначе каждое
+        // сохранение снова 409; прайс перечитываем, партнёр проверяет и сохраняет ещё раз.
         if (err instanceof ConflictError) {
+          setSheet(null);
           setFresh(null);
+          setMessage({ text: t("miniapp.partner.prices.conflict"), alert: true });
           reload();
-        }
+        } else setMessage({ text: errorText(err, "miniapp.partner.prices.error"), alert: true });
         return false;
       } finally {
         setBusy(false);
@@ -93,7 +106,7 @@ export function PartnerPriceList({ placeId }: { placeId: string }) {
             )}
           >
             {(data) => {
-              const list = fresh ?? data;
+              const list = current ?? data;
               return (
                 <Editor
                   placeId={placeId}
@@ -108,11 +121,11 @@ export function PartnerPriceList({ placeId }: { placeId: string }) {
               );
             }}
           </AsyncView>
-          {sheet && (fresh ?? (loaded.status === "ready" ? loaded.data : null)) && (
+          {sheet && current && (
             <ItemSheet
               placeId={placeId}
               sheet={sheet}
-              sections={(fresh ?? (loaded.status === "ready" ? loaded.data : null))!.sections}
+              sections={current.sections}
               busy={busy}
               message={message}
               run={run}
@@ -146,7 +159,9 @@ function Editor({
     e.preventDefault();
     const name = title.trim();
     if (!name) return;
-    if (await run(() => api.createPriceSection(placeId, name), "miniapp.partner.prices.sectionCreated"))
+    if (
+      await run(() => api.createPriceSection(placeId, { uk: name }), "miniapp.partner.prices.sectionCreated")
+    )
       setTitle("");
   };
   const atLimit = list.itemCount >= list.limits.maxItems;
@@ -186,7 +201,7 @@ function Editor({
                     aria-label={t("miniapp.partner.prices.addSuggested", { title: t(key) })}
                     onClick={() =>
                       void run(
-                        () => api.createPriceSection(placeId, t(key)),
+                        () => api.createPriceSection(placeId, suggestedTitle(key)),
                         "miniapp.partner.prices.sectionCreated",
                       )
                     }
@@ -533,6 +548,9 @@ function ItemSheet({
   closeRef.current = onClose;
   const close = useCallback(() => closeRef.current(), []);
   useSheet(ref, close);
+  // useSheet ставит фокус на отмеченный чекбокс («від», «Приховати»); в листе позиции начинаем с названия.
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => nameRef.current?.focus(), []);
   const ids = { title: useId(), name: useId(), price: useId(), unit: useId(), units: useId(), desc: useId() };
   const sectionField = useId();
 
@@ -591,6 +609,7 @@ function ItemSheet({
             {t("miniapp.partner.prices.name")}
             <input
               id={ids.name}
+              ref={nameRef}
               value={name}
               maxLength={120}
               required

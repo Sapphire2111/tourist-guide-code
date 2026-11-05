@@ -10,10 +10,11 @@ import {
   IsUUID,
   Matches,
   Max,
-  MaxLength,
   Min,
   MinLength,
+  ValidateBy,
   ValidateNested,
+  type ValidationOptions,
 } from "class-validator";
 
 // DTO прайса заведения (миграция 0030): разделы → позиции с ценой. Мультиязычные поля — объект «язык → текст», uk
@@ -29,6 +30,24 @@ export const PRICE_MINOR_MAX = 1_000_000_000;
 
 export const PRICE_LIST_LIMITS = { title: 80, name: 120, description: 500, unit: 40 } as const;
 
+/**
+ * Не длиннее max символов-кодпоинтов — как char_length в CHECK 0030 (MaxLength считает UTF-16: эмодзи — 2, и
+ * строка, прошедшая бы CHECK, получала бы 400; наоборот — 500 от БД). Имя ограничения — maxLength, как у стандартного.
+ */
+export function MaxCodePoints(max: number, options?: ValidationOptions): PropertyDecorator {
+  return ValidateBy(
+    {
+      name: "maxLength",
+      constraints: [max],
+      validator: {
+        validate: (value: unknown) => typeof value === "string" && [...value].length <= max,
+        defaultMessage: () => `$property must be shorter than or equal to ${max} characters`,
+      },
+    },
+    options,
+  );
+}
+
 /** Не только пробелы (CHECK is_localized_text — btrim(uk) <> ''). */
 const NOT_BLANK = /\S/;
 
@@ -36,14 +55,14 @@ export class PriceSectionTitleDto {
   @ApiProperty({ type: String, maxLength: PRICE_LIST_LIMITS.title, example: "Страви" })
   @IsString()
   @MinLength(1)
-  @MaxLength(PRICE_LIST_LIMITS.title)
+  @MaxCodePoints(PRICE_LIST_LIMITS.title)
   @Matches(NOT_BLANK)
   uk!: string;
 
   @ApiPropertyOptional({ type: String, maxLength: PRICE_LIST_LIMITS.title })
   @IsOptional()
   @IsString()
-  @MaxLength(PRICE_LIST_LIMITS.title)
+  @MaxCodePoints(PRICE_LIST_LIMITS.title)
   @Matches(NOT_BLANK)
   en?: string;
 }
@@ -52,14 +71,14 @@ export class PriceItemNameDto {
   @ApiProperty({ type: String, maxLength: PRICE_LIST_LIMITS.name, example: "Банош з бринзою" })
   @IsString()
   @MinLength(1)
-  @MaxLength(PRICE_LIST_LIMITS.name)
+  @MaxCodePoints(PRICE_LIST_LIMITS.name)
   @Matches(NOT_BLANK)
   uk!: string;
 
   @ApiPropertyOptional({ type: String, maxLength: PRICE_LIST_LIMITS.name })
   @IsOptional()
   @IsString()
-  @MaxLength(PRICE_LIST_LIMITS.name)
+  @MaxCodePoints(PRICE_LIST_LIMITS.name)
   @Matches(NOT_BLANK)
   en?: string;
 }
@@ -68,14 +87,14 @@ export class PriceItemDescriptionDto {
   @ApiProperty({ type: String, maxLength: PRICE_LIST_LIMITS.description })
   @IsString()
   @MinLength(1)
-  @MaxLength(PRICE_LIST_LIMITS.description)
+  @MaxCodePoints(PRICE_LIST_LIMITS.description)
   @Matches(NOT_BLANK)
   uk!: string;
 
   @ApiPropertyOptional({ type: String, maxLength: PRICE_LIST_LIMITS.description })
   @IsOptional()
   @IsString()
-  @MaxLength(PRICE_LIST_LIMITS.description)
+  @MaxCodePoints(PRICE_LIST_LIMITS.description)
   @Matches(NOT_BLANK)
   en?: string;
 }
@@ -84,14 +103,14 @@ export class PriceItemUnitDto {
   @ApiProperty({ type: String, maxLength: PRICE_LIST_LIMITS.unit, example: "за годину" })
   @IsString()
   @MinLength(1)
-  @MaxLength(PRICE_LIST_LIMITS.unit)
+  @MaxCodePoints(PRICE_LIST_LIMITS.unit)
   @Matches(NOT_BLANK)
   uk!: string;
 
   @ApiPropertyOptional({ type: String, maxLength: PRICE_LIST_LIMITS.unit })
   @IsOptional()
   @IsString()
-  @MaxLength(PRICE_LIST_LIMITS.unit)
+  @MaxCodePoints(PRICE_LIST_LIMITS.unit)
   @Matches(NOT_BLANK)
   en?: string;
 }

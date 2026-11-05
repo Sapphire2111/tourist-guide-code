@@ -121,6 +121,7 @@ export function cardOf(dto: CardDto): PlaceDetail {
     verifiedAt: dto.verifiedAt,
     openUntil: dto.openUntil,
     favorite: dto.favorite,
+    hasPriceList: (dto as Partial<CardDto>).hasPriceList ?? false,
     ...richOf(dto),
   };
 }

@@ -9,7 +9,8 @@ import { createTranslator } from "@tg/i18n";
 import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import type { Analytics } from "../guide/analytics.js";
 import { GuideProvider, type GuideEnv } from "../guide/context.js";
-import type { GuideApi, PriceListView } from "../guide/types.js";
+import { PlaceCard } from "../guide/PlaceCard.js";
+import type { GuideApi, PlaceDetail, PriceListView } from "../guide/types.js";
 import { ConflictError } from "../host/types.js";
 import { noopPartnerApi, PartnerProvider } from "../partner/context.js";
 import type { PartnerApi, PartnerOrganization, PriceItem, PriceList } from "../partner/partner-api.js";
@@ -133,6 +134,60 @@ describe("«Ціни» в картці", () => {
   });
 });
 
+describe("картка: запит «Ціни» лише з hasPriceList", () => {
+  const detail = (hasPriceList: boolean): PlaceDetail => ({
+    id: PLACE,
+    name: { uk: "Колиба" },
+    categoryId: "c1",
+    location: null,
+    distanceMeters: null,
+    cover: null,
+    openNow: null,
+    recommended: false,
+    adLabel: null,
+    description: null,
+    address: null,
+    phone: null,
+    website: null,
+    telegram: null,
+    photos: [],
+    schedule: [],
+    tags: [],
+    verifiedAt: null,
+    openUntil: null,
+    favorite: null,
+    hasPriceList,
+  });
+  const mount = async (hasPriceList: boolean) => {
+    const priceList = vi.fn(async () => ({
+      sections: [{ id: "a", title: { uk: "Страви" }, items: [item(1)] }],
+    }));
+    const env: GuideEnv = {
+      api: { place: vi.fn(async () => detail(hasPriceList)), priceList } as unknown as GuideApi,
+      analytics: { track: vi.fn(), flush: vi.fn(), dispose: vi.fn() } as unknown as Analytics,
+      base: null,
+      regionId: "r",
+      signedIn: false,
+    };
+    render(
+      <GuideProvider value={env}>
+        <PlaceCard id={PLACE} />
+      </GuideProvider>,
+    );
+    await flush();
+    await flush();
+    return priceList;
+  };
+
+  it("false — без другого запиту й без блоку; true — блок «Ціни»", async () => {
+    expect(await mount(false)).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("place-prices")).toBeNull();
+    cleanup();
+    expect(await mount(true)).toHaveBeenCalledWith(PLACE);
+    expect(screen.getByTestId("place-prices")).toBeTruthy();
+  });
+});
+
 // --- кабинет ---
 
 const abilities = (manage: boolean) => ({
@@ -239,7 +294,8 @@ describe("кабінет: «Прайс»", () => {
     expect(empty.textContent).toContain("Банош з бринзою");
     fireEvent.click(within(empty).getByRole("button", { name: "Додати розділ «Страви»" }));
     await flush();
-    expect(createPriceSection).toHaveBeenCalledWith(PLACE, "Страви");
+    // Типовой раздел — на uk и en, независимо от языка интерфейса.
+    expect(createPriceSection).toHaveBeenCalledWith(PLACE, { uk: "Страви", en: "Dishes" });
     expect(screen.getByTestId("prices-message").textContent).toContain("Розділ додано.");
     expect(screen.getByRole("heading", { level: 2, name: /Страви/ })).toBeTruthy();
     expect(screen.getByText("У розділі ще немає позицій.")).toBeTruthy();
@@ -287,7 +343,7 @@ describe("кабінет: «Прайс»", () => {
   });
 
   it("тап по позиції → правка зі збереженням перекладів і версією; приховати; ▲▼ і крайні вимкнені", async () => {
-    const a = priceItem({ id: "a", name: { uk: "Банош", en: "Banosh" }, version: 3 });
+    const a = priceItem({ id: "a", name: { uk: "Банош", en: "Banosh" }, version: 3, priceFrom: true });
     const b = priceItem({ id: "b", name: { uk: "Деруни" }, sortOrder: 1 });
     const updatePriceItem = vi.fn(async () => listOf([food([{ ...a, hidden: true, version: 4 }, b])]));
     const movePriceItem = vi.fn(async () => listOf([food([b, a])]));
@@ -301,6 +357,8 @@ describe("кабінет: «Прайс»", () => {
     expect(screen.getByRole("button", { name: "«Деруни» нижче" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /^Банош/ }));
     const sheet = screen.getByRole("dialog", { name: "Редагування позиції" });
+    // Фокус — на названии, а не на отмеченном чекбоксе «від».
+    expect(document.activeElement).toBe(within(sheet).getByLabelText("Назва"));
     expect((within(sheet).getByLabelText("Ціна, грн") as HTMLInputElement).value).toBe("180");
     fireEvent.click(within(sheet).getByLabelText("Приховати від туристів"));
     fireEvent.click(within(sheet).getByRole("button", { name: "Зберегти" }));
@@ -308,7 +366,7 @@ describe("кабінет: «Прайс»", () => {
     expect(updatePriceItem).toHaveBeenCalledWith(PLACE, "a", {
       name: { uk: "Банош", en: "Banosh" },
       priceMinor: 18000,
-      priceFrom: false,
+      priceFrom: true,
       unit: null,
       description: null,
       hidden: true,
@@ -364,8 +422,50 @@ describe("кабінет: «Прайс»", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Приховати розділ «Страви» від туристів" }));
     await flush();
-    expect(screen.getByTestId("prices-message").textContent).toContain("Прайс щойно змінили");
+    expect(screen.getByTestId("prices-message").textContent).toContain("Прайс змінили з іншого пристрою");
     expect(priceList).toHaveBeenCalledTimes(2);
+  });
+
+  it("409 у листі позиції: лист закривається, прайс перечитується, свіжі дані сервера витісняють відповідь зміни", async () => {
+    const mine = priceItem({ id: "a", name: { uk: "Банош" }, version: 1 });
+    const theirs = priceItem({ id: "a", name: { uk: "Банош з бринзою" }, priceMinor: 20000, version: 2 });
+    let server = listOf([food()]);
+    const priceList = vi.fn(async () => server);
+    const createPriceItem = vi.fn(async () => listOf([food([mine])]));
+    const updatePriceItem = vi.fn(() =>
+      Promise.reject(new ConflictError("errors.priceList.versionConflict")),
+    );
+    setup(<PartnerPriceList placeId={PLACE} />, { priceList, createPriceItem, updatePriceItem });
+    await flush();
+    // Изменение — ответ показан вместо загруженного.
+    fireEvent.click(screen.getByRole("button", { name: "Додати позицію в розділ «Страви»" }));
+    let sheet = screen.getByRole("dialog", { name: "Нова позиція" });
+    fireEvent.change(within(sheet).getByLabelText("Назва"), { target: { value: "Банош" } });
+    fireEvent.change(within(sheet).getByLabelText("Ціна, грн"), { target: { value: "180" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Зберегти" }));
+    await flush();
+    expect(screen.getByTestId("price-item").textContent).toContain("Банош");
+    // С другого устройства позицию изменили: сохранение — 409.
+    server = listOf([food([theirs])]);
+    fireEvent.click(screen.getByRole("button", { name: /^Банош/ }));
+    sheet = screen.getByRole("dialog", { name: "Редагування позиції" });
+    fireEvent.change(within(sheet).getByLabelText("Ціна, грн"), { target: { value: "190" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Зберегти" }));
+    await flush();
+    expect(updatePriceItem).toHaveBeenCalledWith(PLACE, "a", expect.objectContaining({ version: 1 }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("prices-message").textContent).toContain(
+      "Прайс змінили з іншого пристрою — перевірте і збережіть ще раз.",
+    );
+    expect(priceList).toHaveBeenCalledTimes(2);
+    expect(norm(screen.getByTestId("price-item").textContent)).toContain("Банош з бринзою200 грн");
+    // Повторное открытие — свежая версия, следующее сохранение уйдёт с version 2.
+    fireEvent.click(screen.getByRole("button", { name: /^Банош з бринзою/ }));
+    sheet = screen.getByRole("dialog", { name: "Редагування позиції" });
+    expect((within(sheet).getByLabelText("Ціна, грн") as HTMLInputElement).value).toBe("200");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Зберегти" }));
+    await flush();
+    expect(updatePriceItem).toHaveBeenLastCalledWith(PLACE, "a", expect.objectContaining({ version: 2 }));
   });
 
   it("касир — «Прайсом керують власник і менеджер закладу», без запиту правок", async () => {

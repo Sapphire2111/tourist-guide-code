@@ -247,6 +247,7 @@ export const uk = {
   "miniapp.partner.prices.saved": "Збережено.",
   "miniapp.partner.prices.archived": "Перенесено до архіву.",
   "miniapp.partner.prices.error": "Не вдалося зберегти. Спробуйте ще раз.",
+  "miniapp.partner.prices.conflict": "Прайс змінили з іншого пристрою — перевірте і збережіть ще раз.",
   "miniapp.partner.prices.limit": "Позицій: {count} з {max}.",
   "miniapp.partner.staff.title": "Співробітники",
   "miniapp.partner.staff.forbidden": "Співробітниками керує власник закладу.",
@@ -2245,6 +2246,8 @@ export const en: Messages = {
   "miniapp.partner.prices.saved": "Saved.",
   "miniapp.partner.prices.archived": "Moved to the archive.",
   "miniapp.partner.prices.error": "Could not save. Please try again.",
+  "miniapp.partner.prices.conflict":
+    "The price list was changed on another device — check it and save again.",
   "miniapp.partner.prices.limit": "Items: {count} of {max}.",
   "miniapp.partner.staff.title": "Staff",
   "miniapp.partner.staff.forbidden": "Staff is managed by the venue owner.",

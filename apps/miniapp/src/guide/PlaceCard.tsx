@@ -604,7 +604,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           </Section>
         )}
 
-        <PlacePrices placeId={place.id} />
+        {place.hasPriceList && <PlacePrices placeId={place.id} />}
 
         {(place.address || place.phone || place.website || place.googleMapsUri) && (
           <Section title={t("miniapp.place.contacts")} testId="place-contacts">

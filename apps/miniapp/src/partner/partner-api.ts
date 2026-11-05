@@ -79,7 +79,7 @@ export type PartnerApi = {
   archiveOffer(placeId: string, offerId: string): Promise<Offer>;
   /** Прайс (миграция 0030): каждое изменение возвращает прайс целиком. */
   priceList(placeId: string): Promise<PriceList>;
-  createPriceSection(placeId: string, title: string): Promise<PriceList>;
+  createPriceSection(placeId: string, title: { uk: string; en?: string }): Promise<PriceList>;
   updatePriceSection(placeId: string, sectionId: string, patch: PriceSectionPatch): Promise<PriceList>;
   movePriceSection(placeId: string, sectionId: string, direction: MoveDirection): Promise<PriceList>;
   archivePriceSection(placeId: string, sectionId: string): Promise<PriceList>;
@@ -161,7 +161,7 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
       ok(
         api.POST("/partner/places/{id}/price-list/sections", {
           ...place(id),
-          body: { title: { uk: title } },
+          body: { title },
         }),
       ),
     updatePriceSection: (id, sectionId, body) =>

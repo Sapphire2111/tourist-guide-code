@@ -16969,6 +16969,10 @@
             "nullable": true,
             "description": "В избранном; null — без сессии"
           },
+          "hasPriceList": {
+            "type": "boolean",
+            "description": "Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list"
+          },
           "typeLabel": {
             "type": "string",
             "nullable": true,
@@ -17052,6 +17056,7 @@
           "schedule",
           "openUntil",
           "favorite",
+          "hasPriceList",
           "typeLabel",
           "summary",
           "aiSummary",
