@@ -21,6 +21,13 @@ export type StaffInviteCreated = ApiSchemas["StaffInviteCreatedDto"];
 export type StaffInvitePreview = ApiSchemas["StaffInvitePreviewDto"];
 export type StaffInviteAccepted = ApiSchemas["StaffInviteAcceptedDto"];
 export type PartnerRole = ApiSchemas["PartnerRole"];
+export type PriceList = ApiSchemas["PartnerPriceListDto"];
+export type PriceSection = ApiSchemas["PartnerPriceSectionDto"];
+export type PriceItem = ApiSchemas["PartnerPriceItemDto"];
+export type PriceItemInput = ApiSchemas["CreatePriceItemDto"];
+export type PriceItemPatch = ApiSchemas["UpdatePriceItemDto"];
+export type PriceSectionPatch = ApiSchemas["UpdatePriceSectionDto"];
+export type MoveDirection = ApiSchemas["PriceListMoveDirection"];
 
 /** Префикс start_param приглашения (STAFF_INVITE_START_PREFIX сервера). */
 export const INVITE_PREFIX = "inv_";
@@ -70,6 +77,16 @@ export type PartnerApi = {
   createOffer(placeId: string, input: OfferInput): Promise<Offer>;
   updateOffer(placeId: string, offerId: string, input: OfferInput): Promise<Offer>;
   archiveOffer(placeId: string, offerId: string): Promise<Offer>;
+  /** Прайс (миграция 0030): каждое изменение возвращает прайс целиком. */
+  priceList(placeId: string): Promise<PriceList>;
+  createPriceSection(placeId: string, title: { uk: string; en?: string }): Promise<PriceList>;
+  updatePriceSection(placeId: string, sectionId: string, patch: PriceSectionPatch): Promise<PriceList>;
+  movePriceSection(placeId: string, sectionId: string, direction: MoveDirection): Promise<PriceList>;
+  archivePriceSection(placeId: string, sectionId: string): Promise<PriceList>;
+  createPriceItem(placeId: string, input: PriceItemInput): Promise<PriceList>;
+  updatePriceItem(placeId: string, itemId: string, patch: PriceItemPatch): Promise<PriceList>;
+  movePriceItem(placeId: string, itemId: string, direction: MoveDirection): Promise<PriceList>;
+  archivePriceItem(placeId: string, itemId: string): Promise<PriceList>;
   staff(orgId: string): Promise<PartnerStaff>;
   invite(orgId: string, role: StaffInviteRole): Promise<StaffInviteCreated>;
   revokeInvite(orgId: string, inviteId: string): Promise<void>;
@@ -91,6 +108,8 @@ async function empty(p: Promise<{ data?: unknown; error?: unknown; response: Res
 export function createPartnerApi(api: ApiClient): PartnerApi {
   const place = (id: string) => ({ params: { path: { id } } });
   const offer = (id: string, offerId: string) => ({ params: { path: { id, offerId } } });
+  const section = (id: string, sectionId: string) => ({ params: { path: { id, sectionId } } });
+  const item = (id: string, itemId: string) => ({ params: { path: { id, itemId } } });
   return {
     me: () => ok(api.GET("/partner/me")),
     templates: async (regionId) =>
@@ -137,6 +156,43 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
       ok(api.PATCH("/partner/places/{id}/offers/{offerId}", { ...offer(id, offerId), body })),
     archiveOffer: (id, offerId) =>
       ok(api.POST("/partner/places/{id}/offers/{offerId}/archive", offer(id, offerId))),
+    priceList: (id) => ok(api.GET("/partner/places/{id}/price-list", place(id))),
+    createPriceSection: (id, title) =>
+      ok(
+        api.POST("/partner/places/{id}/price-list/sections", {
+          ...place(id),
+          body: { title },
+        }),
+      ),
+    updatePriceSection: (id, sectionId, body) =>
+      ok(
+        api.PATCH("/partner/places/{id}/price-list/sections/{sectionId}", {
+          ...section(id, sectionId),
+          body,
+        }),
+      ),
+    movePriceSection: (id, sectionId, direction) =>
+      ok(
+        api.POST("/partner/places/{id}/price-list/sections/{sectionId}/move", {
+          ...section(id, sectionId),
+          body: { direction },
+        }),
+      ),
+    archivePriceSection: (id, sectionId) =>
+      ok(api.POST("/partner/places/{id}/price-list/sections/{sectionId}/archive", section(id, sectionId))),
+    createPriceItem: (id, body) =>
+      ok(api.POST("/partner/places/{id}/price-list/items", { ...place(id), body })),
+    updatePriceItem: (id, itemId, body) =>
+      ok(api.PATCH("/partner/places/{id}/price-list/items/{itemId}", { ...item(id, itemId), body })),
+    movePriceItem: (id, itemId, direction) =>
+      ok(
+        api.POST("/partner/places/{id}/price-list/items/{itemId}/move", {
+          ...item(id, itemId),
+          body: { direction },
+        }),
+      ),
+    archivePriceItem: (id, itemId) =>
+      ok(api.POST("/partner/places/{id}/price-list/items/{itemId}/archive", item(id, itemId))),
     staff: (orgId) => ok(api.GET("/partner/organizations/{orgId}/staff", { params: { path: { orgId } } })),
     invite: (orgId, role) =>
       ok(

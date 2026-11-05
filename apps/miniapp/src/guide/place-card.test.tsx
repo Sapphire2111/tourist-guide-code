@@ -383,6 +383,7 @@ const dto = {
   favorite: null,
   hasOffer: false,
   offers: [],
+  hasPriceList: false,
 };
 
 describe("обложка у нас (Google/Wikimedia)", () => {

@@ -188,6 +188,7 @@ function renderWith(
                 submit: partner.role === "ORG_OWNER",
                 manageStaff: partner.role === "ORG_OWNER",
                 manageOffers: partner.role !== "ORG_STAFF",
+                managePriceList: partner.role !== "ORG_STAFF",
                 serviceRequests: true,
                 bookings: true,
                 manualBooking: true,

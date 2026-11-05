@@ -15,3 +15,6 @@ export {
   PartnerService,
   type AuditMeta as PartnerAuditMeta,
 } from "./partner.service.js";
+export * from "./price-list.dto.js";
+export { PriceListRepository } from "./price-list.repository.js";
+export { PriceListService, PRICE_ITEM_ENTITY, PRICE_SECTION_ENTITY } from "./price-list.service.js";

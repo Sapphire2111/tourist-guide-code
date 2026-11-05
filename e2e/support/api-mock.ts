@@ -141,6 +141,8 @@ const card = (p: (typeof places)[number], favorite: boolean | null) => ({
   description: { uk: "Опис місця для перевірки картки." },
   website: "https://place.example",
   telegram: null,
+  // Прайс (0030): флаг карточки; у мест мока список пуст (price-list-mock.ts — свой).
+  hasPriceList: true,
   verifiedAt: "2026-10-01T00:00:00Z",
   photos: [
     {
@@ -390,6 +392,9 @@ export async function installApiMock(page: Page): Promise<ApiMockState> {
         });
       }
       const signedIn = req.headers()["authorization"] === `Bearer ${TOKEN}`;
+      // Прайс заведения (0030): у мест мока его нет — блока «Ціни» нет (support/price-list-mock.ts — свой).
+      const pricesOf = /^\/places\/([^/]+)\/price-list$/.exec(path)?.[1];
+      if (pricesOf) return json(route, { placeId: pricesOf, sections: [] });
       const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
       if (placeId) {
         const p = places.find((x) => x.id === placeId);

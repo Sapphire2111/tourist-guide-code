@@ -23,6 +23,8 @@ import type {
   FavoriteListDto,
   GuideCategoryListDto,
   GuideLocalityListDto,
+  GuidePriceListDto,
+  GuidePriceSectionDto,
   PlaceCardDto,
   PlacePhotoDto,
   PlaceSearchResultDto,
@@ -176,16 +178,19 @@ export class GuideService {
       const row = await this.repo.findPublished(id, opts.origin);
       if (!row) return undefined;
       const at = localMoment(this.now(), region.timezone);
-      const [category, tags, photos, schedules, labels, favorite, enrichment, offers] = await Promise.all([
-        this.repo.findCategory(row.category_id),
-        this.repo.placeTags(id),
-        this.repo.photos([id]),
-        this.repo.schedules([id], { from: at.previousDate }),
-        this.repo.adLabels([id]),
-        opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
-        this.repo.enrichment(id),
-        this.repo.offers(id),
-      ]);
+      const [category, tags, photos, schedules, labels, favorite, enrichment, offers, hasPriceList] =
+        await Promise.all([
+          this.repo.findCategory(row.category_id),
+          this.repo.placeTags(id),
+          this.repo.photos([id]),
+          this.repo.schedules([id], { from: at.previousDate }),
+          this.repo.adLabels([id]),
+          opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
+          this.repo.enrichment(id),
+          this.repo.offers(id),
+          // Прайс (0030) — только у мест партнёра: карточка грузит «Ціни» отдельным запросом лишь при true.
+          row.organization_id ? this.repo.hasPriceList(id) : Promise.resolve(false),
+        ]);
       const schedule = schedules.get(id) ?? { weekly: [], exceptions: [] };
       const state = openState(schedule, at);
       const photoDtos = await Promise.all(photos.map((p) => this.photo(p)));
@@ -243,8 +248,38 @@ export class GuideService {
         }),
         openUntil: state.openUntil,
         favorite,
+        hasPriceList,
         ...this.enriched(region.id, id, enrichment, exhausted),
       };
+    });
+  }
+
+  /**
+   * «Ціни» карточки (прайс заведения, 0030): видимые позиции опубликованного партнёрского места по разделам.
+   * undefined — места нет/не опубликовано/чужой регион (404); у места без прайса — пустой список разделов.
+   */
+  async priceList(regionId: string, id: string): Promise<GuidePriceListDto | undefined> {
+    return this.inRegion(regionId, async () => {
+      const place = await this.repo.findPublished(id, undefined);
+      if (!place) return undefined;
+      const sections: GuidePriceSectionDto[] = [];
+      for (const r of await this.repo.priceRows(place.id)) {
+        let section = sections[sections.length - 1];
+        if (section?.id !== r.section_id) {
+          section = { id: r.section_id, title: r.title_i18n, items: [] };
+          sections.push(section);
+        }
+        section.items.push({
+          id: r.id,
+          name: r.name_i18n,
+          description: r.description_i18n,
+          priceMinor: Number(r.price_minor),
+          currency: r.currency,
+          priceFrom: r.price_from,
+          unit: r.unit_i18n,
+        });
+      }
+      return { placeId: place.id, sections };
     });
   }
 

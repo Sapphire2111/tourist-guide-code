@@ -80,6 +80,9 @@ export const TABLE_TENANCY = {
   moderation_cases: "tenant",
   staff_invites: "tenant",
   offers: "tenant",
+  // Прайс заведения (0030): разделы и позиции — регион места.
+  price_list_sections: "tenant",
+  price_list_items: "tenant",
   // Богатая картка місця (0018): обогащение места — регион места; кэш адресов фото Google — общий (имя фото глобально).
   place_enrichments: "tenant",
   google_photo_uris: "global",

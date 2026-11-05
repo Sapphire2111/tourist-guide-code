@@ -245,6 +245,13 @@ export {
   type StaffInviteRole,
   type VerificationMethod,
 } from "./schema.js";
+// Прайс заведения (0030).
+export {
+  PRICE_LIST_STATUSES,
+  type PriceListItem,
+  type PriceListSection,
+  type PriceListStatus,
+} from "./schema.js";
 // Бронирования (0022, блок 7).
 export {
   BOOKING_ACTORS,
