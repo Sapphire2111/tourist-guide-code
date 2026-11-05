@@ -5,7 +5,16 @@ import { CatalogError, mapDbError } from "./catalog.service.js";
 
 describe("mapDbError", () => {
   it("удаление места, на которое ссылаются сценарий или заявка (RESTRICT) — in_use", () => {
-    for (const constraint of ["scenario_items_place_fk", "service_requests_place_fk"]) {
+    for (const constraint of [
+      "scenario_items_place_fk",
+      "service_requests_place_fk",
+      "resources_place_fk",
+      "bookings_place_fk",
+      "partner_phone_consents_place_fk",
+      "review_eligibilities_place_fk",
+      "reviews_place_fk",
+      "place_badge_events_place_fk",
+    ]) {
       const err = mapDbError({ code: "23503", constraint }, "delete");
       expect(err, constraint).toBeInstanceOf(CatalogError);
       expect((err as CatalogError).reason).toBe("in_use");

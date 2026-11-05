@@ -6,6 +6,7 @@ import {
   DECISION_PLACE_STATUS,
   higherRole,
   inviteState,
+  isDeletableDraft,
   isPartnerEditable,
   isSubmittable,
   missingFields,
@@ -71,6 +72,15 @@ describe("правила кабинета партнёра (блок 6)", () => 
     expect(isSubmittable("changes_requested")).toBe(true);
     expect(isSubmittable("published")).toBe(false);
     expect(isSubmittable("pending_moderation")).toBe(false);
+    // Удалить черновик: ни разу не публиковалось и не на модерации.
+    expect(
+      ["draft", "changes_requested", "rejected"].every((s) =>
+        isDeletableDraft({ status: s as never, first_published_at: null }),
+      ),
+    ).toBe(true);
+    expect(isDeletableDraft({ status: "pending_moderation", first_published_at: null })).toBe(false);
+    expect(isDeletableDraft({ status: "draft", first_published_at: new Date() })).toBe(false);
+    expect(isDeletableDraft({ status: "published", first_published_at: new Date() })).toBe(false);
     expect(DECISION_PLACE_STATUS).toEqual({
       approve: "published",
       reject: "rejected",

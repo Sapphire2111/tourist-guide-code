@@ -31,14 +31,25 @@ test("фото: проверка типа до загрузки; загрузк�
   await expect(add.getByLabel(/Файл/)).toHaveValue("");
 });
 
-test("переходы: черновик → архив; недоступных переходов нет среди кнопок", async ({ page }) => {
+test("переходы: неопубликованный черновик — «Видалити чернетку» вместо архива; архив — после публикации", async ({
+  page,
+}) => {
   await login(page, "/#/places/new");
   const form = page.getByRole("form", { name: "Дані місця" });
   await form.getByRole("group", { name: "Назва" }).getByLabel("Українською").fill("Чернетка");
   await form.getByLabel("Категорія").selectOption({ label: "Релакс" });
   await form.getByRole("button", { name: "Зберегти" }).click();
   const status = page.getByRole("region", { name: /Статус: Чернетка/ });
-  await status.getByRole("button", { name: "До архіву" }).click();
+  await expect(status.getByRole("button", { name: "До архіву" })).toHaveCount(0);
+  page.once("dialog", (d) => void d.accept());
+  await status.getByRole("button", { name: "Видалити чернетку" }).click();
+  await expect(page).toHaveURL(/#\/places$/);
+  await expect(page.getByRole("link", { name: "Чернетка" })).toHaveCount(0);
+
+  await page.goto("/#/places");
+  await page.getByRole("link", { name: "Водоспад Пробій" }).click();
+  const published = page.getByRole("region", { name: /Статус: Опубліковано/ });
+  await published.getByRole("button", { name: "До архіву" }).click();
   const archived = page.getByRole("region", { name: /Статус: В архіві/ });
   await expect(archived).toBeVisible();
   await expect(archived.getByRole("button", { name: "Призупинити" })).toHaveCount(0);

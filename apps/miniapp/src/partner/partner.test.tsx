@@ -94,6 +94,7 @@ const place = (over: Partial<PartnerPlace> = {}): PartnerPlace => ({
   role: "ORG_OWNER",
   abilities: abilities(true),
   editable: true,
+  deletable: false,
   categoryId: CAT,
   localityId: null,
   name: { uk: "Садиба Смерека" },
@@ -632,6 +633,54 @@ describe("исправления ревью", () => {
     expect(screen.getByRole("button", { name: "Основне" }).getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Години роботи" }));
     expect(screen.getByRole("button", { name: "Години роботи" }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("редактор: «Видалити чернетку» — только при deletable; подтверждение в листе → удаление и переход на дашборд", async () => {
+    window.location.hash = `#/partner/place/${PLACE}`;
+    const deletePlace = vi.fn(() => Promise.resolve());
+    const me = vi.fn(() => Promise.resolve({ organizations: [] }));
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ deletable: true, name: { uk: "Kuma" } })),
+      deletePlace,
+      me,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Видалити чернетку" }));
+    const sheet = screen.getByRole("alertdialog", { name: "Видалити «Kuma»?" });
+    expect(within(sheet).getByText("Це не можна скасувати.")).toBeDefined();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Скасувати" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(deletePlace).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Видалити чернетку" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Видалити" }));
+    });
+    expect(deletePlace).toHaveBeenCalledWith(PLACE);
+    expect(window.location.hash).toBe("#/partner");
+  });
+
+  it("редактор: 409 при удалении — понятный текст, без перехода; без deletable ссылки нет", async () => {
+    window.location.hash = `#/partner/place/${PLACE}`;
+    const deletePlace = vi.fn(() =>
+      Promise.reject(
+        new ConflictError("errors.partner.placeOncePublished", "CONFLICT", { reason: "once_published" }),
+      ),
+    );
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ deletable: true })),
+      deletePlace,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Видалити чернетку" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Видалити" }));
+    });
+    expect(screen.getByTestId("delete-draft-message").textContent).toContain("уже публікувався");
+    expect(window.location.hash).toBe(`#/partner/place/${PLACE}`);
+    cleanup();
+
+    setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place({ status: "published" })) });
+    await screen.findByTestId("identity-locked");
+    expect(screen.queryByRole("button", { name: "Видалити чернетку" })).toBeNull();
   });
 
   it("редактор: у опубликованного поля личности и точка заблокированы", async () => {

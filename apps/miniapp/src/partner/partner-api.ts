@@ -77,6 +77,8 @@ export type PartnerApi = {
   uploadPhoto(id: string, file: File, alt: string): Promise<void>;
   deletePhoto(id: string, assetId: string): Promise<void>;
   submit(id: string, note: string): Promise<PartnerPlace>;
+  /** «Видалити чернетку»: только ни разу не публиковавшееся (place.deletable), иначе 409. */
+  deletePlace(id: string): Promise<void>;
   offers(placeId: string): Promise<Offer[]>;
   createOffer(placeId: string, input: OfferInput): Promise<Offer>;
   updateOffer(placeId: string, offerId: string, input: OfferInput): Promise<Offer>;
@@ -152,6 +154,7 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
     },
     deletePhoto: (id, assetId) =>
       empty(api.DELETE("/partner/places/{id}/media/{assetId}", { params: { path: { id, assetId } } })),
+    deletePlace: (id) => empty(api.DELETE("/partner/places/{id}", place(id))),
     submit: (id, note) =>
       ok(
         api.POST("/partner/places/{id}/submit", {
