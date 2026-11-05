@@ -20,7 +20,8 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import type { CursorPage } from "@tg/shared";
-import { ApiCursorPage, ApiErrors } from "../../common/http/index.js";
+import { ApiCursorPage, ApiError, ApiErrors } from "../../common/http/index.js";
+import type { BoundingBox } from "../../db/index.js";
 import type { AuditableRequest } from "../audit/index.js";
 import { RequirePermission, scopeFromTenant } from "../rbac/index.js";
 import type { PlaceTransition } from "./catalog-rules.js";
@@ -54,6 +55,21 @@ import {
 import { CatalogService } from "./catalog.service.js";
 
 const READ = "catalog.read.admin";
+
+/** Рамка карты из запроса (все четыре границы проверены DTO); минимум больше максимума — 400 по полю максимума. */
+function bboxOf(q: PlaceListQueryDto): BoundingBox | undefined {
+  const { minLat, maxLat, minLng, maxLng } = q;
+  if (minLat === undefined || maxLat === undefined || minLng === undefined || maxLng === undefined)
+    return undefined;
+  const bad = [...(minLat > maxLat ? ["maxLat"] : []), ...(minLng > maxLng ? ["maxLng"] : [])];
+  if (bad.length > 0)
+    throw new ApiError("VALIDATION_FAILED", {
+      details: {
+        fields: bad.map((field) => ({ field, constraint: "min", messageKey: "errors.validation.min" })),
+      },
+    });
+  return { minLat, maxLat, minLng, maxLng };
+}
 const ITEM_ERRORS = ["VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND"] as const;
 const WRITE_ERRORS = [...ITEM_ERRORS, "CONFLICT", "UNPROCESSABLE"] as const;
 
@@ -71,7 +87,8 @@ export class PlacesController {
   @RequirePermission(READ, scopeFromTenant)
   @ApiOperation({
     operationId: "listPlaces",
-    summary: "Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию",
+    summary:
+      "Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию, рамка карты",
   })
   @ApiCursorPage(PlaceDto)
   @ApiErrors("VALIDATION_FAILED", "UNAUTHENTICATED", "FORBIDDEN")
@@ -79,7 +96,14 @@ export class PlacesController {
     const limit = q.limit ?? DEFAULT_PAGE_SIZE;
     const afterId = decodeCursor(q.cursor);
     const { items, hasMore } = await call(() =>
-      this.catalog.listPlaces({ status: q.status, categoryId: q.categoryId, q: q.q, afterId, limit }),
+      this.catalog.listPlaces({
+        status: q.status,
+        categoryId: q.categoryId,
+        q: q.q,
+        bbox: bboxOf(q),
+        afterId,
+        limit,
+      }),
     );
     const last = items.at(-1);
     return {

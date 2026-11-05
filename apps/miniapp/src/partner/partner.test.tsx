@@ -518,7 +518,7 @@ describe("исправления ревью", () => {
       onboard,
     });
     expect(screen.getByRole("heading", { level: 1, name: "Додайте свій заклад" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Знайти в гіді" }).getAttribute("href")).toBe("#/search");
+    expect(screen.getByRole("link", { name: "Знайти в гіді" }).getAttribute("href")).toBe("#/search?claim=1");
     fireEvent.click(await screen.findByRole("radio", { name: /Готель . садиба/ }));
     fireEvent.change(screen.getByLabelText("Назва закладу"), { target: { value: "Смерека" } });
     const create = () =>

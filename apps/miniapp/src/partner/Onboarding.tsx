@@ -53,7 +53,7 @@ export function PartnerOnboarding() {
       <p>{t("miniapp.partner.onboarding.lead")}</p>
       <p className="kosiv-card" data-testid="onboarding-exists" style={{ margin: 0 }}>
         {t("miniapp.partner.onboarding.exists")}{" "}
-        <Link to="/search" className="partner-back">
+        <Link to="/search?claim=1" className="partner-back" data-testid="onboarding-search">
           {t("miniapp.partner.onboarding.search")}
         </Link>
       </p>

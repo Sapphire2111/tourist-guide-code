@@ -347,6 +347,39 @@ describe.skipIf(!dockerAvailable)(`Каталог (блок 3, миграция 
     expect(drafts.items.every((p) => p.status === "draft")).toBe(true);
   });
 
+  it("рамка карты: только места с точкой внутри; без точки и снаружи — не попадают", async () => {
+    const all = (await inRegionA(() => svc().listPlaces({ limit: 100 }))).items;
+    const withPoint = all.filter((p) => p.location);
+    expect(withPoint.length).toBeGreaterThan(0);
+    const target = withPoint[0]!.location!;
+    const d = 0.0001;
+    const box = {
+      minLat: target.lat - d,
+      maxLat: target.lat + d,
+      minLng: target.lon - d,
+      maxLng: target.lon + d,
+    };
+    const inside = (await inRegionA(() => svc().listPlaces({ bbox: box, limit: 100 }))).items;
+    const expected = withPoint
+      .filter(
+        (p) =>
+          p.location!.lat >= box.minLat &&
+          p.location!.lat <= box.maxLat &&
+          p.location!.lon >= box.minLng &&
+          p.location!.lon <= box.maxLng,
+      )
+      .map((p) => p.id);
+    expect(inside.map((p) => p.id)).toEqual(expected);
+    expect(inside.every((p) => p.location)).toBe(true);
+    // Рамка на весь мир: все места с точкой, без точки — нет.
+    const world = { minLat: -90, maxLat: 90, minLng: -180, maxLng: 180 };
+    const everything = (await inRegionA(() => svc().listPlaces({ bbox: world, limit: 100 }))).items;
+    expect(everything.map((p) => p.id)).toEqual(withPoint.map((p) => p.id));
+    // Рамка в океане — пусто.
+    const ocean = { minLat: -10, maxLat: -9, minLng: -30, maxLng: -29 };
+    expect((await inRegionA(() => svc().listPlaces({ bbox: ocean, limit: 100 }))).items).toEqual([]);
+  });
+
   it("фото: смена обложки снимает прежнюю, повторная привязка — media_already_linked, отвязка", async () => {
     const place = placeId("cafe-kava");
     const [a1, a2] = [await newAsset(place), await newAsset(place)];

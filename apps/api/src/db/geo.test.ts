@@ -7,7 +7,7 @@ import {
   sql,
 } from "kysely";
 import { describe, expect, it } from "vitest";
-import { distanceMeters, lonLatOf, point, withinMeters, type Geometry } from "./geo.js";
+import { distanceMeters, lonLatOf, point, withinBox, withinMeters, type Geometry } from "./geo.js";
 
 // Kysely без соединения: только компиляция SQL.
 const db = new Kysely<Record<string, never>>({
@@ -66,5 +66,22 @@ describe("geo", () => {
 
   it("withinMeters отклоняет отрицательный радиус", () => {
     expect(() => withinMeters(point(kyiv), point(lviv), -1)).toThrow("Радиус");
+  });
+
+  it("withinBox: колонка && ST_MakeEnvelope(minLng, minLat, maxLng, maxLat, 4326), значения — параметрами", () => {
+    const box = { minLat: 48.2, maxLat: 48.4, minLng: 24.9, maxLng: 25.2 };
+    const q = db.selectNoFrom(withinBox(sql.ref<Geometry>("place.location"), box).as("in")).compile();
+    expect(q.sql).toBe(
+      'select "place"."location" && ST_MakeEnvelope($1::float8, $2::float8, $3::float8, $4::float8, 4326) as "in"',
+    );
+    expect(q.parameters).toEqual([24.9, 48.2, 25.2, 48.4]);
+  });
+
+  it("withinBox отклоняет перевёрнутую рамку и не числа", () => {
+    const ref = sql.ref<Geometry>("place.location");
+    expect(() => withinBox(ref, { minLat: 49, maxLat: 48, minLng: 24, maxLng: 25 })).toThrow("Рамка");
+    expect(() => withinBox(ref, { minLat: 48, maxLat: 49, minLng: Number.NaN, maxLng: 25 })).toThrow(
+      "не число",
+    );
   });
 });

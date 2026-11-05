@@ -62,3 +62,32 @@ test("карточка → «Це мій заклад?» → заявка → «
   await expect(page.getByTestId("claim-pending")).toContainText("Ваша заявка на цей заклад уже на розгляді.");
   await expect(page.getByTestId("claim-submit")).toHaveCount(0);
 });
+
+test("анкета партнёра → «Знайти в гіді» → выбор своего места сразу открывает заявку; «Назад» — к поиску и анкете", async ({
+  page,
+}) => {
+  const state = apiMockState.get(page)!;
+  state.consents = [...CONSENTS];
+  await page.goto("/#/partner/new");
+  await page.getByTestId("onboarding-exists").getByRole("link", { name: "Знайти в гіді" }).click();
+
+  await expect(page).toHaveURL(/#\/search\?claim=1$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Знайдіть свій заклад" })).toBeVisible();
+  await expect(page.getByTestId("search-claim-hint")).toBeVisible();
+  await page.getByLabel("Пошук за назвою").fill("Смерека");
+  const searched = page.waitForResponse(
+    (r) => r.request().method() === "GET" && new URL(r.url()).searchParams.get("q") === "Смерека",
+  );
+  await page.getByRole("button", { name: "Знайти" }).click();
+  await searched;
+  await page.getByTestId("place-list").getByRole("link", { name: "Кав'ярня «Смерека»" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`#/partner/claim/${CAFE_PLACE}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Це мій заклад" })).toBeVisible();
+  await expectNoSeriousA11yViolations(page);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Знайдіть свій заклад" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Додайте свій заклад" })).toBeVisible();
+});

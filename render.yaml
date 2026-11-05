@@ -168,11 +168,12 @@ services:
     autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@tg/admin
     staticPublishPath: ./apps/admin/dist
-    # Заголовки безопасности (T1-24) — как у miniapp (через API Render), но во фрейм не встраивается.
+    # Заголовки безопасности (T1-24) — как у miniapp (через API Render), но во фрейм не встраивается. Источники Google
+    # Maps (скрипт, тайлы, шрифты, воркеры) — для выбора места на карте, как у miniapp.
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://tg-api-staging.onrender.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://*.googleapis.com https://*.gstatic.com https://*.google.com blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tg-api-staging.onrender.com https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
       - path: /*
         name: X-Frame-Options
         value: DENY
@@ -193,6 +194,13 @@ services:
       # Адрес api (вшивается в бандл); без него сборка на Render падает (vite.config.ts). Origin админки — в CORS_ORIGINS api.
       - key: VITE_API_URL
         value: https://tg-api-staging.onrender.com
+      # Google Maps JavaScript API — выбор места на карте (форма QR). Тот же браузерный ключ, что у miniapp, но в Google
+      # Cloud в его HTTP referrer нужно добавить сайт админки. Не заданы — вместо кнопки карты пояснение, поиск по
+      # названию работает. Смена — пересборка сайта.
+      - key: VITE_GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false
       - key: NODE_VERSION
         value: 22.17.0
       - key: SKIP_INSTALL_SIMPLE_GIT_HOOKS
