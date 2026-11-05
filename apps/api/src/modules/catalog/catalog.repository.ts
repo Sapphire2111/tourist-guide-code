@@ -7,6 +7,8 @@ import {
   InjectDb,
   lonLatOf,
   point,
+  withinBox,
+  type BoundingBox,
   type Category,
   type CategoryUpdate,
   type Db,
@@ -60,6 +62,8 @@ export type PlaceListFilter = {
   namePattern?: string;
   /** id последнего места предыдущей страницы (порядок — по id убыванию, новые сверху). */
   afterId?: string;
+  /** Рамка карты: только места с точкой внутри (без точки — не попадают). */
+  bbox?: BoundingBox;
   limit: number;
 };
 
@@ -379,6 +383,10 @@ export class CatalogRepository {
           eb(eb.ref("places.name_i18n", "->>").key("en"), "ilike", pattern),
         ]),
       );
+    }
+    if (filter.bbox) {
+      const bbox = filter.bbox;
+      query = query.where((eb) => withinBox(eb.ref("places.location"), bbox));
     }
     if (filter.afterId) query = query.where("places.id", "<", filter.afterId);
     return query.orderBy("places.id", "desc").limit(filter.limit).execute();

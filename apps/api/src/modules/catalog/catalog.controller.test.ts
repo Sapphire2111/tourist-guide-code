@@ -383,6 +383,35 @@ describe("права ролей", () => {
 });
 
 describe("места: валидация, публикация, бейдж, аудит", () => {
+  it("список с рамкой карты: все четыре границы — фильтр ST_MakeEnvelope; неполная или неверная рамка — 400", async () => {
+    const { server, queries } = await start([REGION_ADMIN_A]);
+    const ok = await request(server).get(
+      "/admin/places?minLat=48.2&maxLat=48.4&minLng=24.9&maxLng=25.2&limit=100",
+    );
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    const list = queries.find((q) => q.sql.includes("ST_MakeEnvelope"));
+    expect(list?.sql).toContain('"places"."location" && ST_MakeEnvelope(');
+    expect(list?.parameters).toEqual(expect.arrayContaining([24.9, 48.2, 25.2, 48.4]));
+    // Без рамки фильтра нет.
+    queries.length = 0;
+    expect((await request(server).get("/admin/places")).status).toBe(200);
+    expect(queries.some((q) => q.sql.includes("ST_MakeEnvelope"))).toBe(false);
+
+    const fieldsOf = async (qs: string) => {
+      const res = await request(server).get(`/admin/places?${qs}`);
+      expect(res.status, qs).toBe(400);
+      expect(errorOf(res).code).toBe("VALIDATION_FAILED");
+      return errorOf(res).details?.fields?.map((f) => `${f.field}:${f.constraint}`);
+    };
+    expect(await fieldsOf("minLat=48.2&maxLat=48.4")).toEqual(
+      expect.arrayContaining(["minLng:isDefined", "maxLng:isDefined"]),
+    );
+    expect(await fieldsOf("minLat=abc&maxLat=48.4&minLng=24.9&maxLng=25.2")).toContain("minLat:isNumber");
+    expect(await fieldsOf("minLat=48.2&maxLat=91&minLng=24.9&maxLng=25.2")).toContain("maxLat:max");
+    expect(await fieldsOf("minLat=48.4&maxLat=48.2&minLng=24.9&maxLng=25.2")).toEqual(["maxLat:min"]);
+    expect(await fieldsOf("minLat=48.2&maxLat=48.4&minLng=25.2&maxLng=24.9")).toEqual(["maxLng:min"]);
+  });
+
   it("POST без обязательного name — 400; PATCH name: null — 400", async () => {
     const { server } = await start([REGION_ADMIN_A]);
     const created = await request(server)

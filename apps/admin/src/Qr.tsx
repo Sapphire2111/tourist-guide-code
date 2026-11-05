@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Link, Stack, useT } from "@tg/ui";
 import { call, type ApiError, type ApiSchemas } from "./api.js";
+import { PlaceMapPicker } from "./PlaceMapPicker.js";
 import {
   emptyLocalized,
   ErrorBox,
@@ -26,6 +27,7 @@ import {
 } from "./ui.js";
 
 type Qr = ApiSchemas["AdminQrPointDto"];
+type Place = ApiSchemas["PlaceDto"];
 type QrType = Qr["type"];
 export const QR_TYPES: QrType[] = ["hotel", "place", "region", "campaign"];
 
@@ -98,6 +100,10 @@ function CreateQr({ onCreated }: { onCreated: () => void }) {
       ),
     [placeQuery],
   );
+  // Место, выбранное на карте: в списке есть, даже если не попало в результаты поиска.
+  const [picked, setPicked] = useState<Place | null>(null);
+  const found = places?.ok ? places.data.items : [];
+  const placeOptions = picked && !found.some((p) => p.id === picked.id) ? [picked, ...found] : found;
   const [form, setForm] = useState({
     type: "hotel" as QrType,
     label: "",
@@ -147,8 +153,15 @@ function CreateQr({ onCreated }: { onCreated: () => void }) {
           label={t("admin.qr.place")}
           value={form.placeId}
           empty={t("admin.none")}
-          options={(places?.ok ? places.data.items : []).map((p) => ({ value: p.id, label: l(p.name) }))}
+          options={placeOptions.map((p) => ({ value: p.id, label: l(p.name) }))}
           onChange={(placeId) => set({ placeId })}
+        />
+        <PlaceMapPicker
+          selected={placeOptions.find((p) => p.id === form.placeId) ?? null}
+          onChoose={(place) => {
+            setPicked(place);
+            set({ placeId: place.id });
+          }}
         />
       </div>
       {form.type === "hotel" && (

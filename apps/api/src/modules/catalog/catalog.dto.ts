@@ -505,6 +505,10 @@ export const toPlaceDto = (
   updatedAt: p.updated_at.toISOString(),
 });
 
+/** Задана хотя бы одна граница рамки — тогда обязательны все четыре. */
+const hasBbox = (o: { minLat?: unknown; maxLat?: unknown; minLng?: unknown; maxLng?: unknown }): boolean =>
+  [o.minLat, o.maxLat, o.minLng, o.maxLng].some((v) => v !== undefined);
+
 export class PlaceListQueryDto extends CursorQueryDto {
   @ApiPropertyOptional({ enum: PLACE_STATUSES, enumName: "PlaceStatus" })
   @IsOptional()
@@ -521,6 +525,64 @@ export class PlaceListQueryDto extends CursorQueryDto {
   @IsString()
   @MaxLength(100)
   q?: string;
+
+  // Рамка карты (выбор места на карте в админке): все четыре границы или ни одной; места без точки не попадают.
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: -90,
+    maximum: 90,
+    description:
+      "Рамка карты: южная граница (широта). minLat, maxLat, minLng, maxLng — все четыре или ни одного",
+  })
+  @ValidateIf(hasBbox)
+  @IsDefined()
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  minLat?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: -90,
+    maximum: 90,
+    description: "Рамка карты: северная граница (широта), не меньше minLat",
+  })
+  @ValidateIf(hasBbox)
+  @IsDefined()
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  maxLat?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: -180,
+    maximum: 180,
+    description: "Рамка карты: западная граница (долгота)",
+  })
+  @ValidateIf(hasBbox)
+  @IsDefined()
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  minLng?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: -180,
+    maximum: 180,
+    description: "Рамка карты: восточная граница (долгота), не меньше minLng",
+  })
+  @ValidateIf(hasBbox)
+  @IsDefined()
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  maxLng?: number;
 }
 
 export class UpdatePlaceDto {
