@@ -3470,6 +3470,8 @@ export interface components {
       coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
       /** @description Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина */
       peak: components["schemas"]["PeakDto"] | null;
+      /** @description У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція» */
+      hasOffer: boolean;
     };
     PlaceSearchResultDto: {
       /** @description Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет */
@@ -3489,6 +3491,22 @@ export interface components {
     PlaceTagCountListDto: {
       /** @description Активные теги, у которых есть места; порядок — группа, sortOrder */
       items: components["schemas"]["PlaceTagCountDto"][];
+    };
+    PlaceOfferDto: {
+      /** Format: uuid */
+      id: string;
+      title: components["schemas"]["LocalizedTextDto"];
+      description: components["schemas"]["LocalizedTextDto"] | null;
+      /**
+       * Format: date-time
+       * @description null — без начала
+       */
+      startsAt: string | null;
+      /**
+       * Format: date-time
+       * @description null — бессрочно
+       */
+      endsAt: string | null;
     };
     GuideCategoryRefDto: {
       /** Format: uuid */
@@ -3640,6 +3658,10 @@ export interface components {
       coverPhoto: components["schemas"]["CoverPhotoDto"] | null;
       /** @description Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина */
       peak: components["schemas"]["PeakDto"] | null;
+      /** @description У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція» */
+      hasOffer: boolean;
+      /** @description Действующие акции партнёра (до 20): раньше заканчивающиеся сверху; пусто — блок не показывать */
+      offers: components["schemas"]["PlaceOfferDto"][];
       /** Format: uuid */
       regionId: string;
       category: components["schemas"]["GuideCategoryRefDto"];

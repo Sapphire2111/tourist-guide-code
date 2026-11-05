@@ -478,6 +478,23 @@ export class PlaceSummaryDto {
     description: "Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина",
   })
   peak!: PeakDto | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»",
+  })
+  hasOffer!: boolean;
+}
+
+/** Акция партнёра в карточке места (только действующие). */
+export class PlaceOfferDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: LocalizedTextDto }) title!: LocalizedText;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true, description: "null — без начала" })
+  startsAt!: string | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true, description: "null — бессрочно" })
+  endsAt!: string | null;
 }
 
 export class PlaceSearchResultDto {
@@ -599,6 +616,12 @@ export class WikipediaDto {
 
 /** Картка місця (C05). */
 export class PlaceCardDto extends PlaceSummaryDto {
+  @ApiProperty({
+    type: [PlaceOfferDto],
+    description:
+      "Действующие акции партнёра (до 20): раньше заканчивающиеся сверху; пусто — блок не показывать",
+  })
+  offers!: PlaceOfferDto[];
   @ApiProperty({ type: String, format: "uuid" }) regionId!: string;
   @ApiProperty({ type: GuideCategoryRefDto }) category!: GuideCategoryRefDto;
   @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;

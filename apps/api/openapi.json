@@ -15660,6 +15660,10 @@
             "description": "Вершина (подкатегория peaks): высота, маршрут, сложность; null — не вершина",
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PeakDto" }]
+          },
+          "hasOffer": {
+            "type": "boolean",
+            "description": "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»"
           }
         },
         "required": [
@@ -15675,7 +15679,8 @@
           "phone",
           "cover",
           "coverPhoto",
-          "peak"
+          "peak",
+          "hasOffer"
         ]
       },
       "PlaceSearchResultDto": {
@@ -15718,6 +15723,31 @@
           }
         },
         "required": ["items"]
+      },
+      "PlaceOfferDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "$ref": "#/components/schemas/LocalizedTextDto" },
+          "description": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [{ "$ref": "#/components/schemas/LocalizedTextDto" }]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "null — без начала"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "null — бессрочно"
+          }
+        },
+        "required": ["id", "title", "description", "startsAt", "endsAt"]
       },
       "GuideCategoryRefDto": {
         "type": "object",
@@ -15928,6 +15958,15 @@
             "type": "object",
             "allOf": [{ "$ref": "#/components/schemas/PeakDto" }]
           },
+          "hasOffer": {
+            "type": "boolean",
+            "description": "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»"
+          },
+          "offers": {
+            "description": "Действующие акции партнёра (до 20): раньше заканчивающиеся сверху; пусто — блок не показывать",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceOfferDto" }
+          },
           "regionId": { "type": "string", "format": "uuid" },
           "category": { "$ref": "#/components/schemas/GuideCategoryRefDto" },
           "description": {
@@ -16043,6 +16082,8 @@
           "cover",
           "coverPhoto",
           "peak",
+          "hasOffer",
+          "offers",
           "regionId",
           "category",
           "description",

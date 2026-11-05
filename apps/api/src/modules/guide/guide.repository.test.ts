@@ -159,6 +159,31 @@ describe("GuideRepository (SQL)", () => {
   });
 });
 
+describe("GuideRepository — акции партнёра (SQL)", () => {
+  it("действующие: status active, окно [starts_at, ends_at] с null-границами, регион, пачкой по местам", async () => {
+    const [q] = await capture((r) => r.placeIdsWithOffer([PLACE]));
+    expect(q!.sql).toMatch(/select distinct "place_id" from "offers"/);
+    expect(q!.sql).toMatch(/"status" = \$/);
+    expect(q!.sql).toMatch(/"starts_at" is null or "starts_at" <= now\(\)/);
+    expect(q!.sql).toMatch(/"ends_at" is null or "ends_at" >= now\(\)/);
+    expect(q!.sql).toMatch(/"place_id" in \(\$/);
+    expect(q!.sql).toMatch(/"region_id" = \$/);
+    expect(q!.params).toContain("active");
+  });
+
+  it("пустой список мест — без запроса", async () => {
+    expect(await capture((r) => r.placeIdsWithOffer([]))).toEqual([]);
+  });
+
+  it("карточка: те же условия, сначала заканчивающиеся, без срока — в конце", async () => {
+    const [q] = await capture((r) => r.offers(PLACE));
+    expect(q!.sql).toMatch(/from "offers"/);
+    expect(q!.sql).toMatch(/"ends_at" >= now\(\)/);
+    expect(q!.sql).toMatch(/ends_at asc nulls last/);
+    expect(q!.params).toContain(PLACE);
+  });
+});
+
 describe("GuideRepository.countFavorites (SQL)", () => {
   it("лимит считает те же записи, что список: только опубликованные места пользователя в регионе", async () => {
     const [count] = await capture((r) => r.countFavorites(USER).catch(() => 0)); // recordingDb строк не отдаёт

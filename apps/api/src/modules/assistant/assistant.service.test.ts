@@ -51,6 +51,7 @@ const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto 
   distanceMeters: n * 100,
   recommended: false,
   adLabel: null,
+  hasOffer: false,
   openNow: true,
   phone: null,
   cover: null,

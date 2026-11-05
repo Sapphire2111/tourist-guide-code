@@ -31,6 +31,8 @@ function service(repo: Partial<GuideRepository>) {
     covers: () => Promise.resolve([]),
     coverMeta: () => Promise.resolve([]),
     adLabels: () => Promise.resolve(new Map()),
+    placeIdsWithOffer: () => Promise.resolve(new Set()),
+    offers: () => Promise.resolve([]),
     schedules: () => Promise.resolve(new Map()),
   };
   return new GuideService(
@@ -114,5 +116,42 @@ describe("GuideService.localities", () => {
     expect(res.items[0]).toMatchObject({ id: L, placeCount: 7, location: { lon: 24.41, lat: 48.36 } });
     expect(res.items[0]!.aliases).toContain("Буковель");
     expect(res.items[1]).toMatchObject({ aliases: [], placeCount: 0 });
+  });
+});
+
+describe("GuideService — акции партнёра", () => {
+  it("выдача: hasOffer только у мест с действующей акцией", async () => {
+    const res = await service({
+      search: () => Promise.resolve([row(1), row(2)]),
+      placeIdsWithOffer: () => Promise.resolve(new Set([row(2).id])),
+    }).search(REGION, { limit: 20, offset: 0 });
+    expect(res.items.map((i) => i.hasOffer)).toEqual([false, true]);
+  });
+
+  it("карточка: offers в DTO (даты ISO), hasOffer; без акций — пусто и false", async () => {
+    const card = (offers: unknown[]) =>
+      service({
+        findPublished: () => Promise.resolve({ ...row(1), region_id: REGION } as never),
+        findCategory: () => Promise.resolve(undefined),
+        placeTags: () => Promise.resolve([]),
+        photos: () => Promise.resolve([]),
+        enrichment: () => Promise.resolve(undefined),
+        isFavorite: () => Promise.resolve(false),
+        offers: () => Promise.resolve(offers as never),
+      }).place(REGION, row(1).id, {});
+    const withOffer = await card([
+      {
+        id: PLACE,
+        title_i18n: { uk: "-10%" },
+        description_i18n: null,
+        starts_at: null,
+        ends_at: new Date("2026-11-12T20:59:59Z"),
+      },
+    ]);
+    expect(withOffer).toMatchObject({
+      hasOffer: true,
+      offers: [{ id: PLACE, title: { uk: "-10%" }, startsAt: null, endsAt: "2026-11-12T20:59:59.000Z" }],
+    });
+    expect(await card([])).toMatchObject({ hasOffer: false, offers: [] });
   });
 });

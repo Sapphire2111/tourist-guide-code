@@ -558,6 +558,37 @@ export class GuideRepository {
     return out;
   }
 
+  /** Условие «действует сейчас»: status active и now внутри [starts_at, ends_at] (null — без границы). */
+  private activeOffers() {
+    return this.q
+      .selectFrom("offers")
+      .where("status", "=", "active")
+      .where((eb) => eb.or([eb("starts_at", "is", null), eb("starts_at", "<=", sql<Date>`now()`)]))
+      .where((eb) => eb.or([eb("ends_at", "is", null), eb("ends_at", ">=", sql<Date>`now()`)]));
+  }
+
+  /** Места из списка, у которых есть действующая акция партнёра (одним запросом на страницу выдачи). */
+  async placeIdsWithOffer(placeIds: readonly string[]): Promise<Set<string>> {
+    if (placeIds.length === 0) return new Set();
+    const rows = await this.activeOffers()
+      .select("place_id")
+      .distinct()
+      .where("place_id", "in", placeIds)
+      .execute();
+    return new Set(rows.map((r) => r.place_id));
+  }
+
+  /** Действующие акции места: ближайшие к окончанию сверху, без срока — в конце. */
+  offers(placeId: string) {
+    return this.activeOffers()
+      .select(["id", "title_i18n", "description_i18n", "starts_at", "ends_at"])
+      .where("place_id", "=", placeId)
+      .orderBy(sql`ends_at asc nulls last`)
+      .orderBy("created_at", "desc")
+      .limit(20)
+      .execute();
+  }
+
   // --- избранное ---
 
   /** Избранные опубликованные места пользователя в регионе контекста, новые сверху. */

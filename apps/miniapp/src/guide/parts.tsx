@@ -101,6 +101,11 @@ export function PlaceBadges({ place }: { place: PlaceSummary }) {
           {t("miniapp.place.recommended")}
         </Badge>
       )}
+      {place.hasOffer && (
+        <Badge testId="badge-offer" tone="accent2">
+          {t("miniapp.promo.badge")}
+        </Badge>
+      )}
       {place.adLabel && (
         <Badge testId="badge-ad" tone="outline">
           {t(place.adLabel === "partner" ? "miniapp.place.partner" : "miniapp.place.ad")}

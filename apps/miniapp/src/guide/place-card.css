@@ -268,6 +268,35 @@ html[data-season] .pc-title:focus-visible {
   font-size: 0.875rem;
   font-weight: 500;
 }
+.pc-promos {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pc-promo {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--app-pill-bg);
+  border-inline-start: 3px solid var(--app-accent-ink);
+}
+.pc-promo p {
+  margin: 0;
+}
+.pc-promo-title {
+  font-weight: 600;
+  color: var(--app-accent-ink);
+}
+.pc-promo-text {
+  margin-top: 4px;
+  font-size: 0.9375rem;
+}
+.pc-promo-dates {
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
 .pc-schedule {
   border-collapse: collapse;
   width: 100%;

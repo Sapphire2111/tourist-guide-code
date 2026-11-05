@@ -176,7 +176,7 @@ export class GuideService {
       const row = await this.repo.findPublished(id, opts.origin);
       if (!row) return undefined;
       const at = localMoment(this.now(), region.timezone);
-      const [category, tags, photos, schedules, labels, favorite, enrichment] = await Promise.all([
+      const [category, tags, photos, schedules, labels, favorite, enrichment, offers] = await Promise.all([
         this.repo.findCategory(row.category_id),
         this.repo.placeTags(id),
         this.repo.photos([id]),
@@ -184,6 +184,7 @@ export class GuideService {
         this.repo.adLabels([id]),
         opts.userId ? this.repo.isFavorite(opts.userId, id) : Promise.resolve(null),
         this.repo.enrichment(id),
+        this.repo.offers(id),
       ]);
       const schedule = schedules.get(id) ?? { weekly: [], exceptions: [] };
       const state = openState(schedule, at);
@@ -196,7 +197,15 @@ export class GuideService {
           state.openNow,
           photoDtos[0] ?? null,
           external.get(id) ?? null,
+          offers.length > 0,
         ),
+        offers: offers.map((o) => ({
+          id: o.id,
+          title: o.title_i18n,
+          description: o.description_i18n,
+          startsAt: o.starts_at?.toISOString() ?? null,
+          endsAt: o.ends_at?.toISOString() ?? null,
+        })),
         regionId: row.region_id,
         category: {
           id: row.category_id,
@@ -355,11 +364,12 @@ export class GuideService {
   private async summaries(region: Region, rows: readonly PlaceRow[]): Promise<PlaceSummaryDto[]> {
     const ids = rows.map((r) => r.id);
     const at: LocalMoment = localMoment(this.now(), region.timezone);
-    const [covers, labels, schedules, external] = await Promise.all([
+    const [covers, labels, schedules, external, withOffer] = await Promise.all([
       this.repo.covers(ids),
       this.repo.adLabels(ids),
       this.repo.schedules(ids, { in: [at.previousDate, at.date] }),
       this.coverPhotos(region.id, ids),
+      this.repo.placeIdsWithOffer(ids),
     ]);
     const coverOf = new Map<string, PlacePhotoDto>();
     await Promise.all(covers.map(async (c) => coverOf.set(c.place_id, await this.photo(c))));
@@ -371,6 +381,7 @@ export class GuideService {
         openState(s, at).openNow,
         coverOf.get(r.id) ?? null,
         external.get(r.id) ?? null,
+        withOffer.has(r.id),
       );
     });
   }
@@ -381,6 +392,7 @@ export class GuideService {
     openNow: boolean | null,
     cover: PlacePhotoDto | null,
     coverPhoto: CoverPhotoDto | null,
+    hasOffer: boolean,
   ): PlaceSummaryDto {
     return {
       id: r.id,
@@ -398,6 +410,7 @@ export class GuideService {
       cover,
       coverPhoto,
       peak: peakOfPlace(r.google_place_id),
+      hasOffer,
     };
   }
 

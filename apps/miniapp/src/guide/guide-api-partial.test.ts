@@ -51,3 +51,35 @@ describe("search: onPartial", () => {
     expect(onPartial).not.toHaveBeenCalled();
   });
 });
+
+describe("акції: адаптер", () => {
+  it("hasOffer і offers из DTO; api без полей — false и пусто", async () => {
+    const { summaryOf, cardOf } = await import("./guide-api.js");
+    expect(summaryOf({ ...dto, hasOffer: true }).hasOffer).toBe(true);
+    expect(summaryOf(dto).hasOffer).toBe(false);
+    const card = {
+      ...dto,
+      regionId: "r",
+      category: { id: ID, parentId: null, name: { uk: "К" }, icon: null },
+      description: null,
+      descriptionAuto: false,
+      website: null,
+      telegram: null,
+      verifiedAt: null,
+      photos: [],
+      tags: [],
+      schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
+      openUntil: null,
+      favorite: null,
+    } as unknown as ApiSchemas["PlaceCardDto"];
+    expect(cardOf(card).offers).toEqual([]);
+    const o = {
+      id: ID,
+      title: { uk: "A" },
+      description: null,
+      startsAt: null,
+      endsAt: "2099-01-01T00:00:00Z",
+    };
+    expect(cardOf({ ...card, offers: [o] }).offers).toEqual([o]);
+  });
+});

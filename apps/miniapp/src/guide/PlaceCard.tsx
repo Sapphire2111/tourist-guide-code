@@ -21,6 +21,7 @@ import {
   UnauthorizedError,
   type Author,
   type PlaceDetail,
+  type PlaceOffer,
   type Review,
   type ScheduleInterval,
 } from "./types.js";
@@ -351,12 +352,12 @@ function ReviewItem({ review }: { review: Review }) {
   );
 }
 
-/** Удобства чипами; длинный список свёрнут до первых OFFERS_SHOWN. */
-const OFFERS_SHOWN = 10;
-function Offers({ amenities }: { amenities: string[] }) {
+/** Удобства чипами (Google); длинный список свёрнут до первых AMENITIES_SHOWN. */
+const AMENITIES_SHOWN = 10;
+function Amenities({ amenities }: { amenities: string[] }) {
   const { t } = useT();
   const [all, setAll] = useState(false);
-  const shown = all ? amenities : amenities.slice(0, OFFERS_SHOWN);
+  const shown = all ? amenities : amenities.slice(0, AMENITIES_SHOWN);
   return (
     <Section title={t("miniapp.place.offers")} testId="place-offers">
       <ul className="pc-chips">
@@ -366,11 +367,48 @@ function Offers({ amenities }: { amenities: string[] }) {
           </li>
         ))}
       </ul>
-      {amenities.length > OFFERS_SHOWN && (
+      {amenities.length > AMENITIES_SHOWN && (
         <button type="button" className="pc-textbtn" aria-expanded={all} onClick={() => setAll(!all)}>
           {all ? t("miniapp.place.offersLess") : t("miniapp.place.offersAll", { count: amenities.length })}
         </button>
       )}
+    </Section>
+  );
+}
+
+/** «до 12 листопада» / «з 1 листопада» / диапазон; даты — по Киеву (регион один часовой пояс). */
+function offerDates(o: PlaceOffer, locale: string, t: ReturnType<typeof useT>["t"]): string | null {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString(locale === "en" ? "en-GB" : "uk-UA", {
+      day: "numeric",
+      month: "long",
+      timeZone: "Europe/Kyiv",
+    });
+  if (o.startsAt && o.endsAt && new Date(o.startsAt).getTime() > Date.now())
+    return t("miniapp.promo.range", { from: fmt(o.startsAt), to: fmt(o.endsAt) });
+  if (o.startsAt && new Date(o.startsAt).getTime() > Date.now() && !o.endsAt)
+    return t("miniapp.promo.from", { date: fmt(o.startsAt) });
+  return o.endsAt ? t("miniapp.promo.until", { date: fmt(o.endsAt) }) : null;
+}
+
+/** Акции партнёра (только действующие — отбирает сервер). */
+function PromoOffers({ offers }: { offers: PlaceOffer[] }) {
+  const { t, locale } = useT();
+  return (
+    <Section title={t("miniapp.promo.title")} testId="place-promos">
+      <ul className="pc-promos">
+        {offers.map((o) => {
+          const dates = offerDates(o, locale, t);
+          const description = o.description ? pickLocalized(o.description, locale) : null;
+          return (
+            <li key={o.id} className="pc-promo" data-testid="place-promo">
+              <p className="pc-promo-title">{pickLocalized(o.title, locale)}</p>
+              {description && <p className="pc-promo-text">{description}</p>}
+              {dates && <p className="pc-promo-dates">{dates}</p>}
+            </li>
+          );
+        })}
+      </ul>
     </Section>
   );
 }
@@ -590,7 +628,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         )}
         {description && <p className="pc-lead">{description}</p>}
 
-        {amenities.length > 0 && <Offers amenities={amenities} />}
+        {(place.offers?.length ?? 0) > 0 && <PromoOffers offers={place.offers!} />}
+
+        {amenities.length > 0 && <Amenities amenities={amenities} />}
 
         {/* У вершини графіка немає — «Графік невідомий» не показуємо. */}
         {!(place.peak && !place.schedule.length) && (
