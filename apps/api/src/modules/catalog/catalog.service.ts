@@ -3,6 +3,7 @@ import {
   currentDb,
   currentTenant,
   InjectDb,
+  type BoundingBox,
   type Category,
   type CategoryUpdate,
   type Db,
@@ -490,6 +491,8 @@ export class CatalogService {
     status?: PlaceStatus;
     categoryId?: string;
     q?: string;
+    /** Рамка карты: только места с точкой внутри. */
+    bbox?: BoundingBox;
     afterId?: string;
     limit: number;
   }): Promise<{ items: PlaceRecord[]; hasMore: boolean }> {
@@ -498,6 +501,7 @@ export class CatalogService {
       status: filter.status,
       categoryId: filter.categoryId,
       namePattern: filter.q?.trim() ? likePattern(filter.q) : undefined,
+      bbox: filter.bbox,
       afterId: filter.afterId,
       limit: filter.limit + 1,
     });

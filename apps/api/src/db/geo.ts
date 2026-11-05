@@ -40,3 +40,18 @@ export function withinMeters(
 export function lonLatOf(column: Expression<Geometry | null>): RawBuilder<LonLat | null> {
   return sql<LonLat | null>`CASE WHEN ${column} IS NULL THEN NULL ELSE jsonb_build_object('lon', ST_X(${column}), 'lat', ST_Y(${column})) END`;
 }
+
+/** Прямоугольник WGS 84 (рамка карты): границы по широте и долготе включительно. */
+export type BoundingBox = { minLat: number; maxLat: number; minLng: number; maxLng: number };
+
+/**
+ * Точка внутри рамки: оператор && с ST_MakeEnvelope (использует GiST-индекс по колонке); NULL — не попадает.
+ * Рамки через антимеридиан не поддерживаются (minLng > maxLng — ошибка).
+ */
+export function withinBox(column: Expression<Geometry | null>, box: BoundingBox): RawBuilder<boolean> {
+  const { minLat, maxLat, minLng, maxLng } = box;
+  for (const v of [minLat, maxLat, minLng, maxLng])
+    if (!Number.isFinite(v)) throw new RangeError(`Граница рамки — не число: ${v}`);
+  if (minLat > maxLat || minLng > maxLng) throw new RangeError("Рамка: минимум больше максимума");
+  return sql<boolean>`${column} && ST_MakeEnvelope(${minLng}::float8, ${minLat}::float8, ${maxLng}::float8, ${maxLat}::float8, ${sql.lit(SRID)})`;
+}

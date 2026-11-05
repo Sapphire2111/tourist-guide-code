@@ -580,7 +580,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию */
+    /** Места региона (новые сверху): фильтры статус, категория (с подкатегориями), поиск по названию, рамка карты */
     get: operations["listPlaces"];
     put?: never;
     /** Новое место (черновик) */
@@ -10811,6 +10811,14 @@ export interface operations {
         categoryId?: string;
         /** @description Поиск по названию (uk, en) */
         q?: string;
+        /** @description Рамка карты: южная граница (широта). minLat, maxLat, minLng, maxLng — все четыре или ни одного */
+        minLat?: number;
+        /** @description Рамка карты: северная граница (широта), не меньше minLat */
+        maxLat?: number;
+        /** @description Рамка карты: западная граница (долгота) */
+        minLng?: number;
+        /** @description Рамка карты: восточная граница (долгота), не меньше minLng */
+        maxLng?: number;
       };
       header?: {
         /** @description Correlation id; иначе генерируется */
