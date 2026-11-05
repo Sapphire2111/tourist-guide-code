@@ -65,7 +65,7 @@ function screenFor(section: string, rest: string[]): ReactNode {
     case "/places":
       return rest.length ? <PlaceEditorScreen id={rest[0] === "new" ? null : rest[0]!} /> : <PlacesScreen />;
     case "/moderation":
-      return <ModerationScreen id={rest[0]} />;
+      return <ModerationScreen id={rest[0]} sub={rest[1]} />;
     case "/reviews":
       return <ReviewsScreen />;
     case "/qr":
