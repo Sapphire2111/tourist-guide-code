@@ -12,18 +12,33 @@ import { GPS_RADIUS, searchAround, useLocationCaption, useLocations } from "./Lo
 import { MapSlot } from "./MapSlot.js";
 import { DEVICE_MAX_ZOOM, RADIUS_DEBOUNCE_MS } from "./Nearby.js";
 import { SubcategorySelect } from "./SubcategorySelect.js";
-import { AsyncView, PlaceList } from "./parts.js";
+import { AsyncView, PlaceList, claimHref } from "./parts.js";
 import { RadiusSlider } from "./RadiusSlider.js";
 import type { LatLng } from "./geo.js";
 import type { CatalogSection, Category, LocalityOption } from "./types.js";
 
-/** Поиск мест по всему региону или выбранным локациям (#/search?q=…): быстрые запросы сезона, «Усі місця». */
-export function PlaceSearch({ initialQuery = "" }: { initialQuery?: string }) {
+/**
+ * Поиск мест по всему региону или выбранным локациям (#/search?q=…): быстрые запросы сезона, «Усі місця».
+ * claim (#/search?claim=1, из анкеты партнёра): «Знайдіть свій заклад» — нажатие на место открывает заявку
+ * «Це мій заклад?» вместо карточки; карта скрыта (маркеры ведут в карточку).
+ */
+export function PlaceSearch({
+  initialQuery = "",
+  claim = false,
+}: {
+  initialQuery?: string;
+  claim?: boolean;
+}) {
   const { t } = useT();
   return (
     <Stack>
-      <h1>{t("miniapp.search.title")}</h1>
-      <CategoryPlaces root={null} subcategories={[]} initialQuery={initialQuery} />
+      <h1>{t(claim ? "miniapp.search.claimTitle" : "miniapp.search.title")}</h1>
+      {claim && (
+        <p className="kosiv-muted" data-testid="search-claim-hint" style={{ margin: 0 }}>
+          {t("miniapp.search.claimHint")}
+        </p>
+      )}
+      <CategoryPlaces root={null} subcategories={[]} initialQuery={initialQuery} claim={claim} />
     </Stack>
   );
 }
@@ -85,11 +100,14 @@ function CategoryPlaces({
   root,
   subcategories,
   initialQuery = "",
+  claim = false,
 }: {
   /** null — поиск без категории (весь каталог). */
   root: Category | null;
   subcategories: Category[];
   initialQuery?: string;
+  /** Выбор своего заведения для заявки партнёра: только список, ссылки — на заявку. */
+  claim?: boolean;
 }) {
   const { t, locale } = useT();
   const { api, analytics, base } = useGuide();
@@ -107,7 +125,8 @@ function CategoryPlaces({
   const [q, setQ] = useScreenState("catalog.q", initialQuery.trim().length >= 2 ? initialQuery.trim() : "");
   // «Де жити» — карта главная (все места ночёвки сразу на карте, до STAY_MAP_MAX), список вторичен.
   const mapFirst = root?.homeSection === "stay";
-  const [view, setView] = useScreenState<"list" | "map">("catalog.view", mapFirst ? "map" : "list");
+  const [savedView, setView] = useScreenState<"list" | "map">("catalog.view", mapFirst ? "map" : "list");
+  const view = claim ? "list" : savedView;
   // Удобства «Де жити» (басейн, сауна…): только места со всеми отмеченными; в других разделах фильтра нет.
   const [amenities, setAmenities] = useScreenState<string[]>("catalog.amenities", []);
   const activeAmenities = mapFirst ? amenities : [];
@@ -338,19 +357,21 @@ function CategoryPlaces({
         />
         <Button type="submit">{t("miniapp.catalog.searchButton")}</Button>
       </form>
-      <div role="group" aria-label={t("miniapp.catalog.map")} style={{ display: "flex", gap: 6 }}>
-        {(["list", "map"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            className="kosiv-toggle"
-            aria-pressed={view === v}
-            onClick={() => setView(v)}
-          >
-            {t(`miniapp.catalog.${v}`)}
-          </button>
-        ))}
-      </div>
+      {!claim && (
+        <div role="group" aria-label={t("miniapp.catalog.map")} style={{ display: "flex", gap: 6 }}>
+          {(["list", "map"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              className="kosiv-toggle"
+              aria-pressed={view === v}
+              onClick={() => setView(v)}
+            >
+              {t(`miniapp.catalog.${v}`)}
+            </button>
+          ))}
+        </div>
+      )}
       {canRadius && (
         <RadiusSlider
           // По умолчанию с GPS — фактически использованный радиус (3 км или 10 км после расширения).
@@ -419,7 +440,7 @@ function CategoryPlaces({
                   radius={radiusNumber ?? (gps && radius === null ? usedRadius.current : undefined)}
                 />
               )}
-              <PlaceList places={list} />
+              <PlaceList places={list} hrefOf={claim ? claimHref : undefined} />
             </Stack>
           )
         }

@@ -182,6 +182,11 @@ export function PlaceMedia({ place, icon }: { place: PlaceSummary; icon?: ReactN
 }
 
 /** Карточка места: обложка, название (ссылка на всю карточку), расстояние и бейджи. */
+/** Ссылка на карточку места. */
+const placeHref = (id: string) => `/place/${encodeURIComponent(id)}`;
+/** Ссылка на заявку «Це мій заклад?» (0031). */
+export const claimHref = (id: string) => `/partner/claim/${encodeURIComponent(id)}`;
+
 export function PlaceSummaryCard({
   place,
   layout = "row",
@@ -189,8 +194,11 @@ export function PlaceSummaryCard({
   as: Tag = "li",
   distanceFrom,
   quickRoute = false,
+  hrefOf = placeHref,
 }: {
   place: PlaceSummary;
+  /** Куда ведёт название: по умолчанию карточка места; поиск «свого закладу» — заявка партнёра. */
+  hrefOf?: (id: string) => string;
   /** Откуда расстояние, если не от пользователя/заведения: «від центру Яремче». */
   distanceFrom?: string;
   quickRoute?: boolean;
@@ -219,7 +227,7 @@ export function PlaceSummaryCard({
         }
       />
       <div className="kosiv-place-body">
-        <Link to={`/place/${encodeURIComponent(place.id)}`} className="kosiv-place-title">
+        <Link to={hrefOf(place.id)} className="kosiv-place-title">
           {pickLocalized(place.name, locale)}
         </Link>
         {guide && (
@@ -253,16 +261,24 @@ export function PlaceList({
   testId = "place-list",
   distanceFrom,
   quickRoute = false,
+  hrefOf,
 }: {
   places: PlaceSummary[];
   testId?: string;
   distanceFrom?: string;
   quickRoute?: boolean;
+  hrefOf?: (id: string) => string;
 }) {
   return (
     <ul data-testid={testId} style={listStyle}>
       {places.map((p) => (
-        <PlaceSummaryCard key={p.id} place={p} distanceFrom={distanceFrom} quickRoute={quickRoute} />
+        <PlaceSummaryCard
+          key={p.id}
+          place={p}
+          distanceFrom={distanceFrom}
+          quickRoute={quickRoute}
+          hrefOf={hrefOf}
+        />
       ))}
     </ul>
   );

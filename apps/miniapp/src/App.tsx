@@ -581,11 +581,14 @@ function Routes(props: RoutesProps) {
     );
   if (path === "/search") {
     // Запрос — из адреса (#/search?q=…): быстрые чипы сезона на главной.
-    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q") ?? "";
+    // claim=1 — из анкеты партнёра: выбор своего заведения ведёт сразу к заявке (#/partner/claim/{id}).
+    const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+    const q = params.get("q") ?? "";
+    const claim = params.get("claim") === "1";
     return (
       <Screen webApp={webApp}>
         <RequireRegion>
-          <PlaceSearch key={q} initialQuery={q.slice(0, 100)} />
+          <PlaceSearch key={`${q}|${claim}`} initialQuery={q.slice(0, 100)} claim={claim} />
         </RequireRegion>
       </Screen>
     );
