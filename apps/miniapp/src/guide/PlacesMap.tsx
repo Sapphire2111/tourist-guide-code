@@ -116,7 +116,7 @@ export function pinNode(
   const pin = document.createElement("div");
   pin.className = "kosiv-pin";
   pin.dataset.group = group;
-  // Декор: кольцо «Партнер гіда» и точку «Акція» рисует CSS по data-partner / data-offer, подпись маркера та же.
+  // Декор: кольцо «Партнер гіда» и точку «Акція» рисует CSS по data-partner / data-offer.
   if (flags.partner) pin.dataset.partner = "true";
   if (flags.offer) pin.dataset.offer = "true";
   // Цвет группы — переменная: фон круга и акценты капсулы расстояния (modern.css) берут её, а не inline background.
@@ -584,7 +584,10 @@ export default function PlacesMap({
       const stop = route ? i + 1 : null;
       const marker = new libs.marker.AdvancedMarkerElement({
         position: { lat: p.location!.lat, lng: p.location!.lng },
-        title: pickLocalized(p.name, localeRef.current),
+        // Подпись маркера (имя кнопки для читалки): кольцо «Партнер гіда» — декор, поэтому метка и в тексте.
+        title: p.partner
+          ? `${pickLocalized(p.name, localeRef.current)} · ${tRef.current("miniapp.place.guidePartner")}`
+          : pickLocalized(p.name, localeRef.current),
         content: pinNode(
           group,
           stop,

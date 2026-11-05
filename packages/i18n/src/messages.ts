@@ -949,7 +949,7 @@ export const uk = {
   "miniapp.promo.from": "з {date}",
   "miniapp.promo.range": "{from} — {to}",
   "miniapp.place.ad": "Реклама",
-  "miniapp.place.partner": "Партнер",
+  "miniapp.place.partner": "Реклама",
   "miniapp.place.guidePartner": "Партнер гіда",
   "miniapp.place.partnerHint": "Заклад сам оновлює інформацію в гіді",
   "miniapp.place.partnerNote": "Інформацію оновлює заклад",
