@@ -852,23 +852,17 @@ html[data-theme="night"] .kosiv-chip[data-tone="partner"] svg {
   font-size: 0.8125rem;
 }
 
-/* Ползунок радиуса «Жаринка»: капсула 44 px (зона касания целиком), тонкая дорожка с огненным заполнением,
-   деления по шагам, бегунок-уголёк, значение в чипе справа. Overlay («Поруч») — стекло темы; иначе — поверхность. */
+/* Радиус «Лінійка-барабан»: капсула 44 px (зона касания целиком) шириной до 256 px — видно около четырёх значений.
+   Лента делений и подписей листается свайпом и защёлкивается; выбранное — в неподвижной рамке по центру, крупнее
+   и цветом акцента; края ленты растворяются в фоне капсулы. Overlay («Поруч») — стекло темы; иначе — поверхность.
+   Ширина значения --rd-item задаётся из RadiusSlider.tsx (по ней считается шаг при прокрутке). */
 .kosiv-radius-slider {
-  --rs-rail: rgb(22 56 43 / 18%);
-  --rs-tick: rgb(22 56 43 / 40%);
-  --rs-thumb: 22px;
-  --rs-bw: 1.5px;
-  --p: 0;
-  box-sizing: border-box;
+  --rd-item: 56px;
+  --rd-muted: var(--app-muted, #434e48);
+  --rd-accent: var(--app-accent-ink, #8a2c0f);
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
-  padding: 0 6px 0 12px;
-  border-radius: 9999px;
-  border: 1.5px solid var(--app-border, #e2d9c5);
-  background: var(--app-surface, #ffffff);
   color: var(--app-text, #1c2822);
   font-family: var(--font-body, system-ui, sans-serif);
 }
@@ -878,194 +872,137 @@ html[data-theme="night"] .kosiv-chip[data-tone="partner"] svg {
   font-weight: 600;
   color: var(--app-muted, #434e48);
 }
-.kosiv-rs-icon {
-  flex: none;
-  color: var(--glass-muted, var(--app-muted, #434e48));
-}
 
-/* Дорожка: рельс и заполнение рисуем сами; input прозрачный — только бегунок и зона касания. */
-.kosiv-rs-track {
+/* Капсула: рамка — внутренняя тень, а не border, чтобы лента занимала все 44 px высоты. */
+.kosiv-rd {
   position: relative;
-  flex: 1;
+  box-sizing: border-box;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 256px;
   height: 44px;
-  margin: calc(var(--rs-bw) * -1) 0; /* зона касания 44 px перекрывает рамку капсулы: высота капсулы ровно 44 */
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: var(--app-surface, #ffffff);
+  box-shadow: inset 0 0 0 1.5px var(--app-border, #e2d9c5);
 }
-.kosiv-rs-track::before,
-.kosiv-rs-fill {
-  content: "";
-  position: absolute;
-  top: 50%;
-  height: 4px;
-  margin-top: -2px;
-  border-radius: 2px;
-  pointer-events: none;
+.kosiv-rd:has(.kosiv-rd-input:focus-visible) {
+  outline: 2.5px solid var(--app-accent-ink, #8a2c0f);
+  outline-offset: 2px;
 }
-.kosiv-rs-track::before {
-  left: calc(var(--rs-thumb) / 2);
-  right: calc(var(--rs-thumb) / 2);
-  background: var(--rs-rail);
-}
-.kosiv-rs-fill {
-  left: calc(var(--rs-thumb) / 2);
-  width: calc((100% - var(--rs-thumb)) * var(--p));
-  background: linear-gradient(90deg, var(--ember-b, #e06d2b), var(--ember-a, #f26419));
-  transition: width 0.12s ease;
-}
-.kosiv-rs-ticks {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--rs-thumb) / 2 - 2px);
-  right: calc(var(--rs-thumb) / 2 - 2px);
+
+/* Лента: горизонтальная прокрутка с защёлкиванием. touch-action не ограничиваем: вертикальный жест,
+   начатый на капсуле, по-прежнему прокручивает страницу. */
+.kosiv-rd-strip {
   display: flex;
-  justify-content: space-between;
-  margin-top: -2px;
-  pointer-events: none;
-}
-.kosiv-rs-ticks i {
-  box-sizing: border-box;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--rs-tick);
-}
-.kosiv-rs-ticks i[data-passed] {
-  background: rgb(255 255 255 / 90%);
-}
-/* «Усі місця» — кольцо, а не точка. */
-.kosiv-rs-ticks i[data-all] {
-  width: 7px;
-  height: 7px;
-  margin: -1.5px;
-  background: transparent;
-  border: 1.5px solid var(--rs-tick);
-}
-.kosiv-rs-ticks i[data-all][data-passed] {
-  border-color: var(--ember-a, #f26419);
-}
-
-.kosiv-rs-track input[type="range"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
   height: 100%;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  -webkit-appearance: none;
-  appearance: none;
-  cursor: pointer;
-  outline: none;
-  touch-action: pan-y;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent);
 }
-.kosiv-rs-track input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  background: transparent;
+.kosiv-rd-strip::-webkit-scrollbar {
+  display: none;
 }
-.kosiv-rs-track input[type="range"]::-moz-range-track {
-  height: 4px;
-  background: transparent;
-}
-/* Бегунок-уголёк. */
-.kosiv-rs-track input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  box-sizing: border-box;
-  width: var(--rs-thumb);
-  height: var(--rs-thumb);
-  margin-top: calc(var(--rs-thumb) / -2 + 2px);
-  border-radius: 50%;
-  border: 2px solid rgb(255 255 255 / 92%);
-  background: radial-gradient(
-    circle at 35% 30%,
-    var(--ember-c, #f6ae2d) 0%,
-    var(--ember-a, #f26419) 45%,
-    #b83d18 100%
-  );
-  box-shadow:
-    0 0 0 3px rgb(242 100 25 / 18%),
-    0 2px 6px rgb(0 0 0 / 35%);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-.kosiv-rs-track input[type="range"]::-moz-range-thumb {
-  box-sizing: border-box;
-  width: var(--rs-thumb);
-  height: var(--rs-thumb);
-  border-radius: 50%;
-  border: 2px solid rgb(255 255 255 / 92%);
-  background: radial-gradient(
-    circle at 35% 30%,
-    var(--ember-c, #f6ae2d) 0%,
-    var(--ember-a, #f26419) 45%,
-    #b83d18 100%
-  );
-  box-shadow:
-    0 0 0 3px rgb(242 100 25 / 18%),
-    0 2px 6px rgb(0 0 0 / 35%);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-@media (hover: hover) {
-  .kosiv-rs-track input[type="range"]:hover::-webkit-slider-thumb {
-    transform: scale(1.08);
-  }
-  .kosiv-rs-track input[type="range"]:hover::-moz-range-thumb {
-    transform: scale(1.08);
-  }
-}
-/* Перетаскивание: уголёк разгорается. */
-.kosiv-radius-slider[data-dragging] input[type="range"]::-webkit-slider-thumb,
-.kosiv-rs-track input[type="range"]:active::-webkit-slider-thumb {
-  transform: scale(1.18);
-  box-shadow:
-    0 0 0 7px rgb(242 100 25 / 22%),
-    0 0 18px var(--ember-glow, rgb(242 100 25 / 55%));
-}
-.kosiv-radius-slider[data-dragging] input[type="range"]::-moz-range-thumb,
-.kosiv-rs-track input[type="range"]:active::-moz-range-thumb {
-  transform: scale(1.18);
-  box-shadow:
-    0 0 0 7px rgb(242 100 25 / 22%),
-    0 0 18px var(--ember-glow, rgb(242 100 25 / 55%));
-}
-/* Фокус клавиатуры: золотое кольцо с просветом вокруг бегунка; запас — золотая рамка капсулы. */
-.kosiv-rs-track input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 3px var(--glass-bg, var(--app-surface, #ffffff)),
-    0 0 0 5.5px var(--ember-c, #f6ae2d);
-}
-.kosiv-rs-track input[type="range"]:focus-visible::-moz-range-thumb {
-  box-shadow:
-    0 0 0 3px var(--glass-bg, var(--app-surface, #ffffff)),
-    0 0 0 5.5px var(--ember-c, #f6ae2d);
-}
-.kosiv-radius-slider:focus-within:has(input:focus-visible) {
-  border-color: var(--ember-c, #f6ae2d);
+/* Поля по краям — псевдоэлементы, а не padding: конец padding в прокручиваемом flex старые WebView теряют. */
+.kosiv-rd-strip::before,
+.kosiv-rd-strip::after {
+  content: "";
+  flex: none;
+  width: calc(50% - var(--rd-item) / 2);
 }
 
-/* Значение — чип-кикер темы. */
-.kosiv-radius-slider output {
+/* Значение: крупное деление сверху, между значениями — мелкое (на левом краю). */
+.kosiv-rd-item {
+  position: relative;
   flex: none;
   box-sizing: border-box;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 9999px;
-  border: 1px solid var(--kicker-border, transparent);
-  background: var(--kicker-bg, var(--app-pill-bg, #f9e4d2));
-  color: var(--kicker-text, var(--app-accent-ink, #8a2c0f));
-  font: 800 12px/1 var(--font-body, system-ui, sans-serif);
+  width: var(--rd-item);
+  padding: 10px 2px 0;
+  scroll-snap-align: center;
+  color: var(--rd-muted);
+  font: 600 12px/1.05 var(--font-body, system-ui, sans-serif);
   font-variant-numeric: tabular-nums;
+  text-align: center;
   white-space: nowrap;
-  transition: transform 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.15s ease,
+    font-size 0.15s ease;
 }
-.kosiv-radius-slider[data-dragging] output {
-  transform: scale(1.04);
+.kosiv-rd-item::before,
+.kosiv-rd-item::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  background: currentColor;
+  border-radius: 1px;
+}
+.kosiv-rd-item::before {
+  left: 50%;
+  width: 1.5px;
+  height: 7px;
+  margin-left: -0.75px;
+  opacity: 0.5;
+}
+.kosiv-rd-item::after {
+  left: -0.5px;
+  width: 1px;
+  height: 4px;
+  opacity: 0.35;
+}
+.kosiv-rd-item:first-of-type::after {
+  display: none;
+}
+.kosiv-rd-item[data-on] {
+  color: var(--rd-accent);
+  font-size: 14px;
+  font-weight: 800;
+}
+/* «Усі місця» в две строки — в ширину одного значения. */
+.kosiv-rd-item[data-all] {
+  font-size: 10.5px;
+  white-space: normal;
+}
+.kosiv-rd-item[data-all][data-on] {
+  font-size: 11.5px;
+}
+
+/* Рамка выбранного значения — неподвижна по центру. */
+.kosiv-rd-frame {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 50%;
+  box-sizing: border-box;
+  width: calc(var(--rd-item) + 6px);
+  margin-left: calc((var(--rd-item) + 6px) / -2);
+  border: 2px solid var(--rd-accent);
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+/* Нативный ползунок — для клавиатуры и читалок; на экране не виден, фокус показывает рамка капсулы. */
+.kosiv-rd-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
 }
 
 /* Disabled. */
@@ -1075,18 +1012,24 @@ html[data-theme="night"] .kosiv-chip[data-tone="partner"] svg {
   pointer-events: none;
 }
 
-/* Поверх карты: стеклянная капсула; подпись только для читалок, слева — значок. */
+/* Поверх карты: стеклянная компактная капсула по центру; подпись только для читалок. */
 .kosiv-radius-overlay {
-  --rs-bw: 1px;
+  --rd-muted: var(--glass-muted, var(--app-muted, #434e48));
+  align-self: center;
+  width: 100%;
+  max-width: 256px;
   margin: 0 0 2px;
-  border-width: 1px;
-  border-color: var(--glass-border, #ffffff);
+  pointer-events: auto;
+}
+.kosiv-radius-overlay .kosiv-rd {
+  max-width: none;
   background-color: var(--glass-bg, rgb(255 255 255 / 90%));
   color: var(--glass-text, #16382b);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  box-shadow: 0 3px 8px rgb(15 34 26 / 14%);
-  pointer-events: auto;
+  box-shadow:
+    inset 0 0 0 1px var(--glass-border, #ffffff),
+    0 3px 8px rgb(15 34 26 / 14%);
 }
 .kosiv-radius-overlay label {
   position: absolute;
@@ -1101,10 +1044,7 @@ html[data-theme="night"] .kosiv-chip[data-tone="partner"] svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kosiv-rs-fill,
-  .kosiv-radius-slider output,
-  .kosiv-rs-track input[type="range"]::-webkit-slider-thumb,
-  .kosiv-rs-track input[type="range"]::-moz-range-thumb {
+  .kosiv-rd-item {
     transition: none;
   }
 }

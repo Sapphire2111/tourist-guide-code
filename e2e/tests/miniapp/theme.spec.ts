@@ -273,7 +273,7 @@ test("цели нажатия: чипы категорий, ползунок р�
   await page.goto("/#/nearby");
   await expect(page.locator(".modern-filters button").first()).toBeVisible();
   await animationsDone(page);
-  for (const sel of [".modern-filters button", ".kosiv-radius-overlay input"]) {
+  for (const sel of [".modern-filters button", ".kosiv-radius-overlay .kosiv-rd"]) {
     const items = await reach(sel);
     expect(items.length).toBeGreaterThan(0);
     for (const i of items) expect(i.total, sel).toBeGreaterThanOrEqual(44);

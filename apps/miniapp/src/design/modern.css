@@ -1648,10 +1648,9 @@ html[data-theme="night"] .modern-map-stage {
   border-color: rgb(246 174 45 / 35%);
   box-shadow: 0 8px 30px rgb(0 0 0 / 60%);
 }
-/* Ползунок радиуса ночью: рельс и деления светлые на тёмном стекле; огонь — тот же. */
+/* Радиус «Лінійка-барабан» ночью: рамка и выбранное — золото (#f6ae2d), подписи светлые на тёмном стекле. */
 html[data-theme="night"] .kosiv-radius-slider {
-  --rs-rail: rgb(255 255 255 / 20%);
-  --rs-tick: rgb(255 255 255 / 45%);
+  --rd-accent: #f6ae2d;
 }
 html[data-theme="night"] .modern-filters button {
   background-color: rgb(11 29 22 / 80%);
