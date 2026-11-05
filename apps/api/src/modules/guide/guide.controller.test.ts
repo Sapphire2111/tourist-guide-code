@@ -389,12 +389,19 @@ describe("GET /places/tag-counts", () => {
     const { http, service } = await start();
     const A = "0190f5c2-7d3e-7000-8000-0000000000c1";
     await http().get(`/places/tag-counts?regionId=${REGION}&category=${PLACE}&localityIds=${A}`).expect(200);
-    expect(service.tagCounts).toHaveBeenLastCalledWith(REGION, { categoryId: PLACE, localityIds: [A] });
-    await http().get(`/places/tag-counts?regionId=${REGION}`).expect(200);
-    expect(service.tagCounts).toHaveBeenLastCalledWith(REGION, {
-      categoryId: undefined,
-      localityIds: undefined,
-    });
+    expect(service.tagCounts).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ categoryId: PLACE, localityIds: [A], origin: undefined, radius: undefined }),
+    );
+    // Те же фильтры, что у списка: точка с радиусом по умолчанию 500 м (как поиск), явный радиус, текст.
+    await http().get(`/places/tag-counts?regionId=${REGION}&lat=48.4&lng=24.5&q=%20вілла%20`).expect(200);
+    expect(service.tagCounts).toHaveBeenLastCalledWith(
+      REGION,
+      expect.objectContaining({ origin: { lon: 24.5, lat: 48.4 }, radius: 500, text: "вілла" }),
+    );
+    await http().get(`/places/tag-counts?regionId=${REGION}&lat=48.4&lng=24.5&radius=10000`).expect(200);
+    expect(service.tagCounts).toHaveBeenLastCalledWith(REGION, expect.objectContaining({ radius: 10_000 }));
+    await http().get(`/places/tag-counts?regionId=${REGION}&tags=pool`).expect(400);
     expect(service.place).not.toHaveBeenCalled();
     await http().get(`/places/tag-counts`).expect(400);
     await http().get(`/places/tag-counts?regionId=${REGION}&category=x`).expect(400);

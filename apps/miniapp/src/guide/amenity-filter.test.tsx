@@ -76,13 +76,14 @@ describe("фильтр удобств «Де жити»", () => {
     expect(trigger.textContent).toContain("Зручності");
     fireEvent.click(trigger);
     await flush();
-    expect(tagCounts).toHaveBeenCalledWith({ categoryId: STAY });
+    // Те же фильтры, что у списка (раздел, без точки — без радиуса).
+    expect(tagCounts).toHaveBeenCalledWith(expect.objectContaining({ categoryId: STAY, point: null }));
     const sheet = screen.getByTestId("amenity-sheet");
     expect(sheet.getAttribute("role")).toBe("dialog");
     // Только удобства с местами; счётчик рядом.
     const boxes = within(sheet).getAllByRole("checkbox");
     expect(boxes.map((b) => (b as HTMLInputElement).value)).toEqual(["pool", "sauna", "kids"]);
-    expect(within(sheet).getByLabelText("місць: 12").textContent).toContain("12");
+    expect(within(sheet).getByRole("checkbox", { name: /Басейн.*місць: 12/ })).toBeTruthy();
     fireEvent.click(within(sheet).getByLabelText(/Сауна/));
     fireEvent.click(within(sheet).getByLabelText(/Басейн/));
     await flush();
@@ -161,6 +162,11 @@ describe("адаптер api: удобства", () => {
     expect(await api.tagCounts!({ categoryId: STAY, localityIds: ["l1"] })).toEqual({ pool: 3 });
     expect(GET).toHaveBeenLastCalledWith("/places/tag-counts", {
       params: { query: { regionId: REGION, category: STAY, localityIds: ["l1"] } },
+    });
+    // Точка, радиус и текст — как у search: счётчики совпадают со списком.
+    await api.tagCounts!({ categoryId: STAY, point: { lat: 48.4, lng: 24.5 }, radius: 3000, q: "віл" });
+    expect(GET).toHaveBeenLastCalledWith("/places/tag-counts", {
+      params: { query: { regionId: REGION, lat: 48.4, lng: 24.5, radius: 3000, category: STAY, q: "віл" } },
     });
   });
 

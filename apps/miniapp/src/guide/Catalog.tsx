@@ -170,6 +170,7 @@ function CategoryPlaces({
               regionWide: false,
               partial,
               used: radiusNumber,
+              scope: { point, ...(radiusNumber ? { radius: radiusNumber } : {}) },
             };
           // Явный радиус отключает расширение до 10 км; «Усі місця» — без радиуса; по умолчанию — 3 км с расширением.
           const near =
@@ -190,10 +191,25 @@ function CategoryPlaces({
               regionWide: true,
               partial,
               used: null,
+              scope: { point: gps },
             };
-          return { list: near.list, regionWide: false, partial, used: near.radius };
+          return {
+            list: near.list,
+            regionWide: false,
+            partial,
+            used: near.radius,
+            scope: { point: gps, ...(near.radius ? { radius: near.radius } : {}) },
+          };
         })
-        .then(({ list, regionWide, partial, used }) => ({ list, regionWide, partial, used, submitId })),
+        // scope — точка и радиус, с которыми получен список: по ним же считаются счётчики удобств.
+        .then(({ list, regionWide, partial, used, scope }) => ({
+          list,
+          regionWide,
+          partial,
+          used,
+          scope: scope as { point: LatLng | null; radius?: number },
+          submitId,
+        })),
 
     [
       api,
@@ -223,19 +239,38 @@ function CategoryPlaces({
       ]),
     },
   );
-  // Счётчики удобств — при открытии листа, по разделу и локациям (без учёта других отметок); сбой — без счётчиков.
-  const countsKey = JSON.stringify([categoryId, byLocation ? localityIds : []]);
+  // Счётчики удобств — после первого открытия листа, с теми же фильтрами, что у показанного списка (раздел, текст,
+  // локации, точка и радиус), без учёта отметок удобств; сбой — без счётчиков.
+  const [countsWanted, setCountsWanted] = useState(false);
+  const countsQuery =
+    places.status === "ready"
+      ? {
+          categoryId,
+          q: q || undefined,
+          ...(byLocation ? { localityIds } : {}),
+          ...places.data.scope,
+        }
+      : null;
+  const countsKey = countsQuery ? JSON.stringify(countsQuery) : null;
   const [amenityCounts, setAmenityCounts] = useState<{ key: string; data: Record<string, number> } | null>(
     null,
   );
-  const loadAmenityCounts = () => {
-    if (!api.tagCounts || amenityCounts?.key === countsKey) return;
-    const key = countsKey;
+  const countsFor = useRef<string | null>(null);
+  useEffect(() => {
+    // Пока список перезагружается (смена отметок), ключ пропадает и возвращается — тот же ключ не перезапрашиваем.
+    if (!countsWanted || !api.tagCounts || !countsQuery || !countsKey || countsFor.current === countsKey)
+      return;
+    countsFor.current = countsKey;
+    // Ответ хранится со своим ключом: устаревший не показывается (лист сверяет ключ), отменять не нужно.
     api
-      .tagCounts({ categoryId, ...(byLocation ? { localityIds } : {}) })
-      .then((data) => setAmenityCounts({ key, data }))
-      .catch(() => undefined);
-  };
+      .tagCounts(countsQuery)
+      .then((data) => setAmenityCounts({ key: countsKey, data }))
+      .catch(() => {
+        if (countsFor.current === countsKey) countsFor.current = null;
+      });
+    // countsQuery — по ключу (объект новый на каждом рендере).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, countsWanted, countsKey]);
   if (places.status === "ready" && places.data.used) usedRadius.current = places.data.used;
   useEffect(() => {
     if (places.status !== "ready" || pendingSubmit.current !== places.data.submitId) return;
@@ -276,7 +311,7 @@ function CategoryPlaces({
               value={amenities}
               onChange={setAmenities}
               counts={amenityCounts?.key === countsKey ? amenityCounts.data : null}
-              onOpen={loadAmenityCounts}
+              onOpen={() => setCountsWanted(true)}
             />
           )}
         </div>

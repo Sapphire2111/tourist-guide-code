@@ -8,6 +8,7 @@ import {
   AMENITY_TAG_DEFS,
   addApiUsage,
   checkFinding,
+  negatedNear,
   emptyAmenitiesUsage,
   ExtractionParseError,
   inputHash,
@@ -16,6 +17,8 @@ import {
   relevantSources,
   requestParams,
   structuredAmenities,
+  type AmenityCode,
+  type RejectReason,
   type Source,
 } from "./amenities.js";
 import { AmenitiesArgsError, DEFAULT_MAX_USD, parseAmenitiesArgs } from "./args.js";
@@ -119,6 +122,27 @@ describe("checkFinding / parseExtraction (проверка ответа моде
   it("отрицание — отброшено (басейну немає, Wi-Fi не працював)", () => {
     expect(checkFinding("pool", "Басейну немає", SOURCES)).toBe("negation");
     expect(checkFinding("wifi", "Wi-Fi не працював", SOURCES)).toBe("negation");
+  });
+
+  it("запрет и «без» рядом со словом удобства — отрицание; «без» не перед удобством — нет", () => {
+    const src = (text: string): Source[] => [{ label: "відгук 1", text }];
+    const cases: [AmenityCode, string, RejectReason | null][] = [
+      ["pets", "з тваринами не можна", "negation"],
+      ["pets", "собак не приймають", "negation"],
+      ["pets", "Заборонено з собаками", "negation"],
+      ["pets", "с животными нельзя", "negation"],
+      ["pets", "тварин не допускають", "negation"],
+      ["kitchen", "номери без кухні", "negation"],
+      ["breakfast", "без сніданку", "negation"],
+      ["breakfast", "без жодного сніданку", "negation"],
+      ["breakfast", "сніданок без додаткової оплати", null],
+      ["wifi", "Wi-Fi без проблем", null],
+      ["parking", "паркування без обмежень", null],
+      ["pets", "з собакою без проблем поселили", null],
+      ["kids", "діти в захваті, дозволили гратися", null],
+    ];
+    for (const [code, text, want] of cases) expect(checkFinding(code, text, src(text)), text).toBe(want);
+    expect(negatedNear("kitchen", "кухня є, без посуду")).toBe(false);
   });
 
   it("«поруч» / у сусідів — отброшено", () => {
@@ -388,7 +412,7 @@ describe("planChanges (план тегов)", () => {
     );
   });
 
-  it("тот же хэш, что уже применён, без изменений — места нет в плане (повторный запуск ничего не пишет)", () => {
+  it("без изменений тегов места нет в плане (и аудита нет) — и при новом хэше; хэш — только в аудит изменения", () => {
     const p = place({ appliedHash: "h", tags: new Map([["pool", "reviews"]]) });
     const r = {
       placeId: "p1",
@@ -397,7 +421,12 @@ describe("planChanges (план тегов)", () => {
       hash: "h",
     };
     expect(planChanges([p], [r]).changes).toEqual([]);
-    expect(planChanges([{ ...p, appliedHash: null }], [r]).changes[0]).toMatchObject({ add: [], hash: "h" });
+    expect(planChanges([{ ...p, appliedHash: null }], [r]).changes).toEqual([]);
+    expect(planChanges([{ ...p, tags: new Map() }], [r]).changes[0]).toMatchObject({
+      add: [{ code: "pool", source: "reviews" }],
+      hash: null,
+    });
+    expect(planChanges([{ ...p, appliedHash: null, tags: new Map() }], [r]).changes[0]?.hash).toBe("h");
   });
 });
 

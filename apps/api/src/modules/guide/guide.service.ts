@@ -156,7 +156,7 @@ export class GuideService {
   /** Число мест по тегам в категории и пунктах (счётчики фильтра удобств «Де жити»). */
   async tagCounts(
     regionId: string,
-    params: { categoryId?: string; localityIds?: readonly string[] },
+    params: Omit<SearchParams, "limit" | "offset" | "tagCodes" | "ids">,
   ): Promise<PlaceTagCountListDto> {
     return this.inRegion(regionId, async () => {
       const rows = await this.repo.tagCounts(params);

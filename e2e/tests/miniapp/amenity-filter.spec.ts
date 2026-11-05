@@ -119,7 +119,7 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(sheet).toBeVisible();
     // Только удобства с местами, со счётчиком.
     await expect(sheet.getByRole("checkbox")).toHaveCount(3);
-    await expect(sheet.getByLabel("місць: 2").first()).toHaveText("2");
+    await expect(sheet.getByRole("checkbox", { name: /Басейн.*місць: 2/ })).toBeVisible();
     for (const row of await sheet.locator(".loc-option").all())
       expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expectNoSeriousA11yViolations(page);

@@ -90,7 +90,8 @@ export type PlacesEb = ExpressionBuilder<Database, "places">;
 /**
  * Место «трогали»: в журнале есть любое действие над ним, кроме самого импорта (правка и курирование в админке,
  * ручная чистка place.curate от system, доп. категории, партнёр). У таких мест импорт не меняет категорию, пункт и
- * статус, не пересобирает доп. категории и теги.
+ * статус, не пересобирает доп. категории и теги. Теги удобств places:amenities (place.amenities, system) — не правка
+ * места: такие места импорт обновляет как прежде.
  */
 const touched = (eb: PlacesEb) =>
   eb.exists(
@@ -98,7 +99,7 @@ const touched = (eb: PlacesEb) =>
       .selectFrom("audit_logs as a")
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
-      .where("a.action", "<>", "place.import")
+      .where("a.action", "not in", ["place.import", "place.amenities"])
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
   );
 /**

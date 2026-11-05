@@ -56,7 +56,18 @@ describe("GuideRepository (SQL)", () => {
   });
 
   it("счётчики тегов: опубликованные места категории, distinct по месту, только активные теги, регион на place_tags и tags", async () => {
-    const [q] = await capture((r) => r.tagCounts({ categoryId: PLACE, localityIds: [USER] }));
+    const [q] = await capture((r) =>
+      r.tagCounts({
+        categoryId: PLACE,
+        localityIds: [USER],
+        origin: { lon: 24.5, lat: 48.4 },
+        radius: 3000,
+        text: "віл",
+      }),
+    );
+    // Те же фильтры, что у выдачи: радиус от точки и текст.
+    expect(q!.sql).toMatch(/ST_DWithin\(\(.*\)::geography/);
+    expect(q!.params).toEqual(expect.arrayContaining([3000, "%віл%"]));
     expect(q!.sql).toMatch(/count\(distinct "places"\."id"\)/);
     expect(q!.sql).toMatch(/inner join "place_tags" as "pt"/);
     expect(q!.sql).toMatch(/"t"\."active" = \$/);

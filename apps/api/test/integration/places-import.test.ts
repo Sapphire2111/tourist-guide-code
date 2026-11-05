@@ -813,6 +813,20 @@ describe.skipIf(!dockerAvailable)(`Импорт мест из Google (0016)${tit
     // Импорт ставит свои теги с источником import и не трогает чужие.
     await writePlaces(appDb, "test-region", [place("gAm2", { categoryCode: "sadyby" })], t);
     expect(await tags(id2!)).toEqual(["kids:import"]);
+
+    // Аудит place.amenities — не «правка людьми»: повторный импорт по-прежнему меняет категорию и пункт.
+    await writePlaces(
+      appDb,
+      "test-region",
+      [place("gAm1", { categoryCode: "sadyby", localityCode: "tatariv", at: { lon: 24.57, lat: 48.349 } })],
+      t,
+    );
+    const moved = await sql(
+      `SELECT c.code AS category, l.code AS locality FROM places p JOIN categories c ON c.id = p.category_id
+       LEFT JOIN localities l ON l.id = p.locality_id WHERE p.id = $1`,
+      [id1],
+    );
+    expect(moved.rows[0]).toEqual({ category: "sadyby", locality: "tatariv" });
   });
 
   it("ручная чистка (place.curate от system) и использование: импорт не меняет категорию, пункт, статус и не архивирует", async () => {

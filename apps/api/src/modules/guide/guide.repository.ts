@@ -261,6 +261,30 @@ export class GuideRepository {
 
   /** Страница выдачи (limit + 1 строка — признак следующей). Порядок — BR-10, C-02 (README «Публичный каталог»). */
   search(s: SearchQuery): Promise<PlaceRow[]> {
+    const query = this.filtered(s);
+    if (!query) return Promise.resolve([]);
+    const { origin, text } = s;
+    const bare = text === undefined ? undefined : likeContains(stripApostrophes(text));
+    let rows = this.selectRow(query, origin);
+    if (text !== undefined) {
+      const prefix = bare!.slice(1);
+      rows = rows.orderBy(
+        sql`CASE WHEN ${bareNameUk} ILIKE ${prefix} OR ${bareNameEn} ILIKE ${prefix} THEN 0
+          WHEN ${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} THEN 1 ELSE 2 END`,
+      );
+    }
+    if (origin) rows = rows.orderBy("distance");
+    return rows
+      .orderBy("places.recommended", "desc")
+      .orderBy(nameUk)
+      .orderBy("places.id")
+      .limit(s.limit + 1)
+      .offset(s.offset)
+      .execute() as Promise<PlaceRow[]>;
+  }
+
+  /** Фильтры выдачи (радиус, категория, теги, разделы, пункты, id, текст) — общие у search и tagCounts; null — пусто. */
+  private filtered(s: Omit<SearchQuery, "limit" | "offset">): Q | null {
     let query = this.published();
     const { origin, categoryId, text } = s;
     if (origin && s.radius !== undefined) {
@@ -303,7 +327,7 @@ export class GuideRepository {
         );
     if (s.localityIds?.length) query = query.where("places.locality_id", "in", [...s.localityIds]);
     if (s.ids) {
-      if (!s.ids.length) return Promise.resolve([]);
+      if (!s.ids.length) return null;
       query = query.where("places.id", "in", [...s.ids]);
     }
     const pattern = text === undefined ? undefined : likeContains(text);
@@ -312,32 +336,17 @@ export class GuideRepository {
       query = query.where(
         sql<boolean>`(${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} OR ${addressUk} ILIKE ${pattern})`,
       );
-    let rows = this.selectRow(query, origin);
-    if (text !== undefined) {
-      const prefix = bare!.slice(1);
-      rows = rows.orderBy(
-        sql`CASE WHEN ${bareNameUk} ILIKE ${prefix} OR ${bareNameEn} ILIKE ${prefix} THEN 0
-          WHEN ${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} THEN 1 ELSE 2 END`,
-      );
-    }
-    if (origin) rows = rows.orderBy("distance");
-    return rows
-      .orderBy("places.recommended", "desc")
-      .orderBy(nameUk)
-      .orderBy("places.id")
-      .limit(s.limit + 1)
-      .offset(s.offset)
-      .execute() as Promise<PlaceRow[]>;
+    return query;
   }
 
   /**
-   * Число опубликованных мест по активным тегам в категории (с подкатегориями и доп. категориями, как search) и
-   * населённых пунктах — счётчики фильтра удобств «Де жити». Теги без мест не возвращаются.
+   * Число опубликованных мест по активным тегам с теми же фильтрами, что у search (радиус от точки, категория с
+   * подкатегориями и доп. категориями, пункты, текст), без фильтра тегов — счётчики совпадают со списком «Де жити».
+   * Теги без мест не возвращаются.
    */
-  tagCounts(s: { categoryId?: string; localityIds?: readonly string[] }) {
-    let query = this.published();
-    if (s.categoryId) query = inCategory(query, s.categoryId);
-    if (s.localityIds?.length) query = query.where("places.locality_id", "in", [...s.localityIds]);
+  async tagCounts(s: Omit<SearchQuery, "limit" | "offset" | "tagCodes">) {
+    const query = this.filtered(s);
+    if (!query) return [];
     return query
       .innerJoin("place_tags as pt", "pt.place_id", "places.id")
       .innerJoin("tags as t", "t.id", "pt.tag_id")

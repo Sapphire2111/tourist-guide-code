@@ -268,13 +268,17 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       }
       return max ? items.slice(0, max) : items;
     },
-    tagCounts: async ({ categoryId, localityIds }) => {
+    // Те же параметры, что у search (точка, радиус, текст): счётчики совпадают со списком.
+    tagCounts: async ({ categoryId, localityIds, q, point, radius }) => {
       const data = await ok(
         api.GET("/places/tag-counts", {
           params: {
             query: {
               regionId: region(),
+              ...(point ? { lat: point.lat, lng: point.lng } : {}),
+              ...(point && radius ? { radius } : {}),
               ...(categoryId ? { category: categoryId } : {}),
+              ...(q ? { q } : {}),
               ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
             },
           },

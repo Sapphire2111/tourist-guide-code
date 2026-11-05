@@ -129,12 +129,15 @@ function AmenitySheet({
                   <span aria-hidden="true">{ICON[code]}</span>
                   <span className="amenity-name">{t(`miniapp.amenityFilter.${code}` as MessageKey)}</span>
                   {n !== undefined && (
-                    <span
-                      className="amenity-count"
-                      aria-label={t("miniapp.amenityFilter.count", { count: n })}
-                    >
-                      {n}
-                    </span>
+                    <>
+                      {/* Число — видно; читалке — «місць: N» в тексте метки флажка. */}
+                      <span className="amenity-count" aria-hidden="true">
+                        {n}
+                      </span>
+                      <span className="kosiv-sr-only">
+                        , {t("miniapp.amenityFilter.count", { count: n })}
+                      </span>
+                    </>
                   )}
                 </label>
               </li>

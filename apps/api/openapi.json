@@ -5716,7 +5716,7 @@
     },
     "/places/tag-counts": {
       "get": {
-        "description": "Без аутентификации. Опубликованные места активного региона в категории (с подкатегориями и доп. категориями, как в поиске) и населённых пунктах localityIds; по каждому активному тегу, у которого есть места. Фильтр поиска — GET /places/search?tags=… (все теги сразу, И). 404 — региона нет или он не активен.",
+        "description": "Без аутентификации. Те же фильтры, что у GET /places/search (lat/lng и радиус — по умолчанию как у поиска, категория с подкатегориями и доп. категориями, localityIds, q, exclude_section): по каждому активному тегу, у которого есть места, — их число; счётчики совпадают со списком без фильтра тегов. Фильтр поиска — GET /places/search?tags=… (все теги сразу, И). 404 — региона нет или он не активен.",
         "operationId": "placeTagCounts",
         "parameters": [
           {
@@ -5727,16 +5727,52 @@
             "schema": { "format": "uuid", "type": "string" }
           },
           {
+            "name": "lat",
+            "required": false,
+            "in": "query",
+            "description": "Широта",
+            "schema": { "minimum": -90, "maximum": 90, "example": 48.4475, "type": "number" }
+          },
+          {
+            "name": "lng",
+            "required": false,
+            "in": "query",
+            "description": "Долгота (вместе с lat)",
+            "schema": { "minimum": -180, "maximum": 180, "example": 24.5626, "type": "number" }
+          },
+          {
+            "name": "radius",
+            "required": false,
+            "in": "query",
+            "description": "Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния)",
+            "schema": { "minimum": 10, "maximum": 20000, "default": 500, "type": "integer" }
+          },
+          {
             "name": "category",
             "required": false,
             "in": "query",
-            "description": "Категория; раздел включает свои подкатегории",
+            "description": "Категория (из GET /categories); раздел включает свои подкатегории",
             "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Текст: название (uk, en) или адрес; без координат — поиск по всему региону",
+            "schema": { "minLength": 2, "maxLength": 100, "type": "string" }
+          },
+          {
+            "name": "exclude_section",
+            "required": false,
+            "in": "query",
+            "description": "Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели).",
+            "schema": { "type": "array", "items": { "$ref": "#/components/schemas/HomeSection" } }
           },
           {
             "name": "localityIds",
             "required": false,
             "in": "query",
+            "description": "Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую",
             "schema": { "maxItems": 10, "type": "array", "items": { "type": "string", "format": "uuid" } }
           },
           {

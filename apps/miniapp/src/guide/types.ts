@@ -230,10 +230,9 @@ export type GuideApi = {
   localities(): Promise<LocalityOption[]>;
   search(params: SearchParams): Promise<PlaceSummary[]>;
   /** Число мест по кодам тегов в категории и пунктах (счётчики фильтра удобств); нет метода — без счётчиков. */
-  tagCounts?(params: {
-    categoryId?: string;
-    localityIds?: readonly string[];
-  }): Promise<Record<string, number>>;
+  tagCounts?(
+    params: Pick<SearchParams, "categoryId" | "q" | "localityIds" | "point" | "radius">,
+  ): Promise<Record<string, number>>;
   place(id: string): Promise<PlaceDetail>;
   favorites(): Promise<PlaceSummary[]>;
   addFavorite(placeId: string): Promise<void>;

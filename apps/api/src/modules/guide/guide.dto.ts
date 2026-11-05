@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional, OmitType } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
@@ -237,24 +237,16 @@ export class SearchPlacesQueryDto extends OriginQueryDto {
   offset?: number;
 }
 
-/** Число мест по тегам (фильтр удобств «Де жити»): та же категория и населённые пункты, что у поиска. */
-export class PlaceTagCountsQueryDto extends RegionQueryDto {
-  @ApiPropertyOptional({
-    type: String,
-    format: "uuid",
-    description: "Категория; раздел включает свои подкатегории",
-  })
-  @IsOptional()
-  @IsUUID()
-  category?: string;
-
-  @ApiPropertyOptional({ type: [String], format: "uuid", maxItems: SEARCH_LOCALITIES_MAX })
-  @IsOptional()
-  @Transform(toList)
-  @ArrayMaxSize(SEARCH_LOCALITIES_MAX)
-  @IsUUID("all", { each: true })
-  localityIds?: string[];
-}
+/**
+ * Число мест по тегам (фильтр удобств «Де жити»): те же фильтры, что у поиска (точка и радиус, категория, пункты,
+ * текст) — счётчики совпадают со списком; без тегов, страницы и available_now.
+ */
+export class PlaceTagCountsQueryDto extends OmitType(SearchPlacesQueryDto, [
+  "tags",
+  "limit",
+  "offset",
+  "available_now",
+] as const) {}
 
 /** Фото Google места: ширина файла (превью 400 или полноэкранный 1200). */
 export class GooglePhotoQueryDto extends RegionQueryDto {

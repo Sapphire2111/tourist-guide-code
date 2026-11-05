@@ -96,6 +96,25 @@ export const KEYWORDS: Readonly<Record<AmenityCode, RegExp>> = {
 /** Отрицание в цитате — удобства нет («басейну немає», «сніданків не було», «no breakfast»). */
 export const NEGATION =
   /не\s*ма(є|е)|(?<!\p{L})нема(?!\p{L})|(?<!\p{L})не\s+(було|буде|працю\p{L}*|функціон\p{L}*|работа\p{L}*|было|будет|входить|входят|включ\p{L}*)(?!\p{L})|відсутн|отсутств|(?<!\p{L})нет(?!\p{L})|(?<!\p{L})(not|without|no)(?!\p{L})|зачинен/iu;
+/** Запрет рядом со словом удобства (в любом порядке): «з тваринами не можна», «собак не приймають», «заборонено». */
+const BAN = String.raw`(?:не\s+можна|нельзя|(?<!\p{L})заборон\p{L}*|(?<!\p{L})запрещ\p{L}*|не\s+(?:прийма|принима|дозвол|разреш|допуска|пуска)\p{L}*)`;
+/** До двух слов между запретом и словом удобства. */
+const GAP = String.raw`(?:\s+[\p{L}'’ʼ-]+){0,2}\s+`;
+
+/**
+ * Отрицание, привязанное к удобству: «без» — только прямо перед словом удобства («без сніданку», «номери без кухні»),
+ * а «сніданок без додаткової оплати», «Wi-Fi без проблем» проходят; запреты — до или после слова удобства.
+ */
+export function negatedNear(code: AmenityCode, quote: string): boolean {
+  const k = `(?:${KEYWORDS[code].source})`;
+  return [
+    new RegExp(String.raw`(?<!\p{L})(?:без|без\s+жодн\p{L}*|${BAN})${GAP}${k}`, "iu"),
+    new RegExp(String.raw`(?<!\p{L})без\s+${k}`, "iu"),
+    new RegExp(String.raw`${k}\p{L}*${GAP}${BAN}`, "iu"),
+    new RegExp(String.raw`${k}\p{L}*\s+${BAN}`, "iu"),
+  ].some((re) => re.test(quote));
+}
+
 /** «Поруч», а не на території («басейн неподалік», «паркінг через дорогу», «за 200 м сауна»). */
 export const NEARBY =
   /поруч|поряд|неподалік|неподалеку|недалеко|рядом|по\s*сусідству|сусідн|соседн|через\s+дорогу|напроти|напротив|(?<!\p{L})near(by)?(?!\p{L})|за\s+\d+\s*(м|км|хв|мин|метр\p{L}*)(?!\p{L})|(?<!\p{L})[ву]\s+(центрі|місті|селі|селищі)(?!\p{L})/iu;
@@ -252,7 +271,7 @@ export function checkFinding(
   if (quote.length > EVIDENCE_MAX_CHARS) return "too_long";
   if (!sources.some((s) => normalizeQuote(s.text).includes(quote))) return "not_in_source";
   if (!KEYWORDS[code].test(quote)) return "no_keyword";
-  if (NEGATION.test(quote)) return "negation";
+  if (NEGATION.test(quote) || negatedNear(code, quote)) return "negation";
   if (NEARBY.test(quote)) return "nearby";
   if (code === "kitchen" && CUISINE.test(quote)) return "cuisine";
   return null;

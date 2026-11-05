@@ -129,7 +129,7 @@ export type PlaceChange = {
   upgrade: AmenityCode[];
   /** Теги reviews, которые новое извлечение не подтвердило. */
   remove: AmenityCode[];
-  /** Записать аудит даже без изменений: новое извлечение (место считается обработанным при продолжении). */
+  /** Хэш входа нового извлечения — в аудит изменения (без изменений аудита нет; продолжение — по журналу). */
   hash: string | null;
   evidence: Partial<Record<AmenityCode, string>>;
 };
@@ -173,8 +173,7 @@ export function planChanges(
       else if (want === "import" && have === "reviews") change.upgrade.push(code);
       else if (!want && have === "reviews" && r.reviews !== null) change.remove.push(code);
     }
-    if (change.add.length || change.upgrade.length || change.remove.length || change.hash)
-      changes.push(change);
+    if (change.add.length || change.upgrade.length || change.remove.length) changes.push(change);
   }
   return { changes, skippedTouched };
 }
@@ -299,7 +298,7 @@ export async function applyChanges(
       stats.added += n;
       stats.upgraded += upgraded.length;
       stats.removed += removed.length;
-      if (!n && !upgraded.length && !removed.length && !c.hash) continue;
+      if (!n && !upgraded.length && !removed.length) continue;
       await audit.record(trx as unknown as Db, {
         actor: { type: "system" },
         action: AMENITIES_ACTION,

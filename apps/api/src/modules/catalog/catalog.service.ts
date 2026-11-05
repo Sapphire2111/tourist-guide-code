@@ -613,7 +613,10 @@ export class CatalogService {
     }
     const after = (await guarded(() => this.repo.updatePlace(id, patch))) ?? notFound();
     const tagIds = input.tagIds ? [...new Set(input.tagIds)].sort() : tagsBefore;
-    if (input.tagIds) await this.repo.replacePlaceTags(id, tagIds);
+    // Админка присылает теги всегда: тот же набор — строки не трогаем, иначе — по разнице (источник оставшихся тегов
+    // import/reviews сохраняется, «за відгуками Google» не пропадает).
+    if (input.tagIds && tagIds.join() !== tagsBefore.join())
+      await this.repo.syncPlaceTags(id, tagsBefore, tagIds);
     const extraCategoryIds = extraWanted ? [...new Set(extraWanted)].sort() : extrasBefore;
     // Набор не изменился — строки не трогаем (иначе import молча стал бы manual).
     const extrasChanged = !!extraWanted && extraCategoryIds.join() !== extrasBefore.join();
