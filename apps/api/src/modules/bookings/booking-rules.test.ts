@@ -4,6 +4,7 @@ import {
   customerResponseDue,
   findSlot,
   generateSlots,
+  hasOpenRule,
   isFree,
   normalizeCustomerName,
   occupiedRange,
@@ -197,6 +198,19 @@ describe("слоты (D-04 А, BR-08)", () => {
       ]),
     ).toEqual([`${MONDAY}: closed_with_windows`]);
     expect(rulesProblems([weekly(1, 600, 840), weekly(2, 600, 840)])).toEqual([]);
+  });
+});
+
+describe("ресурс без расписания (публичный список)", () => {
+  it("hasOpenRule: нет правил или только выходные — false; недельное или датированное окно — true", () => {
+    expect(hasOpenRule([])).toBe(false);
+    expect(
+      hasOpenRule([{ dayOfWeek: null, date: MONDAY, closed: true, opensMin: null, closesMin: null }]),
+    ).toBe(false);
+    expect(hasOpenRule([weekly(1, 600, 1260)])).toBe(true);
+    expect(
+      hasOpenRule([{ dayOfWeek: null, date: MONDAY, closed: false, opensMin: 600, closesMin: 720 }]),
+    ).toBe(true);
   });
 });
 

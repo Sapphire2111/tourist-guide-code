@@ -376,9 +376,10 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       availableNow: true,
       source: "slot",
     });
+    // Ресурс без расписания туристу не виден (слотов нет никогда), пока у него нет ручного статуса «Є вільні місця».
     const noRules = await bookings.createResource(OWNER, { placeId, name: { uk: "Сауна" } }, meta(OWNER));
-    const plain = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id)!;
-    expect(plain.availability).toMatchObject({ availableNow: false, source: null });
+    const hidden = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id);
+    expect(hidden).toBeUndefined();
     const manual = await bookings.putManualAvailability(
       STAFF,
       noRules.id,
@@ -386,13 +387,34 @@ describe.skipIf(!dockerAvailable)(`Бронирования (блок 7, миг�
       meta(STAFF),
     );
     expect(manual.availability).toMatchObject({ availableNow: true, source: "manual" });
+    const shown = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id);
+    expect(shown?.availability).toMatchObject({ availableNow: true, source: "manual" });
     await sql(
       `UPDATE resources SET manual_availability_expires_at = now() - interval '1 minute',
          manual_availability_set_at = now() - interval '20 minutes' WHERE id = $1`,
       [noRules.id],
     );
-    const expired = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id)!;
-    expect(expired.availability.availableNow).toBe(false);
+    const expired = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id);
+    expect(expired).toBeUndefined();
+    // Только выходные на дату — тоже без слотов; появилось открытое окно — ресурс снова в списке.
+    await bookings.putAvailability(
+      OWNER,
+      noRules.id,
+      { rules: [{ date: "2099-01-01", closed: true }] },
+      meta(OWNER),
+    );
+    const closedOnly = (await bookings.listResources(regionId, placeId)).items.find(
+      (r) => r.id === noRules.id,
+    );
+    expect(closedOnly).toBeUndefined();
+    await bookings.putAvailability(
+      OWNER,
+      noRules.id,
+      { rules: [{ dayOfWeek: 1, opensAt: "10:00", closesAt: "21:00" }] },
+      meta(OWNER),
+    );
+    const plain = (await bookings.listResources(regionId, placeId)).items.find((r) => r.id === noRules.id)!;
+    expect(plain.availability).toMatchObject({ availableNow: false, source: null });
     const journal = await sql(`SELECT action FROM audit_logs WHERE entity_id = $1 AND action = $2`, [
       noRules.id,
       "availability.status.manual",

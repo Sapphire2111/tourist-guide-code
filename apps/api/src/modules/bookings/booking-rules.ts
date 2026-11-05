@@ -220,6 +220,11 @@ export type SlotResource = {
 export type Slot = { startsAt: Date; endsAt: Date; occupiedFrom: Date; occupiedUntil: Date };
 export type BusyRange = { from: Date; until: Date };
 
+/** Есть хотя бы одно открытое окно (недельное или на дату): без него у ресурса нет слотов никогда. */
+export function hasOpenRule(rules: readonly RuleInput[]): boolean {
+  return rules.some((r) => !r.closed && r.opensMin !== null && r.closesMin !== null);
+}
+
 /** Окна даты: правила на дату перекрывают недельные (closed — выходной). */
 export function windowsOn(rules: readonly RuleInput[], date: string, dayOfWeek: number): [number, number][] {
   const dated = rules.filter((r) => r.date === date);

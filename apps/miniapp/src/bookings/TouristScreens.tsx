@@ -207,10 +207,15 @@ function SlotPicker({
           const anyFree = list.items.some((s) => s.free);
           const current = date ?? days.find((d) => byDay(d).some((s) => s.free)) ?? days[0]!;
           const slots = byDay(current);
+          // Ни одного слота (даже занятого) — у ресурса нет расписания на эти дни: онлайн-запись недоступна, звонок.
           if (!anyFree)
             return (
               <div className="kosiv-card kosiv-empty" data-testid="slots-empty">
-                <p>{t("miniapp.booking.noSlotsWeek")}</p>
+                <p>
+                  {list.items.length > 0
+                    ? t("miniapp.booking.noSlotsWeek")
+                    : t(place.phone ? "miniapp.booking.noSchedule" : "miniapp.booking.noScheduleNoPhone")}
+                </p>
                 <CallPlace place={place} />
               </div>
             );

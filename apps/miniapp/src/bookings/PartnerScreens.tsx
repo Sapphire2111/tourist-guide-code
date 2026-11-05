@@ -693,8 +693,17 @@ export function PartnerResources({ placeId }: { placeId: string }) {
   const { api } = useBookings();
   const { abilities, gate } = useAccessGate(placeId);
   const [state, reload] = useKeptAsync(() => api.partnerResources(placeId), [api, placeId]);
-  const [editing, setEditing] = useState<{ id: string | null; part: "settings" | "rules" } | null>(null);
-  useBackStep(editing !== null, () => setEditing(null));
+  // fresh — только что созданный ресурс: шаг 2 создания (расписание) открывается сразу, до перечитывания списка.
+  const [editing, setEditing] = useState<{
+    id: string | null;
+    part: "settings" | "rules";
+    fresh?: PartnerResource;
+  } | null>(null);
+  const close = () => {
+    if (editing?.fresh) reload();
+    setEditing(null);
+  };
+  useBackStep(editing !== null, close);
   const [notice, setNotice] = useState<Message>(null);
   if (gate || !abilities) return gate;
   const manage = abilities.manageResources;
@@ -703,6 +712,7 @@ export function PartnerResources({ placeId }: { placeId: string }) {
     setNotice({ text, alert: false });
     reload();
   };
+  const fresh = editing?.part === "rules" ? editing.fresh : undefined;
   return (
     <Stack>
       <PartnerHeader
@@ -751,6 +761,17 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                     />
                   ) : (
                     <>
+                      {/* Без открытых окон слотов нет — туристу ресурс не показывается (GET /resources). */}
+                      {!hasOpenRules(r.rules) && (
+                        <div role="note" style={warning} data-testid="resource-no-rules">
+                          <p style={{ margin: 0 }}>⚠️ {t("miniapp.pres.noRules")}</p>
+                          {abilities.editAvailability && (
+                            <Button onClick={() => setEditing({ id: r.id, part: "rules" })}>
+                              {t("miniapp.pres.setRules")}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       {abilities.manualAvailability && <ManualStatus resource={r} onDone={reload} />}
                       {(manage || abilities.editAvailability) && (
                         <span style={row}>
@@ -771,25 +792,64 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                 </li>
               ))}
             </ul>
-            {manage &&
+            {fresh ? (
+              <div style={card} data-testid="resource-step2">
+                <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
+                  {t("miniapp.pres.step2", { name: pickLocalized(fresh.name, locale) })}
+                </h2>
+                <RulesEditor
+                  resource={fresh}
+                  onCancel={close}
+                  onDone={() => done(t("miniapp.pres.rulesSaved"))}
+                />
+              </div>
+            ) : (
+              manage &&
               (editing?.id === null ? (
                 <ResourceForm
                   placeId={placeId}
                   resource={null}
                   onCancel={() => setEditing(null)}
-                  onDone={() => done(t("miniapp.pres.created"))}
+                  onDone={(created) => {
+                    // Шаг 2: без расписания у ресурса нет слотов — туристы его не увидят.
+                    setNotice({ text: t("miniapp.pres.created"), alert: false });
+                    if (abilities.editAvailability)
+                      setEditing({ id: created.id, part: "rules", fresh: created });
+                    else {
+                      setEditing(null);
+                      reload();
+                    }
+                  }}
                   onRefresh={reload}
                 />
               ) : (
                 <Button onClick={() => setEditing({ id: null, part: "settings" })} data-testid="resource-new">
                   {t("miniapp.pres.new")}
                 </Button>
-              ))}
+              ))
+            )}
           </>
         )}
       </AsyncView>
     </Stack>
   );
+}
+
+const warning = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 8,
+  // Токены сезона/темы (index.html) — читается и в ночной теме.
+  background: "var(--app-pill-bg)",
+  border: "1px solid var(--app-accent-2)",
+} as const;
+
+/** Есть хотя бы одно открытое окно (недельное или на дату) — иначе слотов нет. */
+export function hasOpenRules(rules: PartnerResource["rules"]): boolean {
+  return rules.some((r) => !r.closed && Boolean(r.opensAt) && Boolean(r.closesAt));
 }
 
 const NUMBER_FIELDS = [
@@ -823,7 +883,7 @@ function ResourceForm({
   placeId: string;
   resource: PartnerResource | null;
   onCancel: () => void;
-  onDone: () => void;
+  onDone: (saved: PartnerResource) => void;
   /** Ресурс изменили после чтения (409 versionConflict) — перечитать. */
   onRefresh: () => void;
 }) {
@@ -877,6 +937,7 @@ function ResourceForm({
     setMessage(null);
     setConflict(false);
     try {
+      let saved: PartnerResource;
       if (resource) {
         const patch: ResourcePatch = {
           ...settings,
@@ -884,9 +945,9 @@ function ResourceForm({
           status,
           version: resource.version,
         };
-        await api.updateResource(resource.id, patch);
-      } else await api.createResource({ ...settings, placeId, name: { uk: name.trim() } });
-      onDone();
+        saved = await api.updateResource(resource.id, patch);
+      } else saved = await api.createResource({ ...settings, placeId, name: { uk: name.trim() } });
+      onDone(saved);
     } catch (err) {
       setBusy(false);
       if (err instanceof ConflictError && err.messageKey === "errors.resource.versionConflict") {
@@ -934,6 +995,7 @@ function ResourceForm({
           />
         </label>
         <div style={row}>{NUMBER_FIELDS.map(([f, min, max]) => field(f, min, max))}</div>
+        <HorizonHint value={nums.horizonDays} />
         <label htmlFor={`${formId}-mode`}>
           {t("miniapp.pres.mode")}
           <select id={`${formId}-mode`} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
@@ -986,7 +1048,48 @@ function ResourceForm({
   );
 }
 
+/** Подсказка к «Бронювати наперед»: туристы видят слоты только на столько дней вперёд. */
+function HorizonHint({ value }: { value: string }) {
+  const { t } = useT();
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > 365) return null;
+  return (
+    <p className="kosiv-muted" data-testid="horizon-hint" style={{ margin: 0 }}>
+      {t("miniapp.pres.horizonHint", { days })}
+      {days < 7 && ` ${t("miniapp.pres.horizonShort")}`}
+    </p>
+  );
+}
+
 type Window = { opensAt: string; closesAt: string };
+
+/** Расписание по умолчанию, если у места нет часов работы: каждый день 10:00–21:00. */
+export const DEFAULT_WINDOW: Window = { opensAt: "10:00", closesAt: "21:00" };
+
+/**
+ * Предлагаемые окна нового ресурса: часы работы места (weekly из графика), иначе каждый день DEFAULT_WINDOW.
+ * Окно через полночь (закрытие не позже открытия) и «23:59» — до 24:00: правило ресурса не переходит через полночь.
+ */
+export function suggestedWeekly(hours: readonly { dayOfWeek: number; opensAt: string; closesAt: string }[]): {
+  weekly: Record<number, Window[]>;
+  fromPlace: boolean;
+} {
+  const out: Record<number, Window[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+  for (const h of hours) {
+    const day = out[h.dayOfWeek];
+    if (!day) continue;
+    const opensAt = h.opensAt.slice(0, 5);
+    let closesAt = h.closesAt.slice(0, 5);
+    if (closesAt === "23:59" || closesAt <= opensAt) closesAt = "24:00";
+    // Пересекающиеся окна сервер отклонит — берём только непересекающиеся.
+    if (day.some((w) => opensAt < w.closesAt && w.opensAt < closesAt)) continue;
+    day.push({ opensAt, closesAt });
+  }
+  const fromPlace = Object.values(out).some((d) => d.length > 0);
+  if (!fromPlace) for (let d = 1; d <= 7; d++) out[d] = [{ ...DEFAULT_WINDOW }];
+  for (const d of Object.values(out)) d.sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+  return { weekly: out, fromPlace };
+}
 
 /** Недельные окна ресурса по дням (1 — пн … 7 — нд); правила на даты сохраняются как есть. */
 export function weeklyOf(rules: PartnerResource["rules"]): Record<number, Window[]> {
@@ -1014,20 +1117,57 @@ export function rulesBody(
   return out;
 }
 
-function RulesEditor({
+type EditorProps = { resource: PartnerResource; onCancel: () => void; onDone: () => void };
+
+/**
+ * Окна по дням. Ресурс без недельного расписания (новый или так и не настроенный) — сразу предложение: часы работы
+ * места (GET /partner/places/{id}; нет доступа или графика — каждый день 10:00–21:00), партнёру остаётся сохранить.
+ */
+function RulesEditor(props: EditorProps) {
+  const { t } = useT();
+  const partner = usePartner();
+  const empty = !props.resource.rules.some((r) => r.dayOfWeek && !r.date);
+  const [hours] = useAsync(
+    () =>
+      empty
+        ? Promise.resolve()
+            .then(() => partner.api.place(props.resource.placeId))
+            .then(
+              (p) => p.schedule.weekly,
+              () => [],
+            )
+        : Promise.resolve([]),
+    [partner.api, props.resource.placeId, empty],
+  );
+  if (!empty) return <RulesForm {...props} />;
+  if (hours.status === "loading")
+    return (
+      <p role="status" className="kosiv-muted">
+        {t("miniapp.guide.loading")}
+      </p>
+    );
+  const suggestion = suggestedWeekly(hours.status === "ready" ? hours.data : []);
+  return (
+    <RulesForm
+      {...props}
+      initial={suggestion.weekly}
+      hint={t(suggestion.fromPlace ? "miniapp.pres.suggestedFromPlace" : "miniapp.pres.suggestedDefault")}
+    />
+  );
+}
+
+function RulesForm({
   resource,
   onCancel,
   onDone,
-}: {
-  resource: PartnerResource;
-  onCancel: () => void;
-  onDone: () => void;
-}) {
+  initial,
+  hint,
+}: EditorProps & { initial?: Record<number, Window[]>; hint?: string }) {
   const { t } = useT();
   const { api } = useBookings();
   const errorText = useBookingErrorText();
   const formId = useId();
-  const [weekly, setWeekly] = useState(() => weeklyOf(resource.rules));
+  const [weekly, setWeekly] = useState(() => initial ?? weeklyOf(resource.rules));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const dated = resource.rules.filter((r) => r.date).length;
@@ -1050,6 +1190,11 @@ function RulesEditor({
   return (
     <form onSubmit={(e) => void save(e)} data-testid="rules-form">
       <Stack>
+        {hint && (
+          <p role="note" style={warning} data-testid="rules-suggested">
+            {hint}
+          </p>
+        )}
         <p className="kosiv-muted">{t("miniapp.pres.rulesHint")}</p>
         {[1, 2, 3, 4, 5, 6, 7].map((day) => {
           const windows = weekly[day] ?? [];
