@@ -555,6 +555,16 @@ html[data-season] .kosiv-place-credit a:focus-visible {
   background: var(--app-surface-2);
   color: var(--app-accent-2-ink);
 }
+.kosiv-chip[data-tone="promo"] {
+  background: #fff1c2;
+  color: #5c3d00;
+  border: 1px solid #d9a21b;
+}
+html[data-theme="night"] .kosiv-chip[data-tone="promo"] {
+  background: #4a3512;
+  color: #ffd98a;
+  border-color: #a8761a;
+}
 .kosiv-chip[data-tone="outline"] {
   background: transparent;
   border: 1px solid var(--app-border);

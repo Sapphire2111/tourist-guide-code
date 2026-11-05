@@ -66,6 +66,8 @@ describe("GuideService.search — поле peak", () => {
       covers: () => Promise.resolve([]),
       coverMeta: () => Promise.resolve([]),
       adLabels: () => Promise.resolve(new Map()),
+      placeIdsWithOffer: () => Promise.resolve(new Set()),
+      offers: () => Promise.resolve([]),
       schedules: () => Promise.resolve(new Map()),
     };
     const svc = new GuideService(

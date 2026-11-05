@@ -524,6 +524,7 @@ describe("адаптер api и аналитика", () => {
       distanceMeters: 42,
       recommended: false,
       adLabel: "partner",
+      hasOffer: false,
       openNow: null,
       phone: null,
       coverPhoto: null,

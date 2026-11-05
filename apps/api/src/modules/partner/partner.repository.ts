@@ -194,6 +194,9 @@ export class PartnerRepository {
       .select(["place_id", (eb) => eb.fn.countAll<string>().as("n")])
       .where("place_id", "in", [...placeIds])
       .where("status", "=", "active")
+      // Окно как у туриста (guide.repository activeOffers): будущие и истёкшие не «активные».
+      .where((eb) => eb.or([eb("starts_at", "is", null), eb("starts_at", "<=", sql<Date>`now()`)]))
+      .where((eb) => eb.or([eb("ends_at", "is", null), eb("ends_at", ">=", sql<Date>`now()`)]))
       .groupBy("place_id")
       .execute();
     return new Map(rows.map((r) => [r.place_id, Number(r.n)]));
