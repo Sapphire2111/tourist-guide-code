@@ -105,8 +105,13 @@ const GAP = String.raw`(?:\s+[\p{L}'’ʼ-]+){0,2}\s+`;
  * Отрицание, привязанное к удобству: «без» — только прямо перед словом удобства («без сніданку», «номери без кухні»),
  * а «сніданок без додаткової оплати», «Wi-Fi без проблем» проходят; запреты — до или после слова удобства.
  */
-export function negatedNear(code: AmenityCode, quote: string): boolean {
+export function negatedNear(code: AmenityCode, text: string): boolean {
   const k = `(?:${KEYWORDS[code].source})`;
+  // «Без проблем», «без питань», «без жодних проблем» — не отрицание удобства («без проблем з паркуванням»).
+  const quote = text.replace(
+    /(?<!\p{L})без\s+(?:жодн\p{L}*\s+|всяк\p{L}*\s+|никак\p{L}*\s+)?(?:проблем|питань|вопрос|труднощ|складнощ|сложност)\p{L}*/giu,
+    " ",
+  );
   return [
     new RegExp(String.raw`(?<!\p{L})(?:без|без\s+жодн\p{L}*|${BAN})${GAP}${k}`, "iu"),
     new RegExp(String.raw`(?<!\p{L})без\s+${k}`, "iu"),

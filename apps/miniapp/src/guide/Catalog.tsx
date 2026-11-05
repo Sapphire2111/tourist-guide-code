@@ -310,7 +310,8 @@ function CategoryPlaces({
             <AmenityFilter
               value={amenities}
               onChange={setAmenities}
-              counts={amenityCounts?.key === countsKey ? amenityCounts.data : null}
+              // Пока список перезагружается — прежние счётчики (строки листа не прыгают под пальцем).
+              counts={amenityCounts?.data ?? null}
               onOpen={() => setCountsWanted(true)}
             />
           )}

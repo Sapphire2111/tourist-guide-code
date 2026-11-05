@@ -612,7 +612,8 @@ export class CatalogService {
       await this.assertPublishable({ ...before, ...applied(before, input) }, moved ? "move" : "edit");
     }
     const after = (await guarded(() => this.repo.updatePlace(id, patch))) ?? notFound();
-    const tagIds = input.tagIds ? [...new Set(input.tagIds)].sort() : tagsBefore;
+    // uuid из БД — в нижнем регистре: сравнение и разница — по нему же.
+    const tagIds = input.tagIds ? [...new Set(input.tagIds.map((t) => t.toLowerCase()))].sort() : tagsBefore;
     // Админка присылает теги всегда: тот же набор — строки не трогаем, иначе — по разнице (источник оставшихся тегов
     // import/reviews сохраняется, «за відгуками Google» не пропадает).
     if (input.tagIds && tagIds.join() !== tagsBefore.join())

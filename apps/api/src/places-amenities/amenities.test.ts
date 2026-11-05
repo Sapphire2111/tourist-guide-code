@@ -140,6 +140,11 @@ describe("checkFinding / parseExtraction (проверка ответа моде
       ["parking", "паркування без обмежень", null],
       ["pets", "з собакою без проблем поселили", null],
       ["kids", "діти в захваті, дозволили гратися", null],
+      ["parking", "без проблем з паркуванням", null],
+      ["pets", "без проблем з собакою", null],
+      ["pets", "без питань поселили з собакою", null],
+      ["parking", "без жодних проблем з парковкою", null],
+      ["parking", "без проблем, але без парковки", "negation"],
     ];
     for (const [code, text, want] of cases) expect(checkFinding(code, text, src(text)), text).toBe(want);
     expect(negatedNear("kitchen", "кухня є, без посуду")).toBe(false);
