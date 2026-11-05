@@ -121,6 +121,7 @@ export function cardOf(dto: CardDto): PlaceDetail {
     verifiedAt: dto.verifiedAt,
     openUntil: dto.openUntil,
     favorite: dto.favorite,
+    hasPriceList: (dto as Partial<CardDto>).hasPriceList ?? false,
     ...richOf(dto),
   };
 }
@@ -288,6 +289,25 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
     },
     place: async (id) =>
       cardOf(await ok(api.GET("/places/{id}", { params: { path: { id }, query: { regionId: region() } } }))),
+    priceList: async (id) => {
+      const data = await ok(
+        api.GET("/places/{id}/price-list", { params: { path: { id }, query: { regionId: region() } } }),
+      );
+      return {
+        sections: data.sections.map((s) => ({
+          id: s.id,
+          title: s.title,
+          items: s.items.map((i) => ({
+            id: i.id,
+            name: i.name,
+            description: i.description,
+            priceMinor: i.priceMinor,
+            priceFrom: i.priceFrom,
+            unit: i.unit,
+          })),
+        })),
+      };
+    },
     favorites: async () => {
       const data = await ok(api.GET("/favorites", { params: { query: { regionId: region() } } }));
       return data.items.map(summaryOf);

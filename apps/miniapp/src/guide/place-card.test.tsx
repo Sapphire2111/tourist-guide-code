@@ -325,6 +325,7 @@ const dto = {
   schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
   openUntil: null,
   favorite: null,
+  hasPriceList: false,
 };
 
 describe("обложка у нас (Google/Wikimedia)", () => {

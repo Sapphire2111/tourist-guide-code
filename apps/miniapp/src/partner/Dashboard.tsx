@@ -1,4 +1,4 @@
-// P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07/P09 и заявки отеля
+// P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07 (и «Прайс»)/P09 и заявки отеля
 // (P10, блок 5), бронирования P04 и ресурсы (блок 7, флаг module.bookings). Только то, что есть в GET /partner/me —
 // без финансов, рейтинга и метрик.
 import { useEffect, useId } from "react";
@@ -105,6 +105,11 @@ export function PartnerDashboard() {
                     {org.abilities.manageOffers && place.modules.includes("offers") && (
                       <Link to={`/partner/place/${place.id}/offers`}>
                         {t("miniapp.partner.offersLink", { count: place.activeOffers })}
+                      </Link>
+                    )}
+                    {org.abilities.managePriceList && (
+                      <Link to={`/partner/place/${place.id}/prices`} data-testid="partner-prices-link">
+                        {t("miniapp.partner.prices.link")}
                       </Link>
                     )}
                     {bookings && (

@@ -636,6 +636,11 @@ export class PlaceCardDto extends PlaceSummaryDto {
   openUntil!: string | null;
   @ApiProperty({ type: Boolean, nullable: true, description: "В избранном; null — без сессии" })
   favorite!: boolean | null;
+  @ApiProperty({
+    type: Boolean,
+    description: "Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list",
+  })
+  hasPriceList!: boolean;
   @ApiProperty({ type: String, nullable: true, example: "Піцерія", description: "Тип места по Google (uk)" })
   typeLabel!: string | null;
   @ApiProperty({ type: String, nullable: true, description: "Описание Google (editorialSummary)" })
@@ -670,6 +675,32 @@ export class PlaceCardDto extends PlaceSummaryDto {
   googleMapsUri!: string | null;
   @ApiProperty({ type: WikipediaDto, nullable: true, description: "Вікіпедія для пам'яток" })
   wikipedia!: WikipediaDto | null;
+}
+
+// --- прайс заведения (0030) ---
+
+export class GuidePriceItemDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: LocalizedTextDto }) name!: LocalizedText;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;
+  @ApiProperty({ type: "integer", minimum: 0, description: "Цена, копейки" }) priceMinor!: number;
+  @ApiProperty({ type: String, enum: ["UAH"], example: "UAH" }) currency!: "UAH";
+  @ApiProperty({ type: Boolean, description: "«від …»: цена — нижняя граница" }) priceFrom!: boolean;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true, description: "«за годину», «за особу»" })
+  unit!: LocalizedText | null;
+}
+
+export class GuidePriceSectionDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: LocalizedTextDto }) title!: LocalizedText;
+  @ApiProperty({ type: [GuidePriceItemDto] }) items!: GuidePriceItemDto[];
+}
+
+/** «Ціни» в карточке: только видимые позиции (active) в видимых разделах; пустые разделы не приходят. */
+export class GuidePriceListDto {
+  @ApiProperty({ type: String, format: "uuid" }) placeId!: string;
+  @ApiProperty({ type: [GuidePriceSectionDto], description: "Пусто — блока «Ціни» нет" })
+  sections!: GuidePriceSectionDto[];
 }
 
 export class FavoriteDto {

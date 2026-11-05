@@ -40,6 +40,9 @@ function fakeService() {
     search: vi.fn(() => Promise.resolve({ items: [], nextOffset: null, radiusMeters: null })),
     tagCounts: vi.fn(() => Promise.resolve({ items: [] })),
     place: vi.fn((_r: string, id: string) => Promise.resolve(id === PLACE ? { id } : undefined)),
+    priceList: vi.fn((_r: string, id: string) =>
+      Promise.resolve(id === PLACE ? { placeId: id, sections: [] } : undefined),
+    ),
     favorites: vi.fn(() => Promise.resolve({ items: [] })),
     addFavorite: vi.fn((_r: string, _u: string, placeId: string) =>
       Promise.resolve(placeId === PLACE ? { placeId, createdAt: "2026-11-02T10:00:00.000Z" } : undefined),
@@ -296,6 +299,19 @@ describe("GET /places/{id}", () => {
     const { http, service } = await start({ authenticated: true });
     await http().get(`/places/${PLACE}?regionId=${REGION}`).expect(200);
     expect(service.place).toHaveBeenCalledWith(REGION, PLACE, { origin: undefined, userId: USER });
+  });
+});
+
+describe("GET /places/{id}/price-list", () => {
+  it("прайс без сессии; неопубликованное — 404; регион обязателен, id — uuid", async () => {
+    const { http, service } = await start();
+    await http()
+      .get(`/places/${PLACE}/price-list?regionId=${REGION}`)
+      .expect(200, { placeId: PLACE, sections: [] });
+    expect(service.priceList).toHaveBeenCalledWith(REGION, PLACE);
+    await http().get(`/places/${REGION}/price-list?regionId=${REGION}`).expect(404);
+    await http().get(`/places/${PLACE}/price-list`).expect(400);
+    await http().get(`/places/nope/price-list?regionId=${REGION}`).expect(400);
   });
 });
 

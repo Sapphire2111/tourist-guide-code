@@ -1,6 +1,6 @@
 // Unit (без БД): правила сервиса гида (блок 4, ADR-0019) — граница листания поиска (SEARCH_OFFSET_MAX) и лимит
 // избранного (FAVORITES_MAX → 409). Репозиторий подменён; транзакция региона — на recordingDb.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { recordingDb } from "../../../test/support/recording-db.js";
 import type { EmergencyContactsRepository } from "../emergency-contacts/index.js";
 import type { MediaService } from "../media/index.js";
@@ -114,5 +114,40 @@ describe("GuideService.localities", () => {
     expect(res.items[0]).toMatchObject({ id: L, placeCount: 7, location: { lon: 24.41, lat: 48.36 } });
     expect(res.items[0]!.aliases).toContain("Буковель");
     expect(res.items[1]).toMatchObject({ aliases: [], placeCount: 0 });
+  });
+});
+
+describe("GuideService.place — hasPriceList (прайс, 0030)", () => {
+  const card = (organizationId: string | null, has: boolean) => {
+    const hasPriceList = vi.fn(() => Promise.resolve(has));
+    const svc = service({
+      findPublished: () =>
+        Promise.resolve({
+          ...row(1),
+          region_id: REGION,
+          description_i18n: null,
+          website: null,
+          telegram: null,
+          verified_at: null,
+          source: "manual" as const,
+          organization_id: organizationId,
+        }),
+      findCategory: () => Promise.resolve(undefined),
+      placeTags: () => Promise.resolve([]),
+      photos: () => Promise.resolve([]),
+      isFavorite: () => Promise.resolve(false),
+      enrichment: () => Promise.resolve(undefined),
+      hasPriceList,
+    });
+    return { place: svc.place(REGION, row(1).id, {}), hasPriceList };
+  };
+
+  it("место партнёра — флаг из БД; не партнёрское — false без запроса", async () => {
+    const partner = card(PLACE, true);
+    expect((await partner.place)?.hasPriceList).toBe(true);
+    expect(partner.hasPriceList).toHaveBeenCalledWith(row(1).id);
+    const plain = card(null, true);
+    expect((await plain.place)?.hasPriceList).toBe(false);
+    expect(plain.hasPriceList).not.toHaveBeenCalled();
   });
 });

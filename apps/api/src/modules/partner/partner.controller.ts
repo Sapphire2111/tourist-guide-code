@@ -74,27 +74,27 @@ export const SUBMIT_RATE_LIMIT = { limit: 10, windowSec: 3600 } as const;
 /** Приглашения: не больше 30 в час. */
 export const INVITE_RATE_LIMIT = { limit: 30, windowSec: 3600 } as const;
 
-const uuid = new ParseUUIDPipe({
+export const uuid = new ParseUUIDPipe({
   exceptionFactory: () => new ApiError("VALIDATION_FAILED", { details: { reason: "invalid_id" } }),
 });
 
 /** Регион флага: query/body regionId (шаблоны, онбординг); иначе — значение окружения. */
-const requestRegion: FeatureRegionResolver = ({ request }) => {
+export const requestRegion: FeatureRegionResolver = ({ request }) => {
   const q = request.query?.regionId;
   if (typeof q === "string") return q;
   const b = request.body as { regionId?: unknown } | undefined;
   return typeof b?.regionId === "string" ? b.regionId : undefined;
 };
 
-type AuthedRequest = RbacRequest & AuditableRequest;
+export type AuthedRequest = RbacRequest & AuditableRequest;
 
-function userOf(req: RbacRequest): string {
+export function userOf(req: RbacRequest): string {
   const userId = req.principal?.userId;
   if (!userId) throw new ApiError("UNAUTHENTICATED");
   return userId;
 }
 
-const PLACE_ERRORS = [
+export const PLACE_ERRORS = [
   "VALIDATION_FAILED",
   "UNAUTHENTICATED",
   "FORBIDDEN",

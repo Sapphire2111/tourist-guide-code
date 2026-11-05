@@ -128,6 +128,8 @@ export type WikipediaInfo = {
 export type ScheduleInterval = { weekday: number; opens: string; closes: string };
 
 export type PlaceDetail = PlaceSummary & {
+  /** Есть видимый прайс (0030) — только тогда карточка запрашивает «Ціни». */
+  hasPriceList?: boolean;
   description: LocalizedText | null;
   phone: string | null;
   website: string | null;
@@ -224,6 +226,22 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/** «Ціни» карточки (прайс заведения партнёра, миграция 0030): только видимые туристу позиции. */
+export type PriceListView = {
+  sections: {
+    id: string;
+    title: LocalizedText;
+    items: {
+      id: string;
+      name: LocalizedText;
+      description: LocalizedText | null;
+      priceMinor: number;
+      priceFrom: boolean;
+      unit: LocalizedText | null;
+    }[];
+  }[];
+};
+
 /** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
 export type GuideApi = {
   categories(): Promise<Category[]>;
@@ -238,4 +256,6 @@ export type GuideApi = {
   addFavorite(placeId: string): Promise<void>;
   removeFavorite(placeId: string): Promise<void>;
   emergencyContacts(): Promise<EmergencyContact[]>;
+  /** Прайс места; нет у заглушек тестов — блок «Ціни» не показывается. */
+  priceList?(placeId: string): Promise<PriceListView>;
 };

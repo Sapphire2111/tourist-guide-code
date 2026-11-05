@@ -60,6 +60,7 @@ const abilities = (role: string) => ({
   submit: role === "ORG_OWNER",
   manageStaff: role === "ORG_OWNER",
   manageOffers: role !== "ORG_STAFF",
+  managePriceList: role !== "ORG_STAFF",
   serviceRequests: true,
   bookings: true,
   manualBooking: true,
