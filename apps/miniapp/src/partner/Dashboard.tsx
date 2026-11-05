@@ -9,26 +9,15 @@ import { AsyncView } from "../guide/parts.js";
 import { UnauthorizedError } from "../guide/types.js";
 import { MyClaims } from "./ClaimsList.js";
 import { resolveSelection, usePartner, useRefreshMe } from "./context.js";
-import type { PartnerField, PartnerOrganization, PartnerPlaceSummary } from "./partner-api.js";
+import type { PartnerOrganization, PartnerPlaceSummary } from "./partner-api.js";
 import { NextSteps, PlaceStatusCard, ProgressBar, roleKey } from "./parts.js";
+import { SECTIONS, sectionOf, type SectionId } from "./sections.js";
 
-/** Секции редактора (якоря задаёт PlaceEditor, переход — ?section=<id>, секцию открывает редактор feat/partner-editor): поле шаблона → секция. */
-type Section = "basic" | "photos" | "schedule";
-const SECTION_OF: Record<PartnerField, Section> = {
-  name: "basic",
-  category: "basic",
-  description: "basic",
-  address: "basic",
-  location: "basic",
-  phone: "basic",
-  schedule: "schedule",
-  photo: "photos",
-};
-const SECTIONS: readonly Section[] = ["basic", "photos", "schedule"];
-const NEXT_LABEL: Record<Section, MessageKey> = {
+const NEXT_LABEL: Record<SectionId, MessageKey> = {
   basic: "miniapp.partner.next.basic",
   photos: "miniapp.partner.next.photos",
   schedule: "miniapp.partner.next.schedule",
+  extra: "miniapp.partner.next.extra",
 };
 
 function Tile({
@@ -99,7 +88,7 @@ function PlaceCabinet({ org, place }: { org: PartnerOrganization; place: Partner
   const missing = detail?.missingFields ?? [];
   const steps: { to: string; label: string }[] = [];
   if (canEdit && editable) {
-    const need = new Set(missing.map((f) => SECTION_OF[f]));
+    const need = new Set(missing.map((f) => sectionOf(f)));
     for (const s of SECTIONS)
       if (need.has(s)) steps.push({ to: `${editor}?section=${s}`, label: t(NEXT_LABEL[s]) });
     if (detail && !missing.length && org.abilities.submit)
