@@ -26,7 +26,14 @@ import {
   today,
   zonedIso,
 } from "./format.js";
-import { PartnerBookings, PartnerResources, rulesBody, weeklyOf } from "./PartnerScreens.js";
+import {
+  hasOpenRules,
+  PartnerBookings,
+  PartnerResources,
+  rulesBody,
+  suggestedWeekly,
+  weeklyOf,
+} from "./PartnerScreens.js";
 import { lazyScreen } from "./lazy.js";
 import { BookingFlow, MyBookings, sortBookings } from "./TouristScreens.js";
 
@@ -152,6 +159,7 @@ function renderWith(
     signedIn = true,
     webApp,
     partner,
+    partnerApi: partnerOver,
     entryContextId,
   }: {
     api?: BookingsApi;
@@ -159,6 +167,8 @@ function renderWith(
     signedIn?: boolean;
     webApp?: TelegramWebApp;
     partner?: { role: PartnerRole };
+    /** Доп. методы API кабинета (например, place — часы работы для расписания ресурса). */
+    partnerApi?: Partial<PartnerApi>;
     entryContextId?: string;
   } = {},
 ) {
@@ -173,6 +183,7 @@ function renderWith(
   const partnerApi: PartnerApi = partner
     ? ({
         ...noopPartnerApi(),
+        ...partnerOver,
         me: async () => ({
           organizations: [
             {
@@ -1022,5 +1033,196 @@ describe("доработки после проверки", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Спробувати ще раз" }));
     expect(await screen.findByText("Екран")).toBeTruthy();
+  });
+});
+
+describe("ресурс без расписания: шаг 2 создания, предупреждение, пустой экран туриста", () => {
+  it("suggestedWeekly: часы места (через полночь и 23:59 — до 24:00), без графика — щодня 10:00–21:00", () => {
+    const fromPlace = suggestedWeekly([
+      { dayOfWeek: 1, opensAt: "09:00", closesAt: "22:00" },
+      { dayOfWeek: 5, opensAt: "18:00", closesAt: "02:00" },
+      { dayOfWeek: 6, opensAt: "00:00", closesAt: "23:59" },
+    ]);
+    expect(fromPlace.fromPlace).toBe(true);
+    expect(fromPlace.weekly[1]).toEqual([{ opensAt: "09:00", closesAt: "22:00" }]);
+    expect(fromPlace.weekly[2]).toEqual([]);
+    expect(fromPlace.weekly[5]).toEqual([{ opensAt: "18:00", closesAt: "24:00" }]);
+    expect(fromPlace.weekly[6]).toEqual([{ opensAt: "00:00", closesAt: "24:00" }]);
+    expect(rulesBody(fromPlace.weekly, [])).not.toBeNull();
+    const fallback = suggestedWeekly([]);
+    expect(fallback.fromPlace).toBe(false);
+    for (let d = 1; d <= 7; d++)
+      expect(fallback.weekly[d]).toEqual([{ opensAt: "10:00", closesAt: "21:00" }]);
+  });
+
+  it("после «Створити ресурс» сразу шаг 2: часы работы места подставлены, «Зберегти доступність» сохраняет", async () => {
+    const created = partnerResource({ id: "new-res", name: { uk: "Стіл" }, rules: [] });
+    const createResource = vi.fn(async () => created);
+    const putAvailability = vi.fn(async () => created);
+    const place = vi.fn(async () => ({
+      schedule: {
+        timezone: TZ,
+        weekly: [1, 2, 3, 4, 5].map((d) => ({ dayOfWeek: d, opensAt: "11:00", closesAt: "22:00" })),
+        exceptions: [],
+      },
+    }));
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      partnerApi: { place } as unknown as Partial<PartnerApi>,
+      api: fakeApi({ createResource, putAvailability }),
+    });
+    fireEvent.click(await screen.findByTestId("resource-new"));
+    fireEvent.change(screen.getByLabelText("Назва (наприклад, «Чан №1»)"), { target: { value: "Стіл" } });
+    await act(async () => fireEvent.submit(screen.getByTestId("resource-form")));
+    const step = await screen.findByTestId("resource-step2");
+    expect(step.textContent).toContain("Крок 2 з 2");
+    expect(await within(step).findByTestId("rules-suggested")).toBeTruthy();
+    expect(place).toHaveBeenCalledWith(PLACE);
+    await act(async () => fireEvent.submit(within(step).getByTestId("rules-form")));
+    expect(putAvailability).toHaveBeenCalledWith(
+      "new-res",
+      [1, 2, 3, 4, 5].map((d) => ({ dayOfWeek: d, opensAt: "11:00", closesAt: "22:00" })),
+    );
+    expect(screen.getByTestId("pres-notice").textContent).toContain("Доступність збережено");
+  });
+
+  it("часы места недоступны — типовой розклад щодня 10:00–21:00", async () => {
+    const created = partnerResource({ id: "new-res", rules: [] });
+    const putAvailability = vi.fn(async () => created);
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_OWNER" },
+      api: fakeApi({ createResource: vi.fn(async () => created), putAvailability }),
+    });
+    fireEvent.click(await screen.findByTestId("resource-new"));
+    fireEvent.change(screen.getByLabelText("Назва (наприклад, «Чан №1»)"), { target: { value: "Стіл" } });
+    await act(async () => fireEvent.submit(screen.getByTestId("resource-form")));
+    expect((await screen.findByTestId("rules-suggested")).textContent).toContain("щодня 10:00–21:00");
+    await act(async () => fireEvent.submit(screen.getByTestId("rules-form")));
+    expect(putAvailability).toHaveBeenCalledWith(
+      "new-res",
+      [1, 2, 3, 4, 5, 6, 7].map((d) => ({ dayOfWeek: d, opensAt: "10:00", closesAt: "21:00" })),
+    );
+  });
+
+  it("ресурс без правил: предупреждение и «Задати розклад»; кассиру — без кнопки", async () => {
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({ partnerResources: vi.fn(async () => [partnerResource({ rules: [] })]) }),
+    });
+    const warning = await screen.findByTestId("resource-no-rules");
+    expect(warning.textContent).toContain("Туристи не бачать вільних слотів: не задано розклад");
+    fireEvent.click(within(warning).getByRole("button", { name: "Задати розклад" }));
+    expect(await screen.findByTestId("rules-form")).toBeTruthy();
+    cleanup();
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_STAFF" },
+      api: fakeApi({ partnerResources: vi.fn(async () => [partnerResource({ rules: [] })]) }),
+    });
+    const staff = await screen.findByTestId("resource-no-rules");
+    expect(within(staff).queryByRole("button")).toBeNull();
+  });
+
+  it("с расписанием предупреждения нет; «Бронювати наперед» — подсказка, меньше 7 днів — предупреждение", async () => {
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({ partnerResources: vi.fn(async () => [partnerResource()]) }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Налаштування" }));
+    expect(screen.queryByTestId("resource-no-rules")).toBeNull();
+    expect(screen.getByTestId("horizon-hint").textContent).toBe(
+      "Туристи бачитимуть вільні слоти на 30 дн. наперед.",
+    );
+    fireEvent.change(screen.getByLabelText("Бронювати наперед, днів"), { target: { value: "1" } });
+    expect(screen.getByTestId("horizon-hint").textContent).toBe(
+      "Туристи бачитимуть вільні слоти лише на 1 дн. наперед — це менше тижня, туристам буде важко обрати дату.",
+    );
+  });
+
+  it("hasOpenRules: окно короче слота, прошедшая дата и дата за горизонтом не считаются", () => {
+    const base = { slotDurationMin: 90, horizonDays: 30 };
+    const day = "2026-11-09";
+    const win = (o: Partial<PartnerResource["rules"][number]>) => ({
+      dayOfWeek: 1,
+      date: null,
+      closed: false,
+      opensAt: "10:00",
+      closesAt: "21:00",
+      ...o,
+    });
+    expect(hasOpenRules({ ...base, rules: [] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [win({})] }, day)).toBe(true);
+    expect(hasOpenRules({ ...base, rules: [win({ closesAt: "11:00" })] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [win({ closesAt: "24:00", opensAt: "22:30" })] }, day)).toBe(true);
+    const dated = (date: string) => win({ dayOfWeek: null, date });
+    expect(hasOpenRules({ ...base, rules: [dated("2026-11-08")] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [dated("2026-12-09")] }, day)).toBe(true);
+    expect(hasOpenRules({ ...base, rules: [dated("2026-12-10")] }, day)).toBe(false);
+  });
+
+  it("обычная «Доступність по днях» на очищенном расписании — без подстановки; вимкнений — без предупреждения", async () => {
+    const place = vi.fn(async () => ({ schedule: { timezone: TZ, weekly: [], exceptions: [] } }));
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      partnerApi: { place } as unknown as Partial<PartnerApi>,
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [
+          partnerResource({ status: "inactive", rules: [] }),
+          partnerResource({ id: "r2", rules: [] }),
+        ]),
+      }),
+    });
+    const [paused, active] = await screen.findAllByTestId("resource");
+    expect(within(paused!).queryByTestId("resource-no-rules")).toBeNull();
+    // У активного без расписания — только «Задати розклад», обычная кнопка скрыта.
+    expect(within(active!).queryByRole("button", { name: "Доступність по днях" })).toBeNull();
+    fireEvent.click(within(paused!).getByRole("button", { name: "Доступність по днях" }));
+    expect(await screen.findByTestId("rules-form")).toBeTruthy();
+    expect(screen.queryByTestId("rules-suggested")).toBeNull();
+    expect(screen.getAllByText("Вихідний")).toHaveLength(7);
+    expect(place).not.toHaveBeenCalled();
+  });
+
+  it("шаг 2: переход к другому ресурсу — список перечитывается, редактор нового ресурса не дублируется", async () => {
+    const created = partnerResource({ id: "new-res", name: { uk: "Стіл" }, rules: [] });
+    const partnerResources = vi.fn(async () => [partnerResource()]);
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({ partnerResources, createResource: vi.fn(async () => created) }),
+    });
+    fireEvent.click(await screen.findByTestId("resource-new"));
+    fireEvent.change(screen.getByLabelText("Назва (наприклад, «Чан №1»)"), { target: { value: "Стіл" } });
+    await act(async () => fireEvent.submit(screen.getByTestId("resource-form")));
+    await screen.findByTestId("resource-step2");
+    partnerResources.mockResolvedValue([partnerResource(), created]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Налаштування" })));
+    expect(partnerResources).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("resource-step2")).toBeNull();
+    expect(screen.queryAllByTestId("rules-form")).toHaveLength(0);
+  });
+
+  it("турист: запомненного ресурса нет в списке — первый доступный, его слот не берётся", async () => {
+    writeSlot(currentEntryKey(), "booking.resource", "gone");
+    writeSlot(currentEntryKey(), "booking.slot", { startsAt: at("10:00"), endsAt: at("11:00"), free: true });
+    renderWith(<BookingFlow placeId={PLACE} />);
+    expect(await screen.findByTestId("slots")).toBeTruthy();
+    expect(screen.queryByTestId("booking-unavailable")).toBeNull();
+  });
+
+  it("турист: ни одного слота — «Онлайн-запис поки недоступний — зателефонуйте закладу» и звонок", async () => {
+    renderWith(<BookingFlow placeId={PLACE} />, {
+      api: fakeApi({ slots: vi.fn(async () => ({ ...slots(), items: [] })) }),
+    });
+    const empty = await screen.findByTestId("slots-empty");
+    expect(empty.textContent).toContain("Онлайн-запис поки недоступний — зателефонуйте закладу.");
+    expect(within(empty).getByRole("link", { name: "Подзвонити" }).getAttribute("href")).toBe(
+      "tel:+380501112233",
+    );
+  });
+
+  it("турист: все слоты заняты — прежний текст «вільних слотів немає»", async () => {
+    renderWith(<BookingFlow placeId={PLACE} />, {
+      api: fakeApi({ slots: vi.fn(async () => slots([false, false])) }),
+    });
+    expect((await screen.findByTestId("slots-empty")).textContent).toContain("вільних слотів немає");
   });
 });
