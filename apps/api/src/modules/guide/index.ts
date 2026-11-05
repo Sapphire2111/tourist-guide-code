@@ -16,6 +16,7 @@ export {
   GuideCategoryListDto,
   GuideLocalityDto,
   GuideLocalityListDto,
+  GuidePriceListDto,
   OriginQueryDto,
   PlaceCardDto,
   PlacePhotoDto,

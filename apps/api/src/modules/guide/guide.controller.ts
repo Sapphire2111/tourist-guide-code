@@ -35,6 +35,7 @@ import {
   FavoriteListDto,
   GuideCategoryListDto,
   GuideLocalityListDto,
+  GuidePriceListDto,
   PlaceCardDto,
   PlaceSearchResultDto,
   SEARCH_LIMIT_DEFAULT,
@@ -265,6 +266,24 @@ export class GuidePlacesController {
     const url = await this.guide.googlePhoto(q.regionId, id, index, q.w ?? 400);
     if (!url) throw new ApiError("NOT_FOUND");
     return { url, statusCode: 302 };
+  }
+
+  @Get(":id/price-list")
+  @ApiOperation({
+    operationId: "getGuidePlacePriceList",
+    summary: "«Ціни» картки: прайс заведения партнёра (разделы → позиции с ценой, без заказа и оплаты)",
+    description:
+      "Без аутентификации. Только видимые позиции в видимых разделах опубликованного места партнёра; скрытые и " +
+      "архивные не приходят. Прайса нет — sections пустой (блок не показывается). Неопубликованное или чужого " +
+      "региона — 404.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiOkResponse({ type: GuidePriceListDto })
+  @ApiErrors("VALIDATION_FAILED", "NOT_FOUND", "RATE_LIMITED")
+  async priceList(@Param("id", uuid) id: string, @Query() q: RegionQueryDto): Promise<GuidePriceListDto> {
+    const list = await this.guide.priceList(q.regionId, id);
+    if (!list) throw new ApiError("NOT_FOUND");
+    return list;
   }
 
   @Get(":id")

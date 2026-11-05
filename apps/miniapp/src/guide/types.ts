@@ -221,6 +221,22 @@ export class UnauthorizedError extends Error {
 }
 
 /** Доступ к данным гида. Методы бросают ошибку при сбое; place — NotFoundError при 404. */
+/** «Ціни» карточки (прайс заведения партнёра, миграция 0030): только видимые туристу позиции. */
+export type PriceListView = {
+  sections: {
+    id: string;
+    title: LocalizedText;
+    items: {
+      id: string;
+      name: LocalizedText;
+      description: LocalizedText | null;
+      priceMinor: number;
+      priceFrom: boolean;
+      unit: LocalizedText | null;
+    }[];
+  }[];
+};
+
 export type GuideApi = {
   categories(): Promise<Category[]>;
   localities(): Promise<LocalityOption[]>;
@@ -230,4 +246,6 @@ export type GuideApi = {
   addFavorite(placeId: string): Promise<void>;
   removeFavorite(placeId: string): Promise<void>;
   emergencyContacts(): Promise<EmergencyContact[]>;
+  /** Прайс места; нет у заглушек тестов — блок «Ціни» не показывается. */
+  priceList?(placeId: string): Promise<PriceListView>;
 };

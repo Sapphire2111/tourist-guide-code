@@ -618,6 +618,32 @@ export class PlaceCardDto extends PlaceSummaryDto {
   wikipedia!: WikipediaDto | null;
 }
 
+// --- прайс заведения (0030) ---
+
+export class GuidePriceItemDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: LocalizedTextDto }) name!: LocalizedText;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true }) description!: LocalizedText | null;
+  @ApiProperty({ type: "integer", minimum: 0, description: "Цена, копейки" }) priceMinor!: number;
+  @ApiProperty({ type: String, enum: ["UAH"], example: "UAH" }) currency!: "UAH";
+  @ApiProperty({ type: Boolean, description: "«від …»: цена — нижняя граница" }) priceFrom!: boolean;
+  @ApiProperty({ type: LocalizedTextDto, nullable: true, description: "«за годину», «за особу»" })
+  unit!: LocalizedText | null;
+}
+
+export class GuidePriceSectionDto {
+  @ApiProperty({ type: String, format: "uuid" }) id!: string;
+  @ApiProperty({ type: LocalizedTextDto }) title!: LocalizedText;
+  @ApiProperty({ type: [GuidePriceItemDto] }) items!: GuidePriceItemDto[];
+}
+
+/** «Ціни» в карточке: только видимые позиции (active) в видимых разделах; пустые разделы не приходят. */
+export class GuidePriceListDto {
+  @ApiProperty({ type: String, format: "uuid" }) placeId!: string;
+  @ApiProperty({ type: [GuidePriceSectionDto], description: "Пусто — блока «Ціни» нет" })
+  sections!: GuidePriceSectionDto[];
+}
+
 export class FavoriteDto {
   @ApiProperty({ type: String, format: "uuid" }) placeId!: string;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;

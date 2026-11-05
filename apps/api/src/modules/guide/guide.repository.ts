@@ -68,6 +68,9 @@ export type PhotoRow = MediaAsset & { place_id: string; is_cover: boolean; sort_
 export type TagRow = { id: string; code: string; name_i18n: LocalizedText; tag_group: TagGroup };
 
 /** Избранных мест в выдаче — не больше (листания нет). */
+/** Позиций прайса в карточке: лимит кабинета (PRICE_LIST_MAX_ITEMS) с запасом. */
+export const PRICE_ROWS_MAX = 250;
+
 export const FAVORITES_MAX = 200;
 
 /** Экранирование % _ \ для ILIKE (ESCAPE по умолчанию — обратная косая черта). */
@@ -313,6 +316,40 @@ export class GuideRepository {
         "places.source",
       ])
       .executeTakeFirst() as Promise<PlaceCardRow | undefined>;
+  }
+
+  /**
+   * Прайс для карточки (0030): позиции active в разделах active партнёрского места (organization_id задан), по
+   * порядку разделов и позиций. Опубликованность места проверяет findPublished.
+   */
+  priceRows(placeId: string) {
+    return this.q
+      .selectFrom("price_list_items as i")
+      .innerJoin("price_list_sections as s", (j) =>
+        j.onRef("s.id", "=", "i.section_id").onRef("s.place_id", "=", "i.place_id"),
+      )
+      .innerJoin("places as p", "p.id", "i.place_id")
+      .select([
+        "s.id as section_id",
+        "s.title_i18n",
+        "i.id",
+        "i.name_i18n",
+        "i.description_i18n",
+        "i.price_minor",
+        "i.currency",
+        "i.price_from",
+        "i.unit_i18n",
+      ])
+      .where("i.place_id", "=", placeId)
+      .where("p.organization_id", "is not", null)
+      .where("s.status", "=", "active")
+      .where("i.status", "=", "active")
+      .orderBy("s.sort_order")
+      .orderBy("s.id")
+      .orderBy("i.sort_order")
+      .orderBy("i.id")
+      .limit(PRICE_ROWS_MAX)
+      .execute();
   }
 
   /** Обогащение места (0018): Google, Вікіпедія, ИИ-текст; нет — undefined. */

@@ -38,6 +38,7 @@ const abilities = (owner: boolean) => ({
   submit: owner,
   manageStaff: owner,
   manageOffers: true,
+  managePriceList: true,
   serviceRequests: true,
   bookings: true,
   manualBooking: true,

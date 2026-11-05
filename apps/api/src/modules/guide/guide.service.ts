@@ -23,6 +23,8 @@ import type {
   FavoriteListDto,
   GuideCategoryListDto,
   GuideLocalityListDto,
+  GuidePriceListDto,
+  GuidePriceSectionDto,
   PlaceCardDto,
   PlacePhotoDto,
   PlaceSearchResultDto,
@@ -216,6 +218,35 @@ export class GuideService {
         favorite,
         ...this.enriched(region.id, id, enrichment, exhausted),
       };
+    });
+  }
+
+  /**
+   * «Ціни» карточки (прайс заведения, 0030): видимые позиции опубликованного партнёрского места по разделам.
+   * undefined — места нет/не опубликовано/чужой регион (404); у места без прайса — пустой список разделов.
+   */
+  async priceList(regionId: string, id: string): Promise<GuidePriceListDto | undefined> {
+    return this.inRegion(regionId, async () => {
+      const place = await this.repo.findPublished(id, undefined);
+      if (!place) return undefined;
+      const sections: GuidePriceSectionDto[] = [];
+      for (const r of await this.repo.priceRows(place.id)) {
+        let section = sections[sections.length - 1];
+        if (section?.id !== r.section_id) {
+          section = { id: r.section_id, title: r.title_i18n, items: [] };
+          sections.push(section);
+        }
+        section.items.push({
+          id: r.id,
+          name: r.name_i18n,
+          description: r.description_i18n,
+          priceMinor: Number(r.price_minor),
+          currency: r.currency,
+          priceFrom: r.price_from,
+          unit: r.unit_i18n,
+        });
+      }
+      return { placeId: place.id, sections };
     });
   }
 
