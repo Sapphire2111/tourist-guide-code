@@ -191,7 +191,7 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
     ...over,
   });
 
-  it("миграция 0031: RLS на place_claims, у app — SELECT/INSERT/UPDATE", async () => {
+  it("миграция 0031: RLS на place_claims, у app — SELECT/INSERT и UPDATE колонок решения", async () => {
     expect(tdb!.applied).toContain("0031_place_claims.sql");
     const { rows } = await sql(
       `SELECT relname FROM pg_class WHERE relname = 'place_claims' AND relrowsecurity AND relforcerowsecurity`,
@@ -201,7 +201,17 @@ describe.skipIf(!dockerAvailable)(`«Це мій заклад» (миграци�
       `SELECT privilege_type FROM information_schema.role_table_grants
        WHERE grantee = 'app' AND table_name = 'place_claims' ORDER BY 1`,
     );
-    expect(privs.rows.map((r) => r.privilege_type)).toEqual(["INSERT", "SELECT", "UPDATE"]);
+    expect(privs.rows.map((r) => r.privilege_type)).toEqual(["INSERT", "SELECT"]);
+    // UPDATE — только колонки решения; телефон и комментарий меняет лишь функция очистки ПДн.
+    const cols = await sql(
+      `SELECT column_name FROM information_schema.column_privileges
+       WHERE grantee = 'app' AND table_name = 'place_claims' AND privilege_type = 'UPDATE'`,
+    );
+    const updatable = cols.rows.map((r) => r.column_name as string);
+    expect(updatable).toContain("status");
+    expect(updatable).not.toContain("phone");
+    expect(updatable).not.toContain("comment");
+    expect(updatable).not.toContain("user_id");
   });
 
   it("подача: место Google заявляемо; без организации — 400; чужая организация — 403; дубль — 409", async () => {
