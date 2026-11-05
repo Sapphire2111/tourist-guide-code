@@ -88,7 +88,7 @@ test("онбординг → редактор → отправка на моде
   await expect(page.getByRole("heading", { level: 1, name: "Садиба «Смерека»" })).toBeVisible();
   await expect(page.getByTestId("to-tourist")).toBeVisible();
   await expect(page.getByTestId("partner-place").getByTestId("place-status")).toHaveText("На перевірці");
-  await expect(page.getByRole("link", { name: "Команда" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Співробітники" })).toBeVisible();
   await expectNoSeriousA11yViolations(page);
 
   // Профиль → карточка «Мій заклад» (название и статус) → кабинет.
@@ -119,7 +119,14 @@ test.describe("приглашение сотрудника", () => {
     await expect(page.getByTestId("partner-org")).toContainText("Ваша роль: працівник");
     // Працівник: без редактора и сотрудников.
     await expect(page.getByRole("link", { name: "Редагувати заклад" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Команда" })).toHaveCount(0);
+    const cabinet = page.getByTestId("partner-place").locator("..");
+    await expect(
+      cabinet
+        .getByRole("navigation", { name: "Розділи" })
+        .getByRole("link", { name: "Профіль", exact: true }),
+    ).toHaveCount(0);
+    for (const name of ["Виправити", "Продовжити заповнення", "Співробітники"])
+      await expect(cabinet.getByRole("link", { name, exact: true })).toHaveCount(0);
     expect(state.partner.acceptedInvite).toBe(true);
     await expectNoSeriousA11yViolations(page);
   });

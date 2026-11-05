@@ -12,7 +12,7 @@ import { resolveSelection, usePartner, useRefreshMe } from "./context.js";
 import type { PartnerField, PartnerOrganization, PartnerPlaceSummary } from "./partner-api.js";
 import { NextSteps, PlaceStatusCard, ProgressBar, roleKey } from "./parts.js";
 
-/** Секции редактора (якоря задаёт PlaceEditor, переход — ?section=<id>): поле шаблона → секция. */
+/** Секции редактора (якоря задаёт PlaceEditor, переход — ?section=<id>, секцию открывает редактор feat/partner-editor): поле шаблона → секция. */
 type Section = "basic" | "photos" | "schedule";
 const SECTION_OF: Record<PartnerField, Section> = {
   name: "basic",
@@ -63,16 +63,17 @@ function PlaceCabinet({ org, place }: { org: PartnerOrganization; place: Partner
   const hostRequests = useFeatureFlag("module.host_requests");
   const bookings = useFeatureFlag("module.bookings");
   const reviews = useFeatureFlag("module.reviews");
-  // Полная карточка нужна только для прогресса: ошибка загрузки — блока прогресса просто нет.
-  const [full] = useAsync(
-    () => (place.templateCode ? api.place(place.id) : Promise.resolve(null)),
-    [api, place.id, place.templateCode, place.status],
-  );
-  const detail = full.status === "ready" ? full.data : null;
   const editor = `/partner/place/${place.id}`;
   const canEdit = org.abilities.editPlace && !!place.templateCode;
   const status = place.status;
   const editable = status === "draft" || status === "changes_requested" || status === "rejected";
+  // Полная карточка нужна только для прогресса и шагов: сотруднику (403 на place.edit) и неправимому месту не грузим.
+  const loadDetail = canEdit && editable;
+  const [full] = useAsync(
+    () => (loadDetail ? api.place(place.id) : Promise.resolve(null)),
+    [api, place.id, loadDetail, place.status],
+  );
+  const detail = full.status === "ready" ? full.data : null;
 
   let action: ReactNode = null;
   if (canEdit && status === "draft")
@@ -112,6 +113,82 @@ function PlaceCabinet({ org, place }: { org: PartnerOrganization; place: Partner
   )
     steps.push({ to: `${editor}/offers`, label: t("miniapp.partner.next.offer") });
 
+  const tiles: ReactNode[] = [];
+  // Без шаблона редактора нет; одобренная заявка «Це мій заклад» всегда даёт шаблон (подходящий или base).
+  if (canEdit)
+    tiles.push(<Tile key="profile" to={editor} icon="📝" label={t("miniapp.partner.tile.profile")} />);
+  // Прайс работает через место с шаблоном (inPlace), как редактор.
+  if (org.abilities.managePriceList && place.templateCode)
+    tiles.push(
+      <Tile
+        key="prices"
+        to={`${editor}/prices`}
+        icon="🍽️"
+        label={t("miniapp.partner.tile.prices")}
+        testId="partner-prices-link"
+      />,
+    );
+  if (org.abilities.manageOffers && place.modules.includes("offers"))
+    tiles.push(
+      <Tile
+        key="offers"
+        to={`${editor}/offers`}
+        icon="🏷️"
+        label={t("miniapp.partner.tile.offers")}
+        note={t("miniapp.partner.tile.offersCount", { count: place.activeOffers })}
+      />,
+    );
+  // review.respond есть у ORG_OWNER и ORG_MANAGER (rbac/roles.ts); у кассира/сотрудника — нет.
+  if (reviews && org.role !== "ORG_STAFF")
+    tiles.push(
+      <Tile
+        key="reviews"
+        to={`${editor}/reviews`}
+        icon="⭐"
+        label={t("miniapp.partner.reviews.link")}
+        testId="partner-reviews-link"
+      />,
+    );
+  if (bookings)
+    tiles.push(
+      <Tile
+        key="bookings"
+        to={`${editor}/bookings`}
+        icon="📅"
+        label={t("miniapp.pbooking.title")}
+        testId="partner-bookings-link"
+      />,
+    );
+  if (bookings && org.abilities.manageResources)
+    tiles.push(
+      <Tile
+        key="resources"
+        to={`${editor}/resources`}
+        icon="🪑"
+        label={t("miniapp.pbooking.resourcesLink")}
+      />,
+    );
+  if (org.abilities.manageStaff)
+    tiles.push(
+      <Tile
+        key="staff"
+        to={`/partner/org/${org.id}/staff`}
+        icon="👥"
+        label={t("miniapp.partner.staff.title")}
+        testId="partner-team-link"
+      />,
+    );
+  if (org.abilities.serviceRequests && hostRequests && place.openServiceRequests !== null)
+    tiles.push(
+      <Tile
+        key="requests"
+        to="/staff"
+        icon="🛎️"
+        label={t("miniapp.partner.tile.requests")}
+        note={t("miniapp.partner.tile.requestsCount", { count: place.openServiceRequests })}
+      />,
+    );
+
   return (
     <>
       <div data-testid="partner-place">
@@ -119,65 +196,11 @@ function PlaceCabinet({ org, place }: { org: PartnerOrganization; place: Partner
       </div>
       {detail && editable && <ProgressBar done={required - missing.length} total={required} />}
       <NextSteps steps={steps} />
-      <nav aria-label={t("miniapp.partner.tiles.title")}>
-        <ul className="partner-tiles">
-          {/* Без шаблона редактора нет; одобренная заявка «Це мій заклад» всегда даёт шаблон (подходящий или base). */}
-          {canEdit && <Tile to={editor} icon="📝" label={t("miniapp.partner.tile.profile")} />}
-          {/* Прайс работает через место с шаблоном (inPlace), как редактор. */}
-          {org.abilities.managePriceList && place.templateCode && (
-            <Tile
-              to={`${editor}/prices`}
-              icon="🍽️"
-              label={t("miniapp.partner.tile.prices")}
-              testId="partner-prices-link"
-            />
-          )}
-          {org.abilities.manageOffers && place.modules.includes("offers") && (
-            <Tile
-              to={`${editor}/offers`}
-              icon="🏷️"
-              label={t("miniapp.partner.tile.offers")}
-              note={t("miniapp.partner.tile.offersCount", { count: place.activeOffers })}
-            />
-          )}
-          {/* review.respond есть у ORG_OWNER и ORG_MANAGER (rbac/roles.ts); у кассира/сотрудника — нет. */}
-          {reviews && org.role !== "ORG_STAFF" && (
-            <Tile
-              to={`${editor}/reviews`}
-              icon="⭐"
-              label={t("miniapp.partner.reviews.link")}
-              testId="partner-reviews-link"
-            />
-          )}
-          {bookings && (
-            <Tile
-              to={`${editor}/bookings`}
-              icon="📅"
-              label={t("miniapp.pbooking.title")}
-              testId="partner-bookings-link"
-            />
-          )}
-          {bookings && (
-            <Tile to={`${editor}/resources`} icon="🪑" label={t("miniapp.pbooking.resourcesLink")} />
-          )}
-          {org.abilities.manageStaff && (
-            <Tile
-              to={`/partner/org/${org.id}/staff`}
-              icon="👥"
-              label={t("miniapp.partner.tile.team")}
-              testId="partner-team-link"
-            />
-          )}
-          {org.abilities.serviceRequests && hostRequests && place.openServiceRequests !== null && (
-            <Tile
-              to="/staff"
-              icon="🛎️"
-              label={t("miniapp.partner.tile.requests")}
-              note={t("miniapp.partner.tile.requestsCount", { count: place.openServiceRequests })}
-            />
-          )}
-        </ul>
-      </nav>
+      {tiles.length > 0 && (
+        <nav aria-label={t("miniapp.partner.tiles.title")}>
+          <ul className="partner-tiles">{tiles}</ul>
+        </nav>
+      )}
     </>
   );
 }

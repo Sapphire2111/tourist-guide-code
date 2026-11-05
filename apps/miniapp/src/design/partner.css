@@ -207,21 +207,24 @@
   font-size: 0.875rem;
 }
 
-/* Онбординг: плитки типов заведений (радио поверх плитки, нативная клавиатура). */
-.partner-types {
+/* Онбординг: плитки типов заведений (радио поверх плитки, нативная клавиатура). Селекторы с .kosiv-content —
+   чтобы глобальные правила fieldset и input[type="radio"] не перебивали. Выбор и фокус видны и без :has
+   (data-checked от React, :focus-within), для старых WebView. */
+.kosiv-content .partner-types {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   border: 0;
   padding: 0;
   margin: 0;
+  min-width: 0;
 }
-.partner-types legend {
+.kosiv-content .partner-types legend {
   padding: 0;
   margin-bottom: 8px;
   font-weight: 600;
 }
-.partner-type {
+.kosiv-content .partner-type-wrap {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -234,23 +237,41 @@
   border-radius: 24px;
   color: var(--app-text);
 }
-.partner-type > input {
+.kosiv-content .partner-type {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+.kosiv-content .partner-type > input[type="radio"] {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  min-height: 44px;
   margin: 0;
   opacity: 0;
   cursor: pointer;
 }
-.partner-type:has(> input:checked) {
+.kosiv-content .partner-type-wrap[data-checked="true"] {
   border-color: var(--app-accent);
   background-color: var(--app-pill-bg);
 }
-.partner-type:has(> input:focus-visible) {
+.kosiv-content .partner-type-wrap:focus-within {
   outline: 2.5px solid var(--app-accent-ink);
   outline-offset: 2px;
 }
-.partner-type small {
+.partner-type-check {
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-weight: 700;
+  color: var(--app-accent-ink);
+}
+.partner-type-wrap[data-checked="true"] .partner-type-check {
+  display: block;
+}
+.partner-type-hint {
   color: var(--app-muted);
 }

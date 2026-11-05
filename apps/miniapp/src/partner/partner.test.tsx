@@ -238,7 +238,7 @@ describe("P01/P13 дашборд", () => {
       `#/partner/place/${PLACE}`,
     );
     expect(screen.getByRole("link", { name: /Акції/ }).textContent).toContain("діють: 1");
-    expect(screen.getByRole("link", { name: "Команда" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "Співробітники" }).getAttribute("href")).toBe(
       `#/partner/org/${ORG}/staff`,
     );
     expect(screen.getByRole("link", { name: /Заявки гостей/ }).textContent).toContain("відкриті: 2");
@@ -294,6 +294,21 @@ describe("P01/P13 дашборд", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Кафе Смерека" })).toBeDefined();
   });
 
+  it("сотрудник: полная карточка места не запрашивается (403), плиток-редактора нет", async () => {
+    const placeCall = vi.fn(() => Promise.resolve(place()));
+    setup(<PartnerDashboard />, {
+      me: () =>
+        Promise.resolve({
+          organizations: [org({ role: "ORG_STAFF", abilities: { ...abilities(false), editPlace: false } })],
+        }),
+      place: placeCall,
+    });
+    expect(await screen.findByTestId("place-status")).toBeDefined();
+    expect(placeCall).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
+    expect(screen.queryByTestId("partner-progress")).toBeNull();
+  });
+
   it("менеджер: без сотрудников; модуль заявок выключен — без ссылки на заявки", async () => {
     setup(
       <PartnerDashboard />,
@@ -305,7 +320,7 @@ describe("P01/P13 дашборд", () => {
     );
     expect(await screen.findByRole("link", { name: "Виправити" })).toBeDefined();
     expect(screen.getByTestId("partner-org").textContent).toContain("Ваша роль: менеджер");
-    expect(screen.queryByRole("link", { name: "Команда" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Співробітники" })).toBeNull();
     expect(screen.queryByRole("link", { name: /Заявки гостей/ })).toBeNull();
   });
 });

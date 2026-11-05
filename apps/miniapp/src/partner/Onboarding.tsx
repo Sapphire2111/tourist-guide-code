@@ -63,6 +63,10 @@ export function PartnerOnboarding() {
           if (!available.length) return <p>{t("miniapp.partner.onboarding.noTemplates")}</p>;
           const template = available.find((x) => x.code === code) ?? null;
           const create = async () => {
+            if (template && template.categories.length > 1 && !categoryId && name.trim()) {
+              setMessage({ text: t("miniapp.partner.onboarding.pickCategory"), alert: true });
+              return;
+            }
             if (!template || !categoryId || !name.trim() || !regionId) {
               setMessage({ text: t("miniapp.partner.onboarding.incomplete"), alert: true });
               return;
@@ -98,23 +102,37 @@ export function PartnerOnboarding() {
               <fieldset className="partner-types">
                 <legend>{t("miniapp.partner.onboarding.typeLegend")}</legend>
                 {available.map((x) => (
-                  <label key={x.id} className="partner-type">
-                    <input
-                      type="radio"
-                      name="template"
-                      value={x.code}
-                      checked={code === x.code}
-                      onChange={() => {
-                        setCode(x.code);
-                        setCategoryId(x.categories.length === 1 ? x.categories[0]!.id : "");
-                      }}
-                    />
-                    <span className="partner-tile-icon" aria-hidden="true">
-                      {iconOf(x.code)}
-                    </span>
-                    <strong>{pickLocalized(x.name, locale)}</strong>
-                    {x.description && <small>{pickLocalized(x.description, locale)}</small>}
-                  </label>
+                  <div
+                    key={x.id}
+                    className="partner-type-wrap"
+                    data-checked={code === x.code ? "true" : undefined}
+                  >
+                    <label className="partner-type">
+                      <input
+                        type="radio"
+                        name="template"
+                        value={x.code}
+                        checked={code === x.code}
+                        aria-describedby={x.description ? `${ids.name}-d-${x.id}` : undefined}
+                        onChange={() => {
+                          setCode(x.code);
+                          setCategoryId(x.categories.length === 1 ? x.categories[0]!.id : "");
+                        }}
+                      />
+                      <span className="partner-tile-icon" aria-hidden="true">
+                        {iconOf(x.code)}
+                      </span>
+                      <strong>{pickLocalized(x.name, locale)}</strong>
+                      <span className="partner-type-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    </label>
+                    {x.description && (
+                      <small id={`${ids.name}-d-${x.id}`} className="partner-type-hint">
+                        {pickLocalized(x.description, locale)}
+                      </small>
+                    )}
+                  </div>
                 ))}
               </fieldset>
               {template && template.categories.length > 1 && (
