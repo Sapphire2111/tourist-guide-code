@@ -11,7 +11,7 @@ import { AsyncView, Badge, card, listStyle } from "../guide/parts.js";
 import { ConflictError } from "../host/types.js";
 import { orgOfPlace, useKeptAsync, usePartner } from "../partner/context.js";
 import type { PartnerOrganization } from "../partner/partner-api.js";
-import { Live, type Message } from "../partner/parts.js";
+import { EmptyState, Live, PartnerHeader, type Message } from "../partner/parts.js";
 import type {
   AvailabilityRule,
   ManualAvailability,
@@ -112,21 +112,25 @@ export function PartnerBookings({ placeId }: { placeId: string }) {
     );
   return (
     <Stack>
-      <h1>{t("miniapp.pbooking.title")}</h1>
+      <PartnerHeader title={t("miniapp.pbooking.title")} />
       <Live message={notice} testId="pbooking-notice" />
       <AsyncView state={resources} retry={reloadResources} errorText={t("miniapp.pbooking.loadError")}>
         {(list) => {
           const active = list.filter((r) => r.status !== "archived");
           if (!active.length)
             return (
-              <div className="kosiv-card kosiv-empty" data-testid="no-resources">
-                <p>{t("miniapp.pbooking.noResources")}</p>
-                {manage && (
-                  <Link to={`/partner/place/${placeId}/resources`} className="kosiv-cta">
-                    {t("miniapp.pbooking.resourcesLink")}
-                  </Link>
-                )}
-              </div>
+              <EmptyState
+                testId="no-resources"
+                icon="📅"
+                text={t("miniapp.pbooking.noResources")}
+                action={
+                  manage && (
+                    <Link to={`/partner/place/${placeId}/resources`} className="kosiv-cta">
+                      {t("miniapp.pbooking.resourcesLink")}
+                    </Link>
+                  )
+                }
+              />
             );
           const shown = active.filter((r) => !resourceId || r.id === resourceId);
           return (
@@ -701,13 +705,18 @@ export function PartnerResources({ placeId }: { placeId: string }) {
   };
   return (
     <Stack>
-      <h1>{t("miniapp.pres.title")}</h1>
-      <Link to={`/partner/place/${placeId}/bookings`}>{t("miniapp.pres.toBookings")}</Link>
+      <PartnerHeader
+        title={t("miniapp.pres.title")}
+        backTo={`/partner/place/${placeId}/bookings`}
+        backLabel={`← ${t("miniapp.pres.toBookings")}`}
+      />
       <Live message={notice} testId="pres-notice" />
       <AsyncView state={state} retry={reload} errorText={t("miniapp.pbooking.loadError")}>
         {(items) => (
           <>
-            {items.length === 0 && <p className="kosiv-muted">{t("miniapp.pbooking.noResources")}</p>}
+            {items.length === 0 && (
+              <EmptyState icon="📅" text={t("miniapp.pbooking.noResources")} testId="resources-empty" />
+            )}
             <ul style={listStyle} data-testid="resources">
               {items.map((r) => (
                 <li key={r.id} style={card} data-testid="resource">

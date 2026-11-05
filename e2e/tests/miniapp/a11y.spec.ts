@@ -13,6 +13,6 @@ test("Mini App: нет нарушений a11y уровня serious/critical (г
 
 test("Mini App: нет нарушений a11y уровня serious/critical (кабинет партнёра)", async ({ page }) => {
   await page.goto("/?role=partner#/partner");
-  await expect(page.getByRole("heading", { level: 1, name: "Кабінет партнера" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Мій заклад" })).toBeVisible();
   await expectNoSeriousA11yViolations(page);
 });

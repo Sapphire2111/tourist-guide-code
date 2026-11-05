@@ -8,6 +8,7 @@ import { Button, Stack, useT } from "@tg/ui";
 import { useAsync } from "../guide/context.js";
 import { AsyncView } from "../guide/parts.js";
 import { ApiCallError } from "../host/types.js";
+import { EmptyState, PartnerHeader } from "../partner/parts.js";
 import { useReviews } from "./context.js";
 import {
   AppealForm,
@@ -28,14 +29,12 @@ export function PartnerReviews({ placeId }: { placeId: string }) {
   const [updated, setUpdated] = useState<Record<string, PartnerReview>>({});
   return (
     <Stack>
-      <h1>{t("miniapp.partner.reviews.title")}</h1>
+      <PartnerHeader title={t("miniapp.partner.reviews.title")} />
       <p className="pc-muted rv-meta">{t("miniapp.partner.reviews.hint")}</p>
       <AsyncView state={state} retry={retry} errorText={t("miniapp.partner.reviews.loadError")}>
         {(items) =>
           items.length === 0 ? (
-            <p className="kosiv-card kosiv-empty" data-testid="partner-reviews-empty">
-              {t("miniapp.partner.reviews.empty")}
-            </p>
+            <EmptyState text={t("miniapp.partner.reviews.empty")} icon="💬" testId="partner-reviews-empty" />
           ) : (
             <ul className="rv-list" data-testid="partner-reviews">
               {items.map((r) => (

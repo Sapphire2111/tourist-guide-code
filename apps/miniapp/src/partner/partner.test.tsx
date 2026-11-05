@@ -219,7 +219,7 @@ describe("P01/P13 дашборд", () => {
 
   it("владелец: статус, комментарий модератора, ссылки P06/P07/P09/P10", async () => {
     setup(<PartnerDashboard />, { me: () => Promise.resolve({ organizations: [org()] }) });
-    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібно доопрацювати");
+    expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібні правки");
     expect(screen.getByTestId("moderator-comment").textContent).toContain("Додайте фото фасаду");
     expect(screen.getByRole("link", { name: "Редагувати заклад" }).getAttribute("href")).toBe(
       `#/partner/place/${PLACE}`,
@@ -288,7 +288,7 @@ describe("P06 редактор", () => {
       fireEvent.click(screen.getByRole("button", { name: "Надіслати на модерацію" }));
     });
     expect(screen.getByTestId("missing-fields").textContent).toBe(
-      "Для модерації заповніть: Фото, Графік роботи",
+      "Щоб надіслати на перевірку, додайте: Фото, Графік роботи.",
     );
     expect(screen.getByTestId("submit-message").textContent).toContain("Заповніть обов'язкові поля");
   });
