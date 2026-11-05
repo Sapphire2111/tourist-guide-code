@@ -73,8 +73,14 @@ test.describe("в Telegram (QR отеля)", () => {
     await page.getByTestId("subcategory-select").click();
     await page.getByRole("dialog").getByRole("radio", { name: "Кав'ярні" }).click();
     await page.getByLabel("Пошук за назвою").fill("Місце");
+    // До ответа поиска на экране ещё выдача подраздела с теми же названиями: её ссылка отцепится при замене списка.
+    const searched = page.waitForResponse(
+      (r) => r.request().method() === "GET" && [...new URL(r.url()).searchParams.values()].includes("Місце"),
+    );
     await page.getByRole("button", { name: "Знайти" }).click();
+    await searched;
     const link = page.getByTestId("place-list").getByRole("link", { name: "Місце 25", exact: true });
+    await expect(link).toBeVisible();
     await link.scrollIntoViewIfNeeded();
     const scrolled = await page.evaluate(() => window.scrollY);
     expect(scrolled).toBeGreaterThan(300);
