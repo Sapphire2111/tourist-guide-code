@@ -688,27 +688,34 @@ function AlternativeForm({
 
 // --- ресурсы ---
 
+type Editing = {
+  id: string | null;
+  part: "settings" | "rules";
+  fresh?: PartnerResource;
+  suggest?: boolean;
+};
+
 export function PartnerResources({ placeId }: { placeId: string }) {
   const { t, locale } = useT();
-  const { api } = useBookings();
+  const { api, timeZone } = useBookings();
   const { abilities, gate } = useAccessGate(placeId);
   const [state, reload] = useKeptAsync(() => api.partnerResources(placeId), [api, placeId]);
   // fresh — только что созданный ресурс: шаг 2 создания (расписание) открывается сразу, до перечитывания списка.
-  const [editing, setEditing] = useState<{
-    id: string | null;
-    part: "settings" | "rules";
-    fresh?: PartnerResource;
-  } | null>(null);
-  const close = () => {
-    if (editing?.fresh) reload();
-    setEditing(null);
+  // suggest — подставить часы работы места (шаг 2 и «Задати розклад»; не для обычной правки расписания).
+  const [editing, setEditingRaw] = useState<Editing | null>(null);
+  // Ушли с шага 2 (куда угодно) — перечитать список: нового ресурса в нём ещё нет.
+  const setEditing = (next: Editing | null) => {
+    if (editing?.fresh && !next?.fresh) reload();
+    setEditingRaw(next);
   };
+  const close = () => setEditing(null);
   useBackStep(editing !== null, close);
+  const day = today(timeZone);
   const [notice, setNotice] = useState<Message>(null);
   if (gate || !abilities) return gate;
   const manage = abilities.manageResources;
   const done = (text: string) => {
-    setEditing(null);
+    setEditingRaw(null);
     setNotice({ text, alert: false });
     reload();
   };
@@ -753,20 +760,21 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                         reload();
                       }}
                     />
-                  ) : editing?.id === r.id && editing.part === "rules" ? (
+                  ) : !editing?.fresh && editing?.id === r.id && editing.part === "rules" ? (
                     <RulesEditor
                       resource={r}
+                      suggest={editing.suggest}
                       onCancel={() => setEditing(null)}
                       onDone={() => done(t("miniapp.pres.rulesSaved"))}
                     />
                   ) : (
                     <>
-                      {/* Без открытых окон слотов нет — туристу ресурс не показывается (GET /resources). */}
-                      {!hasOpenRules(r.rules) && (
+                      {/* Без окна со слотом туристу ресурс не показывается (GET /resources); вимкнені — без предупреждения. */}
+                      {noSchedule(r, day) && (
                         <div role="note" style={warning} data-testid="resource-no-rules">
                           <p style={{ margin: 0 }}>⚠️ {t("miniapp.pres.noRules")}</p>
                           {abilities.editAvailability && (
-                            <Button onClick={() => setEditing({ id: r.id, part: "rules" })}>
+                            <Button onClick={() => setEditing({ id: r.id, part: "rules", suggest: true })}>
                               {t("miniapp.pres.setRules")}
                             </Button>
                           )}
@@ -780,7 +788,7 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                               {t("miniapp.pres.edit")}
                             </Button>
                           )}
-                          {abilities.editAvailability && (
+                          {abilities.editAvailability && !noSchedule(r, day) && (
                             <Button onClick={() => setEditing({ id: r.id, part: "rules" })}>
                               {t("miniapp.pres.rules")}
                             </Button>
@@ -799,6 +807,7 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                 </h2>
                 <RulesEditor
                   resource={fresh}
+                  suggest
                   onCancel={close}
                   onDone={() => done(t("miniapp.pres.rulesSaved"))}
                 />
@@ -814,7 +823,7 @@ export function PartnerResources({ placeId }: { placeId: string }) {
                     // Шаг 2: без расписания у ресурса нет слотов — туристы его не увидят.
                     setNotice({ text: t("miniapp.pres.created"), alert: false });
                     if (abilities.editAvailability)
-                      setEditing({ id: created.id, part: "rules", fresh: created });
+                      setEditing({ id: created.id, part: "rules", fresh: created, suggest: true });
                     else {
                       setEditing(null);
                       reload();
@@ -847,10 +856,32 @@ const warning = {
   border: "1px solid var(--app-accent-2)",
 } as const;
 
-/** Есть хотя бы одно открытое окно (недельное или на дату) — иначе слотов нет. */
-export function hasOpenRules(rules: PartnerResource["rules"]): boolean {
-  return rules.some((r) => !r.closed && Boolean(r.opensAt) && Boolean(r.closesAt));
+const minutesOf = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  return h! * 60 + m!;
+};
+
+/**
+ * Может ли у ресурса быть слот (как hasOpenRule на сервере): открытое окно не короче слота — недельное или на дату
+ * от сегодня (местная дата) в пределах «Бронювати наперед». Иначе туристу ресурс не показывается.
+ */
+export function hasOpenRules(
+  resource: Pick<PartnerResource, "rules" | "slotDurationMin" | "horizonDays">,
+  today: string,
+): boolean {
+  const last = addDays(today, resource.horizonDays);
+  return resource.rules.some(
+    (r) =>
+      !r.closed &&
+      Boolean(r.opensAt) &&
+      Boolean(r.closesAt) &&
+      minutesOf(r.closesAt!) - minutesOf(r.opensAt!) >= resource.slotDurationMin &&
+      (!r.date || (r.date >= today && r.date <= last)),
+  );
 }
+
+/** Активный ресурс без окна со слотом — предупреждение вместо обычной кнопки расписания. */
+const noSchedule = (r: PartnerResource, today: string) => r.status === "active" && !hasOpenRules(r, today);
 
 const NUMBER_FIELDS = [
   ["capacityPeople", 1, 100],
@@ -1055,8 +1086,7 @@ function HorizonHint({ value }: { value: string }) {
   if (!Number.isInteger(days) || days < 1 || days > 365) return null;
   return (
     <p className="kosiv-muted" data-testid="horizon-hint" style={{ margin: 0 }}>
-      {t("miniapp.pres.horizonHint", { days })}
-      {days < 7 && ` ${t("miniapp.pres.horizonShort")}`}
+      {t(days < 7 ? "miniapp.pres.horizonHintShort" : "miniapp.pres.horizonHint", { days })}
     </p>
   );
 }
@@ -1118,15 +1148,16 @@ export function rulesBody(
 }
 
 type EditorProps = { resource: PartnerResource; onCancel: () => void; onDone: () => void };
+type SuggestProps = EditorProps & { suggest?: boolean | undefined };
 
 /**
  * Окна по дням. Ресурс без недельного расписания (новый или так и не настроенный) — сразу предложение: часы работы
  * места (GET /partner/places/{id}; нет доступа или графика — каждый день 10:00–21:00), партнёру остаётся сохранить.
  */
-function RulesEditor(props: EditorProps) {
+function RulesEditor({ suggest, ...props }: SuggestProps) {
   const { t } = useT();
   const partner = usePartner();
-  const empty = !props.resource.rules.some((r) => r.dayOfWeek && !r.date);
+  const empty = Boolean(suggest) && !props.resource.rules.some((r) => r.dayOfWeek && !r.date);
   const [hours] = useAsync(
     () =>
       empty

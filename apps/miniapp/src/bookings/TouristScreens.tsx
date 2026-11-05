@@ -66,11 +66,9 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const { t, locale } = useT();
   const { signedIn } = useGuide();
   const name = pickLocalized(place.name, locale);
-  const [resourceId, setResourceId] = useScreenState(
-    "booking.resource",
-    () => (resources.find((r) => r.availability.availableNow) ?? resources[0])?.id ?? "",
-  );
-  const [slot, setSlot] = useScreenState<Slot | null>("booking.slot", null);
+  const preferred = resources.find((r) => r.availability.availableNow) ?? resources[0];
+  const [resourceId, setResourceId] = useScreenState("booking.resource", () => preferred?.id ?? "");
+  const [storedSlot, setSlot] = useScreenState<Slot | null>("booking.slot", null);
   // Подтверждение — только пока экран открыт: снимок статуса устарел бы, а слот в хранилище вернул бы форму.
   const [done, setDone] = useState<Booking | null>(null);
   const [notice, setNotice] = useState<Message>(null);
@@ -80,7 +78,10 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
   const [maybeOurs, setMaybeOurs] = useScreenState("booking.maybeOurs", false);
   const [sending, setSending] = useState(false);
   const [reload, setReload] = useState(0);
-  const resource = resources.find((r) => r.id === resourceId);
+  // Запомненного ресурса больше нет в списке (снят, остался без расписания) — первый доступный; его слот не берём.
+  const remembered = resources.find((r) => r.id === resourceId);
+  const resource = remembered ?? preferred;
+  const slot = remembered ? storedSlot : null;
   const resourceLabel = useId();
 
   if (!resource)
@@ -105,7 +106,7 @@ function Flow({ place, resources }: { place: PlaceDetail; resources: Resource[] 
           {t("miniapp.booking.resource")}
           <select
             id={resourceLabel}
-            value={resourceId}
+            value={resource.id}
             onChange={(e) => {
               setResourceId(e.target.value);
               setNotice(null);

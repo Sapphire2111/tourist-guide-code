@@ -1290,8 +1290,9 @@ export const en: Messages = {
     "We filled in a default schedule: every day 10:00–21:00. Adjust if needed and press «Save availability».",
   "miniapp.pres.noRules": "Tourists see no free slots: no schedule set.",
   "miniapp.pres.setRules": "Set schedule",
-  "miniapp.pres.horizonHint": "Tourists will see free slots only {days} days ahead.",
-  "miniapp.pres.horizonShort": "That is less than a week — tourists will struggle to pick a date.",
+  "miniapp.pres.horizonHint": "Tourists will see free slots {days} days ahead.",
+  "miniapp.pres.horizonHintShort":
+    "Tourists will see free slots only {days} days ahead — less than a week, so picking a date will be hard.",
   "miniapp.pres.saveError": "Could not save. Please try again.",
   "miniapp.pres.rulesHint": "Local time. A window cannot cross midnight.",
   "miniapp.pres.dayClosed": "Day off",

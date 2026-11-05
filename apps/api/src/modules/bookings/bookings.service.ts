@@ -179,7 +179,11 @@ export class BookingsService {
       // в пустоту); исключение — ручной статус партнёра «Є вільні місця» с неистёкшим TTL (бейдж в карточке).
       return {
         items: resources
-          .filter((r) => hasOpenRule(rules.get(r.id) ?? []) || availability.get(r.id)!.availableNow)
+          .filter(
+            (r) =>
+              hasOpenRule(r, rules.get(r.id) ?? [], localDate(this.now(), region.timezone)) ||
+              availability.get(r.id)!.availableNow,
+          )
           .map((r) => toResourceDto(r, availability.get(r.id)!)),
       };
     });

@@ -202,15 +202,29 @@ describe("слоты (D-04 А, BR-08)", () => {
 });
 
 describe("ресурс без расписания (публичный список)", () => {
-  it("hasOpenRule: нет правил или только выходные — false; недельное или датированное окно — true", () => {
-    expect(hasOpenRule([])).toBe(false);
-    expect(
-      hasOpenRule([{ dayOfWeek: null, date: MONDAY, closed: true, opensMin: null, closesMin: null }]),
-    ).toBe(false);
-    expect(hasOpenRule([weekly(1, 600, 1260)])).toBe(true);
-    expect(
-      hasOpenRule([{ dayOfWeek: null, date: MONDAY, closed: false, opensMin: 600, closesMin: 720 }]),
-    ).toBe(true);
+  const res = { slot_duration_min: 90, horizon_days: 30 };
+  const dated = (date: string, opens: number | null, closes: number | null, closed = false): RuleInput => ({
+    dayOfWeek: null,
+    date,
+    closed,
+    opensMin: opens,
+    closesMin: closes,
+  });
+  it("hasOpenRule: нет правил или только выходные — false; недельное окно со слотом — true", () => {
+    expect(hasOpenRule(res, [], MONDAY)).toBe(false);
+    expect(hasOpenRule(res, [dated(MONDAY, null, null, true)], MONDAY)).toBe(false);
+    expect(hasOpenRule(res, [weekly(1, 600, 1260)], MONDAY)).toBe(true);
+  });
+  it("hasOpenRule: окно короче слота — false; ровно на слот — true", () => {
+    expect(hasOpenRule(res, [weekly(1, 600, 660)], MONDAY)).toBe(false);
+    expect(hasOpenRule(res, [weekly(1, 600, 690)], MONDAY)).toBe(true);
+  });
+  it("hasOpenRule: окно на дату — только от сегодня и в пределах горизонта", () => {
+    expect(hasOpenRule(res, [dated("2026-11-08", 600, 720)], MONDAY)).toBe(false);
+    expect(hasOpenRule(res, [dated(MONDAY, 600, 720)], MONDAY)).toBe(true);
+    expect(hasOpenRule(res, [dated("2026-12-09", 600, 720)], MONDAY)).toBe(true);
+    expect(hasOpenRule(res, [dated("2026-12-10", 600, 720)], MONDAY)).toBe(false);
+    expect(hasOpenRule({ ...res, horizon_days: 1 }, [dated("2026-11-11", 600, 720)], MONDAY)).toBe(false);
   });
 });
 

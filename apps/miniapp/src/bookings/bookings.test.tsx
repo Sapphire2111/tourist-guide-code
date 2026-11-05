@@ -26,7 +26,14 @@ import {
   today,
   zonedIso,
 } from "./format.js";
-import { PartnerBookings, PartnerResources, rulesBody, suggestedWeekly, weeklyOf } from "./PartnerScreens.js";
+import {
+  hasOpenRules,
+  PartnerBookings,
+  PartnerResources,
+  rulesBody,
+  suggestedWeekly,
+  weeklyOf,
+} from "./PartnerScreens.js";
 import { lazyScreen } from "./lazy.js";
 import { BookingFlow, MyBookings, sortBookings } from "./TouristScreens.js";
 
@@ -1123,10 +1130,82 @@ describe("ресурс без расписания: шаг 2 создания, �
     fireEvent.click(await screen.findByRole("button", { name: "Налаштування" }));
     expect(screen.queryByTestId("resource-no-rules")).toBeNull();
     expect(screen.getByTestId("horizon-hint").textContent).toBe(
-      "Туристи бачитимуть вільні слоти лише на 30 дн. наперед.",
+      "Туристи бачитимуть вільні слоти на 30 дн. наперед.",
     );
     fireEvent.change(screen.getByLabelText("Бронювати наперед, днів"), { target: { value: "1" } });
-    expect(screen.getByTestId("horizon-hint").textContent).toContain("менше тижня");
+    expect(screen.getByTestId("horizon-hint").textContent).toBe(
+      "Туристи бачитимуть вільні слоти лише на 1 дн. наперед — це менше тижня, туристам буде важко обрати дату.",
+    );
+  });
+
+  it("hasOpenRules: окно короче слота, прошедшая дата и дата за горизонтом не считаются", () => {
+    const base = { slotDurationMin: 90, horizonDays: 30 };
+    const day = "2026-11-09";
+    const win = (o: Partial<PartnerResource["rules"][number]>) => ({
+      dayOfWeek: 1,
+      date: null,
+      closed: false,
+      opensAt: "10:00",
+      closesAt: "21:00",
+      ...o,
+    });
+    expect(hasOpenRules({ ...base, rules: [] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [win({})] }, day)).toBe(true);
+    expect(hasOpenRules({ ...base, rules: [win({ closesAt: "11:00" })] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [win({ closesAt: "24:00", opensAt: "22:30" })] }, day)).toBe(true);
+    const dated = (date: string) => win({ dayOfWeek: null, date });
+    expect(hasOpenRules({ ...base, rules: [dated("2026-11-08")] }, day)).toBe(false);
+    expect(hasOpenRules({ ...base, rules: [dated("2026-12-09")] }, day)).toBe(true);
+    expect(hasOpenRules({ ...base, rules: [dated("2026-12-10")] }, day)).toBe(false);
+  });
+
+  it("обычная «Доступність по днях» на очищенном расписании — без подстановки; вимкнений — без предупреждения", async () => {
+    const place = vi.fn(async () => ({ schedule: { timezone: TZ, weekly: [], exceptions: [] } }));
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      partnerApi: { place } as unknown as Partial<PartnerApi>,
+      api: fakeApi({
+        partnerResources: vi.fn(async () => [
+          partnerResource({ status: "inactive", rules: [] }),
+          partnerResource({ id: "r2", rules: [] }),
+        ]),
+      }),
+    });
+    const [paused, active] = await screen.findAllByTestId("resource");
+    expect(within(paused!).queryByTestId("resource-no-rules")).toBeNull();
+    // У активного без расписания — только «Задати розклад», обычная кнопка скрыта.
+    expect(within(active!).queryByRole("button", { name: "Доступність по днях" })).toBeNull();
+    fireEvent.click(within(paused!).getByRole("button", { name: "Доступність по днях" }));
+    expect(await screen.findByTestId("rules-form")).toBeTruthy();
+    expect(screen.queryByTestId("rules-suggested")).toBeNull();
+    expect(screen.getAllByText("Вихідний")).toHaveLength(7);
+    expect(place).not.toHaveBeenCalled();
+  });
+
+  it("шаг 2: переход к другому ресурсу — список перечитывается, редактор нового ресурса не дублируется", async () => {
+    const created = partnerResource({ id: "new-res", name: { uk: "Стіл" }, rules: [] });
+    const partnerResources = vi.fn(async () => [partnerResource()]);
+    renderWith(<PartnerResources placeId={PLACE} />, {
+      partner: { role: "ORG_MANAGER" },
+      api: fakeApi({ partnerResources, createResource: vi.fn(async () => created) }),
+    });
+    fireEvent.click(await screen.findByTestId("resource-new"));
+    fireEvent.change(screen.getByLabelText("Назва (наприклад, «Чан №1»)"), { target: { value: "Стіл" } });
+    await act(async () => fireEvent.submit(screen.getByTestId("resource-form")));
+    await screen.findByTestId("resource-step2");
+    partnerResources.mockResolvedValue([partnerResource(), created]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Налаштування" })));
+    expect(partnerResources).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("resource-step2")).toBeNull();
+    expect(screen.queryAllByTestId("rules-form")).toHaveLength(0);
+  });
+
+  it("турист: запомненного ресурса нет в списке — первый доступный, его слот не берётся", async () => {
+    writeSlot(currentEntryKey(), "booking.resource", "gone");
+    writeSlot(currentEntryKey(), "booking.slot", { startsAt: at("10:00"), endsAt: at("11:00"), free: true });
+    renderWith(<BookingFlow placeId={PLACE} />);
+    expect(await screen.findByTestId("slots")).toBeTruthy();
+    expect(screen.queryByTestId("booking-unavailable")).toBeNull();
   });
 
   it("турист: ни одного слота — «Онлайн-запис поки недоступний — зателефонуйте закладу» и звонок", async () => {
