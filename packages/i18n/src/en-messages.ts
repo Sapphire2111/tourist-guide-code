@@ -1150,6 +1150,8 @@ export const en: Messages = {
   "miniapp.booking.slotsError": "Could not load available times. Please try again.",
   "miniapp.booking.noSlotsDay": "No free slots on this date — choose another.",
   "miniapp.booking.noSlotsWeek": "No free slots in the coming days. Check availability with the venue.",
+  "miniapp.booking.noSchedule": "Online booking is not available yet — please call the venue.",
+  "miniapp.booking.noScheduleNoPhone": "Online booking is not available yet — please try later.",
   "miniapp.booking.pickSlot": "Choose this time",
   "miniapp.booking.when": "Date and time",
   "miniapp.booking.price": "Approximate price",
@@ -1296,7 +1298,17 @@ export const en: Messages = {
   "miniapp.pres.save": "Save",
   "miniapp.pres.create": "Create resource",
   "miniapp.pres.saved": "Resource saved.",
-  "miniapp.pres.created": "Resource created. Add availability by day.",
+  "miniapp.pres.created": "Resource created. Step 2 — schedule: without it tourists will not see free slots.",
+  "miniapp.pres.step2": "Step 2 of 2: when «{name}» can be booked",
+  "miniapp.pres.suggestedFromPlace":
+    "We filled in the venue opening hours. Check them and press «Save availability».",
+  "miniapp.pres.suggestedDefault":
+    "We filled in a default schedule: every day 10:00–21:00. Adjust if needed and press «Save availability».",
+  "miniapp.pres.noRules": "Tourists see no free slots: no schedule set.",
+  "miniapp.pres.setRules": "Set schedule",
+  "miniapp.pres.horizonHint": "Tourists will see free slots {days} days ahead.",
+  "miniapp.pres.horizonHintShort":
+    "Tourists will see free slots only {days} days ahead — less than a week, so picking a date will be hard.",
   "miniapp.pres.saveError": "Could not save. Please try again.",
   "miniapp.pres.rulesHint": "Local time. A window cannot cross midnight.",
   "miniapp.pres.dayClosed": "Day off",

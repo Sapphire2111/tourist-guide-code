@@ -220,6 +220,27 @@ export type SlotResource = {
 export type Slot = { startsAt: Date; endsAt: Date; occupiedFrom: Date; occupiedUntil: Date };
 export type BusyRange = { from: Date; until: Date };
 
+/**
+ * Может ли у ресурса быть слот: есть открытое окно, в которое помещается слот (как в generateSlots:
+ * начало + slot_duration_min ≤ закрытие), — недельное или на дату от today (местная) в пределах horizon_days.
+ * Без такого окна слотов нет никогда — туристу ресурс не показывается.
+ */
+export function hasOpenRule(
+  resource: Pick<SlotResource, "slot_duration_min" | "horizon_days">,
+  rules: readonly RuleInput[],
+  today: string,
+): boolean {
+  const last = addDays(today, resource.horizon_days);
+  return rules.some(
+    (r) =>
+      !r.closed &&
+      r.opensMin !== null &&
+      r.closesMin !== null &&
+      r.closesMin - r.opensMin >= resource.slot_duration_min &&
+      (r.date === null || (r.date >= today && r.date <= last)),
+  );
+}
+
 /** Окна даты: правила на дату перекрывают недельные (closed — выходной). */
 export function windowsOn(rules: readonly RuleInput[], date: string, dayOfWeek: number): [number, number][] {
   const dated = rules.filter((r) => r.date === date);

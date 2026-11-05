@@ -42,6 +42,7 @@ import {
   customerResponseDue,
   findSlot,
   generateSlots,
+  hasOpenRule,
   isFree,
   localDate,
   normalizeCustomerName,
@@ -172,8 +173,19 @@ export class BookingsService {
       const place = await this.repo.findPlace(placeId);
       if (place?.status !== "published") throw notFound();
       const resources = await this.repo.resourcesOfPlaces([place.id], ["active"]);
-      const availability = await this.availabilityOf(resources, region.timezone);
-      return { items: resources.map((r) => toResourceDto(r, availability.get(r.id)!)) };
+      const rules = await this.repo.rulesOf(resources.map((r) => r.id));
+      const availability = await this.availabilityOf(resources, region.timezone, rules);
+      // Без открытых окон расписания слотов нет никогда — туристу такой ресурс не показываем («Забронювати» вёл бы
+      // в пустоту); исключение — ручной статус партнёра «Є вільні місця» с неистёкшим TTL (бейдж в карточке).
+      return {
+        items: resources
+          .filter(
+            (r) =>
+              hasOpenRule(r, rules.get(r.id) ?? [], localDate(this.now(), region.timezone)) ||
+              availability.get(r.id)!.availableNow,
+          )
+          .map((r) => toResourceDto(r, availability.get(r.id)!)),
+      };
     });
   }
 
@@ -870,12 +882,13 @@ export class BookingsService {
   private async availabilityOf(
     resources: readonly Resource[],
     timeZone: string,
+    known?: Map<string, RuleInput[]>,
   ): Promise<Map<string, AvailabilityNow>> {
     const out = new Map<string, AvailabilityNow>();
     if (resources.length === 0) return out;
     const now = this.now();
     const ids = resources.map((r) => r.id);
-    const rules = await this.repo.rulesOf(ids);
+    const rules = known ?? (await this.repo.rulesOf(ids));
     const busy = await this.repo.busyRanges(
       ids,
       new Date(now.getTime() - 24 * HOUR),

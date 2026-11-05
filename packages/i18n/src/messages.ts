@@ -1137,6 +1137,8 @@ export const uk = {
   "miniapp.booking.slotsError": "Не вдалося завантажити вільний час. Спробуйте ще раз.",
   "miniapp.booking.noSlotsDay": "Немає вільних слотів на цю дату — оберіть іншу.",
   "miniapp.booking.noSlotsWeek": "Найближчими днями вільних слотів немає. Уточніть доступність у закладу.",
+  "miniapp.booking.noSchedule": "Онлайн-запис поки недоступний — зателефонуйте закладу.",
+  "miniapp.booking.noScheduleNoPhone": "Онлайн-запис поки недоступний — спробуйте пізніше.",
   "miniapp.booking.pickSlot": "Обрати цей час",
   "miniapp.booking.when": "Дата і час",
   "miniapp.booking.price": "Орієнтовна ціна",
@@ -1284,7 +1286,17 @@ export const uk = {
   "miniapp.pres.save": "Зберегти",
   "miniapp.pres.create": "Створити ресурс",
   "miniapp.pres.saved": "Ресурс збережено.",
-  "miniapp.pres.created": "Ресурс створено. Додайте доступність по днях.",
+  "miniapp.pres.created": "Ресурс створено. Крок 2 — розклад: без нього туристи не побачать вільних слотів.",
+  "miniapp.pres.step2": "Крок 2 з 2: коли можна бронювати «{name}»",
+  "miniapp.pres.suggestedFromPlace":
+    "Ми підставили години роботи закладу. Перевірте та натисніть «Зберегти доступність».",
+  "miniapp.pres.suggestedDefault":
+    "Ми підставили типовий розклад: щодня 10:00–21:00. Змініть за потреби та натисніть «Зберегти доступність».",
+  "miniapp.pres.noRules": "Туристи не бачать вільних слотів: не задано розклад.",
+  "miniapp.pres.setRules": "Задати розклад",
+  "miniapp.pres.horizonHint": "Туристи бачитимуть вільні слоти на {days} дн. наперед.",
+  "miniapp.pres.horizonHintShort":
+    "Туристи бачитимуть вільні слоти лише на {days} дн. наперед — це менше тижня, туристам буде важко обрати дату.",
   "miniapp.pres.saveError": "Не вдалося зберегти. Спробуйте ще раз.",
   "miniapp.pres.rulesHint": "Місцевий час. Інтервал не переходить через північ.",
   "miniapp.pres.dayClosed": "Вихідний",
