@@ -297,6 +297,24 @@ export class PartnerController {
     return this.partner.submit(userOf(req), id, body, auditFromRequest(req));
   }
 
+  @Delete("places/:id")
+  @HttpCode(204)
+  @ApiOperation({
+    operationId: "deletePartnerPlace",
+    summary: "«Видалити чернетку»: заведение, которое ни разу не публиковалось (только ORG_OWNER)",
+    description:
+      "Статусы draft | changes_requested | rejected и пустой first_published_at. 409 " +
+      "errors.partner.placeOncePublished (details.reason = once_published) — место публиковалось (в т. ч. заявленное " +
+      "из Google); 409 errors.partner.placeNotEditable (not_draft) — на модерации; 409 errors.place.notDeletable — " +
+      "история бейджа; 409 errors.catalog.inUse — есть брони/ресурсы/отзывы. Организация остаётся. Удаление — AuditLog.",
+  })
+  @ApiParam({ name: "id", type: String, format: "uuid" })
+  @ApiNoContentResponse({ description: "Удалено" })
+  @ApiErrors(...PLACE_ERRORS, "CONFLICT")
+  async deletePlace(@Param("id", uuid) id: string, @Req() req: AuthedRequest): Promise<void> {
+    await this.partner.deletePlace(userOf(req), id, auditFromRequest(req));
+  }
+
   // --- акции (P07) ---
 
   @Get("places/:id/offers")

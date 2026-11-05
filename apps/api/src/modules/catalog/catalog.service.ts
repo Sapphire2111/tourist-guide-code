@@ -19,6 +19,7 @@ import {
 } from "../../db/index.js";
 import { AuditService, type AuditEntry } from "../audit/index.js";
 import {
+  archiveNeedsDelete,
   canTransition,
   likePattern,
   publishProblems,
@@ -59,6 +60,7 @@ export type CatalogErrorReason =
   | "not_publishable"
   | "moderation_required"
   | "not_deletable"
+  | "archive_never_published"
   | "schedule_invalid"
   | "media_not_found"
   | "media_not_image"
@@ -695,6 +697,8 @@ export class CatalogService {
     requireRegionContext();
     const before = (await this.repo.lockPlace(id)) ?? notFound();
     if (!canTransition(before.status, action)) throw new CatalogError("invalid_transition");
+    if (archiveNeedsDelete(action, before.first_published_at))
+      throw new CatalogError("archive_never_published");
     // Место партнёра (блок 6, ADR-0021) впервые публикуется только решением модератора (AD02), не админом напрямую.
     if (action === "publish" && !!before.organization_id && !before.first_published_at)
       throw new CatalogError("moderation_required");

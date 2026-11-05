@@ -617,4 +617,21 @@ describe("места: валидация, публикация, бейдж, ау
     expect((await request(server).delete(`/admin/places/${id("a", 4)}`)).status).toBe(204);
     expect(data.places!.map((p) => p.id)).toEqual([id("b", 4)]);
   });
+
+  it("архив ни разу не публиковавшегося черновика — 409 archiveNeverPublished (не 500 из CHECK), без изменений", async () => {
+    const { server, data } = await start([REGION_ADMIN_A]);
+    const place = data.places!.find((p) => p.id === id("a", 4))!;
+    const denied = await request(server).post(`/admin/places/${place.id}/archive`).send({});
+    expect(denied.status).toBe(409);
+    expect(errorOf(denied).messageKey).toBe("errors.catalog.archiveNeverPublished");
+    expect(errorOf(denied).details).toMatchObject({ reason: "archive_never_published" });
+    expect(place.status).toBe("draft");
+    expect(data.audit_logs ?? []).toEqual([]);
+    // Публиковавшееся раньше (снято с публикации обратно в черновик не бывает, но правило — по first_published_at).
+    place.first_published_at = T0;
+    const ok = await request(server).post(`/admin/places/${place.id}/archive`).send({});
+    expect(ok.status).toBe(200);
+    expect((ok.body as { status: string; firstPublishedAt: string }).status).toBe("archived");
+    expect((ok.body as { firstPublishedAt: string }).firstPublishedAt).toBe(T0.toISOString());
+  });
 });

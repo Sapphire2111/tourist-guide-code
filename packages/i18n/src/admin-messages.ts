@@ -182,6 +182,8 @@ export const adminUk = {
   "admin.place.publish": "Опублікувати",
   "admin.place.suspend": "Призупинити",
   "admin.place.archive": "До архіву",
+  "admin.place.deleteDraft": "Видалити чернетку",
+  "admin.place.deleteDraftConfirm": "Видалити «{name}»? Це не можна скасувати.",
   "admin.place.check": "Перевірити готовність",
   "admin.place.checkOk": "Місце готове до публікації.",
   "admin.problem.description_missing": "Немає опису українською.",
@@ -586,6 +588,8 @@ export const adminUk = {
 export type AdminMessageKey = keyof typeof adminUk;
 
 export const adminEn: Partial<Record<AdminMessageKey, string>> = {
+  "admin.place.deleteDraft": "Delete draft",
+  "admin.place.deleteDraftConfirm": "Delete “{name}”? This can't be undone.",
   "admin.placeStatus.pending_moderation": "Pending moderation",
   "admin.placeStatus.changes_requested": "Changes requested",
   "admin.placeStatus.rejected": "Rejected",

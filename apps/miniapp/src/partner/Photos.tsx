@@ -1,6 +1,6 @@
 // Фото заведения: одна кнопка «Додати фото» (несколько файлов, загрузка сразу), подпись необязательна,
-// «Обкладинка» на первом, удаление с подтверждением в нижнем листе. Поток загрузки — api.uploadPhoto (upload + confirm).
-import { useCallback, useId, useRef, useState } from "react";
+// «Обкладинка» на первом, удаление с подтверждением в нижнем листе (ConfirmSheet — и для удаления черновика). Поток загрузки — api.uploadPhoto (upload + confirm).
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pickLocalized } from "@tg/i18n";
 import { Button, useT } from "@tg/ui";
@@ -14,18 +14,26 @@ export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 type Upload = { key: number; file: File; alt: string; state: "uploading" | "error"; error?: string };
 
-function ConfirmDelete({
-  url,
-  label,
+/** Нижний лист подтверждения необратимого действия (удаление фото, удаление черновика заведения). */
+export function ConfirmSheet({
+  title: heading,
+  text,
+  confirmLabel,
+  cancelLabel,
+  testId,
+  children,
   onConfirm,
   onClose,
 }: {
-  url: string | undefined;
-  label: string;
+  title: string;
+  text: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  testId: string;
+  children?: ReactNode;
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -40,16 +48,43 @@ function ConfirmDelete({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={title}
-        data-testid="photo-confirm"
+        data-testid={testId}
       >
-        <h2 id={title}>{t("miniapp.partner.photos.confirmTitle")}</h2>
-        {url && <img src={url} alt={label} className="partner-photo-preview" />}
-        <p>{t("miniapp.partner.photos.confirmText")}</p>
-        <Button onClick={onConfirm}>{t("miniapp.partner.photos.confirmYes")}</Button>
-        <Button onClick={close}>{t("miniapp.partner.photos.cancel")}</Button>
+        <h2 id={title}>{heading}</h2>
+        {children}
+        <p>{text}</p>
+        <Button onClick={onConfirm}>{confirmLabel}</Button>
+        <Button onClick={close}>{cancelLabel}</Button>
       </div>
     </div>,
     document.body,
+  );
+}
+
+function ConfirmDelete({
+  url,
+  label,
+  onConfirm,
+  onClose,
+}: {
+  url: string | undefined;
+  label: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <ConfirmSheet
+      title={t("miniapp.partner.photos.confirmTitle")}
+      text={t("miniapp.partner.photos.confirmText")}
+      confirmLabel={t("miniapp.partner.photos.confirmYes")}
+      cancelLabel={t("miniapp.partner.photos.cancel")}
+      testId="photo-confirm"
+      onConfirm={onConfirm}
+      onClose={onClose}
+    >
+      {url && <img src={url} alt={label} className="partner-photo-preview" />}
+    </ConfirmSheet>
   );
 }
 

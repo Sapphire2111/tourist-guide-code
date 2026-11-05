@@ -1497,7 +1497,11 @@ export interface paths {
     get: operations["getPartnerPlace"];
     put?: never;
     post?: never;
-    delete?: never;
+    /**
+     * «Видалити чернетку»: заведение, которое ни разу не публиковалось (только ORG_OWNER)
+     * @description Статусы draft | changes_requested | rejected и пустой first_published_at. 409 errors.partner.placeOncePublished (details.reason = once_published) — место публиковалось (в т. ч. заявленное из Google); 409 errors.partner.placeNotEditable (not_draft) — на модерации; 409 errors.place.notDeletable — история бейджа; 409 errors.catalog.inUse — есть брони/ресурсы/отзывы. Организация остаётся. Удаление — AuditLog.
+     */
+    delete: operations["deletePartnerPlace"];
     options?: never;
     head?: never;
     /**
@@ -3434,6 +3438,11 @@ export interface components {
        * @description Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId=
        */
       organizationId: string | null;
+      /**
+       * Format: date-time
+       * @description Первая публикация; null — ни разу не публиковалось: архив недоступен (409), черновик удаляется DELETE
+       */
+      firstPublishedAt: string | null;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -5348,6 +5357,8 @@ export interface components {
       abilities: components["schemas"]["PartnerAbilitiesDto"];
       /** @description Можно ли сейчас править: false — на модерации (pending_moderation), приостановлено или в архиве */
       editable: boolean;
+      /** @description Можно ли удалить черновик (DELETE /partner/places/{id}): ни разу не публиковалось, не на модерации, роль с правом отправки на модерацию (ORG_OWNER) */
+      deletable: boolean;
       /** Format: uuid */
       categoryId: string;
       /** Format: uuid */
@@ -16298,6 +16309,106 @@ export interface operations {
       };
       /** @description Ошибка */
       404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  deletePartnerPlace: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Удалено */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
         headers: {
           /** @description Correlation id запроса */
           "x-request-id"?: string;

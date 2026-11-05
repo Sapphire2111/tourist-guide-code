@@ -1,6 +1,12 @@
 // Unit: правила каталога (ADR-0017) — переходы статусов, готовность к публикации, проверка графика.
 import { describe, expect, it } from "vitest";
-import { canTransition, likePattern, publishProblems, scheduleProblems } from "./catalog-rules.js";
+import {
+  archiveNeedsDelete,
+  canTransition,
+  likePattern,
+  publishProblems,
+  scheduleProblems,
+} from "./catalog-rules.js";
 
 const ready = {
   place: { description_i18n: { uk: "Опис" }, address_i18n: { uk: "Адреса" }, hasLocation: true },
@@ -16,6 +22,13 @@ describe("переходы статусов места", () => {
     expect(canTransition("draft", "suspend")).toBe(false);
     expect(canTransition("archived", "archive")).toBe(false);
     expect(canTransition("published", "archive")).toBe(true);
+  });
+
+  it("архив — только публиковавшемуся: без first_published_at — удаление (CHECK places_published_once)", () => {
+    expect(archiveNeedsDelete("archive", null)).toBe(true);
+    expect(archiveNeedsDelete("archive", new Date())).toBe(false);
+    expect(archiveNeedsDelete("suspend", null)).toBe(false);
+    expect(archiveNeedsDelete("publish", null)).toBe(false);
   });
 });
 

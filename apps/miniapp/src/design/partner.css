@@ -529,6 +529,29 @@
   overflow-wrap: anywhere;
 }
 
+/* «Видалити чернетку»: тихая ссылка внизу редактора, не кнопка-призыв. */
+.partner-delete-draft {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 4px 8px;
+}
+.partner-danger-link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-danger, #b91c1c);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.partner-danger-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Нижний лист (карта точки, подтверждение удаления). */
 .partner-backdrop {
   position: fixed;

@@ -3,9 +3,11 @@
 // личности, у опубликованного они заблокированы (409 identityChangeRequiresModeration — через админа региона).
 // «Зберегти» шлёт все изменённые поля всех секций одним PATCH и, если менялся график, PUT /schedule.
 // Раздел открывается по ?section=basic|photos|schedule|extra в адресе (ссылки с дашборда).
+// Ни разу не публиковавшийся черновик (place.deletable — решает сервер, с ролью) — тихая ссылка «Видалити чернетку»
+// внизу с подтверждением в нижнем листе; после удаления — назад на дашборд (список заведений перечитывается).
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { pickLocalized } from "@tg/i18n";
-import { Button, useT } from "@tg/ui";
+import { Button, useRoute, useT } from "@tg/ui";
 import { NotFoundError } from "../guide/types.js";
 import { useErrorText } from "../host/errors.js";
 import { ApiCallError } from "../host/types.js";
@@ -13,7 +15,7 @@ import { useKeptAsync, usePartner } from "./context.js";
 import { LocationPicker } from "./LocationPicker.js";
 import type { PartnerField, PartnerPlace, PlacePatch, Schedule } from "./partner-api.js";
 import { fieldKey, Live, PartnerHeader, PlaceStatusCard, type Message } from "./parts.js";
-import { Photos } from "./Photos.js";
+import { ConfirmSheet, Photos } from "./Photos.js";
 import { sameSchedule, ScheduleForm, type Row } from "./ScheduleForm.js";
 import { SECTIONS, sectionOf, type SectionId } from "./sections.js";
 
@@ -243,6 +245,9 @@ function EditorBody({
   const [message, setMessage] = useState<Message>(null);
   const [submitMessage, setSubmitMessage] = useState<Message>(null);
   const [serverMissing, setServerMissing] = useState<PartnerField[] | null>(null);
+  const [askDelete, setAskDelete] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState<Message>(null);
+  const [, navigate] = useRoute();
   const termsRef = useRef<HTMLInputElement>(null);
   const target = useRef(sectionFromHash());
 
@@ -360,6 +365,23 @@ function EditorBody({
       setSubmitMessage({ text: errorText(err, "miniapp.partner.submit.error"), alert: true });
     } finally {
       setBusy(false);
+    }
+  };
+
+  const removeDraft = async () => {
+    setAskDelete(false);
+    setDeleteMessage(null);
+    setBusy(true);
+    try {
+      await api.deletePlace(place.id);
+      // Предупреждение о несохранённых правках не нужно: карточки больше нет.
+      reloadMe();
+      navigate("/partner", { replace: true });
+    } catch (err) {
+      setDeleteMessage({ text: errorText(err, "miniapp.partner.deleteDraft.error"), alert: true });
+      setBusy(false);
+      // 409: место успели отправить или опубликовать — показать актуальный статус.
+      reload();
     }
   };
 
@@ -555,6 +577,34 @@ function EditorBody({
                   ))}
               </div>
             </section>
+          )}
+
+          {place.deletable && (
+            <div className="partner-delete-draft" data-testid="delete-draft">
+              <p className="partner-field-hint">{t("miniapp.partner.deleteDraft.hint")}</p>
+              <button
+                type="button"
+                className="partner-danger-link"
+                disabled={busy}
+                onClick={() => setAskDelete(true)}
+              >
+                {t("miniapp.partner.deleteDraft.button")}
+              </button>
+              <Live message={deleteMessage} testId="delete-draft-message" />
+            </div>
+          )}
+          {askDelete && (
+            <ConfirmSheet
+              title={t("miniapp.partner.deleteDraft.confirmTitle", {
+                name: pickLocalized(place.name, locale),
+              })}
+              text={t("miniapp.partner.deleteDraft.confirmText")}
+              confirmLabel={t("miniapp.partner.deleteDraft.confirmYes")}
+              cancelLabel={t("miniapp.partner.photos.cancel")}
+              testId="delete-draft-confirm"
+              onConfirm={() => void removeDraft()}
+              onClose={() => setAskDelete(false)}
+            />
           )}
 
           {place.editable && (

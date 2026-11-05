@@ -9283,6 +9283,89 @@
         "security": [{ "session": [] }],
         "summary": "Правка карточки (P06): черновик или живая версия опубликованного (без PlaceRevision, §1.6)",
         "tags": ["partner"]
+      },
+      "delete": {
+        "description": "Статусы draft | changes_requested | rejected и пустой first_published_at. 409 errors.partner.placeOncePublished (details.reason = once_published) — место публиковалось (в т. ч. заявленное из Google); 409 errors.partner.placeNotEditable (not_draft) — на модерации; 409 errors.place.notDeletable — история бейджа; 409 errors.catalog.inUse — есть брони/ресурсы/отзывы. Организация остаётся. Удаление — AuditLog.",
+        "operationId": "deletePartnerPlace",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Удалено" },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Видалити чернетку»: заведение, которое ни разу не публиковалось (только ORG_OWNER)",
+        "tags": ["partner"]
       }
     },
     "/partner/places/{id}/schedule": {
@@ -16620,6 +16703,12 @@
             "nullable": true,
             "description": "Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId="
           },
+          "firstPublishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Первая публикация; null — ни разу не публиковалось: архив недоступен (409), черновик удаляется DELETE"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -16641,6 +16730,7 @@
           "extraCategoryIds",
           "hostCapable",
           "organizationId",
+          "firstPublishedAt",
           "createdAt",
           "updatedAt"
         ]
@@ -19934,6 +20024,10 @@
             "type": "boolean",
             "description": "Можно ли сейчас править: false — на модерации (pending_moderation), приостановлено или в архиве"
           },
+          "deletable": {
+            "type": "boolean",
+            "description": "Можно ли удалить черновик (DELETE /partner/places/{id}): ни разу не публиковалось, не на модерации, роль с правом отправки на модерацию (ORG_OWNER)"
+          },
           "categoryId": { "type": "string", "format": "uuid" },
           "localityId": { "type": "string", "format": "uuid", "nullable": true },
           "name": { "$ref": "#/components/schemas/ShortTextDto" },
@@ -19989,6 +20083,7 @@
           "role",
           "abilities",
           "editable",
+          "deletable",
           "categoryId",
           "localityId",
           "name",

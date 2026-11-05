@@ -419,6 +419,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           recommended: false,
           hostCapable: false,
           verifiedAt: null,
+          firstPublishedAt: null,
           tagIds: [],
           createdAt: NOW,
           updatedAt: NOW,
@@ -433,6 +434,13 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
         if (!place) return error(route, 404, "NOT_FOUND", "errors.notFound");
         const sub = placeMatch[2];
         if (!sub && method === "GET") return json(route, place);
+        if (!sub && method === "DELETE") {
+          // Как в api: удаляется только ни разу не публиковавшееся (firstPublishedAt: null).
+          if (place.firstPublishedAt !== null)
+            return error(route, 409, "CONFLICT", "errors.place.notDeletable", { reason: "not_deletable" });
+          state.places.splice(state.places.indexOf(place), 1);
+          return json(route, null, 204);
+        }
         if (!sub && method === "PATCH") {
           Object.assign(place, body, { updatedAt: NOW });
           return json(route, place);
@@ -450,6 +458,7 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
               problems,
             });
           place.status = "published";
+          place.firstPublishedAt ??= NOW;
           return json(route, place);
         }
         if (sub === "suspend" || sub === "archive") {
@@ -460,6 +469,11 @@ export async function installAdminApiMock(page: Page): Promise<AdminMockState> {
           )
             return error(route, 409, "CONFLICT", "errors.place.invalidTransition", {
               reason: "invalid_transition",
+            });
+          // Ни разу не публиковавшееся в архив не переводится (CHECK places_published_once) — удаление.
+          if (sub === "archive" && place.firstPublishedAt === null)
+            return error(route, 409, "CONFLICT", "errors.catalog.archiveNeverPublished", {
+              reason: "archive_never_published",
             });
           place.status = sub === "suspend" ? "suspended" : "archived";
           return json(route, place);

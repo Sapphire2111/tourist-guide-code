@@ -242,10 +242,19 @@ function PlaceFields({ form, set }: { form: PlaceForm; set: (patch: Partial<Plac
   );
 }
 
-/** Статус: публикация / приостановка / архив с причиной; 422 — список проблем публикации. */
+/** Ни разу не публиковавшийся черновик (не на модерации): архив запрещён (409, CHECK places_published_once) — удаление. */
+export const isDeletableDraft = (p: Pick<Place, "status" | "firstPublishedAt">): boolean =>
+  p.firstPublishedAt === null && ["draft", "changes_requested", "rejected"].includes(p.status);
+
+/**
+ * Статус: публикация / приостановка / архив с причиной; 422 — список проблем публикации. Черновик, который ни разу
+ * не публиковался, — «Видалити чернетку» вместо «До архіву» (DELETE, после — к списку мест).
+ */
 function PlaceStatus({ place, onChange }: { place: Place; onChange: (p: Place) => void }) {
   const { api } = useAdmin();
   const { t, tDynamic } = useT();
+  const l = useLocalized();
+  const [, navigate] = useRoute();
   const [acting, act] = useBusy();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<ApiError | null>(null);
@@ -271,6 +280,14 @@ function PlaceStatus({ place, onChange }: { place: Place; onChange: (p: Place) =
     setReason("");
     setNotice(tDynamic(`admin.placeStatus.${res.data.status}`));
     onChange(res.data);
+  };
+
+  const remove = async () => {
+    if (!window.confirm(t("admin.place.deleteDraftConfirm", { name: l(place.name) }))) return;
+    setNotice(null);
+    const res = await call(api.DELETE("/admin/places/{id}", { params: { path: { id: place.id } } }));
+    if (!res.ok) return setError(res.error);
+    navigate("/places", { replace: true });
   };
 
   const check = async () => {
@@ -302,10 +319,17 @@ function PlaceStatus({ place, onChange }: { place: Place; onChange: (p: Place) =
               {t("admin.place.suspend")}
             </SmallButton>
           )}
-          {s !== "archived" && !MODERATION_STATUSES.includes(s) && (
-            <SmallButton disabled={acting} onClick={() => act(() => transition("archive"))}>
-              {t("admin.place.archive")}
+          {isDeletableDraft(place) ? (
+            <SmallButton disabled={acting} onClick={() => act(() => remove())}>
+              {t("admin.place.deleteDraft")}
             </SmallButton>
+          ) : (
+            s !== "archived" &&
+            !MODERATION_STATUSES.includes(s) && (
+              <SmallButton disabled={acting} onClick={() => act(() => transition("archive"))}>
+                {t("admin.place.archive")}
+              </SmallButton>
+            )
           )}
           <SmallButton disabled={acting} onClick={() => act(() => check())}>
             {t("admin.place.check")}
