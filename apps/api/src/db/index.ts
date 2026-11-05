@@ -297,3 +297,13 @@ export {
   type ReviewStatus,
   type ReviewVerificationLevel,
 } from "./schema.js";
+// Заявки «Це мій заклад» (0031).
+export {
+  PLACE_CLAIM_PHONE_SOURCES,
+  PLACE_CLAIM_ROLES,
+  PLACE_CLAIM_STATUSES,
+  type PlaceClaim,
+  type PlaceClaimPhoneSource,
+  type PlaceClaimRole,
+  type PlaceClaimStatus,
+} from "./schema.js";

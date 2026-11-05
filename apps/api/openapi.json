@@ -10999,6 +10999,501 @@
         "tags": ["admin"]
       }
     },
+    "/partner/claims": {
+      "get": {
+        "operationId": "listMyPlaceClaims",
+        "parameters": [
+          {
+            "name": "regionId",
+            "required": true,
+            "in": "query",
+            "description": "Регион (заявки пользователя в нём)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimListDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Мои заявки «Це мій заклад» в регионе (новые сверху): статус и комментарий модератора",
+        "tags": ["partner"]
+      },
+      "post": {
+        "description": "Организация — своя (organizationId, где пользователь ORG_OWNER) или новая (organizationName) — ровно одно, иначе 400. 403 not_org_owner — чужая организация; 404 — места нет или оно не опубликовано; 409 errors.placeClaim.alreadyClaimed — у места уже есть организация; 409 errors.placeClaim.duplicate — уже есть ваша заявка на рассмотрении. Создание — в AuditLog; модераторам региона — уведомление ботом.",
+        "operationId": "createPlaceClaim",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreatePlaceClaimDto" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimDto" } } }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "429": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Це мій заклад»: заявка на опубликованное место без организации → pending (проверяет модератор)",
+        "tags": ["partner"]
+      }
+    },
+    "/admin/moderation/claims": {
+      "get": {
+        "description": "403 — нет права place_claim.decide ни в одном регионе (или в regionId).",
+        "operationId": "listPlaceClaims",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "pending (по умолчанию) — на рассмотрении; decided — одобренные, отклонённые, отозванные",
+            "schema": { "$ref": "#/components/schemas/PlaceClaimQueueStatus" }
+          },
+          {
+            "name": "regionId",
+            "required": false,
+            "in": "query",
+            "description": "Регион (модератор — только свой)",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimQueueDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Очередь заявок «Це мій заклад» (pending — старые сверху; decided — решённые)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/claims/{id}": {
+      "get": {
+        "operationId": "getPlaceClaim",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimDetailDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "Заявка: место (телефон и сайт Google, Google Maps), заявитель (телефон, роль, комментарий), другие заявки",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/claims/{id}/approve": {
+      "post": {
+        "description": "Место остаётся published, source не меняется. 409 errors.placeClaim.alreadyDecided — уже решено; 409 errors.placeClaim.alreadyClaimed — у места уже есть организация; 409 errors.placeClaim.claimantNotOwner — заявитель больше не владелец выбранной организации; 403 own_claim / own_organization (BR-12). AuditLog; заявителям — уведомление ботом.",
+        "operationId": "approvePlaceClaim",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ApprovePlaceClaimDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimSummaryDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Схвалити»: место → организация заявителя (ORG_OWNER), остальные заявки места — отказ",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/moderation/claims/{id}/reject": {
+      "post": {
+        "operationId": "rejectPlaceClaim",
+        "parameters": [
+          { "name": "id", "required": true, "in": "path", "schema": { "format": "uuid", "type": "string" } },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Correlation id; иначе генерируется",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RejectPlaceClaimDto" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlaceClaimSummaryDto" } }
+            }
+          },
+          "400": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "401": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "403": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "404": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "409": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          },
+          "500": {
+            "description": "Ошибка",
+            "headers": {
+              "x-request-id": { "description": "Correlation id запроса", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelopeDto" } }
+            }
+          }
+        },
+        "security": [{ "session": [] }],
+        "summary": "«Відхилити» (причина обязательна, видна заявителю)",
+        "tags": ["admin"]
+      }
+    },
     "/resources": {
       "get": {
         "description": "Без аутентификации. Только активные ресурсы опубликованного места. availability.availableNow — только при реальном свободном слоте в ближайшие 2 ч или ручном статусе партнёра с неистёкшим TTL (BR-04); иначе — «Уточнити доступність». 404 — места нет в регионе или оно не опубликовано.",
@@ -15814,6 +16309,10 @@
             "nullable": true,
             "description": "В избранном; null — без сессии"
           },
+          "claimable": {
+            "type": "boolean",
+            "description": "У места нет организации-партнёра: можно подать заявку «Це мій заклад» (0031)"
+          },
           "typeLabel": {
             "type": "string",
             "nullable": true,
@@ -15897,6 +16396,7 @@
           "schedule",
           "openUntil",
           "favorite",
+          "claimable",
           "typeLabel",
           "summary",
           "aiSummary",
@@ -18746,6 +19246,310 @@
             "minLength": 1,
             "maxLength": 2000,
             "description": "Причина / что исправить (обязательна, видна партнёру)"
+          }
+        },
+        "required": ["reason"]
+      },
+      "PlaceClaimRole": { "type": "string", "enum": ["owner", "manager"] },
+      "PlaceClaimStatus": { "type": "string", "enum": ["pending", "approved", "rejected", "withdrawn"] },
+      "PlaceClaimDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/ShortTextDto" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimRole" }] },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimStatus" }] },
+          "organizationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Организация (существующая или итоговая)"
+          },
+          "organizationName": {
+            "type": "string",
+            "description": "Название организации (существующей или новой)"
+          },
+          "decisionComment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Комментарий модератора (обязателен при отказе)"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "role",
+          "status",
+          "organizationId",
+          "organizationName",
+          "decisionComment",
+          "createdAt",
+          "decidedAt"
+        ]
+      },
+      "PlaceClaimListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Новые сверху",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceClaimDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "PlaceClaimPhoneSource": {
+        "type": "string",
+        "enum": ["telegram_contact", "manual"],
+        "description": "telegram_contact — requestContact Telegram; manual — введён вручную"
+      },
+      "CreatePlaceClaimDto": {
+        "type": "object",
+        "properties": {
+          "regionId": { "type": "string", "format": "uuid", "description": "Регион места" },
+          "placeId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Место каталога (опубликованное, без организации)"
+          },
+          "role": {
+            "description": "Роль заявителя в заведении: власник / керуючий",
+            "allOf": [{ "$ref": "#/components/schemas/PlaceClaimRole" }]
+          },
+          "phone": {
+            "type": "string",
+            "example": "+380501234567",
+            "description": "Телефон для звонка модератора (E.164)"
+          },
+          "phoneSource": {
+            "description": "telegram_contact — requestContact Telegram; manual — введён вручную",
+            "allOf": [{ "$ref": "#/components/schemas/PlaceClaimPhoneSource" }]
+          },
+          "comment": { "type": "string", "maxLength": 1000, "description": "Комментарий модератору" },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Существующая организация, где заявитель ORG_OWNER (или organizationName — не оба)"
+          },
+          "organizationName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Название новой организации — создаётся при одобрении (или organizationId — не оба)"
+          }
+        },
+        "required": ["regionId", "placeId", "role", "phone", "phoneSource"]
+      },
+      "PlaceClaimQueueStatus": { "type": "string", "enum": ["pending", "decided"] },
+      "PlaceClaimSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/ShortTextDto" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimRole" }] },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimStatus" }] },
+          "organizationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Организация (существующая или итоговая)"
+          },
+          "organizationName": {
+            "type": "string",
+            "description": "Название организации (существующей или новой)"
+          },
+          "decisionComment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Комментарий модератора (обязателен при отказе)"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "userId": { "type": "string", "format": "uuid" },
+          "claimantName": { "type": "string", "nullable": true, "description": "Имя заявителя" },
+          "claimantUsername": {
+            "type": "string",
+            "nullable": true,
+            "description": "Telegram username заявителя"
+          },
+          "newOrganization": {
+            "type": "boolean",
+            "description": "Новая организация (создаётся при одобрении)"
+          },
+          "decidedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Кто решил: имя или логин админки"
+          },
+          "own": {
+            "type": "boolean",
+            "description": "Своя заявка или организация модератора: решить нельзя — 403 own_claim / own_organization"
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "role",
+          "status",
+          "organizationId",
+          "organizationName",
+          "decisionComment",
+          "createdAt",
+          "decidedAt",
+          "userId",
+          "claimantName",
+          "claimantUsername",
+          "newOrganization",
+          "decidedByName",
+          "own"
+        ]
+      },
+      "PlaceClaimQueueDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "На рассмотрении — старые сверху",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceClaimSummaryDto" }
+          }
+        },
+        "required": ["items"]
+      },
+      "PlaceClaimPlaceDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/ShortTextDto" },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceStatus" }] },
+          "source": { "type": "string", "enum": ["manual", "google"] },
+          "address": { "type": "string", "nullable": true },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Телефон места (Google или админка)"
+          },
+          "website": { "type": "string", "nullable": true },
+          "googleMapsUri": { "type": "string", "nullable": true, "description": "Место в Google Maps" },
+          "category": { "type": "string", "nullable": true, "description": "Название категории (uk)" },
+          "organizationName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Организация места сейчас (уже заявлено)"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "source",
+          "address",
+          "phone",
+          "website",
+          "googleMapsUri",
+          "category",
+          "organizationName"
+        ]
+      },
+      "PlaceClaimDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "regionId": { "type": "string", "format": "uuid" },
+          "placeId": { "type": "string", "format": "uuid" },
+          "placeName": { "$ref": "#/components/schemas/ShortTextDto" },
+          "role": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimRole" }] },
+          "status": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimStatus" }] },
+          "organizationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Организация (существующая или итоговая)"
+          },
+          "organizationName": {
+            "type": "string",
+            "description": "Название организации (существующей или новой)"
+          },
+          "decisionComment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Комментарий модератора (обязателен при отказе)"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "userId": { "type": "string", "format": "uuid" },
+          "claimantName": { "type": "string", "nullable": true, "description": "Имя заявителя" },
+          "claimantUsername": {
+            "type": "string",
+            "nullable": true,
+            "description": "Telegram username заявителя"
+          },
+          "newOrganization": {
+            "type": "boolean",
+            "description": "Новая организация (создаётся при одобрении)"
+          },
+          "decidedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Кто решил: имя или логин админки"
+          },
+          "own": {
+            "type": "boolean",
+            "description": "Своя заявка или организация модератора: решить нельзя — 403 own_claim / own_organization"
+          },
+          "phone": { "type": "string", "description": "Телефон заявителя (E.164)" },
+          "phoneSource": { "allOf": [{ "$ref": "#/components/schemas/PlaceClaimPhoneSource" }] },
+          "comment": { "type": "string", "nullable": true, "description": "Комментарий заявителя" },
+          "place": { "$ref": "#/components/schemas/PlaceClaimPlaceDto" },
+          "otherClaims": {
+            "description": "Другие заявки на это место (конкурирующие и прошлые), новые сверху",
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceClaimSummaryDto" }
+          }
+        },
+        "required": [
+          "id",
+          "regionId",
+          "placeId",
+          "placeName",
+          "role",
+          "status",
+          "organizationId",
+          "organizationName",
+          "decisionComment",
+          "createdAt",
+          "decidedAt",
+          "userId",
+          "claimantName",
+          "claimantUsername",
+          "newOrganization",
+          "decidedByName",
+          "own",
+          "phone",
+          "phoneSource",
+          "comment",
+          "place",
+          "otherClaims"
+        ]
+      },
+      "ApprovePlaceClaimDto": {
+        "type": "object",
+        "properties": { "comment": { "type": "string", "maxLength": 2000 } }
+      },
+      "RejectPlaceClaimDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Причина (обязательна, видна заявителю)"
           }
         },
         "required": ["reason"]

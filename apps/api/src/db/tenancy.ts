@@ -78,6 +78,8 @@ export const TABLE_TENANCY = {
   partner_templates: "global",
   organizations: "tenant",
   moderation_cases: "tenant",
+  // Заявки «Це мій заклад» (0031): регион места.
+  place_claims: "tenant",
   staff_invites: "tenant",
   offers: "tenant",
   // Богатая картка місця (0018): обогащение места — регион места; кэш адресов фото Google — общий (имя фото глобально).

@@ -29,6 +29,8 @@ export const PERMISSIONS = [
   "place.edit",
   "place.submit",
   "place.moderate",
+  // Решение по заявке «Це мій заклад» (0031): привязать место без организации к организации заявителя.
+  "place_claim.decide",
   "place.publish",
   "place.suspend",
   "place.archive",

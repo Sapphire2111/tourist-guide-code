@@ -16,10 +16,13 @@ import { PartnerController } from "./partner.controller.js";
 import { PARTNER_OPTIONS, type PartnerModuleOptions } from "./partner.options.js";
 import { PartnerRepository } from "./partner.repository.js";
 import { PartnerService } from "./partner.service.js";
+import { PlaceClaimsController, PlaceClaimsModerationController } from "./place-claims.controller.js";
+import { PlaceClaimsRepository } from "./place-claims.repository.js";
+import { PlaceClaimsService } from "./place-claims.service.js";
 
 /**
  * Кабинет партнёра (блок 6, ADR-0021): онбординг по шаблону, редактор заведения, модерация (AD02), сотрудники и
- * приглашения, акции. Db — глобальный DatabaseModule; MediaService — глобальный MediaModule; уведомления — outbox
+ * приглашения, акции, заявки «Це мій заклад» на места каталога (0031). Db — глобальный DatabaseModule; MediaService — глобальный MediaModule; уведомления — outbox
  * notifications блока 5 (свой экземпляр NotificationsService).
  */
 @Module({})
@@ -28,7 +31,12 @@ export class PartnerModule {
     return {
       module: PartnerModule,
       imports: [RbacModule, AuditModule, RegionsModule, RoleAssignmentsModule, CatalogModule],
-      controllers: [PartnerController, ModerationController],
+      controllers: [
+        PartnerController,
+        ModerationController,
+        PlaceClaimsController,
+        PlaceClaimsModerationController,
+      ],
       providers: [
         { provide: PARTNER_OPTIONS, useValue: options },
         {
@@ -41,8 +49,10 @@ export class PartnerModule {
         PartnerRepository,
         PartnerService,
         ModerationService,
+        PlaceClaimsRepository,
+        PlaceClaimsService,
       ],
-      exports: [PartnerService, ModerationService],
+      exports: [PartnerService, ModerationService, PlaceClaimsService],
     };
   }
 }

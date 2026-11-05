@@ -195,6 +195,7 @@ export class GuideService {
         website: row.website,
         telegram: row.telegram,
         verifiedAt: row.verified_at?.toISOString() ?? null,
+        claimable: row.organization_id === null,
         photos: photoDtos,
         tags: tags.map((t) => ({ id: t.id, code: t.code, name: t.name_i18n, group: t.tag_group })),
         schedule: toScheduleDto({
