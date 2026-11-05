@@ -144,6 +144,8 @@ const card = (p: (typeof places)[number], favorite: boolean | null) => ({
   // Прайс (0030): флаг карточки; у мест мока список пуст (price-list-mock.ts — свой).
   hasPriceList: true,
   verifiedAt: "2026-10-01T00:00:00Z",
+  // «Це мій заклад?» (0031): места мока без организации-партнёра.
+  claimable: true,
   photos: [
     {
       mediaAssetId: p.id,

@@ -6,7 +6,7 @@ import { SHOW_AI_LABELS } from "../ai-labels.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isAllDay, pickLocalized, type MessageKey } from "@tg/i18n";
-import { Button, Stack, useT } from "@tg/ui";
+import { Button, Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { usePlaceResources } from "../bookings/context.js";
 import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { PlacePrices } from "../price-list/PlacePrices.js";
@@ -430,6 +430,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
   const { t, locale } = useT();
   const { api, analytics, webApp, signedIn, regionId } = useGuide();
   const resources = usePlaceResources(place.id, regionId);
+  // «Це мій заклад?» (0031): место без организации, модуль партнёра включён, есть сессия.
+  const partnerCabinet = useFeatureFlag("module.partner_cabinet");
+  const canClaim = place.claimable === true && partnerCabinet && signedIn;
   const distance = useDistance()(place.distanceMeters);
   const name = pickLocalized(place.name, locale);
   // Заголовок появляется после загрузки — фокус на нём ставит сам экран (смена маршрута его ещё не видит).
@@ -758,6 +761,11 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         <footer className="pc-footer">
           {verified && <p data-testid="place-verified">{t("miniapp.place.verified", { date: verified })}</p>}
           {hasGoogle && <p data-testid="place-google-attribution">{t("miniapp.place.googleAttribution")}</p>}
+          {canClaim && (
+            <Link to={`/partner/claim/${place.id}`} className="pc-claim" data-testid="place-claim">
+              {t("miniapp.claim.link")}
+            </Link>
+          )}
         </footer>
       </Stack>
     </article>

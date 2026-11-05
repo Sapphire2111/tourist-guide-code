@@ -148,6 +148,7 @@ function guide(enrichment: unknown, photosSvc?: GooglePhotosService) {
       Promise.resolve({
         id: PLACE,
         region_id: REGION,
+        organization_id: null,
         category_id: PLACE,
         name_i18n: { uk: "Woodstone" },
         address_i18n: null,

@@ -1,6 +1,8 @@
 // Запись импорта в каталог региона: в tenant-контексте региона (regionContext: TenantGuardPlugin + RLS), как пишет
 // api. Идемпотентно: населённые пункты и дополнительные категории — ON CONFLICT DO NOTHING по коду (правки админки не
-// трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются.
+// трогаются), места — upsert по (region_id, google_place_id). Демо-места seed (source = manual) не меняются. Место с организацией
+// партнёра (заявка «Це мій заклад», 0031) — данные ведёт партнёр: импорт только сверяет его (verified_at,
+// last_synced_at) и не меняет поля, категорию, график, доп. категории, теги и статус; организацию не снимает.
 import type { ExpressionBuilder, SqlBool } from "kysely";
 import {
   point,
@@ -86,6 +88,13 @@ export type WriteOptions = {
   pinCategory?: boolean;
 };
 
+/** Действия заявки «Це мій заклад» над местом (0031): не правка полей и тегов — импорт их не учитывает. */
+export const CLAIM_PLACE_ACTIONS = [
+  "place.claim_assign",
+  "place.claim_unassign",
+  "place.claim_cleanup",
+] as const;
+
 export type PlacesEb = ExpressionBuilder<Database, "places">;
 /**
  * Место «трогали»: в журнале есть любое действие над ним, кроме самого импорта (правка и курирование в админке,
@@ -99,7 +108,9 @@ const touched = (eb: PlacesEb) =>
       .selectFrom("audit_logs as a")
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
-      .where("a.action", "not in", ["place.import", "place.amenities"])
+      // Действия заявки «Це мій заклад» (0031) — не правка полей: место партнёра защищено отдельно
+      // (organization_id), а touched оставляет обычные правила импорта для остального.
+      .where("a.action", "not in", ["place.import", "place.amenities", ...CLAIM_PLACE_ACTIONS])
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
   );
 /**
@@ -135,6 +146,8 @@ export const tagsTouched = (eb: PlacesEb) =>
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text"))
+      // Привязка/отмена/очистка по заявке «Це мій заклад» (0031) — не правка тегов.
+      .where("a.action", "not in", [...CLAIM_PLACE_ACTIONS])
       .where((w) =>
         w.or([
           w("a.actor_type", "=", "user"),
@@ -339,6 +352,7 @@ export async function writePlaces(
               "google_place_id",
               "category_id",
               "import_category_id",
+              "organization_id",
               (eb) => touched(eb).as("touched"),
             ])
             .where(
@@ -357,7 +371,13 @@ export async function writePlaces(
       for (const p of batch) {
         const b = before.get(p.googlePlaceId);
         const next = categoryId.get(p.categoryCode);
-        if (b && !b.touched && b.import_category_id === b.category_id && b.category_id !== next)
+        if (
+          b &&
+          !b.touched &&
+          b.organization_id === null &&
+          b.import_category_id === b.category_id &&
+          b.category_id !== next
+        )
           stats.recategorized++;
       }
       const rows = await trx
@@ -389,10 +409,14 @@ export async function writePlaces(
             : // Пустое у Google (нет телефона, http-сайт) не затирает заполненное админкой; адрес — слияние языков:
               // uk обновляет Google, переводы админки (en…) остаются.
               oc.columns(["region_id", "google_place_id"]).doUpdateSet((eb) => {
-                // Категорию ставил импорт, админка её не меняла и место не трогали (touched) — переразметка.
+                // Место партнёра (организация, 0031): его поля импорт не трогает.
+                const owned = eb("places.organization_id", "is not", null);
+                // Категорию ставил импорт, админка её не меняла, место не трогали (touched) и оно не партнёра —
+                // переразметка.
                 const untouched = eb.and([
                   eb("places.import_category_id", "=", eb.ref("places.category_id")),
                   eb.not(touched(eb as unknown as PlacesEb)),
+                  eb("places.organization_id", "is", null),
                 ]);
                 return {
                   category_id: eb
@@ -408,33 +432,60 @@ export async function writePlaces(
                     .then(eb.ref("excluded.import_category_id"))
                     .else(eb.ref("places.import_category_id"))
                     .end(),
-                  address_i18n: eb(
-                    eb.fn.coalesce(eb.ref("places.address_i18n"), eb.val({} as LocalizedText)),
-                    "||",
-                    eb.ref("excluded.address_i18n"),
-                  ),
-                  location: eb.ref("excluded.location"),
-                  // Пункт, поправленный людьми (touched: курирование, правка), импорт не перезаписывает.
+                  address_i18n: eb
+                    .case()
+                    .when(owned)
+                    .then(eb.ref("places.address_i18n"))
+                    .else(
+                      eb(
+                        eb.fn.coalesce(eb.ref("places.address_i18n"), eb.val({} as LocalizedText)),
+                        "||",
+                        eb.ref("excluded.address_i18n"),
+                      ),
+                    )
+                    .end(),
+                  location: eb
+                    .case()
+                    .when(owned)
+                    .then(eb.ref("places.location"))
+                    .else(eb.ref("excluded.location"))
+                    .end(),
+                  // Пункт, поправленный людьми (touched: курирование, правка) или партнёром, импорт не перезаписывает.
                   locality_id: eb
                     .case()
-                    .when(touched(eb as unknown as PlacesEb))
+                    .when(eb.or([touched(eb as unknown as PlacesEb), owned]))
                     .then(eb.ref("places.locality_id"))
                     .else(eb.fn.coalesce(eb.ref("excluded.locality_id"), eb.ref("places.locality_id")))
                     .end(),
-                  phone: eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")),
-                  website: eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")),
+                  phone: eb
+                    .case()
+                    .when(owned)
+                    .then(eb.ref("places.phone"))
+                    .else(eb.fn.coalesce(eb.ref("excluded.phone"), eb.ref("places.phone")))
+                    .end(),
+                  website: eb
+                    .case()
+                    .when(owned)
+                    .then(eb.ref("places.website"))
+                    .else(eb.fn.coalesce(eb.ref("excluded.website"), eb.ref("places.website")))
+                    .end(),
                   verified_at: eb.ref("excluded.verified_at"),
                   last_synced_at: eb.ref("excluded.last_synced_at"),
                 };
               }),
         )
-        .returning(["id", "google_place_id", "status"])
+        .returning(["id", "google_place_id", "status", "organization_id"])
         .execute();
       if (options.insertOnly && rows.length !== batch.length)
         throw new ImportWriteError(
           "Места появились в БД во время записи (параллельный импорт?) — запись отменена, повторите",
         );
       const placeId = new Map(rows.map((r) => [r.google_place_id!, r.id]));
+      // Места партнёра (0031) — по строкам после upsert (строки уже заблокированы): одобрение заявки между чтением
+      // before и записью тоже учтено.
+      const partnerOwned = new Set(
+        rows.filter((r) => r.organization_id !== null).map((r) => r.google_place_id!),
+      );
       for (const r of rows)
         if (r.status !== "published")
           stats.notPublished.push({
@@ -461,6 +512,7 @@ export async function writePlaces(
           batch.map((p) => placeId.get(p.googlePlaceId)!),
         )
         .whereRef("import_category_id", "=", "category_id")
+        .where("organization_id", "is", null)
         .where((eb) => eb.not(touched(eb)))
         .execute();
       const own = new Set(ownRows.map((r) => r.google_place_id!));
@@ -506,6 +558,7 @@ export async function writePlaces(
             batch.map((p) => placeId.get(p.googlePlaceId)!),
           )
           .whereRef("places.import_category_id", "=", "places.category_id")
+          .where("places.organization_id", "is", null)
           .where((eb) => eb.not(tagsTouched(eb)))
           .execute();
         const byGoogleId = new Map(batch.map((p) => [p.googlePlaceId, p]));
@@ -536,6 +589,8 @@ export async function writePlaces(
       // строка не доходит до INSERT и не откатывает всю транзакцию.
       const withWeek = batch.filter((p) => {
         if (!p.week?.length) return false;
+        // График места партнёра (0031) ведёт партнёр.
+        if (partnerOwned.has(p.googlePlaceId)) return false;
         const ok =
           p.week.every(
             (w) => HHMM.test(w.opensAt) && HHMM.test(w.closesAt) && w.dayOfWeek >= 1 && w.dayOfWeek <= 7,
@@ -567,6 +622,8 @@ export async function writePlaces(
         .set({ status: "suspended" })
         .where("source", "=", "google")
         .where("status", "=", "published")
+        // Статусом места партнёра (0031) управляет партнёр и модератор.
+        .where("organization_id", "is", null)
         .where((eb) => eb.not(statusTouched(eb)))
         .where("google_place_id", "in", closed.slice(from, from + BATCH))
         .returning("google_place_id")

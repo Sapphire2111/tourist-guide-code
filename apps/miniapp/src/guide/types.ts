@@ -148,6 +148,8 @@ export type PlaceDetail = PlaceSummary & {
   openUntil: string | null;
   /** В избранном; null — без сессии. */
   favorite: boolean | null;
+  /** Место без организации-партнёра: в карточке ссылка «Це мій заклад?» (0031). */
+  claimable?: boolean;
   /** description — автоописание импорта Google (можно скрыть при содержательном тексте); ручное — false. */
   descriptionAuto?: boolean;
   // Богатая карточка: данные Google Maps, Вікіпедія, ИИ-текст. Нет данных — null/[] (блок не показывается).

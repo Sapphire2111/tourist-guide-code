@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
+import "@tg/i18n/en";
 import { cleanup, render, screen } from "@testing-library/react";
+import "@tg/i18n/admin";
 import { I18nProvider, useT } from "./index.js";
 
 afterEach(cleanup);

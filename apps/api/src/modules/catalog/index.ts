@@ -30,7 +30,10 @@ export {
 } from "./catalog.service.js";
 export {
   canTransition,
+  CATEGORY_CHAIN_MAX_DEPTH,
+  isClaimableCategory,
   likePattern,
+  NOT_CLAIMABLE_CATEGORY_CODES,
   PLACE_TRANSITIONS,
   PUBLISH_PROBLEMS,
   publishProblems,

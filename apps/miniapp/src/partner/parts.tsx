@@ -1,4 +1,4 @@
-// Общие элементы кабинета партнёра: статус места и комментарий модератора, живое сообщение, переключатель P13.
+// Общие элементы кабинета партнёра: статус места и комментарий модератора, живое сообщение, шапка, плитки статуса.
 import type { MessageKey } from "@tg/i18n";
 import type { ReactNode } from "react";
 import { Link, useRoute, useT } from "@tg/ui";
@@ -47,29 +47,6 @@ export function PlaceStatusInfo({
         </p>
       )}
     </>
-  );
-}
-
-/** P13: режим турист / партнёр в одном Mini App (D-50). */
-export function ModeSwitch({
-  current,
-  inProfile = false,
-}: {
-  current: "tourist" | "partner";
-  /** В профиле текущий режим — не текущая страница: aria-current="true". */
-  inProfile?: boolean;
-}) {
-  const mark = inProfile ? ("true" as const) : ("page" as const);
-  const { t } = useT();
-  return (
-    <nav aria-label={t("miniapp.partner.mode")} data-testid="mode-switch" style={{ display: "flex", gap: 8 }}>
-      <Link to="/" className="kosiv-chip" aria-current={current === "tourist" ? mark : undefined}>
-        {t("miniapp.partner.mode.tourist")}
-      </Link>
-      <Link to="/partner" className="kosiv-chip" aria-current={current === "partner" ? mark : undefined}>
-        {t("miniapp.partner.mode.partner")}
-      </Link>
-    </nav>
   );
 }
 

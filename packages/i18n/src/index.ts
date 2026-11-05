@@ -1,7 +1,7 @@
 // i18n-каркас (T1-15, D-05). Изоморфно: без DOM, Node и React.
-import { en, uk, type MessageKey, type Messages } from "./messages.js";
+import { uk, type MessageKey, type Messages } from "./messages.js";
 
-export { en, uk };
+export { uk };
 export { isAllDay } from "./hours.js";
 export type { MessageKey, Messages };
 
@@ -11,8 +11,34 @@ export const DEFAULT_LOCALE: Locale = "uk";
 /** Локали, доступные пользователям. Пока только uk: en — тестовая и неполная (до решения D-05). */
 export const ENABLED_LOCALES: readonly Locale[] = ["uk"];
 
-/** Словари по локалям; uk полный, остальные частичные. */
-export const MESSAGES: Record<Locale, Messages> = { uk, en };
+/** Словари по локалям; uk полный, остальные частичные. Дополняются registerMessages (admin.*).
+ * en грузится отдельно (loadLocale / "@tg/i18n/en"); до загрузки en-переводчик отдаёт uk. */
+export const MESSAGES: Record<Locale, Messages> = { uk: { ...uk }, en: {} };
+
+const loaded = new Set<Locale>(["uk"]);
+
+/** Словарь локали уже в памяти — переводчик отдаёт её тексты синхронно. */
+export function isLocaleLoaded(locale: Locale): boolean {
+  return loaded.has(locale);
+}
+
+/** Подгрузить словарь локали отдельным чанком (в бандле Mini App en не входит в первый экран). */
+export async function loadLocale(locale: Locale): Promise<void> {
+  if (loaded.has(locale)) return;
+  const { en } = await import("./en-messages.js");
+  registerLocale("en", en);
+}
+
+/** Полный словарь локали (en-messages.ts) — регистрирует и помечает локаль загруженной. */
+export function registerLocale(locale: Locale, dict: Messages): void {
+  Object.assign(MESSAGES[locale], dict);
+  loaded.add(locale);
+}
+
+/** Добавить словарь (напр. admin.* из "@tg/i18n/admin") — чтобы не тянуть его в бандл Mini App. */
+export function registerMessages(dicts: Partial<Record<Locale, Messages>>): void {
+  for (const l of SUPPORTED_LOCALES) Object.assign(MESSAGES[l], dicts[l]);
+}
 
 /** Локаль пользователя (`en-US`, `uk_UA`, `EN`) → поддерживаемая, иначе uk. */
 export function resolveLocale(
@@ -59,7 +85,7 @@ function lookup(dict: object, key: string): string | undefined {
 /** Перевод: локаль → uk → сам ключ (не падает). */
 export function createTranslator(locale: Locale = DEFAULT_LOCALE): Translator {
   const tDynamic = (key: string, params?: TranslateParams): string => {
-    return interpolate(lookup(MESSAGES[locale], key) ?? lookup(uk, key) ?? key, params);
+    return interpolate(lookup(MESSAGES[locale], key) ?? lookup(MESSAGES.uk, key) ?? key, params);
   };
   return { locale, t: tDynamic, tDynamic };
 }

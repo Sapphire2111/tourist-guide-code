@@ -65,6 +65,7 @@ describe("AppModule", () => {
       analytics: { record: vi.fn() },
       media: { claim: vi.fn(), complete: vi.fn(), reject: vi.fn() },
       serviceRequests: { anonymizeExpired: vi.fn() },
+      placeClaims: { purgeExpired: vi.fn() },
       bookings: { processDue: vi.fn() },
       close: closeDb,
     });

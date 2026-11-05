@@ -71,6 +71,7 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "organizations",
       "partner_phone_consents",
       "place_badge_events",
+      "place_claims",
       "place_cover_photos",
       "place_enrichments",
       "place_extra_categories",

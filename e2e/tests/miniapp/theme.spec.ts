@@ -425,7 +425,7 @@ test("«Ніч»: контраст на брони туриста, кабине�
   await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
   const screens: [string, string][] = [
     ["/#/bookings", "Мої бронювання"],
-    ["/#/partner", "Мій заклад"],
+    ["/#/partner", "Садиба «Під Смерекою»"],
     [`/#/partner/org/${orgId}/staff`, "Співробітники"],
     [`/#/partner/place/${PARTNER_PLACE}/bookings`, "Бронювання"],
   ];

@@ -58,6 +58,8 @@ export async function loadLodging(db: Db, regionCode: string): Promise<LodgingSt
         (eb) => tagsTouched(eb).as("touched"),
       ])
       .where("places.status", "=", "published")
+      // Место партнёра («Це мій заклад», 0031): удобства ведёт партнёр.
+      .where("places.organization_id", "is", null)
       .where((eb) => eb.or([eb("c.home_section", "=", "stay"), eb("parent.home_section", "=", "stay")]))
       .orderBy("places.id")
       .execute();

@@ -1,5 +1,6 @@
 // Web-админка (блок 3): вход, выбор региона (SUPERADMIN), боковое меню и экраны каталога, QR, контактов, журнала.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import "@tg/i18n/admin";
 import { DEFAULT_LOCALE, type Locale, type MessageKey } from "@tg/i18n";
 import {
   FeatureFlagsProvider,
@@ -65,7 +66,7 @@ function screenFor(section: string, rest: string[]): ReactNode {
     case "/places":
       return rest.length ? <PlaceEditorScreen id={rest[0] === "new" ? null : rest[0]!} /> : <PlacesScreen />;
     case "/moderation":
-      return <ModerationScreen id={rest[0]} />;
+      return <ModerationScreen id={rest[0]} sub={rest[1]} />;
     case "/reviews":
       return <ReviewsScreen />;
     case "/qr":

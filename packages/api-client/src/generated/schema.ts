@@ -2024,6 +2024,141 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/partner/claims": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Мои заявки «Це мій заклад» в регионе (новые сверху): статус и комментарий модератора */
+    get: operations["listMyPlaceClaims"];
+    put?: never;
+    /**
+     * «Це мій заклад»: заявка на опубликованное место без организации → pending (проверяет модератор)
+     * @description Организация — своя (organizationId, где пользователь ORG_OWNER) или новая (organizationName) — ровно одно, иначе 400. 403 not_org_owner — чужая организация; 404 — места нет или оно не опубликовано; 409 errors.placeClaim.alreadyClaimed — у места уже есть организация; 409 errors.placeClaim.duplicate — уже есть ваша заявка на рассмотрении. Создание — в AuditLog; модераторам региона — уведомление ботом.
+     */
+    post: operations["createPlaceClaim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/partner/claims/{id}/withdraw": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Отозвать свою заявку на рассмотрении → withdrawn
+     * @description 404 — заявки нет или она чужая; 409 errors.placeClaim.alreadyDecided — уже решена.
+     */
+    post: operations["withdrawPlaceClaim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/moderation/claims": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Очередь заявок «Це мій заклад» (pending — старые сверху; decided — решённые)
+     * @description 403 — нет права place_claim.decide ни в одном регионе (или в regionId).
+     */
+    get: operations["listPlaceClaims"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/moderation/claims/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Заявка: место (телефон и сайт Google, Google Maps), заявитель (телефон, роль, комментарий), другие заявки */
+    get: operations["getPlaceClaim"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/moderation/claims/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * «Схвалити»: место → организация заявителя (ORG_OWNER), остальные заявки места — отказ
+     * @description Место остаётся published, source не меняется. 409 errors.placeClaim.alreadyDecided — уже решено; 409 errors.placeClaim.alreadyClaimed — у места уже есть организация; 409 errors.placeClaim.claimantNotOwner — заявитель больше не владелец выбранной организации; 403 own_claim / own_organization (BR-12). AuditLog; заявителям — уведомление ботом.
+     */
+    post: operations["approvePlaceClaim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/moderation/claims/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** «Відхилити» (причина обязательна, видна заявителю) */
+    post: operations["rejectPlaceClaim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/moderation/claims/{id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Скасувати схвалення: место без организации, заявка → revoked (причина обязательна)
+     * @description Организация снимается, только если место всё ещё за организацией заявки; ORG_OWNER заявителя отзывается, только если организацию создала эта заявка и других мест у неё нет. 409 — заявка не одобрена. AuditLog; заявителю — уведомление ботом.
+     */
+    post: operations["revokePlaceClaim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/resources": {
     parameters: {
       query?: never;
@@ -3901,6 +4036,8 @@ export interface components {
       openUntil: string | null;
       /** @description В избранном; null — без сессии */
       favorite: boolean | null;
+      /** @description У места нет организации-партнёра: можно подать заявку «Це мій заклад» (0031) */
+      claimable: boolean;
       /** @description Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list */
       hasPriceList: boolean;
       /**
@@ -5702,6 +5839,181 @@ export interface components {
     };
     ModerationReasonDto: {
       /** @description Причина / что исправить (обязательна, видна партнёру) */
+      reason: string;
+    };
+    /** @enum {string} */
+    PlaceClaimRole: "owner" | "manager";
+    /** @enum {string} */
+    PlaceClaimStatus: "pending" | "approved" | "rejected" | "withdrawn" | "revoked";
+    PlaceClaimDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["ShortTextDto"];
+      role: components["schemas"]["PlaceClaimRole"];
+      status: components["schemas"]["PlaceClaimStatus"];
+      /** @description Организация (существующая или итоговая) */
+      organizationId: string | null;
+      /** @description Название организации (существующей или новой) */
+      organizationName: string;
+      /** @description Комментарий модератора (обязателен при отказе) */
+      decisionComment: string | null;
+      /** @description Причина отмены одобрения (status = revoked) */
+      revokeReason: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      decidedAt: string | null;
+    };
+    PlaceClaimListDto: {
+      /** @description Новые сверху */
+      items: components["schemas"]["PlaceClaimDto"][];
+    };
+    /**
+     * @description telegram_contact — requestContact Telegram; manual — введён вручную
+     * @enum {string}
+     */
+    PlaceClaimPhoneSource: "telegram_contact" | "manual";
+    CreatePlaceClaimDto: {
+      /**
+       * Format: uuid
+       * @description Регион места
+       */
+      regionId: string;
+      /**
+       * Format: uuid
+       * @description Место каталога (опубликованное, без организации)
+       */
+      placeId: string;
+      /** @description Роль заявителя в заведении: власник / керуючий */
+      role: components["schemas"]["PlaceClaimRole"];
+      /**
+       * @description Телефон для звонка модератора (E.164)
+       * @example +380501234567
+       */
+      phone: string;
+      /** @description telegram_contact — requestContact Telegram; manual — введён вручную */
+      phoneSource: components["schemas"]["PlaceClaimPhoneSource"];
+      /** @description Комментарий модератору */
+      comment?: string;
+      /**
+       * Format: uuid
+       * @description Существующая организация, где заявитель ORG_OWNER (или organizationName — не оба)
+       */
+      organizationId?: string;
+      /** @description Название новой организации — создаётся при одобрении (или organizationId — не оба) */
+      organizationName?: string;
+    };
+    /** @enum {string} */
+    PlaceClaimQueueStatus: "pending" | "decided";
+    PlaceClaimSummaryDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["ShortTextDto"];
+      role: components["schemas"]["PlaceClaimRole"];
+      status: components["schemas"]["PlaceClaimStatus"];
+      /** @description Организация (существующая или итоговая) */
+      organizationId: string | null;
+      /** @description Название организации (существующей или новой) */
+      organizationName: string;
+      /** @description Комментарий модератора (обязателен при отказе) */
+      decisionComment: string | null;
+      /** @description Причина отмены одобрения (status = revoked) */
+      revokeReason: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      decidedAt: string | null;
+      /** Format: uuid */
+      userId: string;
+      /** @description Имя заявителя */
+      claimantName: string | null;
+      /** @description Telegram username заявителя */
+      claimantUsername: string | null;
+      /** @description Новая организация (создаётся при одобрении) */
+      newOrganization: boolean;
+      /** @description Кто решил: имя или логин админки */
+      decidedByName: string | null;
+      /** @description Своя заявка или организация модератора: решить нельзя — 403 own_claim / own_organization */
+      own: boolean;
+    };
+    PlaceClaimQueueDto: {
+      /** @description На рассмотрении — старые сверху */
+      items: components["schemas"]["PlaceClaimSummaryDto"][];
+    };
+    PlaceClaimPlaceDto: {
+      /** Format: uuid */
+      id: string;
+      name: components["schemas"]["ShortTextDto"];
+      status: components["schemas"]["PlaceStatus"];
+      /** @enum {string} */
+      source: "manual" | "google";
+      address: string | null;
+      /** @description Телефон места (Google или админка) */
+      phone: string | null;
+      website: string | null;
+      /** @description Место в Google Maps */
+      googleMapsUri: string | null;
+      /** @description Название категории (uk) */
+      category: string | null;
+      /** @description Организация места сейчас (уже заявлено) */
+      organizationName: string | null;
+    };
+    PlaceClaimDetailDto: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      regionId: string;
+      /** Format: uuid */
+      placeId: string;
+      placeName: components["schemas"]["ShortTextDto"];
+      role: components["schemas"]["PlaceClaimRole"];
+      status: components["schemas"]["PlaceClaimStatus"];
+      /** @description Организация (существующая или итоговая) */
+      organizationId: string | null;
+      /** @description Название организации (существующей или новой) */
+      organizationName: string;
+      /** @description Комментарий модератора (обязателен при отказе) */
+      decisionComment: string | null;
+      /** @description Причина отмены одобрения (status = revoked) */
+      revokeReason: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      decidedAt: string | null;
+      /** Format: uuid */
+      userId: string;
+      /** @description Имя заявителя */
+      claimantName: string | null;
+      /** @description Telegram username заявителя */
+      claimantUsername: string | null;
+      /** @description Новая организация (создаётся при одобрении) */
+      newOrganization: boolean;
+      /** @description Кто решил: имя или логин админки */
+      decidedByName: string | null;
+      /** @description Своя заявка или организация модератора: решить нельзя — 403 own_claim / own_organization */
+      own: boolean;
+      /** @description Телефон заявителя (E.164); null — стёрт через 90 дней после решения */
+      phone: string | null;
+      phoneSource: components["schemas"]["PlaceClaimPhoneSource"];
+      /** @description Комментарий заявителя */
+      comment: string | null;
+      place: components["schemas"]["PlaceClaimPlaceDto"];
+      /** @description Другие заявки на это место (конкурирующие и прошлые), новые сверху */
+      otherClaims: components["schemas"]["PlaceClaimSummaryDto"][];
+    };
+    ApprovePlaceClaimDto: {
+      comment?: string;
+    };
+    RejectPlaceClaimDto: {
+      /** @description Причина (обязательна, видна заявителю) */
       reason: string;
     };
     /** @enum {string} */
@@ -19082,6 +19394,713 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ModerationCaseDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listMyPlaceClaims: {
+    parameters: {
+      query: {
+        /** @description Регион (заявки пользователя в нём) */
+        regionId: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimListDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  createPlaceClaim: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+        /** @description Уникальный ключ операции (UUID): повтор с тем же ключом и телом вернёт тот же ответ */
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreatePlaceClaimDto"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  withdrawPlaceClaim: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  listPlaceClaims: {
+    parameters: {
+      query?: {
+        /** @description pending (по умолчанию) — на рассмотрении; decided — одобренные, отклонённые, отозванные */
+        status?: components["schemas"]["PlaceClaimQueueStatus"];
+        /** @description Регион (модератор — только свой) */
+        regionId?: string;
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimQueueDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  getPlaceClaim: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimDetailDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  approvePlaceClaim: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ApprovePlaceClaimDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimSummaryDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  rejectPlaceClaim: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectPlaceClaimDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimSummaryDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      401: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      403: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      409: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  revokePlaceClaim: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectPlaceClaimDto"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceClaimSummaryDto"];
         };
       };
       /** @description Ошибка */

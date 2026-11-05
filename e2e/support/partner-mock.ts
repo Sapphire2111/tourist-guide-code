@@ -48,10 +48,12 @@ export type PartnerMockState = {
   uploads: number;
   submitNote: string | null;
   acceptedInvite: boolean;
+  /** Заявки «Це мій заклад» (0031). */
+  claims: Record<string, unknown>[];
 };
 
 export function newPartnerState(): PartnerMockState {
-  return { orgs: [], places: [], uploads: 0, submitNote: null, acceptedInvite: false };
+  return { orgs: [], places: [], uploads: 0, submitNote: null, acceptedInvite: false, claims: [] };
 }
 
 const abilities = (role: string) => ({
@@ -245,6 +247,41 @@ export async function installPartnerMock(page: Page, state: PartnerMockState, to
         );
       }
       if (path.startsWith("/partner/invites/")) return error(route, 404, "NOT_FOUND");
+      if (path === "/partner/claims" && method === "GET") {
+        if (url.searchParams.get("regionId") !== REGION_ID) return error(route, 404, "NOT_FOUND");
+        return json(route, { items: [...state.claims].reverse() });
+      }
+      if (path === "/partner/claims" && method === "POST") {
+        const b = body() as {
+          regionId: string;
+          placeId: string;
+          role: string;
+          phone: string;
+          organizationId?: string;
+          organizationName?: string;
+        };
+        if (b.regionId !== REGION_ID) return error(route, 404, "NOT_FOUND");
+        if (!/^\+[1-9][0-9]{7,14}$/.test(b.phone) || !b.organizationName === !b.organizationId)
+          return error(route, 400, "VALIDATION_FAILED", "errors.validation");
+        if (state.claims.some((c) => c.placeId === b.placeId && c.status === "pending"))
+          return error(route, 409, "CONFLICT", "errors.placeClaim.duplicate");
+        const claim = {
+          id: `00000000-0000-4000-8000-00000000c1${String(state.claims.length).padStart(2, "0")}`,
+          regionId: REGION_ID,
+          placeId: b.placeId,
+          placeName: { uk: "Кав'ярня «Смерека»" },
+          role: b.role,
+          status: "pending",
+          organizationId: b.organizationId ?? null,
+          organizationName: b.organizationName ?? "",
+          decisionComment: null,
+          revokeReason: null,
+          createdAt: "2026-11-05T10:00:00Z",
+          decidedAt: null,
+        };
+        state.claims.push(claim);
+        return json(route, claim, 201);
+      }
 
       const m = /^\/partner\/places\/([^/]+)(\/.*)?$/.exec(path);
       const place = m ? state.places.find((p) => p.id === m[1]) : undefined;

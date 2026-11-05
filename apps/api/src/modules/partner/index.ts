@@ -15,6 +15,17 @@ export {
   PartnerService,
   type AuditMeta as PartnerAuditMeta,
 } from "./partner.service.js";
+export * from "./claim-rules.js";
+export * from "./place-claims.dto.js";
+export { CLAIM_RATE_LIMIT } from "./place-claims.controller.js";
+export { PlaceClaimsRepository } from "./place-claims.repository.js";
+export {
+  NOTIFICATION_TEMPLATE_CLAIM_DECISION,
+  NOTIFICATION_TEMPLATE_CLAIM_OPENED,
+  PLACE_CLAIM_AUDIT,
+  PLACE_CLAIM_ENTITY,
+  PlaceClaimsService,
+} from "./place-claims.service.js";
 export * from "./price-list.dto.js";
 export { PriceListRepository } from "./price-list.repository.js";
 export { PriceListService, PRICE_ITEM_ENTITY, PRICE_SECTION_ENTITY } from "./price-list.service.js";

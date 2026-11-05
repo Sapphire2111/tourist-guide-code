@@ -346,6 +346,9 @@ export function parentOf(path: string): string {
   if (book) return `/place/${book[1]}`;
   if (/^\/plan\/saved\/./.test(path)) return "/plan/saved";
   if (/^\/plan\/./.test(path)) return "/plan";
+  // Заявка «Це мій заклад» открывается из карточки места — туда и «Назад».
+  const claim = /^\/partner\/claim\/([^/]+)$/.exec(path);
+  if (claim) return `/place/${claim[1]}`;
   if (/^\/partner\/./.test(path)) return "/partner";
   return "/";
 }

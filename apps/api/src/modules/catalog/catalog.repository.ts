@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
+import { CATEGORY_CHAIN_MAX_DEPTH } from "./catalog-rules.js";
 import {
   currentDb,
   hasValues,
@@ -184,6 +185,19 @@ export class CatalogRepository {
 
   listCategories(): Promise<Category[]> {
     return this.q.selectFrom("categories").selectAll().orderBy("sort_order").orderBy("code").execute();
+  }
+
+  /** Коды категории и её родителей (от самой категории к корню). */
+  async categoryChainCodes(id: string): Promise<string[]> {
+    const codes: string[] = [];
+    let next: string | null = id;
+    for (let i = 0; next && i < CATEGORY_CHAIN_MAX_DEPTH; i++) {
+      const c = await this.findCategory(next);
+      if (!c) break;
+      codes.push(c.code);
+      next = c.parent_id;
+    }
+    return codes;
   }
 
   findCategory(id: string): Promise<Category | undefined> {

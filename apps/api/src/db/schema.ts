@@ -678,10 +678,13 @@ export interface PlacesTable {
   import_category_id: ColumnType<string | null, string | null | undefined, string | null>;
   /** Последняя сверка с Google (0016). */
   last_synced_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
-  /** Организация партнёра (0017); NULL — место админки/импорта. */
-  organization_id: ColumnType<string | null, string | null | undefined, never>;
-  /** Шаблон партнёра (0017), только у мест организации. */
-  partner_template_id: ColumnType<string | null, string | null | undefined, never>;
+  /**
+   * Организация партнёра (0017); NULL — место админки/импорта. Меняется только одобрением заявки «Це мій заклад»
+   * (0031): место без организации получает организацию заявителя; отмена одобрения снимает её.
+   */
+  organization_id: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Шаблон партнёра (0017), только у мест организации; ставится и одобрением заявки на место (0031). */
+  partner_template_id: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -1061,6 +1064,42 @@ export interface ModerationCasesTable {
   updated_at: UpdatedAt;
 }
 export type ModerationCase = Selectable<ModerationCasesTable>;
+
+/** Заявка «Це мій заклад» (0031): роль заявителя в заведении, статусы. */
+export const PLACE_CLAIM_ROLES = ["owner", "manager"] as const;
+export type PlaceClaimRole = (typeof PLACE_CLAIM_ROLES)[number];
+export const PLACE_CLAIM_STATUSES = ["pending", "approved", "rejected", "withdrawn", "revoked"] as const;
+export type PlaceClaimStatus = (typeof PLACE_CLAIM_STATUSES)[number];
+export const PLACE_CLAIM_PHONE_SOURCES = ["telegram_contact", "manual"] as const;
+export type PlaceClaimPhoneSource = (typeof PLACE_CLAIM_PHONE_SOURCES)[number];
+
+export interface PlaceClaimsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  user_id: ColumnType<string, string, never>;
+  /** Существующая организация заявителя (до решения) или итоговая (после одобрения). */
+  organization_id: Nullable<string>;
+  /** Новая организация по названию — создаётся при одобрении. */
+  new_organization_name: ColumnType<string | null, string | null | undefined, never>;
+  claimant_role: ColumnType<PlaceClaimRole, PlaceClaimRole, never>;
+  /** NULL — стёрт по сроку хранения (pii_purged_at, place_claims_purge_expired_pii). */
+  phone: ColumnType<string | null, string, never>;
+  phone_source: ColumnType<PlaceClaimPhoneSource, PlaceClaimPhoneSource, never>;
+  comment: ColumnType<string | null, string | null | undefined, never>;
+  pii_purged_at: ColumnType<Date | null, never, never>;
+  status: ColumnType<PlaceClaimStatus, PlaceClaimStatus | undefined, PlaceClaimStatus>;
+  decision_comment: Nullable<string>;
+  decided_by: Nullable<string>;
+  decided_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  withdrawn_at: ColumnType<Date | null, never, Date | string | null>;
+  revoked_by: ColumnType<string | null, never, string | null>;
+  revoked_at: ColumnType<Date | null, never, Date | string | null>;
+  revoke_reason: ColumnType<string | null, never, string | null>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type PlaceClaim = Selectable<PlaceClaimsTable>;
 
 /** Роли, на которые приглашают сотрудников (владельца не приглашают). */
 export const STAFF_INVITE_ROLES = ["ORG_MANAGER", "ORG_STAFF"] as const;
@@ -1679,6 +1718,8 @@ export interface Database {
   partner_templates: PartnerTemplatesTable;
   organizations: OrganizationsTable;
   moderation_cases: ModerationCasesTable;
+  // Заявки «Це мій заклад» (0031).
+  place_claims: PlaceClaimsTable;
   staff_invites: StaffInvitesTable;
   offers: OffersTable;
   // Прайс заведения (0030).

@@ -4,7 +4,7 @@
 // типовыми разделами. Права — abilities.managePriceList (ORG_OWNER, ORG_MANAGER); сервер проверяет сам.
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { createTranslator, pickLocalized, type MessageKey } from "@tg/i18n";
+import { createTranslator, loadLocale, pickLocalized, type LocalizedText, type MessageKey } from "@tg/i18n";
 import { Stack, useT } from "@tg/ui";
 import { AsyncView } from "../guide/parts.js";
 import { useSheet } from "../guide/use-sheet.js";
@@ -34,7 +34,15 @@ const UNITS: readonly MessageKey[] = [
 /** Название типового раздела хранится на uk и en, какой бы ни был язык интерфейса партнёра. */
 const UK = createTranslator("uk");
 const EN = createTranslator("en");
-export const suggestedTitle = (key: MessageKey) => ({ uk: UK.t(key), en: EN.t(key) });
+/** Название подсказанного раздела на uk и en; en-словарь грузится лениво — не загрузился, шлём только uk. */
+export async function suggestedTitle(key: MessageKey): Promise<LocalizedText> {
+  try {
+    await loadLocale("en");
+  } catch {
+    return { uk: UK.t(key) };
+  }
+  return { uk: UK.t(key), en: EN.t(key) };
+}
 
 type Sheet = { sectionId: string; item: PriceItem | null } | null;
 type Run = (action: () => Promise<PriceList>, done?: MessageKey) => Promise<boolean>;
@@ -201,7 +209,7 @@ function Editor({
                     aria-label={t("miniapp.partner.prices.addSuggested", { title: t(key) })}
                     onClick={() =>
                       void run(
-                        () => api.createPriceSection(placeId, suggestedTitle(key)),
+                        async () => api.createPriceSection(placeId, await suggestedTitle(key)),
                         "miniapp.partner.prices.sectionCreated",
                       )
                     }

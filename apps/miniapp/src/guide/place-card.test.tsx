@@ -532,9 +532,11 @@ describe("cardOf — богатые поля", () => {
       rating: null,
       wikipedia: null,
       aiSummary: null,
+      claimable: false,
     });
     const card = cardOf({
       ...dto,
+      claimable: true,
       descriptionAuto: false,
       typeLabel: "Ресторан",
       summary: null,

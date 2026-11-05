@@ -46,8 +46,8 @@ export type PlaceCardRow = PlaceRow & {
   verified_at: Date | null;
   /** Источник (0016): google — импорт places:import-google. */
   source: "manual" | "google";
-  /** Организация партнёра (0017): без неё прайса нет — запрос hasPriceList не нужен. */
-  organization_id?: string | null;
+  /** Организация партнёра (0017); NULL — место можно заявить «Це мій заклад» (0031), прайса нет (0030). */
+  organization_id: string | null;
 };
 
 export type SearchQuery = {
@@ -449,7 +449,7 @@ export class GuideRepository {
   findCategory(id: string) {
     return this.q
       .selectFrom("categories")
-      .select(["id", "parent_id", "name_i18n", "icon"])
+      .select(["id", "code", "parent_id", "name_i18n", "icon"])
       .where("id", "=", id)
       .executeTakeFirst();
   }

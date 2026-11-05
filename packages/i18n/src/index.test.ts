@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ERROR_MESSAGE_KEYS } from "@tg/shared";
+import { adminEn, adminUk } from "./admin.js";
+import { en } from "./en.js";
+import * as enModule from "./en-messages.js";
+import * as messagesModule from "./messages.js";
 import {
   createTranslator,
   isAllDay,
   DEFAULT_LOCALE,
-  en,
   ENABLED_LOCALES,
   pickLocalized,
   resolveLocale,
@@ -24,6 +27,7 @@ describe("@tg/i18n", () => {
 
   it("en не содержит ключей, которых нет в uk", () => {
     for (const key of Object.keys(en)) expect(uk).toHaveProperty([key]);
+    for (const key of Object.keys(adminEn)) expect(adminUk).toHaveProperty([key]);
   });
 
   it("uk не содержит пустых текстов", () => {
@@ -44,7 +48,7 @@ describe("@tg/i18n", () => {
   it("t: перевод, fallback на uk, подстановка параметров", () => {
     const tEn = createTranslator("en");
     expect(tEn.t("admin.title")).toBe("Admin");
-    expect(tEn.t("admin.title")).not.toBe(uk["admin.title"]);
+    expect(tEn.t("admin.title")).not.toBe(adminUk["admin.title"]);
     expect(tEn.t("errors.forbidden")).toBe(uk["errors.forbidden"]);
     expect(createTranslator().t("miniapp.greeting", { name: "Олена" })).toBe("Вітаємо, Олена!");
     expect(createTranslator().tDynamic("miniapp.greeting")).toBe("Вітаємо, {name}!");
@@ -109,5 +113,25 @@ describe("isAllDay", () => {
     expect(isAllDay("00:00", "00:00")).toBe(false);
     expect(isAllDay("00:00", "22:00")).toBe(false);
     expect(isAllDay("08:00", "23:59")).toBe(false);
+  });
+
+  describe("разбиение словарей (scripts/split-i18n.mjs)", () => {
+    it("messages.ts экспортирует только uk; en-messages — только en", () => {
+      expect(Object.keys(messagesModule)).toEqual(["uk"]);
+      expect(Object.keys(enModule)).toEqual(["en"]);
+    });
+
+    it("admin.* только в adminUk/adminEn, без пересечений с uk/en", () => {
+      expect(Object.keys(uk).filter((k) => k.startsWith("admin."))).toEqual([]);
+      expect(Object.keys(en).filter((k) => k.startsWith("admin."))).toEqual([]);
+      expect(Object.keys(adminUk).filter((k) => !k.startsWith("admin."))).toEqual([]);
+      expect(Object.keys(adminEn).filter((k) => !k.startsWith("admin."))).toEqual([]);
+      expect(Object.keys(adminUk).filter((k) => Object.hasOwn(uk, k))).toEqual([]);
+    });
+
+    it("adminUk не содержит пустых текстов", () => {
+      expect(Object.keys(adminUk).length).toBeGreaterThan(0);
+      for (const v of Object.values(adminUk)) expect(v.trim()).not.toBe("");
+    });
   });
 });

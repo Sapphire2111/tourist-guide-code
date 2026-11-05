@@ -432,3 +432,15 @@ html[data-season] .pc-title:focus-visible {
   gap: 4px;
   margin: 8px 0 0;
 }
+
+/* «Це мій заклад?» (0031): ненавязчивая ссылка внизу карточки, цель касания 44 px. */
+.pc-claim {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

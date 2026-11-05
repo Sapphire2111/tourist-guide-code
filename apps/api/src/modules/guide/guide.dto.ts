@@ -661,6 +661,11 @@ export class PlaceCardDto extends PlaceSummaryDto {
   favorite!: boolean | null;
   @ApiProperty({
     type: Boolean,
+    description: "У места нет организации-партнёра: можно подать заявку «Це мій заклад» (0031)",
+  })
+  claimable!: boolean;
+  @ApiProperty({
+    type: Boolean,
     description: "Есть видимый прайс заведения (0030): «Ціни» — GET /places/{id}/price-list",
   })
   hasPriceList!: boolean;

@@ -10,8 +10,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./en": {
+      "types": "./dist/en.d.ts",
+      "default": "./dist/en.js"
+    },
+    "./admin": {
+      "types": "./dist/admin.d.ts",
+      "default": "./dist/admin.js"
     }
   },
+  "sideEffects": [
+    "./dist/admin.js",
+    "./dist/en.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",

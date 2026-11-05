@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { FeatureFlagsProvider, I18nProvider } from "@tg/ui";
 import { ApiCallError, ConflictError } from "../host/types.js";
@@ -18,6 +18,7 @@ import {
   type PartnerApi,
   type PartnerOrganization,
   type PartnerPlace,
+  type PartnerPlaceSummary,
 } from "./partner-api.js";
 import { patchOf, PlaceEditor, scheduleOf } from "./PlaceEditor.js";
 import { PartnerStaff } from "./Staff.js";
@@ -220,16 +221,105 @@ describe("P01/P13 дашборд", () => {
   });
 
   it("владелец: статус, комментарий модератора, ссылки P06/P07/P09/P10", async () => {
-    setup(<PartnerDashboard />, { me: () => Promise.resolve({ organizations: [org()] }) });
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      place: () => Promise.resolve(place({ missingFields: ["photo"] })),
+    });
     expect((await screen.findByTestId("place-status")).textContent).toBe("Потрібні правки");
+    // h1 — название заведения, не «Мій заклад»; «Ваша роль» у владельца нет.
+    expect(screen.getByRole("heading", { level: 1, name: "Садиба Смерека" })).toBeDefined();
+    expect(screen.queryByText(/Ваша роль/)).toBeNull();
     expect(screen.getByTestId("moderator-comment").textContent).toContain("Додайте фото фасаду");
-    expect(screen.getByRole("link", { name: "Редагувати заклад" }).getAttribute("href")).toBe(
+    // Один главный призыв для статуса — «Виправити» в редактор.
+    expect(screen.getByRole("link", { name: "Виправити" }).getAttribute("href")).toBe(
       `#/partner/place/${PLACE}`,
     );
-    expect(screen.getByRole("link", { name: "Акції (діють: 1)" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Співробітники" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Заявки гостей (відкриті: 2)" })).toBeDefined();
-    expect(screen.getByTestId("mode-switch")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Профіль" }).getAttribute("href")).toBe(
+      `#/partner/place/${PLACE}`,
+    );
+    expect(screen.getByRole("link", { name: /Акції/ }).textContent).toContain("діють: 1");
+    expect(screen.getByRole("link", { name: "Співробітники" }).getAttribute("href")).toBe(
+      `#/partner/org/${ORG}/staff`,
+    );
+    expect(screen.getByRole("link", { name: /Заявки гостей/ }).textContent).toContain("відкриті: 2");
+    expect(screen.getByRole("link", { name: "← Для туриста" }).getAttribute("href")).toBe("#/");
+    expect(screen.queryByTestId("mode-switch")).toBeNull();
+    // Прогресс по шаблону (обязательные: name, photo; не хватает photo) и шаг «Що далі» в секцию редактора.
+    expect((await screen.findByTestId("partner-progress")).textContent).toContain("Заповнено 1 з 2");
+    expect(
+      within(screen.getByTestId("next-steps"))
+        .getByRole("link", { name: "Додайте фото" })
+        .getAttribute("href"),
+    ).toBe(`#/partner/place/${PLACE}?section=photos`);
+  });
+
+  it("«Що далі»: нет точки на карте — шаг в секцию extra редактора, порядок как в редакторе", async () => {
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org()] }),
+      place: () => Promise.resolve(place({ missingFields: ["location", "name"] })),
+    });
+    const steps = within(await screen.findByTestId("next-steps")).getAllByRole("link");
+    expect(steps.map((a) => a.getAttribute("href"))).toEqual([
+      `#/partner/place/${PLACE}?section=basic`,
+      `#/partner/place/${PLACE}?section=extra`,
+    ]);
+    expect(steps[1]!.textContent).toBe("Позначте заклад на карті");
+  });
+
+  it("одно действие на статус: draft — продолжить, опубликовано — как турист, на проверке — без действия", async () => {
+    const withStatus = (status: PartnerPlaceSummary["status"]) => ({
+      me: () =>
+        Promise.resolve({
+          organizations: [org({ places: [{ ...org().places[0]!, status, moderation: null }] })],
+        }),
+    });
+    setup(<PartnerDashboard />, withStatus("draft"));
+    expect((await screen.findByRole("link", { name: "Продовжити заповнення" })).getAttribute("href")).toBe(
+      `#/partner/place/${PLACE}`,
+    );
+    cleanup();
+    setup(<PartnerDashboard />, withStatus("published"));
+    expect((await screen.findByRole("link", { name: "Подивитись як турист" })).getAttribute("href")).toBe(
+      `#/place/${PLACE}`,
+    );
+    expect(screen.queryByRole("link", { name: "Виправити" })).toBeNull();
+    cleanup();
+    setup(<PartnerDashboard />, withStatus("pending_moderation"));
+    expect((await screen.findByTestId("place-status")).textContent).toBe("На перевірці");
+    for (const name of ["Продовжити заповнення", "Виправити", "Подивитись як турист"])
+      expect(screen.queryByRole("link", { name })).toBeNull();
+  });
+
+  it("несколько заведений — чипы вместо select; выбор меняет h1; организация — select только при >1", async () => {
+    const second = {
+      ...org().places[0]!,
+      id: "00000000-0000-4000-8000-00000000b002",
+      name: { uk: "Кафе Смерека" },
+    };
+    setup(<PartnerDashboard />, {
+      me: () => Promise.resolve({ organizations: [org({ places: [org().places[0]!, second] })] }),
+    });
+    const group = await screen.findByRole("group", { name: "Заклади" });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    const chips = within(group).getAllByRole("button");
+    expect(chips.map((c) => c.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    fireEvent.click(within(group).getByRole("button", { name: "Кафе Смерека" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Кафе Смерека" })).toBeDefined();
+  });
+
+  it("сотрудник: полная карточка места не запрашивается (403), плиток-редактора нет", async () => {
+    const placeCall = vi.fn(() => Promise.resolve(place()));
+    setup(<PartnerDashboard />, {
+      me: () =>
+        Promise.resolve({
+          organizations: [org({ role: "ORG_STAFF", abilities: { ...abilities(false), editPlace: false } })],
+        }),
+      place: placeCall,
+    });
+    expect(await screen.findByTestId("place-status")).toBeDefined();
+    expect(placeCall).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: "Профіль" })).toBeNull();
+    expect(screen.queryByTestId("partner-progress")).toBeNull();
   });
 
   it("менеджер: без сотрудников; модуль заявок выключен — без ссылки на заявки", async () => {
@@ -241,7 +331,8 @@ describe("P01/P13 дашборд", () => {
       },
       { "module.host_requests": false },
     );
-    expect(await screen.findByRole("link", { name: "Редагувати заклад" })).toBeDefined();
+    expect(await screen.findByRole("link", { name: "Виправити" })).toBeDefined();
+    expect(screen.getByTestId("partner-org").textContent).toContain("Ваша роль: менеджер");
     expect(screen.queryByRole("link", { name: "Співробітники" })).toBeNull();
     expect(screen.queryByRole("link", { name: /Заявки гостей/ })).toBeNull();
   });
@@ -289,9 +380,10 @@ describe("P06 редактор", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
     });
-    expect(screen.getByTestId("missing-fields").textContent).toBe(
-      "Щоб надіслати на перевірку, додайте: Фото, Графік роботи.",
-    );
+    const needed = screen.getByTestId("missing-fields");
+    expect(needed.textContent).toContain("Ще потрібно:");
+    expect(needed.textContent).toContain("Фото");
+    expect(needed.textContent).toContain("Графік роботи");
     expect(screen.getByTestId("submit-message").textContent).toContain("Заповніть обов'язкові поля");
   });
 
@@ -424,49 +516,220 @@ describe("исправления ревью", () => {
         ]),
       onboard,
     });
-    fireEvent.click(await screen.findByLabelText("Готель / садиба"));
+    expect(screen.getByRole("heading", { level: 1, name: "Додайте свій заклад" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Знайти в гіді" }).getAttribute("href")).toBe("#/search");
+    fireEvent.click(await screen.findByRole("radio", { name: /Готель . садиба/ }));
     fireEvent.change(screen.getByLabelText("Назва закладу"), { target: { value: "Смерека" } });
     const create = () =>
       act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "Створити заклад" }));
+        fireEvent.click(screen.getByRole("button", { name: "Створити і продовжити" }));
       });
     await create();
     await create();
     await create();
     expect(keys[1]).not.toBe(keys[0]); // 422 сохранён сервером — новый ключ
     expect(keys[2]).toBe(keys[1]); // сеть — исход неизвестен, тот же ключ
+    // Только тип и название; организация называется как заведение.
+    expect(onboard.mock.calls[0]![0]).toMatchObject({ name: { uk: "Смерека" }, organizationName: "Смерека" });
+    expect(screen.queryByLabelText(/організації/)).toBeNull();
     expect(keepsIdempotencyKey(new ConflictError(null, "IDEMPOTENCY_IN_PROGRESS"))).toBe(true);
     expect(keepsIdempotencyKey(new ApiCallError(503, null))).toBe(true);
     expect(keepsIdempotencyKey(new ApiCallError(400, null))).toBe(false);
   });
 
-  it("редактор: сохранение графика (новый updatedAt) не теряет несохранённую правку основной формы", async () => {
-    let version = 0;
-    const loadPlace = vi.fn(() => Promise.resolve(place({ updatedAt: `2026-11-02T00:00:0${version}Z` })));
-    const putSchedule = vi.fn(() => {
-      version += 1;
-      return Promise.resolve();
-    });
-    const updatePlace = vi.fn(() => {
-      version += 1;
-      return Promise.resolve(
-        place({ description: { uk: "Опис" }, updatedAt: `2026-11-02T00:00:0${version}Z` }),
-      );
-    });
+  it("редактор: одно «Зберегти» шлёт правки всех секций — один PATCH и один PUT графика", async () => {
+    const loadPlace = vi.fn(() => Promise.resolve(place()));
+    const putSchedule = vi.fn(() => Promise.resolve());
+    const updatePlace = vi.fn(() =>
+      Promise.resolve(place({ description: { uk: "Опис" }, website: "https://s.ua" })),
+    );
     setup(<PlaceEditor id={PLACE} />, { place: loadPlace, putSchedule, updatePlace });
     fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Опис" } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Зберегти графік" }));
-    });
-    expect(loadPlace).toHaveBeenCalledTimes(2);
-    expect((screen.getByLabelText("Опис") as HTMLTextAreaElement).value).toBe("Опис");
-    expect(screen.getByTestId("schedule-message").textContent).toBe("Графік збережено.");
+    fireEvent.click(screen.getByRole("button", { name: "Додатково" }));
+    fireEvent.change(screen.getByLabelText("Сайт"), { target: { value: "https://s.ua" } });
+    fireEvent.click(screen.getByRole("button", { name: "Години роботи" }));
+    fireEvent.click(screen.getByRole("button", { name: "Пн–Сб" }));
+    expect(screen.getByTestId("editor-unsaved")).toBeDefined();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /^Зберегти$/ }));
     });
-    expect(updatePlace).toHaveBeenCalledWith(PLACE, { description: { uk: "Опис" } });
-    expect(screen.getByTestId("schedule-message").textContent).toBe("Графік збережено.");
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(updatePlace).toHaveBeenCalledWith(PLACE, { description: { uk: "Опис" }, website: "https://s.ua" });
+    expect(putSchedule).toHaveBeenCalledTimes(1);
+    const sent = (
+      putSchedule.mock.calls[0] as unknown as [string, { weekly: unknown[]; exceptions: unknown[] }]
+    )[1];
+    expect(sent.weekly).toHaveLength(6);
+    expect(sent.weekly[0]).toEqual({ dayOfWeek: 1, opensAt: "09:00", closesAt: "18:00" });
+    expect(sent.exceptions).toEqual([{ date: "2026-12-31", closed: true }]);
+    expect(loadPlace).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("editor-message").textContent).toBe("Зміни збережено.");
+  });
+
+  it("редактор: график не менялся — PUT не шлётся; без правок «Зберегти» недоступна", async () => {
+    const putSchedule = vi.fn(() => Promise.resolve());
+    const updatePlace = vi.fn(() => Promise.resolve(place({ phone: "+380501112233" })));
+    setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place()), putSchedule, updatePlace });
+    const save = await screen.findByRole("button", { name: /^Зберегти$/ });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Телефон"), { target: { value: "+380501112233" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Зберегти$/ }));
+    });
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(putSchedule).not.toHaveBeenCalled();
+  });
+
+  it("редактор: «Надіслати» сохраняет несохранённые правки, затем отправляет", async () => {
+    const order: string[] = [];
+    const updatePlace = vi.fn(() => {
+      order.push("patch");
+      return Promise.resolve(place({ phone: "+380501112233", missingFields: [] }));
+    });
+    const submit = vi.fn(() => {
+      order.push("submit");
+      return Promise.resolve(place({ status: "pending_moderation", editable: false }));
+    });
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: ["phone"] })),
+      updatePlace,
+      submit,
+    });
+    const send = await screen.findByRole("button", { name: "Надіслати на перевірку" });
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("missing-fields").textContent).toContain("Телефон");
+    fireEvent.change(screen.getByLabelText("Телефон"), { target: { value: "+380501112233" } });
+    // Правка закрывает «Ще потрібно» ещё до сохранения.
+    expect(
+      (screen.getByRole("button", { name: "Надіслати на перевірку" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    expect(order).toEqual(["patch", "submit"]);
+  });
+
+  it("редактор: без согласия с условиями отправки нет, есть подсказка", async () => {
+    const submit = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place({ missingFields: [] })), submit });
+    const send = await screen.findByRole("button", { name: "Надіслати на перевірку" });
+    await act(async () => {
+      fireEvent.click(send);
+    });
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("submit-message").textContent).toContain("умовами для партнерів");
+  });
+
+  it("редактор: адрес ?section=schedule открывает нужную секцию; остальные свёрнуты", async () => {
+    window.location.hash = `#/partner/place/${PLACE}?section=extra`;
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: [], status: "published" })),
+    });
+    await screen.findByLabelText("Опис");
+    expect(screen.getByRole("button", { name: "Додатково" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Години роботи" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: "Основне" }).getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Години роботи" }));
+    expect(screen.getByRole("button", { name: "Години роботи" }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("редактор: у опубликованного поля личности и точка заблокированы", async () => {
+    setup(<PlaceEditor id={PLACE} />, { place: () => Promise.resolve(place({ status: "published" })) });
+    expect(await screen.findByTestId("identity-locked")).toBeDefined();
+    expect((screen.getByLabelText("Назва") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Додатково" }));
+    expect(
+      (screen.getByRole("button", { name: "Змінити позначку" }).closest("fieldset") as HTMLFieldSetElement)
+        .disabled,
+    ).toBe(true);
+    expect(screen.queryByRole("button", { name: "Надіслати на перевірку" })).toBeNull();
+  });
+
+  it("редактор: несохранённая правка основной формы переживает перечитывание (загрузка фото)", async () => {
+    const loadPlace = vi.fn(() => Promise.resolve(place()));
+    const uploadPhoto = vi.fn(() => Promise.resolve());
+    setup(<PlaceEditor id={PLACE} />, { place: loadPlace, uploadPhoto });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Чернетка" } });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("photo-input"), {
+        target: { files: [new File(["x"], "a.jpg", { type: "image/jpeg" })] },
+      });
+    });
+    expect(uploadPhoto).toHaveBeenCalledTimes(1);
+    expect(loadPlace).toHaveBeenCalledTimes(2);
+    expect((screen.getByLabelText("Опис") as HTMLTextAreaElement).value).toBe("Чернетка");
+  });
+
+  it("редактор: сохранение не удалось — отправки нет", async () => {
+    const updatePlace = vi.fn(() => Promise.reject(new ApiCallError(500, null)));
+    const submit = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: [] })),
+      updatePlace,
+      submit,
+    });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Новий" } });
+    fireEvent.click(screen.getByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("editor-message").textContent).toContain("Не вдалося зберегти");
+  });
+
+  it("редактор: PATCH прошёл, PUT графика упал — отправки нет", async () => {
+    const updatePlace = vi.fn(() => Promise.resolve(place({ description: { uk: "Новий" } })));
+    const putSchedule = vi.fn(() => Promise.reject(new ApiCallError(500, null)));
+    const submit = vi.fn();
+    setup(<PlaceEditor id={PLACE} />, {
+      place: () => Promise.resolve(place({ missingFields: [] })),
+      updatePlace,
+      putSchedule,
+      submit,
+    });
+    fireEvent.change(await screen.findByLabelText("Опис"), { target: { value: "Новий" } });
+    fireEvent.click(screen.getByRole("button", { name: "Години роботи" }));
+    fireEvent.click(screen.getByRole("button", { name: "Пн–Сб" }));
+    fireEvent.click(screen.getByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    expect(updatePlace).toHaveBeenCalledTimes(1);
+    expect(putSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("редактор: список «не вистачає» от сервера (422) сбрасывается после перечитывания места", async () => {
+    let version = 0;
+    const loadPlace = vi.fn(() =>
+      Promise.resolve(place({ missingFields: [], updatedAt: `2026-11-02T00:00:0${version}Z` })),
+    );
+    const submit = vi.fn(() =>
+      Promise.reject(
+        new ApiCallError(422, "errors.partner.requiredFieldsMissing", "UNPROCESSABLE", {
+          missingFields: ["photo"],
+        }),
+      ),
+    );
+    const uploadPhoto = vi.fn(() => {
+      version += 1;
+      return Promise.resolve();
+    });
+    setup(<PlaceEditor id={PLACE} />, { place: loadPlace, submit, uploadPhoto });
+    fireEvent.click(await screen.findByLabelText("Погоджуюся з умовами для партнерів"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Надіслати на перевірку" }));
+    });
+    const send = () => screen.getByRole("button", { name: "Надіслати на перевірку" }) as HTMLButtonElement;
+    expect(send().disabled).toBe(true);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("photo-input"), {
+        target: { files: [new File(["x"], "a.jpg", { type: "image/jpeg" })] },
+      });
+    });
+    expect(send().disabled).toBe(false);
   });
 
   it("редактор: пустое название — сообщение, без запроса", async () => {
@@ -633,7 +896,7 @@ describe("исправления ревью", () => {
       me: () => Promise.resolve({ organizations: [org({ role: "ORG_STAFF", abilities: abilities(false) })] }),
     });
     expect(await screen.findByTestId("partner-org")).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Створити ще одну організацію" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Додати ще заклад" })).toBeNull();
   });
 
   it("часовой пояс: запасной Europe/Kiev для старых ICU; дни перехода на летнее/зимнее время", () => {

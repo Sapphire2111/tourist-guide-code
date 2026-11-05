@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Link, Stack, useT } from "@tg/ui";
 import { call, type ApiError, type ApiSchemas } from "./api.js";
+import { ClaimsScreen } from "./Claims.js";
 import { formatDate } from "./dates.js";
 import {
   ErrorBox,
@@ -72,8 +73,50 @@ function Status({ c }: { c: Case }) {
   );
 }
 
-export function ModerationScreen({ id }: { id?: string }) {
-  return id ? <CaseScreen key={id} id={id} /> : <QueueScreen />;
+/**
+ * AD02: публикации мест партнёров (`/moderation`, `/moderation/<id>`) и заявки «Це мій заклад»
+ * (`/moderation/claims`, `/moderation/claims/<id>`, 0031).
+ */
+export function ModerationScreen({ id, sub }: { id?: string; sub?: string }) {
+  if (id === "claims")
+    return (
+      <Stack gap={2}>
+        {!sub && <ModerationTabs current="claims" />}
+        <ClaimsScreen id={sub} />
+      </Stack>
+    );
+  if (id) return <CaseScreen key={id} id={id} />;
+  return (
+    <Stack gap={2}>
+      <ModerationTabs current="cases" />
+      <QueueScreen />
+    </Stack>
+  );
+}
+
+const tabStyle = { display: "inline-flex", alignItems: "center", minHeight: 44, padding: "0 12px" } as const;
+
+/** Вкладки очереди: публикации мест и заявки на заклад. */
+export function ModerationTabs({ current }: { current: "cases" | "claims" }) {
+  const { t } = useT();
+  return (
+    <nav aria-label={t("admin.moderation.tabs")} style={{ display: "flex", gap: 8 }}>
+      <Link
+        to="/moderation"
+        style={{ ...tabStyle, fontWeight: current === "cases" ? 700 : 400 }}
+        aria-current={current === "cases" ? "page" : undefined}
+      >
+        {t("admin.moderation.tab.cases")}
+      </Link>
+      <Link
+        to="/moderation/claims"
+        style={{ ...tabStyle, fontWeight: current === "claims" ? 700 : 400 }}
+        aria-current={current === "claims" ? "page" : undefined}
+      >
+        {t("admin.moderation.tab.claims")}
+      </Link>
+    </nav>
+  );
 }
 
 function QueueScreen() {
