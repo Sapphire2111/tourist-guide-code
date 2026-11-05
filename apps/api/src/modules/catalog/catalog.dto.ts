@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
@@ -509,6 +509,14 @@ export const toPlaceDto = (
 const hasBbox = (o: { minLat?: unknown; maxLat?: unknown; minLng?: unknown; maxLng?: unknown }): boolean =>
   [o.minLat, o.maxLat, o.minLng, o.maxLng].some((v) => v !== undefined);
 
+/** Граница рамки из query: пустая строка — не 0, а ошибка isNumber (Number("") === 0 прошёл бы проверку). */
+const toBound = ({ value }: { value: unknown }): unknown =>
+  value === undefined
+    ? undefined
+    : typeof value === "string" && value.trim() === ""
+      ? Number.NaN
+      : Number(value);
+
 export class PlaceListQueryDto extends CursorQueryDto {
   @ApiPropertyOptional({ enum: PLACE_STATUSES, enumName: "PlaceStatus" })
   @IsOptional()
@@ -536,7 +544,7 @@ export class PlaceListQueryDto extends CursorQueryDto {
   })
   @ValidateIf(hasBbox)
   @IsDefined()
-  @Type(() => Number)
+  @Transform(toBound)
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(-90)
   @Max(90)
@@ -550,7 +558,7 @@ export class PlaceListQueryDto extends CursorQueryDto {
   })
   @ValidateIf(hasBbox)
   @IsDefined()
-  @Type(() => Number)
+  @Transform(toBound)
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(-90)
   @Max(90)
@@ -564,7 +572,7 @@ export class PlaceListQueryDto extends CursorQueryDto {
   })
   @ValidateIf(hasBbox)
   @IsDefined()
-  @Type(() => Number)
+  @Transform(toBound)
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(-180)
   @Max(180)
@@ -578,7 +586,7 @@ export class PlaceListQueryDto extends CursorQueryDto {
   })
   @ValidateIf(hasBbox)
   @IsDefined()
-  @Type(() => Number)
+  @Transform(toBound)
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(-180)
   @Max(180)

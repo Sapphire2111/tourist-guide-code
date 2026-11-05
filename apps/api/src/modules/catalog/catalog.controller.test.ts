@@ -407,6 +407,8 @@ describe("места: валидация, публикация, бейдж, ау
       expect.arrayContaining(["minLng:isDefined", "maxLng:isDefined"]),
     );
     expect(await fieldsOf("minLat=abc&maxLat=48.4&minLng=24.9&maxLng=25.2")).toContain("minLat:isNumber");
+    // Пустое значение — не 0.
+    expect(await fieldsOf("minLat=&maxLat=48.4&minLng=24.9&maxLng=25.2")).toContain("minLat:isNumber");
     expect(await fieldsOf("minLat=48.2&maxLat=91&minLng=24.9&maxLng=25.2")).toContain("maxLat:max");
     expect(await fieldsOf("minLat=48.4&maxLat=48.2&minLng=24.9&maxLng=25.2")).toEqual(["maxLat:min"]);
     expect(await fieldsOf("minLat=48.2&maxLat=48.4&minLng=25.2&maxLng=24.9")).toEqual(["maxLng:min"]);

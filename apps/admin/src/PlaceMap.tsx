@@ -1,5 +1,5 @@
 // Карта мест каталога для выбора места (ленивый чанк вместе с google-maps.ts): маркеры — места в видимой области
-// (GET /admin/places с рамкой карты после остановки карты, с задержкой, не больше MAP_PLACES_LIMIT). Клик по маркеру —
+// (GET /admin/places с рамкой карты после остановки карты и при открытии, с задержкой, не больше MAP_PLACES_LIMIT). Клик по маркеру —
 // название места и «Обрати»; выбор передаётся форме.
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@tg/ui";
@@ -76,14 +76,18 @@ export default function PlaceMap({
         if (!alive || !host.current) return;
         item = acquireMap(libs, host.current);
         const map = item.map;
+        mapRef.current = { libs, map };
+        const schedule = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => void fetchBox(map), IDLE_DEBOUNCE_MS);
+        };
+        // Подписка — до смены вида: иначе первый idle можно пропустить.
+        idle = map.addListener("idle", schedule);
         const loc = selected?.location;
         map.setCenter(loc ? { lat: loc.lat, lng: loc.lon } : DEFAULT_CENTER);
         map.setZoom(loc ? 15 : 12);
-        mapRef.current = { libs, map };
-        idle = map.addListener("idle", () => {
-          clearTimeout(timer);
-          timer = setTimeout(() => void fetchBox(map), IDLE_DEBOUNCE_MS);
-        });
+        // Повторное открытие на той же карте с тем же видом idle может не прислать — запрос по текущим границам.
+        if (map.getBounds()) schedule();
         setStatus("ready");
       },
       () => {
@@ -102,25 +106,45 @@ export default function PlaceMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
-  // Маркеры текущих мест: пересоздаются на каждый ответ (не больше MAP_PLACES_LIMIT).
+  // Маркеры текущих мест: по id — новые добавляются, ушедшие из рамки снимаются, оставшиеся не пересоздаются.
+  const markers = useRef(
+    new Map<string, { marker: google.maps.marker.AdvancedMarkerElement; place: Place }>(),
+  );
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !places) return;
-    const markers = places.map((p) => {
+    const next = new Set(places.map((p) => p.id));
+    for (const [id, entry] of markers.current)
+      if (!next.has(id)) {
+        entry.marker.map = null;
+        markers.current.delete(id);
+      }
+    for (const p of places) {
+      const known = markers.current.get(p.id);
+      if (known) {
+        known.place = p;
+        continue;
+      }
       const marker = new m.libs.marker.AdvancedMarkerElement({
         map: m.map,
         position: { lat: p.location!.lat, lng: p.location!.lon },
         title: l(p.name),
         gmpClickable: true,
       });
-      marker.addEventListener("gmp-click", () => setActive(p));
-      return marker;
-    });
-    return () => {
-      for (const marker of markers) marker.map = null;
-    };
+      const entry = { marker, place: p };
+      marker.addEventListener("gmp-click", () => setActive(entry.place));
+      markers.current.set(p.id, entry);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [places]);
+  // Закрытие панели — все маркеры снимаются с карты (сама карта остаётся в кеше).
+  useEffect(() => {
+    const all = markers.current;
+    return () => {
+      for (const { marker } of all.values()) marker.map = null;
+      all.clear();
+    };
+  }, []);
 
   if (status === "failed")
     return (

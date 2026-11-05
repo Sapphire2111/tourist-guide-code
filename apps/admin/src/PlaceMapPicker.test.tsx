@@ -84,16 +84,17 @@ vi.mock("./google-maps.js", () => {
   };
 });
 
-function fakeApi() {
+/** bbox — ответ на запрос мест по рамке (по умолчанию — одно место и признак обрезки). */
+function fakeApi(bbox: () => Promise<unknown> = async () => ({ items: [ON_MAP], nextCursor: "more" })) {
   const calls: { path: string; query: URLSearchParams }[] = [];
   const fetch = vi.fn(async (req: Request) => {
     const url = new URL(req.url);
     calls.push({ path: url.pathname, query: url.searchParams });
     const json =
-      url.pathname === "/auth/session"
-        ? SESSION
-        : url.pathname === "/admin/places" && url.searchParams.has("minLat")
-          ? { items: [ON_MAP], nextCursor: "more" }
+      url.pathname === "/admin/places" && url.searchParams.has("minLat")
+        ? await bbox()
+        : url.pathname === "/auth/session"
+          ? SESSION
           : url.pathname === "/admin/places"
             ? { items: [SEARCHED], nextCursor: null }
             : { items: [], nextCursor: null };
@@ -159,6 +160,11 @@ describe("выбор места на карте (QR)", () => {
     });
     expect(screen.getByText("Показано перші 100 місць — наблизьте мапу, щоб побачити всі.")).toBeDefined();
     expect(maps.markers.map((m) => m.title)).toEqual(["Колиба на мапі"]);
+    // Тот же ответ после сдвига — маркер не пересоздаётся.
+    maps.idle[0]!();
+    await wait(350);
+    expect(maps.markers).toHaveLength(1);
+    expect(maps.markers[0]!.map).not.toBeNull();
 
     act(() => maps.markers[0]!.click!());
     expect(screen.getByText("Колиба на мапі")).toBeDefined();
@@ -175,6 +181,34 @@ describe("выбор места на карте (QR)", () => {
     await screen.findByTestId("place-map");
     await wait();
     expect(maps.centers.at(-1)).toEqual({ lat: 48.3, lng: 25.0 });
+    // Без idle (карта из кеша с тем же видом) места всё равно запрашиваются по текущим границам.
+    const before = calls.filter((c) => c.query.has("minLat")).length;
+    await wait(350);
+    expect(calls.filter((c) => c.query.has("minLat")).length).toBe(before + 1);
+    expect(maps.markers.filter((m) => m.map !== null).map((m) => m.title)).toEqual(["Колиба на мапі"]);
+  });
+
+  it("ответ устаревшего запроса (карту уже сдвинули) не показывается", async () => {
+    setMapsConfigForTests({ key: "test-key" });
+    let releaseFirst: (v: unknown) => void = () => undefined;
+    const responses = [
+      new Promise((r) => (releaseFirst = r)),
+      Promise.resolve({ items: [ON_MAP], nextCursor: null }),
+    ];
+    let n = 0;
+    const { api } = fakeApi(() => responses[n++] ?? Promise.resolve({ items: [], nextCursor: null }));
+    await open(api);
+    fireEvent.click(screen.getByRole("button", { name: "Обрати на мапі" }));
+    await screen.findByTestId("place-map");
+    await wait(350); // первый запрос (при открытии) висит
+    maps.idle[0]!();
+    await wait(350); // второй — ответил
+    expect(maps.markers.map((m) => m.title)).toEqual(["Колиба на мапі"]);
+    releaseFirst({ items: [SEARCHED], nextCursor: "more" });
+    await wait();
+    await wait();
+    expect(maps.markers.map((m) => m.title)).toEqual(["Колиба на мапі"]);
+    expect(screen.queryByText(/Показано перші 100 місць/)).toBeNull();
   });
 
   it("без ключа Google Maps — пояснение вместо кнопки, поиск по названию работает", async () => {
