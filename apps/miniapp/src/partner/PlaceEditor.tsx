@@ -235,7 +235,7 @@ function EditorBody({
   refreshError: unknown;
 }) {
   const { t, locale } = useT();
-  const { api, reloadMe } = usePartner();
+  const { api, reloadMe, selection, select } = usePartner();
   const errorText = useErrorText();
   const [form, setForm] = useState(() => formOf(place));
   const [rows, setRows] = useState<Row[]>(() => place.schedule.weekly.map((w) => ({ ...w })));
@@ -374,8 +374,9 @@ function EditorBody({
     setBusy(true);
     try {
       await api.deletePlace(place.id);
-      // Предупреждение о несохранённых правках не нужно: карточки больше нет.
-      reloadMe();
+      // Сначала свежий /partner/me и сброс выбора этого заведения — иначе дашборд на миг покажет удалённый чип.
+      if (selection.placeId === place.id) select({ orgId: selection.orgId, placeId: null });
+      await reloadMe();
       navigate("/partner", { replace: true });
     } catch (err) {
       setDeleteMessage({ text: errorText(err, "miniapp.partner.deleteDraft.error"), alert: true });

@@ -132,10 +132,11 @@ type OrgAccess = { organizationId: string; regionId: string; role: PartnerRole; 
 
 const notFound = () => new ApiError("NOT_FOUND");
 const forbidden = (reason: string) => new ApiError("FORBIDDEN", { details: { reason } });
-const notDeletable = (reason: "once_published" | "not_draft", status: string) =>
+const notDeletable = (reason: "once_published" | "badge_history" | "not_draft", status: string) =>
   new ApiError("CONFLICT", {
+    // История бейджа «Ми рекомендуємо» — след публикации: партнёру тот же текст (не админский «до архіву»).
     messageKey:
-      reason === "once_published" ? "errors.partner.placeOncePublished" : "errors.partner.placeNotEditable",
+      reason === "not_draft" ? "errors.partner.placeNotEditable" : "errors.partner.placeOncePublished",
     details: { reason, status },
   });
 const notEditable = (status: string) =>
@@ -536,7 +537,8 @@ export class PartnerService {
    * «Видалити чернетку»: только то, что ни разу не публиковалось (isDeletableDraft), и только тем, кто отправляет на
    * модерацию (place.submit — ORG_OWNER). Удаление — CatalogService.deletePlace (та же проверка first_published_at
    * и истории бейджа, запись AuditLog place.delete с назначением партнёра). График, теги, фото-связи, прайс, акции,
-   * заявки на модерацию и на право владения — ON DELETE CASCADE; брони/ресурсы/отзывы (RESTRICT) — 409 inUse.
+   * заявки на модерацию и на право владения — ON DELETE CASCADE; брони/ресурсы/отзывы (RESTRICT) — 409 inUse;
+   * история бейджа — 409 placeOncePublished (проверка до удаления, текст для партнёра).
    * Сами файлы media_assets и организация остаются (организацию не удаляем, даже если она опустела).
    */
   async deletePlace(userId: string, placeId: string, meta: AuditMeta): Promise<void> {
@@ -545,6 +547,7 @@ export class PartnerService {
       if (place.organization_id !== access.organizationId) throw notFound();
       if (place.first_published_at !== null) throw notDeletable("once_published", place.status);
       if (!isDeletableDraft(place)) throw notDeletable("not_draft", place.status);
+      if (await this.catalogRepo.hasBadgeHistory(placeId)) throw notDeletable("badge_history", place.status);
       await this.catalog.deletePlace(this.meta(meta, access), placeId).catch(rethrowCatalogError);
     });
   }
@@ -1009,10 +1012,12 @@ export class PartnerService {
       role: access.role,
       abilities: abilitiesOf(access.role),
       editable: isPartnerEditable(place.status),
+      // Ресурсы бронирования держат место (RESTRICT) — кнопку не предлагаем, сервер ответил бы 409 inUse.
       deletable:
         abilitiesOf(access.role).submit &&
         isDeletableDraft(place) &&
-        !(await this.catalogRepo.hasBadgeHistory(place.id)),
+        !(await this.catalogRepo.hasBadgeHistory(place.id)) &&
+        !(await this.repo.hasResources(place.id)),
       categoryId: place.category_id,
       localityId: place.locality_id,
       name: place.name_i18n,

@@ -305,7 +305,7 @@ export class PartnerController {
     description:
       "Статусы draft | changes_requested | rejected и пустой first_published_at. 409 " +
       "errors.partner.placeOncePublished (details.reason = once_published) — место публиковалось (в т. ч. заявленное " +
-      "из Google); 409 errors.partner.placeNotEditable (not_draft) — на модерации; 409 errors.place.notDeletable — " +
+      "из Google); 409 errors.partner.placeNotEditable (not_draft) — на модерации; 409 errors.partner.placeOncePublished (badge_history) — " +
       "история бейджа; 409 errors.catalog.inUse — есть брони/ресурсы/отзывы. Организация остаётся. Удаление — AuditLog.",
   })
   @ApiParam({ name: "id", type: String, format: "uuid" })

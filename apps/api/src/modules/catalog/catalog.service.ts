@@ -170,6 +170,13 @@ const CONSTRAINT_ERRORS: Readonly<Record<string, CatalogErrorReason>> = {
   // Место в пункте сценария (0015, блок 5) или с заявками гостей — не удаляется (RESTRICT).
   "23503:scenario_items_place_fk:delete": "in_use",
   "23503:service_requests_place_fk:delete": "in_use",
+  // Брони, ресурсы, согласия на телефон, отзывы и история бейджа (0012, 0022, 0028) — тоже RESTRICT: 409, не 500.
+  "23503:resources_place_fk:delete": "in_use",
+  "23503:bookings_place_fk:delete": "in_use",
+  "23503:partner_phone_consents_place_fk:delete": "in_use",
+  "23503:review_eligibilities_place_fk:delete": "in_use",
+  "23503:reviews_place_fk:delete": "in_use",
+  "23503:place_badge_events_place_fk:delete": "in_use",
   "23514:categories_depth": "parent_not_root",
 };
 
