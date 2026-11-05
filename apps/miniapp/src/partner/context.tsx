@@ -21,7 +21,8 @@ export type PartnerEnv = {
   /** Есть сессия и модуль включён: можно звать /partner/*. */
   enabled: boolean;
   me: Async<PartnerMe> | { status: "off" };
-  reloadMe: () => void;
+  /** Перечитать /partner/me; промис — когда ответ получен (например, ждать перед переходом на дашборд). */
+  reloadMe: () => Promise<void>;
   selection: Selection;
   select: (s: Selection) => void;
   /** Сообщение для кабинета после перехода (например, «Ви вже працюєте…» из P14). */
@@ -124,7 +125,7 @@ export function useRefreshMe() {
 export function useKeptAsync<T>(
   load: () => Promise<T>,
   deps: readonly unknown[],
-): [Async<T>, () => void, unknown] {
+): [Async<T>, () => Promise<void>, unknown] {
   const [state, setState] = useState<Async<T>>({ status: "loading" });
   const [refreshError, setRefreshError] = useState<unknown>(null);
   const loadRef = useRef(load);
@@ -133,7 +134,7 @@ export function useKeptAsync<T>(
   // Последнее состояние — для решения «оставить данные или показать ошибку» без побочных эффектов в updater.
   const stateRef = useRef(state);
   stateRef.current = state;
-  const run = useCallback((keep: boolean) => {
+  const run = useCallback((keep: boolean): Promise<void> => {
     const counter = seq.current;
     const id = ++counter.n;
     // Повтор из ошибки (данных нет) — снова загрузка; при данных — обновление на месте.
@@ -143,8 +144,10 @@ export function useKeptAsync<T>(
       setState({ status: "loading" });
     }
     setRefreshError(null);
-    loadRef.current().then(
-      (data) => id === counter.n && setState({ status: "ready", data }),
+    return loadRef.current().then(
+      (data) => {
+        if (id === counter.n) setState({ status: "ready", data });
+      },
       (error: unknown) => {
         if (id !== counter.n) return;
         if (inPlace) setRefreshError(error);

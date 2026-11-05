@@ -35,6 +35,7 @@ const ERRORS: Record<CatalogErrorReason, { code: ErrorCode; messageKey?: string 
   not_publishable: { code: "UNPROCESSABLE", messageKey: "errors.place.notPublishable" },
   moderation_required: { code: "CONFLICT", messageKey: "errors.place.moderationRequired" },
   not_deletable: { code: "CONFLICT", messageKey: "errors.place.notDeletable" },
+  archive_never_published: { code: "CONFLICT", messageKey: "errors.catalog.archiveNeverPublished" },
   schedule_invalid: { code: "UNPROCESSABLE", messageKey: "errors.place.scheduleInvalid" },
   media_not_found: { code: "UNPROCESSABLE", messageKey: "errors.place.mediaInvalid" },
   media_not_image: { code: "UNPROCESSABLE", messageKey: "errors.place.mediaInvalid" },

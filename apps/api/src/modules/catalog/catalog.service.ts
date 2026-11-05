@@ -20,6 +20,7 @@ import {
 } from "../../db/index.js";
 import { AuditService, type AuditEntry } from "../audit/index.js";
 import {
+  archiveNeedsDelete,
   canTransition,
   likePattern,
   publishProblems,
@@ -60,6 +61,7 @@ export type CatalogErrorReason =
   | "not_publishable"
   | "moderation_required"
   | "not_deletable"
+  | "archive_never_published"
   | "schedule_invalid"
   | "media_not_found"
   | "media_not_image"
@@ -168,6 +170,13 @@ const CONSTRAINT_ERRORS: Readonly<Record<string, CatalogErrorReason>> = {
   // Место в пункте сценария (0015, блок 5) или с заявками гостей — не удаляется (RESTRICT).
   "23503:scenario_items_place_fk:delete": "in_use",
   "23503:service_requests_place_fk:delete": "in_use",
+  // Брони, ресурсы, согласия на телефон, отзывы и история бейджа (0012, 0022, 0028) — тоже RESTRICT: 409, не 500.
+  "23503:resources_place_fk:delete": "in_use",
+  "23503:bookings_place_fk:delete": "in_use",
+  "23503:partner_phone_consents_place_fk:delete": "in_use",
+  "23503:review_eligibilities_place_fk:delete": "in_use",
+  "23503:reviews_place_fk:delete": "in_use",
+  "23503:place_badge_events_place_fk:delete": "in_use",
   "23514:categories_depth": "parent_not_root",
 };
 
@@ -699,6 +708,8 @@ export class CatalogService {
     requireRegionContext();
     const before = (await this.repo.lockPlace(id)) ?? notFound();
     if (!canTransition(before.status, action)) throw new CatalogError("invalid_transition");
+    if (archiveNeedsDelete(action, before.first_published_at))
+      throw new CatalogError("archive_never_published");
     // Место партнёра (блок 6, ADR-0021) впервые публикуется только решением модератора (AD02), не админом напрямую.
     if (action === "publish" && !!before.organization_id && !before.first_published_at)
       throw new CatalogError("moderation_required");

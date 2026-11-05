@@ -216,6 +216,12 @@ export const uk = {
   "miniapp.partner.photos.confirmText": "Фото зникне з картки закладу.",
   "miniapp.partner.photos.confirmYes": "Видалити",
   "miniapp.partner.photos.cancel": "Скасувати",
+  "miniapp.partner.deleteDraft.button": "Видалити чернетку",
+  "miniapp.partner.deleteDraft.hint": "Заклад ще не публікувався — чернетку можна прибрати зовсім.",
+  "miniapp.partner.deleteDraft.confirmTitle": "Видалити «{name}»?",
+  "miniapp.partner.deleteDraft.confirmText": "Це не можна скасувати.",
+  "miniapp.partner.deleteDraft.confirmYes": "Видалити",
+  "miniapp.partner.deleteDraft.error": "Не вдалося видалити чернетку. Спробуйте ще раз.",
   "miniapp.partner.photos.help": "JPEG, PNG або WebP. Перше фото — обкладинка.",
   "miniapp.partner.location.set": "Позначити на карті",
   "miniapp.partner.location.change": "Змінити позначку",
@@ -1379,6 +1385,8 @@ export const uk = {
   // Кабинет партнёра и модерация (блок 6, ADR-0021): details.reason уточняет причину.
   "errors.partner.templateUnavailable": "Шаблон недоступний у цьому регіоні.",
   "errors.partner.categoryNotInTemplate": "Ця категорія не підходить для обраного шаблону.",
+  "errors.partner.placeOncePublished":
+    "Заклад уже публікувався в каталозі — видалити його не можна, лише змінювати.",
   "errors.partner.placeNotEditable":
     "Зараз заклад не можна змінити: він на модерації, призупинений або в архіві.",
   "errors.partner.requiredFieldsMissing":
@@ -1408,6 +1416,8 @@ export const uk = {
   "errors.moderation.notPending": "Заклад уже не очікує модерації — оновіть чергу.",
   "errors.scenario.notPublishable": "Сценарій не можна опублікувати: немає жодного опублікованого місця.",
   "errors.catalog.codeTaken": "Такий код уже є в регіоні.",
+  "errors.catalog.archiveNeverPublished":
+    "Місце ще жодного разу не публікувалося — архів для нього не потрібен: видаліть чернетку.",
   "errors.catalog.inUse": "Запис використовується — спершу приберіть посилання на нього.",
   "errors.catalog.invalidReference": "Посилання на неіснуючий запис регіону.",
   "errors.catalog.categoryHasPublishedPlaces":

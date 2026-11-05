@@ -476,6 +476,14 @@ export class PlaceDto {
       "Организация партнёра (блок 6); null — место админки. Модерация — GET /admin/moderation/cases?placeId=",
   })
   organizationId!: string | null;
+  @ApiProperty({
+    type: String,
+    format: "date-time",
+    nullable: true,
+    description:
+      "Первая публикация; null — ни разу не публиковалось: архив недоступен (409), черновик удаляется DELETE",
+  })
+  firstPublishedAt!: string | null;
   @ApiProperty({ type: String, format: "date-time" }) createdAt!: string;
   @ApiProperty({ type: String, format: "date-time" }) updatedAt!: string;
 }
@@ -501,6 +509,7 @@ export const toPlaceDto = (
   extraCategoryIds: ("extraCategoryIds" in p ? p.extraCategoryIds : undefined) ?? [],
   hostCapable,
   organizationId: p.organization_id ?? null,
+  firstPublishedAt: p.first_published_at?.toISOString() ?? null,
   createdAt: p.created_at.toISOString(),
   updatedAt: p.updated_at.toISOString(),
 });

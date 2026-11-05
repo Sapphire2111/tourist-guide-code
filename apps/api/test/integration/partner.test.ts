@@ -585,4 +585,93 @@ describe.skipIf(!dockerAvailable)(`Кабинет партнёра и модер
     ]);
     expect(inB.rows[0].n).toBe(0);
   });
+
+  it("«Видалити чернетку»: только ORG_OWNER и ни разу не публиковавшееся; на модерации и опубликованное — 409; организация остаётся", async () => {
+    // Опубликованное (после одобрения выше): удалять нельзя ни владельцу (409), ни менеджеру (403 — нет права).
+    expect((await partner.getPlace(OWNER, placeId)).deletable).toBe(false);
+    expect(await failure(partner.deletePlace(MANAGER, placeId, meta(MANAGER)))).toMatchObject({
+      status: 403,
+      reason: "role_forbidden",
+    });
+    expect(await failure(partner.deletePlace(OWNER, placeId, meta(OWNER)))).toMatchObject({
+      status: 409,
+      reason: "once_published",
+    });
+
+    const draft = await partner.onboard(
+      LATE,
+      {
+        regionId: base.regions.a,
+        templateCode: "food",
+        categoryId: seedUuid("catalog:a:category:cafes"),
+        name: { uk: "Kuma" },
+      },
+      meta(LATE),
+    );
+    const draftId = draft.place.id;
+    const draftOrg = draft.organization.id;
+    expect(draft.place.deletable).toBe(true);
+    // Чужая организация — 403, и в контексте другого региона место не найти (RLS).
+    expect(await failure(partner.deletePlace(OWNER, draftId, meta(OWNER)))).toMatchObject({
+      status: 403,
+      reason: "not_partner",
+    });
+    const fromB = await withTenant(appDb, regionContext(base.regions.b), (trx) =>
+      trx.selectFrom("places").select("id").where("id", "=", draftId).execute(),
+    );
+    expect(fromB).toEqual([]);
+
+    // Админ не архивирует черновик, который ни разу не публиковался (CHECK places_published_once) — 409, не 500.
+    const archived = await withTenant(appDb, regionContext(base.regions.a), () =>
+      catalogService.transition(
+        {
+          actor: { type: "user", userId: seedUserId("region-admin-a") },
+          roleAssignmentId: null,
+          requestId: "it",
+        },
+        draftId,
+        "archive",
+        null,
+      ),
+    ).catch((e: unknown) => e as { reason?: string });
+    expect(archived).toMatchObject({ reason: "archive_never_published" });
+
+    // На модерации (открытая заявка) — 409 not_draft: модератор уже решает.
+    await sql(
+      `INSERT INTO moderation_cases (region_id, place_id, organization_id, submitted_by) VALUES ($1, $2, $3, $4)`,
+      [base.regions.a, draftId, draftOrg, LATE],
+    );
+    await sql(`UPDATE places SET status = 'pending_moderation' WHERE id = $1`, [draftId]);
+    expect((await partner.getPlace(LATE, draftId)).deletable).toBe(false);
+    expect(await failure(partner.deletePlace(LATE, draftId, meta(LATE)))).toMatchObject({
+      status: 409,
+      reason: "not_draft",
+    });
+
+    // Возвращено на доработку — удаляется вместе с историей заявок (ON DELETE CASCADE); организация остаётся.
+    await sql(
+      `UPDATE moderation_cases SET status = 'decided', decision = 'changes_requested', comment = 'Фото',
+         decided_by = $2, decided_at = now() WHERE place_id = $1`,
+      [draftId, MODERATOR_A],
+    );
+    await sql(`UPDATE places SET status = 'changes_requested' WHERE id = $1`, [draftId]);
+    await partner.deletePlace(LATE, draftId, meta(LATE));
+    expect((await sql(`SELECT count(*)::int AS n FROM places WHERE id = $1`, [draftId])).rows[0].n).toBe(0);
+    expect(
+      (await sql(`SELECT count(*)::int AS n FROM moderation_cases WHERE place_id = $1`, [draftId])).rows[0].n,
+    ).toBe(0);
+    expect(
+      (await sql(`SELECT count(*)::int AS n FROM organizations WHERE id = $1`, [draftOrg])).rows[0].n,
+    ).toBe(1);
+    const audit = await sql(
+      `SELECT actor_user_id, role_assignment_id, region_id FROM audit_logs
+       WHERE action = 'place.delete' AND entity_id = $1`,
+      [draftId],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({ actor_user_id: LATE, region_id: base.regions.a });
+    expect(audit.rows[0].role_assignment_id).not.toBeNull();
+    expect((await partner.me(LATE)).organizations.find((o) => o.id === draftOrg)!.places).toEqual([]);
+    expect(await failure(partner.deletePlace(LATE, draftId, meta(LATE)))).toMatchObject({ status: 404 });
+  });
 });

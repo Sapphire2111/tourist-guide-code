@@ -202,6 +202,17 @@ export class PartnerRepository {
     return new Map(rows.map((r) => [r.place_id, Number(r.n)]));
   }
 
+  /** Есть ли у места ресурсы бронирования (resources_place_fk RESTRICT — такое место не удаляется). */
+  async hasResources(placeId: string): Promise<boolean> {
+    const row = await this.q
+      .selectFrom("resources")
+      .select("id")
+      .where("place_id", "=", placeId)
+      .limit(1)
+      .executeTakeFirst();
+    return !!row;
+  }
+
   // --- модерация ---
 
   /** Последняя заявка по каждому месту. */

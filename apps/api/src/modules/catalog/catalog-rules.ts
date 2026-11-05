@@ -26,6 +26,15 @@ export function canTransition(from: PlaceStatus, action: PlaceTransition): boole
   return PLACE_TRANSITIONS[action].includes(from);
 }
 
+/**
+ * Архив — только для того, что публиковалось: CHECK places_published_once (0017) не пускает archived/published/
+ * suspended без first_published_at (иначе 500 из БД). Черновик, который ни разу не публиковался, удаляют
+ * (DELETE /admin/places/{id}), а не архивируют.
+ */
+export function archiveNeedsDelete(action: PlaceTransition, firstPublishedAt: Date | null): boolean {
+  return action === "archive" && firstPublishedAt === null;
+}
+
 /** Почему место нельзя опубликовать (details.problems ответа 422 errors.place.notPublishable). */
 export const PUBLISH_PROBLEMS = [
   "description_missing",

@@ -176,7 +176,12 @@ test("партнерське місце, що ще не публікувалос
   page,
 }) => {
   const state = adminMockState.get(page)!;
-  const base = { ...state.places[0]!, organizationId: "00000000-0000-4000-8000-000000000903" };
+  // Ни разу не публиковалось (в api архив без first_published_at невозможен — здесь проверяется только отказ публикации).
+  const base = {
+    ...state.places[0]!,
+    organizationId: "00000000-0000-4000-8000-000000000903",
+    firstPublishedAt: null,
+  };
   state.places.push({ ...base, id: "00000000-0000-4000-8000-000000000888", status: "draft" });
   state.places.push({ ...base, id: "00000000-0000-4000-8000-000000000889", status: "archived" });
   await login(page, "/#/places/00000000-0000-4000-8000-000000000888");
@@ -195,6 +200,7 @@ test("місце на модерації: немає «До архіву» й «
     id: "00000000-0000-4000-8000-000000000890",
     status: "pending_moderation",
     organizationId: "00000000-0000-4000-8000-000000000903",
+    firstPublishedAt: null,
   });
   await login(page, "/#/places/00000000-0000-4000-8000-000000000890");
   await expect(page.getByRole("button", { name: "Перевірити готовність" })).toBeVisible();

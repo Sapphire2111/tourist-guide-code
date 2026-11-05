@@ -37,6 +37,10 @@ export const en: Messages = {
   "miniapp.theme.day": "Day",
   "miniapp.theme.night": "Night",
 
+  "errors.partner.placeOncePublished":
+    "This venue has already been published in the catalog, so it can only be edited, not deleted.",
+  "errors.catalog.archiveNeverPublished":
+    "This place has never been published, so it needs no archive: delete the draft instead.",
   "errors.placeClaim.alreadyDecided": "A decision on this claim has already been made.",
   "errors.placeClaim.alreadyClaimed": "This place is already linked to an organization.",
   "errors.placeClaim.duplicate": "Your claim for this place is already under review.",
@@ -216,6 +220,13 @@ export const en: Messages = {
   "miniapp.partner.photos.confirmText": "The photo will disappear from the venue card.",
   "miniapp.partner.photos.confirmYes": "Delete",
   "miniapp.partner.photos.cancel": "Cancel",
+  "miniapp.partner.deleteDraft.button": "Delete draft",
+  "miniapp.partner.deleteDraft.hint":
+    "The venue has never been published, so the draft can be removed entirely.",
+  "miniapp.partner.deleteDraft.confirmTitle": "Delete “{name}”?",
+  "miniapp.partner.deleteDraft.confirmText": "This can't be undone.",
+  "miniapp.partner.deleteDraft.confirmYes": "Delete",
+  "miniapp.partner.deleteDraft.error": "Could not delete the draft. Try again.",
   "miniapp.partner.photos.help": "JPEG, PNG or WebP. The first photo is the cover.",
   "miniapp.partner.location.set": "Mark on the map",
   "miniapp.partner.location.change": "Change the mark",

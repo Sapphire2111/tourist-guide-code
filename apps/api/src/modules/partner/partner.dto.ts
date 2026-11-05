@@ -279,6 +279,13 @@ export class PartnerPlaceDto {
       "Можно ли сейчас править: false — на модерации (pending_moderation), приостановлено или в архиве",
   })
   editable!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Можно ли удалить черновик (DELETE /partner/places/{id}): ни разу не публиковалось, не на модерации, роль " +
+      "с правом отправки на модерацию (ORG_OWNER)",
+  })
+  deletable!: boolean;
   @ApiProperty({ type: String, format: "uuid" }) categoryId!: string;
   @ApiProperty({ type: String, format: "uuid", nullable: true }) localityId!: string | null;
   @ApiProperty({ type: ShortTextDto }) name!: ShortTextDto;

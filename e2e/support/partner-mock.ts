@@ -110,6 +110,7 @@ const placeDto = (p: PlaceState) => ({
   role: p.role,
   abilities: abilities(p.role),
   editable: ["draft", "changes_requested", "rejected", "published"].includes(p.status),
+  deletable: false,
   categoryId: CATEGORY.id,
   localityId: null,
   name: p.name,
