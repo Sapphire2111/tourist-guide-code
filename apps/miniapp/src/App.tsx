@@ -137,6 +137,10 @@ const PlaceEditor = lazyScreen(
   SCREEN_ERROR,
 );
 const PartnerStaff = lazyScreen(() => import("./partner/Staff.js").then((m) => m.PartnerStaff), SCREEN_ERROR);
+const ClaimPlace = lazyScreen(
+  () => import("./partner/ClaimPlace.js").then((m) => m.ClaimPlace),
+  SCREEN_ERROR,
+);
 
 // Оболочка — классы design/kosiv.css: safe areas (переменные Telegram Bot API 8.0+, иначе env() браузера) учитывают
 // липкая шапка (сверху), отступ содержимого и нижняя навигация (снизу).
@@ -458,7 +462,7 @@ function useFocusHeading(path: string) {
 }
 
 const PARTNER_PATH_RE =
-  /^\/partner\/(place|org)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources|\/reviews)?$/;
+  /^\/partner\/(place|org|claim)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources|\/reviews)?$/;
 
 /**
  * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
@@ -479,6 +483,8 @@ function partnerScreen(
   const id = uuidOf(raw!);
   if (!id) return null;
   if (kind === "place" && !sub) return <PlaceEditor key={id} id={id} />;
+  // «Це мій заклад» (0031): заявка на место каталога из его карточки.
+  if (kind === "claim" && !sub) return <ClaimPlace key={id} placeId={id} />;
   if (kind === "place" && sub === "/offers") return <PartnerOffers key={id} placeId={id} />;
   if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
   if (bookings && kind === "place" && sub === "/bookings") return <PartnerBookings key={id} placeId={id} />;

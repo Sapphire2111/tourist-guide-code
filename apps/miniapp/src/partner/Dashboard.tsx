@@ -6,6 +6,7 @@ import { pickLocalized } from "@tg/i18n";
 import { Link, Stack, useFeatureFlag, useT } from "@tg/ui";
 import { AsyncView, card } from "../guide/parts.js";
 import { UnauthorizedError } from "../guide/types.js";
+import { MyClaims } from "./ClaimsList.js";
 import { resolveSelection, usePartner, useRefreshMe } from "./context.js";
 import { ModeSwitch, PlaceStatusInfo, roleKey } from "./parts.js";
 
@@ -41,12 +42,16 @@ export function PartnerDashboard() {
         {({ organizations }) => {
           if (!organizations.length)
             return (
-              <div className="kosiv-card kosiv-empty" data-testid="not-partner">
-                <p>{t("miniapp.partner.notPartner")}</p>
-                <Link to="/partner/new" className="kosiv-cta">
-                  {t("miniapp.partner.become")}
-                </Link>
-              </div>
+              <>
+                {/* Заявка «Це мій заклад» на рассмотрении — статус до появления организации. */}
+                <MyClaims />
+                <div className="kosiv-card kosiv-empty" data-testid="not-partner">
+                  <p>{t("miniapp.partner.notPartner")}</p>
+                  <Link to="/partner/new" className="kosiv-cta">
+                    {t("miniapp.partner.become")}
+                  </Link>
+                </div>
+              </>
             );
           const { org, place } = resolveSelection(organizations, selection);
           return (
@@ -97,7 +102,8 @@ export function PartnerDashboard() {
                   <h2 style={{ margin: 0 }}>{pickLocalized(place.name, locale)}</h2>
                   <PlaceStatusInfo status={place.status} moderation={place.moderation} />
                   <Stack>
-                    {org.abilities.editPlace && (
+                    {/* Место каталога, заявленное без подходящего шаблона, редактора P06 не имеет. */}
+                    {org.abilities.editPlace && place.templateCode && (
                       <Link to={`/partner/place/${place.id}`} className="kosiv-cta">
                         {t("miniapp.partner.editPlace")}
                       </Link>
@@ -134,6 +140,7 @@ export function PartnerDashboard() {
               {org?.abilities.manageStaff && (
                 <Link to={`/partner/org/${org.id}/staff`}>{t("miniapp.partner.staffLink")}</Link>
               )}
+              <MyClaims />
               {/* Онбординг создаёт новую организацию — только тем, кто уже владелец (не кассиру/менеджеру). */}
               {organizations.some((o) => o.role === "ORG_OWNER") && (
                 <Link to="/partner/new">{t("miniapp.partner.addPlace")}</Link>

@@ -21,6 +21,10 @@ export type StaffInviteCreated = ApiSchemas["StaffInviteCreatedDto"];
 export type StaffInvitePreview = ApiSchemas["StaffInvitePreviewDto"];
 export type StaffInviteAccepted = ApiSchemas["StaffInviteAcceptedDto"];
 export type PartnerRole = ApiSchemas["PartnerRole"];
+export type PlaceClaim = ApiSchemas["PlaceClaimDto"];
+export type PlaceClaimInput = ApiSchemas["CreatePlaceClaimDto"];
+export type PlaceClaimRole = ApiSchemas["PlaceClaimRole"];
+export type PlaceClaimStatus = ApiSchemas["PlaceClaimStatus"];
 
 /** Префикс start_param приглашения (STAFF_INVITE_START_PREFIX сервера). */
 export const INVITE_PREFIX = "inv_";
@@ -77,6 +81,9 @@ export type PartnerApi = {
   deactivate(orgId: string, assignmentId: string): Promise<void>;
   invitePreview(token: string): Promise<StaffInvitePreview>;
   acceptInvite(token: string): Promise<StaffInviteAccepted>;
+  /** «Це мій заклад» (0031): мои заявки в регионе (новые сверху). */
+  claims(regionId: string): Promise<PlaceClaim[]>;
+  createClaim(input: PlaceClaimInput, idempotencyKey: string): Promise<PlaceClaim>;
 };
 
 /** Ответ без тела (204): ok() ждёт data — проверяем статус сами, ошибки — через ok(). */
@@ -166,5 +173,9 @@ export function createPartnerApi(api: ApiClient): PartnerApi {
       ),
     invitePreview: (token) => ok(api.GET("/partner/invites/{token}", { params: { path: { token } } })),
     acceptInvite: (token) => ok(api.POST("/partner/invites/{token}/accept", { params: { path: { token } } })),
+    claims: async (regionId) =>
+      (await ok(api.GET("/partner/claims", { params: { query: { regionId } } }))).items,
+    createClaim: (body, key) =>
+      ok(api.POST("/partner/claims", { params: { header: { "Idempotency-Key": key } }, body })),
   };
 }

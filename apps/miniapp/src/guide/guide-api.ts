@@ -119,6 +119,8 @@ export function cardOf(dto: CardDto): PlaceDetail {
     verifiedAt: dto.verifiedAt,
     openUntil: dto.openUntil,
     favorite: dto.favorite,
+    // Старый сервер без поля — ссылки «Це мій заклад?» нет.
+    claimable: dto.claimable === true,
     ...richOf(dto),
   };
 }

@@ -50,6 +50,7 @@ describe("parentOf", () => {
     ["/plan/saved/x", "/plan/saved"],
     ["/plan", "/"],
     ["/partner/place/x/offers", "/partner"],
+    ["/partner/claim/x", "/place/x"],
     ["/partner", "/"],
     ["/", "/"],
   ])("%s → %s", (path, parent) => {
