@@ -295,7 +295,7 @@ html[data-season] .pc-title:focus-visible {
 .pc-promo-dates {
   margin-top: 4px;
   font-size: 0.8125rem;
-  opacity: 0.8;
+  color: var(--app-muted);
 }
 .pc-schedule {
   border-collapse: collapse;

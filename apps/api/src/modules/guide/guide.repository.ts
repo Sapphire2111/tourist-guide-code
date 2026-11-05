@@ -558,22 +558,31 @@ export class GuideRepository {
     return out;
   }
 
-  /** Условие «действует сейчас»: status active и now внутри [starts_at, ends_at] (null — без границы). */
+  /**
+   * Действующие акции: status active, now внутри [starts_at, ends_at] (null — без границы), место привязано к
+   * организации, организация не заблокирована (как и остальной партнёрский контент).
+   */
   private activeOffers() {
     return this.q
       .selectFrom("offers")
-      .where("status", "=", "active")
-      .where((eb) => eb.or([eb("starts_at", "is", null), eb("starts_at", "<=", sql<Date>`now()`)]))
-      .where((eb) => eb.or([eb("ends_at", "is", null), eb("ends_at", ">=", sql<Date>`now()`)]));
+      .innerJoin("places", "places.id", "offers.place_id")
+      .innerJoin("organizations", "organizations.id", "places.organization_id")
+      .where("places.organization_id", "is not", null)
+      .where("organizations.status", "<>", "blocked")
+      .where("offers.status", "=", "active")
+      .where((eb) =>
+        eb.or([eb("offers.starts_at", "is", null), eb("offers.starts_at", "<=", sql<Date>`now()`)]),
+      )
+      .where((eb) => eb.or([eb("offers.ends_at", "is", null), eb("offers.ends_at", ">=", sql<Date>`now()`)]));
   }
 
   /** Места из списка, у которых есть действующая акция партнёра (одним запросом на страницу выдачи). */
   async placeIdsWithOffer(placeIds: readonly string[]): Promise<Set<string>> {
     if (placeIds.length === 0) return new Set();
     const rows = await this.activeOffers()
-      .select("place_id")
+      .select("offers.place_id")
       .distinct()
-      .where("place_id", "in", placeIds)
+      .where("offers.place_id", "in", placeIds)
       .execute();
     return new Set(rows.map((r) => r.place_id));
   }
@@ -581,10 +590,16 @@ export class GuideRepository {
   /** Действующие акции места: ближайшие к окончанию сверху, без срока — в конце. */
   offers(placeId: string) {
     return this.activeOffers()
-      .select(["id", "title_i18n", "description_i18n", "starts_at", "ends_at"])
-      .where("place_id", "=", placeId)
-      .orderBy(sql`ends_at asc nulls last`)
-      .orderBy("created_at", "desc")
+      .select([
+        "offers.id",
+        "offers.title_i18n",
+        "offers.description_i18n",
+        "offers.starts_at",
+        "offers.ends_at",
+      ])
+      .where("offers.place_id", "=", placeId)
+      .orderBy(sql`offers.ends_at asc nulls last`)
+      .orderBy("offers.created_at", "desc")
       .limit(20)
       .execute();
   }

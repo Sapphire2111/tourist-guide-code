@@ -166,6 +166,8 @@ export type PlaceDetail = PlaceSummary & {
   wikipedia?: WikipediaInfo | null;
   /** Действующие акции партнёра (блок «Акції»); нет — блок не показывается. */
   offers?: PlaceOffer[];
+  /** Часовой пояс региона места (IANA) — для дат акций. */
+  timezone?: string;
 };
 
 export type PlaceOffer = {

@@ -119,6 +119,7 @@ export function cardOf(dto: CardDto): PlaceDetail {
     // Источник reviews — по отзывам Google (places:amenities): отдельно, с пометкой в карточке.
     tags: dto.tags.filter((t) => t.source !== "reviews").map((t) => t.name),
     reviewTags: dto.tags.filter((t) => t.source === "reviews").map((t) => t.name),
+    timezone: dto.schedule.timezone,
     offers: ((dto as Partial<CardDto>).offers ?? []).map((o) => ({
       id: o.id,
       title: o.title,

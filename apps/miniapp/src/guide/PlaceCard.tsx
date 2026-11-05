@@ -11,6 +11,7 @@ import { usePlaceResources } from "../bookings/context.js";
 import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { PlaceReviews } from "../reviews/PlaceReviews.js";
 import { useAsync, useGuide } from "./context.js";
+import { zoneOf } from "../bookings/format.js";
 import { interceptBack } from "../telegram.js";
 import { googleRouteUrl } from "./geo.js";
 import { Badge, ExtLink, PlaceBadges, useDistance } from "./parts.js";
@@ -376,29 +377,38 @@ function Amenities({ amenities }: { amenities: string[] }) {
   );
 }
 
-/** «до 12 листопада» / «з 1 листопада» / диапазон; даты — по Киеву (регион один часовой пояс). */
-function offerDates(o: PlaceOffer, locale: string, t: ReturnType<typeof useT>["t"]): string | null {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(locale === "en" ? "en-GB" : "uk-UA", {
-      day: "numeric",
-      month: "long",
-      timeZone: "Europe/Kyiv",
-    });
-  if (o.startsAt && o.endsAt && new Date(o.startsAt).getTime() > Date.now())
-    return t("miniapp.promo.range", { from: fmt(o.startsAt), to: fmt(o.endsAt) });
-  if (o.startsAt && new Date(o.startsAt).getTime() > Date.now() && !o.endsAt)
-    return t("miniapp.promo.from", { date: fmt(o.startsAt) });
-  return o.endsAt ? t("miniapp.promo.until", { date: fmt(o.endsAt) }) : null;
+/**
+ * «до 12 листопада»; сервер отдаёт только уже начавшиеся акции, поэтому «з …» не нужно. Пояс — региона места через
+ * zoneOf (старые ICU не знают Europe/Kyiv → запасной Europe/Kiev → пояс устройства), RangeError исключён.
+ */
+function offerEnds(
+  o: PlaceOffer,
+  locale: string,
+  timezone: string | undefined,
+  t: ReturnType<typeof useT>["t"],
+): string | null {
+  if (!o.endsAt) return null;
+  const date = new Date(o.endsAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const options = { day: "numeric", month: "long", timeZone: zoneOf(timezone ?? "Europe/Kyiv") } as const;
+  const lang = locale === "en" ? "en-GB" : "uk-UA";
+  let text: string;
+  try {
+    text = date.toLocaleDateString(lang, options);
+  } catch {
+    text = date.toLocaleDateString(lang, { day: "numeric", month: "long" });
+  }
+  return t("miniapp.promo.until", { date: text });
 }
 
 /** Акции партнёра (только действующие — отбирает сервер). */
-function PromoOffers({ offers }: { offers: PlaceOffer[] }) {
+function PromoOffers({ offers, timezone }: { offers: PlaceOffer[]; timezone?: string }) {
   const { t, locale } = useT();
   return (
     <Section title={t("miniapp.promo.title")} testId="place-promos">
       <ul className="pc-promos">
         {offers.map((o) => {
-          const dates = offerDates(o, locale, t);
+          const dates = offerEnds(o, locale, timezone, t);
           const description = o.description ? pickLocalized(o.description, locale) : null;
           return (
             <li key={o.id} className="pc-promo" data-testid="place-promo">
@@ -628,7 +638,7 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         )}
         {description && <p className="pc-lead">{description}</p>}
 
-        {(place.offers?.length ?? 0) > 0 && <PromoOffers offers={place.offers!} />}
+        {(place.offers?.length ?? 0) > 0 && <PromoOffers offers={place.offers!} timezone={place.timezone} />}
 
         {amenities.length > 0 && <Amenities amenities={amenities} />}
 

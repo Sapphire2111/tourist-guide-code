@@ -76,7 +76,7 @@ export function Badge({
 }: {
   children: ReactNode;
   testId?: string;
-  tone?: "accent" | "accent2" | "outline";
+  tone?: "accent" | "accent2" | "outline" | "promo";
 }) {
   return (
     <span className="kosiv-chip" data-tone={tone} data-testid={testId}>
@@ -85,7 +85,10 @@ export function Badge({
   );
 }
 
-/** Бейджи места: «Відкрито зараз», «Ми рекомендуємо», «Реклама/Партнер» (реклама не маскируется под рекомендацию). */
+/**
+ * Бейджи места: «Відкрито зараз», «Ми рекомендуємо», «Акція», «Реклама/Партнер». Акція партнёра — свой тон promo,
+ * не accent2 редакционного «Ми рекомендуємо» (BR-09: маркетинг не маскируется под рекомендацию).
+ */
 export function PlaceBadges({ place }: { place: PlaceSummary }) {
   const { t } = useT();
   return (
@@ -102,7 +105,7 @@ export function PlaceBadges({ place }: { place: PlaceSummary }) {
         </Badge>
       )}
       {place.hasOffer && (
-        <Badge testId="badge-offer" tone="accent2">
+        <Badge testId="badge-offer" tone="promo">
           {t("miniapp.promo.badge")}
         </Badge>
       )}

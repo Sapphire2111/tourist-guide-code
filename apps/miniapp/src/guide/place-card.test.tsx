@@ -110,6 +110,31 @@ describe("акції партнера", () => {
     expect(block.textContent).toContain("Для гостей з Telegram");
     expect(block.textContent).toContain("до 12 листопада");
     expect(screen.getByTestId("badge-offer").textContent).toBe("Акція");
+    expect(screen.getByTestId("badge-offer").getAttribute("data-tone")).toBe("promo");
+  });
+
+  it("Intl не знає пояс (старий ICU кидає RangeError) — картка не падає, дата є", async () => {
+    const real = Intl.DateTimeFormat;
+    const toLocale = Date.prototype.toLocaleDateString;
+    const zoneErr = () => new RangeError("Invalid time zone specified");
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (
+      this: unknown,
+      l?: string | string[],
+      o?: Intl.DateTimeFormatOptions,
+    ) {
+      if (o?.timeZone) throw zoneErr();
+      return new real(l, o);
+    } as never);
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (this: Date, l, o) {
+      if ((o as { timeZone?: string } | undefined)?.timeZone) throw zoneErr();
+      return toLocale.call(this, l, o);
+    });
+    try {
+      await renderCard({ ...base, timezone: "Europe/Kyiv", offers: [offer] });
+      expect(screen.getByTestId("place-promo").textContent).toContain("до 12 листопада");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("без акцій — ні блоку, ні бейджа", async () => {

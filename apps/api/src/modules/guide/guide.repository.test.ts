@@ -162,13 +162,16 @@ describe("GuideRepository (SQL)", () => {
 describe("GuideRepository — акции партнёра (SQL)", () => {
   it("действующие: status active, окно [starts_at, ends_at] с null-границами, регион, пачкой по местам", async () => {
     const [q] = await capture((r) => r.placeIdsWithOffer([PLACE]));
-    expect(q!.sql).toMatch(/select distinct "place_id" from "offers"/);
-    expect(q!.sql).toMatch(/"status" = \$/);
-    expect(q!.sql).toMatch(/"starts_at" is null or "starts_at" <= now\(\)/);
-    expect(q!.sql).toMatch(/"ends_at" is null or "ends_at" >= now\(\)/);
-    expect(q!.sql).toMatch(/"place_id" in \(\$/);
-    expect(q!.sql).toMatch(/"region_id" = \$/);
+    expect(q!.sql).toMatch(/select distinct "offers"\."place_id" from "offers"/);
+    expect(q!.sql).toMatch(/"offers"\."status" = \$/);
+    expect(q!.sql).toMatch(/"offers"\."starts_at" is null or "offers"\."starts_at" <= now\(\)/);
+    expect(q!.sql).toMatch(/"offers"\."ends_at" is null or "offers"\."ends_at" >= now\(\)/);
+    expect(q!.sql).toMatch(/"places"\."organization_id" is not null/);
+    expect(q!.sql).toMatch(/"organizations"\."status" <> \$/);
+    expect(q!.sql).toMatch(/"offers"\."place_id" in \(\$/);
+    expect(q!.sql).toMatch(/"offers"\."region_id" = \$/);
     expect(q!.params).toContain("active");
+    expect(q!.params).toContain("blocked");
   });
 
   it("пустой список мест — без запроса", async () => {
@@ -178,8 +181,8 @@ describe("GuideRepository — акции партнёра (SQL)", () => {
   it("карточка: те же условия, сначала заканчивающиеся, без срока — в конце", async () => {
     const [q] = await capture((r) => r.offers(PLACE));
     expect(q!.sql).toMatch(/from "offers"/);
-    expect(q!.sql).toMatch(/"ends_at" >= now\(\)/);
-    expect(q!.sql).toMatch(/ends_at asc nulls last/);
+    expect(q!.sql).toMatch(/"offers"\."ends_at" >= now\(\)/);
+    expect(q!.sql).toMatch(/offers\.ends_at asc nulls last/);
     expect(q!.params).toContain(PLACE);
   });
 });
