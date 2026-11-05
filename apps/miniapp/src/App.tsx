@@ -584,7 +584,8 @@ function Routes(props: RoutesProps) {
     // claim=1 — из анкеты партнёра: выбор своего заведения ведёт сразу к заявке (#/partner/claim/{id}).
     const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
     const q = params.get("q") ?? "";
-    const claim = params.get("claim") === "1";
+    // Без модуля партнёра или сессии заявка недоступна — обычный поиск.
+    const claim = params.get("claim") === "1" && partnerCabinet && Boolean(session);
     return (
       <Screen webApp={webApp}>
         <RequireRegion>

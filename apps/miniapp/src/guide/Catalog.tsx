@@ -132,12 +132,13 @@ function CategoryPlaces({
   const activeAmenities = mapFirst ? amenities : [];
   const amenityKey = activeAmenities.join(",");
   // Выбраны локации — все места этих пунктов; базовая точка QR остаётся для расстояния и порядка (api без радиуса).
-  const byLocation = localityIds.length > 0;
+  // Режим заявки: владелец ищет своё заведение по всему региону — локации и радиус туриста не сужают выдачу.
+  const byLocation = !claim && localityIds.length > 0;
   const point = gps ?? base?.point ?? null;
   // Радиус: null — как раньше (GPS: 3 км, при малом числе мест расширяется до 10 км; QR-точка: без радиуса).
   // Ползунок есть, когда есть точка и не выбраны локации; выбор запоминается за записью истории.
   // "all" — явно «Усі місця» (без радиуса).
-  const [radius, setRadius] = useScreenState<number | "all" | null>("catalog.radius", null);
+  const [radius, setRadius] = useScreenState<number | "all" | null>("catalog.radius", claim ? "all" : null);
   const canRadius = !byLocation && point !== null;
   const [queryRadius, setQueryRadius] = useState<number | "all" | null>(radius);
   useEffect(() => {

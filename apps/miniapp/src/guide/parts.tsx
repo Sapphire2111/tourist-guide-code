@@ -181,11 +181,12 @@ export function PlaceMedia({ place, icon }: { place: PlaceSummary; icon?: ReactN
   );
 }
 
-/** Карточка места: обложка, название (ссылка на всю карточку), расстояние и бейджи. */
 /** Ссылка на карточку места. */
 const placeHref = (id: string) => `/place/${encodeURIComponent(id)}`;
 /** Ссылка на заявку «Це мій заклад?» (0031). */
 export const claimHref = (id: string) => `/partner/claim/${encodeURIComponent(id)}`;
+
+/** Карточка места: обложка, название (ссылка на всю карточку), расстояние и бейджи. */
 
 export function PlaceSummaryCard({
   place,
