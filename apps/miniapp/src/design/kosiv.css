@@ -576,6 +576,10 @@ html[data-theme="night"] .kosiv-chip[data-tone="promo"] {
   flex: none;
   color: var(--app-accent);
 }
+/* «Ніч»: --app-accent (#b83d18) на тёмной поверхности < 3:1 — значок и кольцо маркера светлым --app-accent-ink. */
+html[data-theme="night"] .kosiv-chip[data-tone="partner"] svg {
+  color: var(--app-accent-ink);
+}
 .kosiv-chip[data-tone="outline"] {
   background: transparent;
   border: 1px solid var(--app-border);
@@ -1160,6 +1164,11 @@ html[data-theme="night"] .kosiv-chip[data-tone="promo"] {
 .kosiv-pin[data-partner="true"] {
   box-shadow:
     0 0 0 2px var(--app-accent, #15803d),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+}
+html[data-theme="night"] .kosiv-pin[data-partner="true"] {
+  box-shadow:
+    0 0 0 2px var(--app-accent-ink, #f6ae2d),
     0 1px 4px rgba(0, 0, 0, 0.4);
 }
 .kosiv-pin[data-offer="true"] {

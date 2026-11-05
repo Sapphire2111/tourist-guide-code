@@ -613,7 +613,8 @@ export class GuideRepository {
 
   /**
    * Метка действующего платного размещения места (ТЗ §4.3: всегда с меткой). На порядок выдачи не влияет (C-02),
-   * бейдж «Ми рекомендуємо» не даёт (BR-09). При нескольких — «Реклама» важнее «Партнер».
+   * бейдж «Ми рекомендуємо» не даёт (BR-09). При нескольких — advertising важнее partner
+   * (туристу обе показываются как «Реклама»; «Партнер гіда» — другое: PlaceRow.partner).
    */
   async adLabels(placeIds: readonly string[]): Promise<Map<string, PromotionAdLabel>> {
     if (placeIds.length === 0) return new Map();

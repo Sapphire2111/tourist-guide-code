@@ -968,7 +968,7 @@ export const en: Messages = {
   "miniapp.promo.until": "until {date}",
   "miniapp.promo.from": "from {date}",
   "miniapp.promo.range": "{from} — {to}",
-  "miniapp.place.ad": "Advertising",
+  "miniapp.place.ad": "Ad",
   "miniapp.place.partner": "Ad",
   "miniapp.place.guidePartner": "Guide partner",
   "miniapp.place.partnerHint": "The venue updates its own info",

@@ -171,6 +171,14 @@ describe("«Партнер гіда»", () => {
     expect(order).toEqual(["badge-open", "badge-offer", "badge-partner", "badge-recommended"]);
   });
 
+  it("платна мітка partner — «Реклама» (не плутати з «Партнер гіда»); обидві разом — два різні бейджі", async () => {
+    await renderCard({ ...base, partner: true, adLabel: "partner", offers: [] });
+    expect(screen.getByTestId("badge-ad").textContent).toBe("Реклама");
+    expect(screen.getByTestId("badge-ad").getAttribute("data-tone")).toBe("outline");
+    expect(screen.getByTestId("badge-partner").textContent).toContain("Партнер гіда");
+    expect(screen.queryAllByText(/^Партнер$/)).toHaveLength(0);
+  });
+
   it("не партнер — ні бейджа, ні рядка", async () => {
     await renderCard({ ...base, offers: [] });
     expect(screen.queryByTestId("badge-partner")).toBeNull();
