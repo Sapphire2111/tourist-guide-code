@@ -180,6 +180,11 @@ export class PartnerAbilitiesDto {
   @ApiProperty({ type: Boolean, description: "Отправить на модерацию (ORG_OWNER)" }) submit!: boolean;
   @ApiProperty({ type: Boolean, description: "Сотрудники P09 (ORG_OWNER)" }) manageStaff!: boolean;
   @ApiProperty({ type: Boolean, description: "Акции P07 (ORG_OWNER, ORG_MANAGER)" }) manageOffers!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description: "Прайс заведения — разделы и позиции с ценами (price_list.manage; ORG_OWNER, ORG_MANAGER)",
+  })
+  managePriceList!: boolean;
   @ApiProperty({ type: Boolean, description: "Заявки гостей P10 (все роли партнёра)" })
   serviceRequests!: boolean;
   @ApiProperty({ type: Boolean, description: "Брони заведения P04/P05 — список и ответ (booking.read)" })

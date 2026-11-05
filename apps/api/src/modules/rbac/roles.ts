@@ -75,6 +75,7 @@ const REGION_ADMIN_PERMISSIONS: readonly PermissionCode[] = [
   "emergency_contact.manage",
   "scenario.manage",
   "offer.manage",
+  "price_list.manage",
   "promotion.manage",
   "badge.recommend.grant",
   "badge.recommend.revoke",
@@ -155,6 +156,7 @@ const ORG_MANAGER_PERMISSIONS: readonly PermissionCode[] = [
   "schedule.edit",
   "media.upload",
   "offer.manage",
+  "price_list.manage",
   "host_module.settings.edit",
   // Бронирования (блок 7): ресурсы и правила, отказ, альтернатива, исправление no_show, телефон клиента (C-20).
   "resource.manage",

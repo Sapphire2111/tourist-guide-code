@@ -81,6 +81,8 @@ describe("классификация таблиц (tenancy.ts)", () => {
       "place_schedules",
       "place_tags",
       "places",
+      "price_list_items",
+      "price_list_sections",
       "promotions",
       "qr_points",
       "qr_scan_events",

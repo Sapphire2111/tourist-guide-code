@@ -98,6 +98,14 @@ export const PARTNER_AUDIT = {
   offerCreate: "offer.create",
   offerUpdate: "offer.update",
   offerArchive: "offer.archive",
+  priceSectionCreate: "price_list.section.create",
+  priceSectionUpdate: "price_list.section.update",
+  priceSectionMove: "price_list.section.move",
+  priceSectionArchive: "price_list.section.archive",
+  priceItemCreate: "price_list.item.create",
+  priceItemUpdate: "price_list.item.update",
+  priceItemMove: "price_list.item.move",
+  priceItemArchive: "price_list.item.archive",
 } as const;
 
 export const MODERATION_CASE_ENTITY = "moderation_case";
@@ -112,7 +120,7 @@ export function organizationName(raw: string): string {
 export const NOTIFICATION_TEMPLATE_CASE_OPENED = "moderation.case_opened";
 
 /** Доступ к месту партнёра: организация и регион — из иерархии на сервере; назначение — в аудит. */
-type PlaceAccess = {
+export type PlaceAccess = {
   placeId: string;
   organizationId: string;
   regionId: string;
@@ -861,12 +869,9 @@ export class PartnerService {
   /**
    * Доступ к месту партнёра с правом: место → организация → регион (из БД). Место не найдено или не партнёрское
    * (без организации) — 404; нет роли в организации — 403 not_partner; роль без права — 403 role_forbidden.
+   * Публичный — и для PriceListService (прайс заведения).
    */
-  private async placeAccess(
-    userId: string,
-    placeId: string,
-    permission: PermissionCode,
-  ): Promise<PlaceAccess> {
+  async placeAccess(userId: string, placeId: string, permission: PermissionCode): Promise<PlaceAccess> {
     const chain = await this.hierarchy.chain(scope("PLACE", placeId));
     const org = chain?.[1];
     const regionId = chain ? chainRegionId(chain) : null;
@@ -901,8 +906,8 @@ export class PartnerService {
     return { access, grants };
   }
 
-  /** Транзакция региона места с блокировкой строки места и шаблоном. */
-  private inPlace<T>(
+  /** Транзакция региона места с блокировкой строки места и шаблоном (и для PriceListService). */
+  inPlace<T>(
     access: PlaceAccess,
     fn: (place: PlaceRecord, template: PartnerTemplate) => Promise<T>,
   ): Promise<T> {

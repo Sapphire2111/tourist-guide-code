@@ -1,4 +1,4 @@
-// P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07/P09 и заявки отеля
+// P01 дашборд партнёра и P13 выбор организации/заведения: статус места, переходы в P06/P07 (и «Прайс»)/P09 и заявки отеля
 // (P10, блок 5), бронирования P04 и ресурсы (блок 7, флаг module.bookings). Только то, что есть в GET /partner/me —
 // без финансов, рейтинга и метрик.
 import { useEffect, useId } from "react";
@@ -102,7 +102,7 @@ export function PartnerDashboard() {
                   <h2 style={{ margin: 0 }}>{pickLocalized(place.name, locale)}</h2>
                   <PlaceStatusInfo status={place.status} moderation={place.moderation} />
                   <Stack>
-                    {/* Место каталога, заявленное без подходящего шаблона, редактора P06 не имеет. */}
+                    {/* Без шаблона редактора нет; одобренная заявка «Це мій заклад» всегда даёт шаблон (подходящий или base). */}
                     {org.abilities.editPlace && place.templateCode && (
                       <Link to={`/partner/place/${place.id}`} className="kosiv-cta">
                         {t("miniapp.partner.editPlace")}
@@ -111,6 +111,12 @@ export function PartnerDashboard() {
                     {org.abilities.manageOffers && place.modules.includes("offers") && (
                       <Link to={`/partner/place/${place.id}/offers`}>
                         {t("miniapp.partner.offersLink", { count: place.activeOffers })}
+                      </Link>
+                    )}
+                    {/* Прайс работает через место с шаблоном (inPlace), как редактор. */}
+                    {org.abilities.managePriceList && place.templateCode && (
+                      <Link to={`/partner/place/${place.id}/prices`} data-testid="partner-prices-link">
+                        {t("miniapp.partner.prices.link")}
                       </Link>
                     )}
                     {bookings && (

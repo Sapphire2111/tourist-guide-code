@@ -1142,6 +1142,46 @@ export interface OffersTable {
 }
 export type Offer = Selectable<OffersTable>;
 
+// --- Прайс заведения (tenant; миграция 0030): разделы → позиции с ценой (копейки, UAH) ---
+
+export const PRICE_LIST_STATUSES = ["active", "hidden", "archived"] as const;
+export type PriceListStatus = (typeof PRICE_LIST_STATUSES)[number];
+
+export interface PriceListSectionsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  title_i18n: Jsonb<LocalizedText>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  status: ColumnType<PriceListStatus, PriceListStatus | undefined, PriceListStatus>;
+  version: ColumnType<number, number | undefined, number>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type PriceListSection = Selectable<PriceListSectionsTable>;
+
+export interface PriceListItemsTable {
+  id: UuidPk;
+  region_id: RegionId;
+  place_id: ColumnType<string, string, never>;
+  section_id: ColumnType<string, string, string>;
+  name_i18n: Jsonb<LocalizedText>;
+  description_i18n: Nullable<LocalizedText>;
+  /** bigint: pg отдаёт строкой — репозиторий приводит к числу (≤ 1e9, точно в number). */
+  price_minor: ColumnType<string | number, number, number>;
+  currency: ColumnType<"UAH", "UAH" | undefined, never>;
+  price_from: ColumnType<boolean, boolean | undefined, boolean>;
+  unit_i18n: Nullable<LocalizedText>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  status: ColumnType<PriceListStatus, PriceListStatus | undefined, PriceListStatus>;
+  version: ColumnType<number, number | undefined, number>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+export type PriceListItem = Selectable<PriceListItemsTable>;
+
 // --- Бронирования (0022, блок 7): ресурс, правила доступности, согласие на телефон, бронь и её история (tenant) ---
 
 export const RESOURCE_STATUSES = ["active", "inactive", "archived"] as const;
@@ -1682,6 +1722,9 @@ export interface Database {
   place_claims: PlaceClaimsTable;
   staff_invites: StaffInvitesTable;
   offers: OffersTable;
+  // Прайс заведения (0030).
+  price_list_sections: PriceListSectionsTable;
+  price_list_items: PriceListItemsTable;
   // Богатая картка місця (0018).
   place_enrichments: PlaceEnrichmentsTable;
   google_photo_uris: GooglePhotoUrisTable;

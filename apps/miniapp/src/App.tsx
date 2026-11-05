@@ -129,6 +129,10 @@ const PartnerOffers = lazyScreen(
   () => import("./partner/Offers.js").then((m) => m.PartnerOffers),
   SCREEN_ERROR,
 );
+const PartnerPriceList = lazyScreen(
+  () => import("./partner/PriceList.js").then((m) => m.PartnerPriceList),
+  SCREEN_ERROR,
+);
 const PartnerOnboarding = lazyScreen(
   () => import("./partner/Onboarding.js").then((m) => m.PartnerOnboarding),
   SCREEN_ERROR,
@@ -453,7 +457,7 @@ function useFocusHeading(path: string) {
 }
 
 const PARTNER_PATH_RE =
-  /^\/partner\/(place|org|claim)\/([^/]+)(\/offers|\/staff|\/bookings|\/resources|\/reviews)?$/;
+  /^\/partner\/(place|org|claim)\/([^/]+)(\/offers|\/prices|\/staff|\/bookings|\/resources|\/reviews)?$/;
 
 /**
  * Экраны кабинета партнёра по пути; null — путь не из кабинета (или неверный id — «не найдено»).
@@ -477,6 +481,7 @@ function partnerScreen(
   // «Це мій заклад» (0031): заявка на место каталога из его карточки.
   if (kind === "claim" && !sub) return <ClaimPlace key={id} placeId={id} />;
   if (kind === "place" && sub === "/offers") return <PartnerOffers key={id} placeId={id} />;
+  if (kind === "place" && sub === "/prices") return <PartnerPriceList key={id} placeId={id} />;
   if (kind === "org" && sub === "/staff") return <PartnerStaff key={id} orgId={id} />;
   if (bookings && kind === "place" && sub === "/bookings") return <PartnerBookings key={id} placeId={id} />;
   if (bookings && kind === "place" && sub === "/resources") return <PartnerResources key={id} placeId={id} />;

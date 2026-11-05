@@ -46,7 +46,7 @@ export type PlaceCardRow = PlaceRow & {
   verified_at: Date | null;
   /** Источник (0016): google — импорт places:import-google. */
   source: "manual" | "google";
-  /** Организация партнёра (0017); NULL — место можно заявить «Це мій заклад» (0031). */
+  /** Организация партнёра (0017); NULL — место можно заявить «Це мій заклад» (0031), прайса нет (0030). */
   organization_id: string | null;
 };
 
@@ -77,6 +77,9 @@ export type TagRow = {
   tag_group: TagGroup;
   source: PlaceTagSource;
 };
+
+/** Позиций прайса в карточке: лимит кабинета (PRICE_LIST_MAX_ITEMS) с запасом. */
+export const PRICE_ROWS_MAX = 250;
 
 /** Избранных мест в выдаче — не больше (листания нет). */
 export const FAVORITES_MAX = 200;
@@ -372,14 +375,66 @@ export class GuideRepository {
     return this.selectRow(this.published().where("places.id", "=", id), origin)
       .select([
         "places.region_id",
+        "places.organization_id",
         "places.description_i18n",
         "places.website",
         "places.telegram",
         "places.verified_at",
         "places.source",
-        "places.organization_id",
       ])
       .executeTakeFirst() as Promise<PlaceCardRow | undefined>;
+  }
+
+  /** Есть ли у места видимый прайс (0030): active-позиция в active-разделе, только место партнёра. */
+  async hasPriceList(placeId: string): Promise<boolean> {
+    const row = await this.q
+      .selectFrom("price_list_items as i")
+      .innerJoin("price_list_sections as s", (j) =>
+        j.onRef("s.id", "=", "i.section_id").onRef("s.place_id", "=", "i.place_id"),
+      )
+      .innerJoin("places as p", "p.id", "i.place_id")
+      .select("i.id")
+      .where("i.place_id", "=", placeId)
+      .where("p.organization_id", "is not", null)
+      .where("s.status", "=", "active")
+      .where("i.status", "=", "active")
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  /**
+   * Прайс для карточки (0030): позиции active в разделах active партнёрского места (organization_id задан), по
+   * порядку разделов и позиций. Опубликованность места проверяет findPublished.
+   */
+  priceRows(placeId: string) {
+    return this.q
+      .selectFrom("price_list_items as i")
+      .innerJoin("price_list_sections as s", (j) =>
+        j.onRef("s.id", "=", "i.section_id").onRef("s.place_id", "=", "i.place_id"),
+      )
+      .innerJoin("places as p", "p.id", "i.place_id")
+      .select([
+        "s.id as section_id",
+        "s.title_i18n",
+        "i.id",
+        "i.name_i18n",
+        "i.description_i18n",
+        "i.price_minor",
+        "i.currency",
+        "i.price_from",
+        "i.unit_i18n",
+      ])
+      .where("i.place_id", "=", placeId)
+      .where("p.organization_id", "is not", null)
+      .where("s.status", "=", "active")
+      .where("i.status", "=", "active")
+      .orderBy("s.sort_order")
+      .orderBy("s.id")
+      .orderBy("i.sort_order")
+      .orderBy("i.id")
+      .limit(PRICE_ROWS_MAX)
+      .execute();
   }
 
   /** Обогащение места (0018): Google, Вікіпедія, ИИ-текст; нет — undefined. */

@@ -93,6 +93,12 @@ describe("бизнес-роли админки", () => {
     expect(roleHasPermission("ORG_MANAGER", "booking.expire")).toBe(false);
   });
 
+  it("прайс заведения (0030): владелец и менеджер, не кассир; админ региона", () => {
+    expect(roleHasPermission("ORG_STAFF", "price_list.manage")).toBe(false);
+    for (const r of ["ORG_MANAGER", "ORG_OWNER", "REGION_ADMIN", "SUPERADMIN"] as const)
+      expect(roleHasPermission(r, "price_list.manage"), r).toBe(true);
+  });
+
   it("отзывы (блок 10): ответ и жалоба — менеджер и владелец, апелляция — владелец; скрытие — только модерация", () => {
     for (const p of ["review.respond", "review.complain"] as const) {
       expect(roleHasPermission("ORG_STAFF", p), p).toBe(false);

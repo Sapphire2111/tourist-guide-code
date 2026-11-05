@@ -44,6 +44,8 @@ export const PERMISSIONS = [
   "badge.recommend.revoke",
   "promotion.manage",
   "offer.manage",
+  // Прайс заведения (0030): разделы и позиции с ценами.
+  "price_list.manage",
   "organization.create",
   "organization.edit",
   "organization.verify",
