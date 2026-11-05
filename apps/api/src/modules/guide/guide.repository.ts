@@ -14,6 +14,7 @@ import {
   type LocalizedText,
   type LonLat,
   type MediaAsset,
+  type PlaceTagSource,
   type PromotionAdLabel,
   type TagGroup,
 } from "../../db/index.js";
@@ -59,13 +60,21 @@ export type SearchQuery = {
   ids?: readonly string[];
   /** Не показывать места разделов главной (корень категории — с этим home_section): «Що поруч» и карты без «Де жити». */
   excludeSections?: readonly HomeSection[];
+  /** Коды тегов: только места со всеми этими активными тегами (фильтр удобств «Де жити»). */
+  tagCodes?: readonly string[];
   limit: number;
   offset: number;
 };
 
 export type PhotoRow = MediaAsset & { place_id: string; is_cover: boolean; sort_order: number };
 
-export type TagRow = { id: string; code: string; name_i18n: LocalizedText; tag_group: TagGroup };
+export type TagRow = {
+  id: string;
+  code: string;
+  name_i18n: LocalizedText;
+  tag_group: TagGroup;
+  source: PlaceTagSource;
+};
 
 /** Избранных мест в выдаче — не больше (листания нет). */
 export const FAVORITES_MAX = 200;
@@ -88,6 +97,40 @@ const APOSTROPHES = "'ʼ’‘`";
 const stripApostrophes = (s: string) => s.replace(/['ʼ’‘`]/g, "");
 const bareNameUk = sql<string>`translate(${nameUk}, ${APOSTROPHES}, '')`;
 const bareNameEn = sql<string>`translate(${nameEn}, ${APOSTROPHES}, '')`;
+
+/** Категория или раздел — по основной ИЛИ дополнительной категории места (0020, place_extra_categories). */
+function inCategory(query: Q, categoryId: string): Q {
+  return query.where((eb) =>
+    eb.or([
+      eb("places.category_id", "=", categoryId),
+      eb("categories.parent_id", "=", categoryId),
+      eb.exists(
+        eb
+          .selectFrom("place_extra_categories as x")
+          .innerJoin("categories as xc", "xc.id", "x.category_id")
+          .select("x.place_id")
+          .whereRef("x.place_id", "=", "places.id")
+          .where("xc.active", "=", true)
+          .where((w) => w.or([w("x.category_id", "=", categoryId), w("xc.parent_id", "=", categoryId)])),
+      ),
+    ]),
+  );
+}
+
+/** У места есть активный тег с этим кодом. */
+function withTag(query: Q, code: string): Q {
+  return query.where((eb) =>
+    eb.exists(
+      eb
+        .selectFrom("place_tags as ft")
+        .innerJoin("tags as ftag", "ftag.id", "ft.tag_id")
+        .select("ft.place_id")
+        .whereRef("ft.place_id", "=", "places.id")
+        .where("ftag.code", "=", code)
+        .where("ftag.active", "=", true),
+    ),
+  );
+}
 
 @Injectable()
 export class GuideRepository {
@@ -218,29 +261,39 @@ export class GuideRepository {
 
   /** Страница выдачи (limit + 1 строка — признак следующей). Порядок — BR-10, C-02 (README «Публичный каталог»). */
   search(s: SearchQuery): Promise<PlaceRow[]> {
+    const query = this.filtered(s);
+    if (!query) return Promise.resolve([]);
+    const { origin, text } = s;
+    const bare = text === undefined ? undefined : likeContains(stripApostrophes(text));
+    let rows = this.selectRow(query, origin);
+    if (text !== undefined) {
+      const prefix = bare!.slice(1);
+      rows = rows.orderBy(
+        sql`CASE WHEN ${bareNameUk} ILIKE ${prefix} OR ${bareNameEn} ILIKE ${prefix} THEN 0
+          WHEN ${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} THEN 1 ELSE 2 END`,
+      );
+    }
+    if (origin) rows = rows.orderBy("distance");
+    return rows
+      .orderBy("places.recommended", "desc")
+      .orderBy(nameUk)
+      .orderBy("places.id")
+      .limit(s.limit + 1)
+      .offset(s.offset)
+      .execute() as Promise<PlaceRow[]>;
+  }
+
+  /** Фильтры выдачи (радиус, категория, теги, разделы, пункты, id, текст) — общие у search и tagCounts; null — пусто. */
+  private filtered(s: Omit<SearchQuery, "limit" | "offset">): Q | null {
     let query = this.published();
     const { origin, categoryId, text } = s;
     if (origin && s.radius !== undefined) {
       const radius = s.radius;
       query = query.where((eb) => withinMeters(geom(eb), point(origin), radius));
     }
-    // Категория или раздел — по основной ИЛИ дополнительной категории места (0020, place_extra_categories).
-    if (categoryId)
-      query = query.where((eb) =>
-        eb.or([
-          eb("places.category_id", "=", categoryId),
-          eb("categories.parent_id", "=", categoryId),
-          eb.exists(
-            eb
-              .selectFrom("place_extra_categories as x")
-              .innerJoin("categories as xc", "xc.id", "x.category_id")
-              .select("x.place_id")
-              .whereRef("x.place_id", "=", "places.id")
-              .where("xc.active", "=", true)
-              .where((w) => w.or([w("x.category_id", "=", categoryId), w("xc.parent_id", "=", categoryId)])),
-          ),
-        ]),
-      );
+    if (categoryId) query = inCategory(query, categoryId);
+    // Удобства (И): каждое — свой EXISTS по place_tags (индекс place_tags_pkey: place_id, tag_id).
+    for (const code of new Set(s.tagCodes ?? [])) query = withTag(query, code);
     const exclude = s.excludeSections ?? [];
     if (exclude.length)
       query = query
@@ -274,7 +327,7 @@ export class GuideRepository {
         );
     if (s.localityIds?.length) query = query.where("places.locality_id", "in", [...s.localityIds]);
     if (s.ids) {
-      if (!s.ids.length) return Promise.resolve([]);
+      if (!s.ids.length) return null;
       query = query.where("places.id", "in", [...s.ids]);
     }
     const pattern = text === undefined ? undefined : likeContains(text);
@@ -283,22 +336,33 @@ export class GuideRepository {
       query = query.where(
         sql<boolean>`(${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} OR ${addressUk} ILIKE ${pattern})`,
       );
-    let rows = this.selectRow(query, origin);
-    if (text !== undefined) {
-      const prefix = bare!.slice(1);
-      rows = rows.orderBy(
-        sql`CASE WHEN ${bareNameUk} ILIKE ${prefix} OR ${bareNameEn} ILIKE ${prefix} THEN 0
-          WHEN ${bareNameUk} ILIKE ${bare} OR ${bareNameEn} ILIKE ${bare} THEN 1 ELSE 2 END`,
-      );
-    }
-    if (origin) rows = rows.orderBy("distance");
-    return rows
-      .orderBy("places.recommended", "desc")
-      .orderBy(nameUk)
-      .orderBy("places.id")
-      .limit(s.limit + 1)
-      .offset(s.offset)
-      .execute() as Promise<PlaceRow[]>;
+    return query;
+  }
+
+  /**
+   * Число опубликованных мест по активным тегам с теми же фильтрами, что у search (радиус от точки, категория с
+   * подкатегориями и доп. категориями, пункты, текст), без фильтра тегов — счётчики совпадают со списком «Де жити».
+   * Теги без мест не возвращаются.
+   */
+  async tagCounts(s: Omit<SearchQuery, "limit" | "offset" | "tagCodes">) {
+    const query = this.filtered(s);
+    if (!query) return [];
+    return query
+      .innerJoin("place_tags as pt", "pt.place_id", "places.id")
+      .innerJoin("tags as t", "t.id", "pt.tag_id")
+      .where("t.active", "=", true)
+      .select([
+        "t.code",
+        "t.name_i18n",
+        "t.tag_group",
+        "t.sort_order",
+        (eb) => eb.fn.count<string>("places.id").distinct().as("n"),
+      ])
+      .groupBy("t.id")
+      .orderBy("t.tag_group")
+      .orderBy("t.sort_order")
+      .orderBy("t.code")
+      .execute();
   }
 
   /** Опубликованное место региона контекста; иначе undefined. */
@@ -336,7 +400,7 @@ export class GuideRepository {
     return this.q
       .selectFrom("place_tags")
       .innerJoin("tags", "tags.id", "place_tags.tag_id")
-      .select(["tags.id", "tags.code", "tags.name_i18n", "tags.tag_group"])
+      .select(["tags.id", "tags.code", "tags.name_i18n", "tags.tag_group", "place_tags.source"])
       .where("place_tags.place_id", "=", placeId)
       .where("tags.active", "=", true)
       .orderBy("tags.tag_group")

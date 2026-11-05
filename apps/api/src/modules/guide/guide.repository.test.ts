@@ -44,6 +44,39 @@ describe("GuideRepository (SQL)", () => {
     expect(q!.params).toContain(A);
   });
 
+  it("фильтр тегов (удобства «Де жити»): каждый код — свой EXISTS по place_tags с активным тегом (И), регион на псевдонимах", async () => {
+    const [q] = await capture((r) => r.search({ tagCodes: ["pool", "sauna", "pool"], limit: 10, offset: 0 }));
+    expect(q!.sql.match(/exists \(select "ft"\."place_id" from "place_tags" as "ft"/g)).toHaveLength(2);
+    expect(q!.sql).toMatch(/"ftag"\."active" = \$/);
+    expect(q!.sql).toMatch(/"ft"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/"ftag"\."region_id" = \$/);
+    expect(q!.params).toEqual(expect.arrayContaining(["pool", "sauna"]));
+    const [plain] = await capture((r) => r.search({ limit: 10, offset: 0 }));
+    expect(plain!.sql).not.toMatch(/place_tags/);
+  });
+
+  it("счётчики тегов: опубликованные места категории, distinct по месту, только активные теги, регион на place_tags и tags", async () => {
+    const [q] = await capture((r) =>
+      r.tagCounts({
+        categoryId: PLACE,
+        localityIds: [USER],
+        origin: { lon: 24.5, lat: 48.4 },
+        radius: 3000,
+        text: "віл",
+      }),
+    );
+    // Те же фильтры, что у выдачи: радиус от точки и текст.
+    expect(q!.sql).toMatch(/ST_DWithin\(\(.*\)::geography/);
+    expect(q!.params).toEqual(expect.arrayContaining([3000, "%віл%"]));
+    expect(q!.sql).toMatch(/count\(distinct "places"\."id"\)/);
+    expect(q!.sql).toMatch(/inner join "place_tags" as "pt"/);
+    expect(q!.sql).toMatch(/"t"\."active" = \$/);
+    expect(q!.sql).toMatch(/"pt"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/"t"\."region_id" = \$/);
+    expect(q!.sql).toMatch(/group by "t"\."id"/);
+    expect(q!.params).toEqual(expect.arrayContaining(["published", PLACE, USER]));
+  });
+
   it("исключение разделов («Що поруч» без «Де жити»): только по запросу, корень — по parent_id или сама категория", async () => {
     const [q] = await capture((r) => r.search({ excludeSections: ["stay"], limit: 10, offset: 0 }));
     expect(q!.sql).toMatch(/not exists \(select "root"\."id" from "categories" as "root"/);

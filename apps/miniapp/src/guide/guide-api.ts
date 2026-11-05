@@ -115,7 +115,9 @@ export function cardOf(dto: CardDto): PlaceDetail {
       opens: w.opensAt,
       closes: w.closesAt,
     })),
-    tags: dto.tags.map((t) => t.name),
+    // Источник reviews — по отзывам Google (places:amenities): отдельно, с пометкой в карточке.
+    tags: dto.tags.filter((t) => t.source !== "reviews").map((t) => t.name),
+    reviewTags: dto.tags.filter((t) => t.source === "reviews").map((t) => t.name),
     verifiedAt: dto.verifiedAt,
     openUntil: dto.openUntil,
     favorite: dto.favorite,
@@ -225,6 +227,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
       q,
       excludeSections,
       localityIds,
+      tags,
       limit,
       max,
       signal,
@@ -238,6 +241,7 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         ...(q ? { q } : {}),
         ...(excludeSections?.length ? { exclude_section: [...excludeSections] } : {}),
         ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
+        ...(tags?.length ? { tags: [...tags] } : {}),
         limit: limit ?? 50,
       };
       // max — догрузка страниц (страница — limit, по умолчанию 50) до max мест: карта «Де жити» со всеми местами.
@@ -263,6 +267,24 @@ export function createGuideApi(api: ApiClient, regionId: string | null): GuideAp
         if (max && items.length >= max && data.nextOffset !== null) onPartial?.("truncated");
       }
       return max ? items.slice(0, max) : items;
+    },
+    // Те же параметры, что у search (точка, радиус, текст): счётчики совпадают со списком.
+    tagCounts: async ({ categoryId, localityIds, q, point, radius }) => {
+      const data = await ok(
+        api.GET("/places/tag-counts", {
+          params: {
+            query: {
+              regionId: region(),
+              ...(point ? { lat: point.lat, lng: point.lng } : {}),
+              ...(point && radius ? { radius } : {}),
+              ...(categoryId ? { category: categoryId } : {}),
+              ...(q ? { q } : {}),
+              ...(localityIds?.length ? { localityIds: [...localityIds] } : {}),
+            },
+          },
+        }),
+      );
+      return Object.fromEntries(data.items.map((i) => [i.code, i.count]));
     },
     place: async (id) =>
       cardOf(await ok(api.GET("/places/{id}", { params: { path: { id }, query: { regionId: region() } } }))),

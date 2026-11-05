@@ -830,6 +830,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/places/tag-counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Число мест по тегам в категории (счётчики фильтра удобств «Де жити»)
+     * @description Без аутентификации. Те же фильтры, что у GET /places/search (lat/lng и радиус — по умолчанию как у поиска, категория с подкатегориями и доп. категориями, localityIds, q, exclude_section): по каждому активному тегу, у которого есть места, — их число; счётчики совпадают со списком без фильтра тегов. Фильтр поиска — GET /places/search?tags=… (все теги сразу, И). 404 — региона нет или он не активен.
+     */
+    get: operations["placeTagCounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/places/{id}/cover": {
     parameters: {
       query?: never;
@@ -3459,6 +3479,17 @@ export interface components {
       /** @description Применённый радиус, м; null — без точки */
       radiusMeters: number | null;
     };
+    PlaceTagCountDto: {
+      /** @example pool */
+      code: string;
+      name: components["schemas"]["LocalizedTextDto"];
+      /** @description Опубликованных мест с тегом */
+      count: number;
+    };
+    PlaceTagCountListDto: {
+      /** @description Активные теги, у которых есть места; порядок — группа, sortOrder */
+      items: components["schemas"]["PlaceTagCountDto"][];
+    };
     GuideCategoryRefDto: {
       /** Format: uuid */
       id: string;
@@ -3467,12 +3498,19 @@ export interface components {
       name: components["schemas"]["LocalizedTextDto"];
       icon: string | null;
     };
+    /**
+     * @description manual — админка; import — структурированные данные Google; reviews — по отзывам/описанию Google (places:amenities), в карточке — с пометкой «за відгуками Google»
+     * @enum {string}
+     */
+    PlaceTagSource: "manual" | "import" | "reviews";
     GuideTagDto: {
       /** Format: uuid */
       id: string;
       code: string;
       name: components["schemas"]["LocalizedTextDto"];
       group: components["schemas"]["TagGroup"];
+      /** @description manual — админка; import — структурированные данные Google; reviews — по отзывам/описанию Google (places:amenities), в карточке — с пометкой «за відгуками Google» */
+      source: components["schemas"]["PlaceTagSource"];
     };
     AiSummaryDto: {
       /** @description 2–3 предложения «що це і чим цікаво» — показывать с пометкой ШІ */
@@ -11949,6 +11987,8 @@ export interface operations {
         exclude_section?: components["schemas"]["HomeSection"][];
         /** @description Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую */
         localityIds?: string[];
+        /** @description Коды тегов (фильтр удобств «Де жити»: pool, sauna, hot-tub, breakfast, parking, pets, kids, wifi, kitchen): только места со ВСЕМИ указанными активными тегами (И). Повтор параметра или через запятую */
+        tags?: string[];
         /** @description «Доступно зараз» — до блока 7 игнорируется (фильтр выключен, ответ без изменений) */
         available_now?: boolean;
         limit?: number;
@@ -11970,6 +12010,89 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PlaceSearchResultDto"];
+        };
+      };
+      /** @description Ошибка */
+      400: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      404: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      429: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+      /** @description Ошибка */
+      500: {
+        headers: {
+          /** @description Correlation id запроса */
+          "x-request-id"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelopeDto"];
+        };
+      };
+    };
+  };
+  placeTagCounts: {
+    parameters: {
+      query: {
+        /** @description Регион туриста: regionId из GET /context/{start_param} (или выбранный туристом) */
+        regionId: string;
+        /** @description Широта */
+        lat?: number;
+        /** @description Долгота (вместе с lat) */
+        lng?: number;
+        /** @description Радиус, м — только с lat/lng («Що поруч»); с localityIds по умолчанию радиуса нет (точка — для расстояния) */
+        radius?: number;
+        /** @description Категория (из GET /categories); раздел включает свои подкатегории */
+        category?: string;
+        /** @description Текст: название (uk, en) или адрес; без координат — поиск по всему региону */
+        q?: string;
+        /** @description Исключить места разделов главной (корень категории с этим homeSection), напр. stay — «Що поруч» и карты без мест проживания. По умолчанию ничего не исключается (текстовый поиск, ассистент находят и отели). */
+        exclude_section?: components["schemas"]["HomeSection"][];
+        /** @description Населённые пункты (id из GET /localities): только места с этим locality_id; пусто — весь регион. Повтор параметра или через запятую */
+        localityIds?: string[];
+      };
+      header?: {
+        /** @description Correlation id; иначе генерируется */
+        "X-Request-Id"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlaceTagCountListDto"];
         };
       };
       /** @description Ошибка */

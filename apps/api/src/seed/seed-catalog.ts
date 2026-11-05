@@ -143,6 +143,12 @@ export const SEED_TAGS: readonly { code: string; name: Text; group: TagGroup }[]
   { code: "pets", name: { uk: "З тваринами", en: "Pets allowed" }, group: "audience" },
   { code: "parking", name: { uk: "Паркування", en: "Parking" }, group: "amenity" },
   { code: "wifi", name: { uk: "Wi-Fi", en: "Wi-Fi" }, group: "amenity" },
+  // Удобства «Де жити» (places:amenities, 0029): создаются и самим CLI, если в регионе их нет.
+  { code: "pool", name: { uk: "Басейн", en: "Swimming pool" }, group: "amenity" },
+  { code: "sauna", name: { uk: "Сауна / баня", en: "Sauna" }, group: "amenity" },
+  { code: "hot-tub", name: { uk: "Чан / джакузі", en: "Hot tub" }, group: "amenity" },
+  { code: "breakfast", name: { uk: "Сніданок", en: "Breakfast" }, group: "amenity" },
+  { code: "kitchen", name: { uk: "Кухня для гостей", en: "Guest kitchen" }, group: "amenity" },
   { code: "hutsul-cuisine", name: { uk: "Гуцульська кухня", en: "Hutsul cuisine" }, group: "cuisine" },
   { code: "vegetarian", name: { uk: "Вегетаріанське меню", en: "Vegetarian menu" }, group: "cuisine" },
   { code: "winter", name: { uk: "Зима", en: "Winter" }, group: "season" },
