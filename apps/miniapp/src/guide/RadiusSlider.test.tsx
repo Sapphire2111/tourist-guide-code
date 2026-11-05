@@ -115,6 +115,57 @@ describe("RadiusSlider «Лінійка-барабан»", () => {
     expect(haptic).not.toHaveBeenCalled();
   });
 
+  it("касание значения: touchstart → touchend → click — один onChange, одна хаптика", () => {
+    vi.useFakeTimers();
+    const { view, onChange, haptic } = setup();
+    render(view(1000));
+    fireEvent.touchStart(items()[3]!);
+    fireEvent.touchEnd(items()[3]!);
+    fireEvent.click(items()[3]!);
+    act(() => vi.advanceTimersByTime(500));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(2000);
+    expect(haptic).toHaveBeenCalledTimes(1);
+  });
+
+  it("размонтирование до остановки ленты — onChange не зовётся", () => {
+    vi.useFakeTimers();
+    const { view, onChange } = setup();
+    const { unmount } = render(view(1000));
+    fireEvent.touchStart(strip());
+    scrollStrip(5 * 56);
+    fireEvent.touchEnd(strip());
+    unmount();
+    act(() => vi.advanceTimersByTime(500));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("событие прокрутки сразу после показа (лента встала на значение) — без onChange и хаптики", () => {
+    vi.useFakeTimers();
+    const { view, onChange, haptic } = setup();
+    render(view(3000));
+    fireEvent.scroll(strip());
+    act(() => vi.advanceTimersByTime(500));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(haptic).not.toHaveBeenCalled();
+  });
+
+  it("значение снаружи во время касания — лента под пальцем не прыгает", () => {
+    const { view, onChange } = setup();
+    const { rerender } = render(view(1000));
+    fireEvent.touchStart(strip());
+    rerender(view(10_000));
+    expect(strip().scrollLeft).toBe(2 * 56);
+    expect(screen.getByTestId("radius-slider-value").textContent).toBe("1 км");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("лента — не остановка Tab", () => {
+    const { view } = setup();
+    render(view(1000));
+    expect(strip().tabIndex).toBe(-1);
+  });
+
   it("disabled: ползунок отключён, нажатие на значение ничего не выбирает", () => {
     const { view, onChange } = setup();
     render(view(1000, false, true));

@@ -25,6 +25,8 @@ export function stepIndex(m: number): number {
 const ITEM = 56;
 /** Пауза после последней прокрутки, мс: значение отдаём, когда лента остановилась, а не на каждом кадре свайпа. */
 const SETTLE_MS = 120;
+/** Запас на программную прокрутку, мс: если лента так и не доехала (скрыта, прервана), снимаем пометку сами. */
+const AUTO_MS = 800;
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
@@ -59,8 +61,10 @@ export function RadiusSlider({
   const committed = useRef(idx);
   const strip = useRef<HTMLDivElement>(null);
   const settle = useRef<number | undefined>(undefined);
-  // Прокрутку запустил код (клик, клавиатура, значение снаружи): промежуточные шаги не показываем и не отдаём.
-  const auto = useRef(false);
+  // Цель прокрутки, запущенной кодом (клик, клавиатура, значение снаружи), px: пока лента к ней едет,
+  // промежуточные шаги не показываем и не отдаём. null — прокрутка пользователя.
+  const target = useRef<number | null>(null);
+  const autoTimer = useRef<number | undefined>(undefined);
   const touching = useRef(false);
   const first = useRef(true);
 
@@ -81,7 +85,9 @@ export function RadiusSlider({
     if (!el) return;
     const left = i * ITEM;
     if (Math.abs(el.scrollLeft - left) < 1) return;
-    auto.current = true;
+    target.current = left;
+    window.clearTimeout(autoTimer.current);
+    autoTimer.current = window.setTimeout(() => (target.current = null), AUTO_MS);
     if (smooth && !reducedMotion() && typeof el.scrollTo === "function")
       el.scrollTo({ left, behavior: "smooth" });
     else el.scrollLeft = left;
@@ -99,28 +105,72 @@ export function RadiusSlider({
     first.current = false;
     if (!initial && idx === committed.current) return;
     committed.current = idx;
+    // Палец на ленте — не выдёргиваем её из-под него: значение снаружи только запоминаем.
+    if (!initial && touching.current) return;
     mark(idx, false);
     scrollToStep(idx, !initial);
     // mark/scrollToStep читают только ref-ы — подписка на них не нужна.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
-  useEffect(() => () => window.clearTimeout(settle.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(settle.current);
+      window.clearTimeout(autoTimer.current);
+    },
+    [],
+  );
+
+  /** Пользователь взялся за ленту: дальше прокрутка его, а не программная. */
+  const grab = () => {
+    target.current = null;
+    window.clearTimeout(autoTimer.current);
+  };
+
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    // Колесо мыши (десктоп): вертикальная прокрутка листает ленту; на краю ленты — отдаём странице.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return grab();
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max)) return;
+      e.preventDefault();
+      grab();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    // Лента была скрыта (ширина 0) и появилась — ставим её снова на текущий шаг.
+    let width = el.clientWidth;
+    const ro =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => {
+            const was = width;
+            width = el.clientWidth;
+            if (was === 0 && width > 0) el.scrollLeft = liveRef.current * ITEM;
+          })
+        : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      ro?.disconnect();
+    };
+  }, []);
 
   const onScroll = () => {
     const el = strip.current;
     if (!el) return;
-    if (!auto.current) mark(Math.min(last, Math.max(0, Math.round(el.scrollLeft / ITEM))), true);
+    if (target.current !== null) {
+      // Программная прокрутка: доехали до цели — дальше снова прокрутка пользователя.
+      if (Math.abs(el.scrollLeft - target.current) < 1) grab();
+      return;
+    }
+    mark(Math.min(last, Math.max(0, Math.round(el.scrollLeft / ITEM))), true);
     window.clearTimeout(settle.current);
     settle.current = window.setTimeout(() => {
-      if (auto.current) auto.current = false;
       // Палец ещё на ленте — ждём, пока отпустит (touchend запланирует отдачу сам).
-      else if (!touching.current) commit(liveRef.current);
+      if (!touching.current) commit(liveRef.current);
     }, SETTLE_MS);
-  };
-  /** Пользователь взялся за ленту: дальше прокрутка его, а не программная. */
-  const grab = () => {
-    auto.current = false;
   };
   const release = () => {
     touching.current = false;
@@ -142,6 +192,8 @@ export function RadiusSlider({
           ref={strip}
           className="kosiv-rd-strip"
           aria-hidden="true"
+          // Chromium делает прокручиваемый блок остановкой Tab — фокус только у скрытого ползунка.
+          tabIndex={-1}
           onScroll={onScroll}
           onTouchStart={() => {
             touching.current = true;
@@ -150,7 +202,6 @@ export function RadiusSlider({
           onTouchEnd={release}
           onTouchCancel={release}
           onPointerDown={grab}
-          onWheel={grab}
         >
           {Array.from({ length: last + 1 }, (_, i) => (
             <span
