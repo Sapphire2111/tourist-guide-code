@@ -28,6 +28,7 @@ import type {
   PlaceCardDto,
   PlacePhotoDto,
   PlaceSearchResultDto,
+  PlaceTagCountListDto,
   PlaceSummaryDto,
 } from "./guide.dto.js";
 import { localityAliases } from "./locality-aliases.js";
@@ -62,6 +63,8 @@ export type SearchParams = {
   ids?: readonly string[];
   /** Разделы главной, места которых не нужны (по умолчанию — никакие). */
   excludeSections?: readonly HomeSection[];
+  /** Коды тегов (И): фильтр удобств «Де жити». */
+  tagCodes?: readonly string[];
   limit: number;
   offset: number;
 };
@@ -152,6 +155,17 @@ export class GuideService {
     });
   }
 
+  /** Число мест по тегам в категории и пунктах (счётчики фильтра удобств «Де жити»). */
+  async tagCounts(
+    regionId: string,
+    params: Omit<SearchParams, "limit" | "offset" | "tagCodes" | "ids">,
+  ): Promise<PlaceTagCountListDto> {
+    return this.inRegion(regionId, async () => {
+      const rows = await this.repo.tagCounts(params);
+      return { items: rows.map((r) => ({ code: r.code, name: r.name_i18n, count: Number(r.n) })) };
+    });
+  }
+
   async place(
     regionId: string,
     id: string,
@@ -198,7 +212,13 @@ export class GuideService {
         telegram: row.telegram,
         verifiedAt: row.verified_at?.toISOString() ?? null,
         photos: photoDtos,
-        tags: tags.map((t) => ({ id: t.id, code: t.code, name: t.name_i18n, group: t.tag_group })),
+        tags: tags.map((t) => ({
+          id: t.id,
+          code: t.code,
+          name: t.name_i18n,
+          group: t.tag_group,
+          source: t.source,
+        })),
         schedule: toScheduleDto({
           timezone: region.timezone,
           weekly: schedule.weekly.map((w) => ({

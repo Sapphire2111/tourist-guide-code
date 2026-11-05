@@ -83,17 +83,12 @@
   color: var(--app-muted);
   font-size: 0.9rem;
 }
-.pl-empty {
+.pl-empty-extra {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1.5px dashed var(--app-border);
-  background: var(--app-surface);
-}
-.pl-empty p {
-  margin: 0;
+  width: 100%;
+  text-align: left;
 }
 .pl-example {
   margin: 0;
@@ -114,14 +109,6 @@
   border: 1.5px solid var(--app-border);
   background: var(--app-surface);
   font-weight: 600;
-}
-.pl-sections {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 .pl-section {
   border-radius: 20px;
@@ -289,21 +276,8 @@
   align-items: flex-end;
   flex-wrap: wrap;
 }
-.pl-add label {
+.pl-add .partner-field {
   flex: 1 1 180px;
-}
-.pl-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-weight: 600;
-}
-.pl-field input,
-.pl-field textarea,
-.pl-field select {
-  min-height: 44px;
-  font: inherit;
-  font-weight: 400;
 }
 .pl-check {
   display: flex;
@@ -315,11 +289,6 @@
   width: 22px;
   height: 22px;
   accent-color: var(--app-accent);
-}
-.pl-sheet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 /* Лист правки позиции: снизу, как листы гида (LocationPicker). */

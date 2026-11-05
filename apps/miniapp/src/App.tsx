@@ -68,9 +68,10 @@ import { About } from "./host/About.js";
 import { HostProvider, useHost, type HostEnv, type StaffRole } from "./host/context.js";
 import { createHostApi } from "./host/host-api.js";
 import type { HostApi } from "./host/types.js";
-import { PartnerProvider, usePartnerOrgs } from "./partner/context.js";
+import { PartnerProvider, resolveSelection, usePartner } from "./partner/context.js";
 import { createPartnerApi, type PartnerApi } from "./partner/partner-api.js";
-import { ModeSwitch } from "./partner/parts.js";
+import { Badge } from "./guide/parts.js";
+import { statusKey } from "./partner/parts.js";
 import type { Role } from "./role.js";
 import {
   canScanQr,
@@ -346,10 +347,8 @@ function Home(props: RoutesProps) {
   const { api, role, user, webApp, session, onMe, retryContext } = props;
   const { t } = useT();
   const { staff } = useHost();
-  const partnerOrgs = usePartnerOrgs();
   // Роль и состояние сервера — служебные: только разработка и персонал, туристу не показываем и /health не запрашиваем.
   const diagnostics = import.meta.env.DEV || staff === "yes";
-  const partner = role === "partner" || partnerOrgs.length > 0;
   return (
     <>
       <div className="home-top-row">
@@ -370,18 +369,10 @@ function Home(props: RoutesProps) {
       )}
       {/* Hero с полем ассистента поверх панорамы, Bento-разделы. */}
       <HomeSections hasVenue={venueOf(session) !== null} hero={<HomeAssistant {...props} />} />
-      {(diagnostics || partner) && (
+      {diagnostics && (
         <div className="kosiv-meta-block">
-          {diagnostics && <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>}
-          {partner && (
-            // Кабинет партнёра — модуль блока 6: пункт скрыт, пока флаг выключен (T1-22).
-            <Feature flag="module.partner_cabinet">
-              <Link to="/partner" data-testid="partner-link">
-                {t("miniapp.partner.open")}
-              </Link>
-            </Feature>
-          )}
-          {diagnostics && <Health api={api} />}
+          <p data-testid="role">{t("miniapp.role", { role: t(`miniapp.role.${role}`) })}</p>
+          <Health api={api} />
         </div>
       )}
     </>
@@ -492,19 +483,41 @@ function partnerScreen(
   return null;
 }
 
-/** C15 → P13/P12: переключатель режима для партнёра, иначе «Стати партнером». */
+/**
+ * C15 → P13/P12: карточка в профиле. Партнёру — «Мій заклад» с тем заведением, что откроет кабинет (сохранённый
+ * выбор), иначе «Стати партнером». Пока /partner/me грузится — пусто; сбой — ссылка в кабинет, а не онбординг.
+ */
 function PartnerEntry() {
-  const { t } = useT();
-  const orgs = usePartnerOrgs();
+  const { t, locale } = useT();
+  const { me, selection } = usePartner();
+  if (me.status === "loading") return null;
+  const orgs = me.status === "ready" ? me.data.organizations : [];
+  const { place } = resolveSelection(orgs, selection);
   return (
     <div className="kosiv-card kosiv-panel" data-testid="partner-entry">
-      <h2>{t("miniapp.partner.title")}</h2>
-      {orgs.length ? (
-        <ModeSwitch current="tourist" inProfile />
-      ) : (
-        <Link to="/partner/new" className="kosiv-cta">
-          {t("miniapp.partner.become")}
+      {me.status === "error" ? (
+        <Link to="/partner" className="kosiv-cta" data-testid="partner-link">
+          {t("miniapp.partner.entry.retry")}
         </Link>
+      ) : orgs.length ? (
+        <>
+          {place && (
+            <p style={{ margin: 0 }}>
+              <strong>{pickLocalized(place.name, locale)}</strong>{" "}
+              <Badge testId="partner-entry-status">{t(statusKey(place.status))}</Badge>
+            </p>
+          )}
+          <Link to="/partner" className="kosiv-cta" data-testid="partner-link">
+            {t("miniapp.partner.open")}
+          </Link>
+        </>
+      ) : (
+        <>
+          <h2>{t("miniapp.partner.entry.title")}</h2>
+          <Link to="/partner/new" className="kosiv-cta">
+            {t("miniapp.partner.become")}
+          </Link>
+        </>
       )}
     </div>
   );

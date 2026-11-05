@@ -683,13 +683,26 @@ function PlaceView({ place }: { place: PlaceDetail }) {
           </Section>
         )}
 
-        {place.tags.length > 0 && (
+        {(place.tags.length > 0 || (place.reviewTags?.length ?? 0) > 0) && (
           <Section title={t("miniapp.place.attributes")}>
-            <span className="pc-chips">
-              {place.tags.map((tag, i) => (
-                <Badge key={i}>{pickLocalized(tag, locale)}</Badge>
-              ))}
-            </span>
+            {place.tags.length > 0 && (
+              <span className="pc-chips">
+                {place.tags.map((tag, i) => (
+                  <Badge key={i}>{pickLocalized(tag, locale)}</Badge>
+                ))}
+              </span>
+            )}
+            {/* Удобства только по отзывам/описанию Google (places:amenities) — с пометкой источника. */}
+            {(place.reviewTags?.length ?? 0) > 0 && (
+              <p className="pc-review-tags" data-testid="place-review-tags">
+                <span className="pc-chips">
+                  {place.reviewTags!.map((tag, i) => (
+                    <Badge key={i}>{pickLocalized(tag, locale)}</Badge>
+                  ))}
+                </span>
+                <span className="pc-source">{t("miniapp.place.fromReviews")}</span>
+              </p>
+            )}
           </Section>
         )}
         <footer className="pc-footer">

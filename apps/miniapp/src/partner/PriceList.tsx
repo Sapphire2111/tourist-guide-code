@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { pickLocalized, type MessageKey } from "@tg/i18n";
-import { Link, Stack, useT } from "@tg/ui";
+import { Stack, useT } from "@tg/ui";
 import { AsyncView } from "../guide/parts.js";
 import { useSheet } from "../guide/use-sheet.js";
 import { useErrorText } from "../host/errors.js";
@@ -14,7 +14,7 @@ import { parsePrice, priceInput, priceText } from "../price-list/price.js";
 import "../price-list/price-list.css";
 import { orgOfPlace, useKeptAsync, usePartner, usePartnerOrgs } from "./context.js";
 import type { MoveDirection, PriceItem, PriceList, PriceSection } from "./partner-api.js";
-import { Live, type Message } from "./parts.js";
+import { EmptyState, Live, PartnerHeader, type Message } from "./parts.js";
 
 /** Типовые разделы быстрого старта (пустой прайс). */
 const SUGGESTED: readonly MessageKey[] = [
@@ -76,8 +76,7 @@ export function PartnerPriceList({ placeId }: { placeId: string }) {
   const forbidden = org !== null && !org.abilities.managePriceList;
   return (
     <Stack>
-      <h1>{t("miniapp.partner.prices.title")}</h1>
-      <Link to="/partner">{t("miniapp.partner.toDashboard")}</Link>
+      <PartnerHeader title={t("miniapp.partner.prices.title")} />
       {forbidden ? (
         <p role="alert">{t("miniapp.partner.prices.forbidden")}</p>
       ) : (
@@ -154,47 +153,53 @@ function Editor({
   return (
     <>
       {list.sections.length === 0 ? (
-        <div className="pl-empty" data-testid="prices-empty">
-          <p>{t("miniapp.partner.prices.empty")}</p>
-          <p className="pl-hint">{t("miniapp.partner.prices.exampleTitle")}</p>
-          <div className="pl-example" aria-hidden="true">
-            <div className="pl-card-section">
-              <span className="pl-card-title">{t("miniapp.partner.prices.exampleSection")}</span>
-              <ul className="pl-card-list">
-                <li className="pl-card-row">
-                  <span className="pl-card-name">{t("miniapp.partner.prices.exampleItem1")}</span>
-                  <span className="pl-card-price">{t("miniapp.partner.prices.exampleItem1Price")}</span>
-                </li>
-                <li className="pl-card-row">
-                  <span className="pl-card-name">{t("miniapp.partner.prices.exampleItem2")}</span>
-                  <span className="pl-card-price">{t("miniapp.partner.prices.exampleItem2Price")}</span>
-                </li>
-              </ul>
+        <EmptyState
+          text={t("miniapp.partner.prices.empty")}
+          icon="🧾"
+          testId="prices-empty"
+          action={
+            <div className="pl-empty-extra">
+              <p className="pl-hint">{t("miniapp.partner.prices.exampleTitle")}</p>
+              <div className="pl-example" aria-hidden="true">
+                <div className="pl-card-section">
+                  <span className="pl-card-title">{t("miniapp.partner.prices.exampleSection")}</span>
+                  <ul className="pl-card-list">
+                    <li className="pl-card-row">
+                      <span className="pl-card-name">{t("miniapp.partner.prices.exampleItem1")}</span>
+                      <span className="pl-card-price">{t("miniapp.partner.prices.exampleItem1Price")}</span>
+                    </li>
+                    <li className="pl-card-row">
+                      <span className="pl-card-name">{t("miniapp.partner.prices.exampleItem2")}</span>
+                      <span className="pl-card-price">{t("miniapp.partner.prices.exampleItem2Price")}</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <p className="pl-hint">{t("miniapp.partner.prices.quickStart")}</p>
+              <div className="pl-chips">
+                {SUGGESTED.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="pl-chip"
+                    disabled={busy}
+                    aria-label={t("miniapp.partner.prices.addSuggested", { title: t(key) })}
+                    onClick={() =>
+                      void run(
+                        () => api.createPriceSection(placeId, t(key)),
+                        "miniapp.partner.prices.sectionCreated",
+                      )
+                    }
+                  >
+                    + {t(key)}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <p className="pl-hint">{t("miniapp.partner.prices.quickStart")}</p>
-          <div className="pl-chips">
-            {SUGGESTED.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className="pl-chip"
-                disabled={busy}
-                aria-label={t("miniapp.partner.prices.addSuggested", { title: t(key) })}
-                onClick={() =>
-                  void run(
-                    () => api.createPriceSection(placeId, t(key)),
-                    "miniapp.partner.prices.sectionCreated",
-                  )
-                }
-              >
-                + {t(key)}
-              </button>
-            ))}
-          </div>
-        </div>
+          }
+        />
       ) : (
-        <ul className="pl-sections" data-testid="prices-sections">
+        <ul className="partner-list" data-testid="prices-sections">
           {list.sections.map((s, i) => (
             <SectionGroup
               key={s.id}
@@ -217,7 +222,7 @@ function Editor({
       )}
       {list.sections.length < list.limits.maxSections && (
         <form className="pl-add" onSubmit={(e) => void add(e)}>
-          <label htmlFor={titleId} className="pl-field">
+          <label htmlFor={titleId} className="partner-field">
             {t("miniapp.partner.prices.sectionName")}
             <input id={titleId} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
           </label>
@@ -407,7 +412,7 @@ function SectionGroup({
           </div>
           {renaming !== null && (
             <form className="pl-add" onSubmit={(e) => void rename(e)}>
-              <label htmlFor={renameId} className="pl-field">
+              <label htmlFor={renameId} className="partner-field">
                 {t("miniapp.partner.prices.newTitle")}
                 <input
                   id={renameId}
@@ -582,7 +587,7 @@ function ItemSheet({
           {t(editing ? "miniapp.partner.prices.editItem" : "miniapp.partner.prices.newItem")}
         </h2>
         <form className="pl-sheet-form" onSubmit={(e) => void save(e)} noValidate>
-          <label htmlFor={ids.name} className="pl-field">
+          <label htmlFor={ids.name} className="partner-field">
             {t("miniapp.partner.prices.name")}
             <input
               id={ids.name}
@@ -592,7 +597,7 @@ function ItemSheet({
               onChange={(e) => setName(e.target.value)}
             />
           </label>
-          <label htmlFor={ids.price} className="pl-field">
+          <label htmlFor={ids.price} className="partner-field">
             {t("miniapp.partner.prices.price")}
             <input
               id={ids.price}
@@ -608,7 +613,7 @@ function ItemSheet({
             <input type="checkbox" checked={from} onChange={(e) => setFrom(e.target.checked)} />
             {t("miniapp.partner.prices.priceFrom")}
           </label>
-          <div className="pl-field">
+          <div className="partner-field">
             <label htmlFor={ids.unit}>{t("miniapp.partner.prices.unit")}</label>
             <input
               id={ids.unit}
@@ -618,7 +623,7 @@ function ItemSheet({
               aria-describedby={`${ids.unit}-hint`}
               onChange={(e) => setUnit(e.target.value)}
             />
-            <small id={`${ids.unit}-hint`} className="pl-hint">
+            <small id={`${ids.unit}-hint`} className="partner-field-hint">
               {t("miniapp.partner.prices.unitHint")}
             </small>
             <datalist id={ids.units}>
@@ -627,7 +632,7 @@ function ItemSheet({
               ))}
             </datalist>
           </div>
-          <label htmlFor={ids.desc} className="pl-field">
+          <label htmlFor={ids.desc} className="partner-field">
             {t("miniapp.partner.prices.description")}
             <textarea
               id={ids.desc}
@@ -638,7 +643,7 @@ function ItemSheet({
             />
           </label>
           {editing && sections.length > 1 && (
-            <label htmlFor={sectionField} className="pl-field">
+            <label htmlFor={sectionField} className="partner-field">
               {t("miniapp.partner.prices.section")}
               <select id={sectionField} value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
                 {sections.map((s) => (
@@ -656,7 +661,7 @@ function ItemSheet({
             </label>
           )}
           <Live message={local ?? message} testId="price-sheet-message" />
-          <div className="pl-sheet-actions">
+          <div className="partner-row">
             <button type="submit" className="pl-btn" data-variant="primary" disabled={busy}>
               {t("miniapp.partner.prices.save")}
             </button>

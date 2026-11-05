@@ -689,10 +689,15 @@ export type Place = Selectable<PlacesTable>;
 export type NewPlace = Insertable<PlacesTable>;
 export type PlaceUpdate = Updateable<PlacesTable>;
 
+/** Источник тега места (0029): админка/сид, структурированные удобства Google или отзывы Google (places:amenities). */
+export const PLACE_TAG_SOURCES = ["manual", "import", "reviews"] as const;
+export type PlaceTagSource = (typeof PLACE_TAG_SOURCES)[number];
+
 export interface PlaceTagsTable {
   region_id: RegionId;
   place_id: ColumnType<string, string, never>;
   tag_id: ColumnType<string, string, never>;
+  source: ColumnType<PlaceTagSource, PlaceTagSource | undefined, PlaceTagSource>;
   created_at: CreatedAt;
 }
 

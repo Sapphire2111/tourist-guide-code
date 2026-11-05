@@ -136,6 +136,8 @@ export type PlaceDetail = PlaceSummary & {
   photos: Photo[];
   schedule: ScheduleInterval[];
   tags: LocalizedText[];
+  /** Теги, подтверждённые только отзывами/описанием Google (places:amenities) — с пометкой «за відгуками Google». */
+  reviewTags?: LocalizedText[];
   /** Дата проверки информации (ТЗ §4.4), ISO. */
   verifiedAt: string | null;
   /** До скольки открыто (HH:MM), если openNow. */
@@ -180,6 +182,8 @@ export type SearchParams = {
   excludeSections?: readonly HomeSection[];
   /** Населённые пункты «Локація» (id из localities); пусто — весь регион. */
   localityIds?: readonly string[];
+  /** Коды тегов-удобств «Де жити» (pool, sauna…): только места со всеми (И). */
+  tags?: readonly string[];
   /** Размер страницы (по умолчанию 50). */
   limit?: number;
   /**
@@ -241,6 +245,10 @@ export type GuideApi = {
   categories(): Promise<Category[]>;
   localities(): Promise<LocalityOption[]>;
   search(params: SearchParams): Promise<PlaceSummary[]>;
+  /** Число мест по кодам тегов в категории и пунктах (счётчики фильтра удобств); нет метода — без счётчиков. */
+  tagCounts?(
+    params: Pick<SearchParams, "categoryId" | "q" | "localityIds" | "point" | "radius">,
+  ): Promise<Record<string, number>>;
   place(id: string): Promise<PlaceDetail>;
   favorites(): Promise<PlaceSummary[]>;
   addFavorite(placeId: string): Promise<void>;

@@ -1,7 +1,9 @@
 // Общие элементы кабинета партнёра: статус места и комментарий модератора, живое сообщение, переключатель P13.
 import type { MessageKey } from "@tg/i18n";
-import { Link, useT } from "@tg/ui";
+import type { ReactNode } from "react";
+import { Link, useRoute, useT } from "@tg/ui";
 import { Badge } from "../guide/parts.js";
+import { getWebApp, nativeBackButton } from "../telegram.js";
 import type { PartnerField, PartnerPlaceSummary, PartnerRole, PlaceStatus } from "./partner-api.js";
 
 export type Message = { text: string; alert: boolean } | null;
@@ -74,4 +76,146 @@ export function ModeSwitch({
 /** Новый ключ идемпотентности (UUID). */
 export function newKey(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * Шапка экрана кабинета: h1 и текстовая ссылка «← Мій заклад». В Telegram со своей BackButton ссылка не нужна
+ * (одна кнопка «Назад» на приложение), в браузере и на старых клиентах — показываем.
+ */
+export function PartnerHeader({
+  title,
+  backTo = "/partner",
+  backLabel,
+  replace = false,
+  children,
+}: {
+  title: string;
+  backTo?: string;
+  /** Подпись ссылки; по умолчанию «← Мій заклад». */
+  backLabel?: string;
+  /** Переход без записи в историю (после принятого приглашения). */
+  replace?: boolean;
+  children?: ReactNode;
+}) {
+  const { t } = useT();
+  const [, navigate] = useRoute();
+  const native = nativeBackButton(getWebApp()) !== undefined;
+  return (
+    <header className="partner-header">
+      {!native && (
+        <Link
+          to={backTo}
+          className="partner-back"
+          onClick={
+            replace
+              ? (e) => {
+                  e.preventDefault();
+                  navigate(backTo, { replace: true });
+                }
+              : undefined
+          }
+        >
+          {backLabel ?? t("miniapp.partner.toDashboard")}
+        </Link>
+      )}
+      <h1>{title}</h1>
+      {children}
+    </header>
+  );
+}
+
+/** Пустой список: иконка, текст и необязательное действие. */
+export function EmptyState({
+  text,
+  icon = "🌿",
+  action,
+  testId,
+}: {
+  text: string;
+  icon?: string;
+  /** Кнопка или ссылка-призыв. */
+  action?: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="kosiv-card kosiv-empty" data-testid={testId}>
+      <span aria-hidden="true" style={{ fontSize: "2rem" }}>
+        {icon}
+      </span>
+      <p style={{ margin: 0 }}>{text}</p>
+      {action}
+    </div>
+  );
+}
+
+/** Карточка статуса места: человеческий текст, цитата модератора, одно действие (слот). */
+export function PlaceStatusCard({
+  status,
+  moderation,
+  action,
+}: {
+  status: PlaceStatus;
+  moderation: PartnerPlaceSummary["moderation"];
+  /** Единственное главное действие для этого статуса. */
+  action?: ReactNode;
+}) {
+  const { t } = useT();
+  const showComment =
+    moderation?.comment && (status === "changes_requested" || status === "rejected" || moderation.decision);
+  return (
+    <section className="partner-status" data-status={status}>
+      <span>
+        <Badge testId="place-status">{t(statusKey(status))}</Badge>
+      </span>
+      <p>{t(`miniapp.partner.status.text.${status}` as MessageKey)}</p>
+      {showComment && (
+        <figure className="partner-status-quote" data-testid="moderator-comment" style={{ margin: 0 }}>
+          <figcaption>{t("miniapp.partner.moderator.title")}</figcaption>
+          <blockquote style={{ margin: 0 }}>{moderation!.comment}</blockquote>
+        </figure>
+      )}
+      {action}
+    </section>
+  );
+}
+
+/** «Заповнено N з M» с полосой прогресса. */
+export function ProgressBar({ done, total }: { done: number; total: number }) {
+  const { t } = useT();
+  if (total <= 0) return null;
+  const pct = total > 0 ? Math.round((Math.min(done, total) / total) * 100) : 0;
+  return (
+    <div className="partner-progress" data-testid="partner-progress">
+      <span>{t("miniapp.partner.progress", { done, total })}</span>
+      <div
+        className="partner-progress-bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-label={t("miniapp.partner.progress", { done, total })}
+      >
+        <i style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** «Що далі»: не больше трёх шагов-ссылок. */
+export function NextSteps({ steps }: { steps: readonly { to: string; label: string }[] }) {
+  const { t } = useT();
+  const shown = steps.slice(0, 3);
+  if (!shown.length) return null;
+  return (
+    <nav aria-label={t("miniapp.partner.nextSteps.title")} data-testid="next-steps">
+      <strong>{t("miniapp.partner.nextSteps.title")}</strong>
+      <ul className="partner-next">
+        {shown.map((s) => (
+          <li key={s.to + s.label}>
+            <Link to={s.to}>{s.label}</Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }

@@ -9,7 +9,7 @@ import { useErrorText } from "../host/errors.js";
 import { ConflictError } from "../host/types.js";
 import { usePartner } from "./context.js";
 import { INVITE_TOKEN_RE } from "./partner-api.js";
-import { Live, roleKey, type Message } from "./parts.js";
+import { Live, PartnerHeader, roleKey, type Message } from "./parts.js";
 
 const STATE_KEYS: Record<string, MessageKey> = {
   accepted: "errors.staffInvite.used",
@@ -55,7 +55,7 @@ export function AcceptInvite({ token }: { token: string }) {
   };
   return (
     <Stack>
-      <h1>{t("miniapp.partner.invite.title")}</h1>
+      <PartnerHeader title={t("miniapp.partner.invite.title")} replace />
       {preview.status === "loading" && (
         <p role="status" className="kosiv-muted">
           {t("miniapp.guide.loading")}
@@ -101,16 +101,6 @@ export function AcceptInvite({ token }: { token: string }) {
           <Live message={message} testId="invite-message" />
         </div>
       )}
-      {/* replace: «Назад» из кабинета не возвращает на использованное приглашение */}
-      <a
-        href="#/partner"
-        onClick={(e) => {
-          e.preventDefault();
-          navigate("/partner", { replace: true });
-        }}
-      >
-        {t("miniapp.partner.toDashboard")}
-      </a>
     </Stack>
   );
 }

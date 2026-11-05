@@ -86,11 +86,12 @@ export type WriteOptions = {
   pinCategory?: boolean;
 };
 
-type PlacesEb = ExpressionBuilder<Database, "places">;
+export type PlacesEb = ExpressionBuilder<Database, "places">;
 /**
  * Место «трогали»: в журнале есть любое действие над ним, кроме самого импорта (правка и курирование в админке,
  * ручная чистка place.curate от system, доп. категории, партнёр). У таких мест импорт не меняет категорию, пункт и
- * статус, не пересобирает доп. категории и теги.
+ * статус, не пересобирает доп. категории и теги. Теги удобств places:amenities (place.amenities, system) — не правка
+ * места: такие места импорт обновляет как прежде.
  */
 const touched = (eb: PlacesEb) =>
   eb.exists(
@@ -98,7 +99,7 @@ const touched = (eb: PlacesEb) =>
       .selectFrom("audit_logs as a")
       .select(eb.lit(1).as("one"))
       .where("a.entity_type", "=", "place")
-      .where("a.action", "<>", "place.import")
+      .where("a.action", "not in", ["place.import", "place.amenities"])
       .where("a.entity_id", "=", eb.cast<string>(eb.ref("places.id"), "text")),
   );
 /**
@@ -127,7 +128,7 @@ const statusTouched = (eb: PlacesEb) =>
  * Теги места правили люди: действия пользователя или правка места/доп. категорий (снятый тег импорт не возвращает).
  * Ручная чистка от system (place.curate) теги не трогала — такие места теги получают.
  */
-const tagsTouched = (eb: PlacesEb) =>
+export const tagsTouched = (eb: PlacesEb) =>
   eb.exists(
     eb
       .selectFrom("audit_logs as a")
@@ -512,7 +513,12 @@ export async function writePlaces(
           const p = byGoogleId.get(r.google_place_id!)!;
           return tagsForPlace(p.categoryCode, r.google?.amenities ?? [], p.name)
             .filter((code) => tagId.has(code))
-            .map((code) => ({ region_id: regionId, place_id: r.id, tag_id: tagId.get(code)! }));
+            .map((code) => ({
+              region_id: regionId,
+              place_id: r.id,
+              tag_id: tagId.get(code)!,
+              source: "import" as const,
+            }));
         });
         if (tagRows.length) {
           const written = await trx

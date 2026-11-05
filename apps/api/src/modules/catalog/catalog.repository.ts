@@ -480,6 +480,27 @@ export class CatalogRepository {
     return rows.map((r) => r.tag_id);
   }
 
+  /**
+   * Набор тегов места по разнице: оставшиеся строки не трогаются (их источник — import/reviews — сохраняется),
+   * новые — manual, снятые удаляются.
+   */
+  async syncPlaceTags(placeId: string, before: readonly string[], after: readonly string[]): Promise<void> {
+    const removed = before.filter((id) => !after.includes(id));
+    const added = after.filter((id) => !before.includes(id));
+    if (removed.length)
+      await this.q
+        .deleteFrom("place_tags")
+        .where("place_id", "=", placeId)
+        .where("tag_id", "in", removed)
+        .execute();
+    if (added.length)
+      await this.q
+        .insertInto("place_tags")
+        .values(added.map((tag_id) => ({ place_id: placeId, tag_id, source: "manual" as const })))
+        .onConflict((oc) => oc.columns(["place_id", "tag_id"]).doNothing())
+        .execute();
+  }
+
   async replacePlaceTags(placeId: string, tagIds: readonly string[]): Promise<void> {
     await this.q.deleteFrom("place_tags").where("place_id", "=", placeId).execute();
     if (tagIds.length > 0)
