@@ -54,6 +54,7 @@ describe("GuideService.search — поле peak", () => {
     location: { lon: 24.5, lat: 48.16 },
     distance: null,
     google_place_id: gid,
+    partner: false,
   });
   it("место-вершина — с данными вершины, остальные — peak: null", async () => {
     const { db } = recordingDb({});

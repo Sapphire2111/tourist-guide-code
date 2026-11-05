@@ -70,12 +70,14 @@ export type PlaceSummary = {
   openNow: boolean | null;
   /** «Ми рекомендуємо» (редакционный бейдж, D-32). */
   recommended: boolean;
-  /** Платное размещение: метка «Реклама» / «Партнер» показывается всегда (C-02, ТЗ §4.3). */
+  /** Платное размещение: метка «Реклама» (и для partner) показывается всегда (C-02, ТЗ §4.3). */
   adLabel: "advertising" | "partner" | null;
   /** Вершина (раздел «Вершини»): высота, маршрут, сложность; не вершина — null/нет. */
   peak?: Peak | null;
   /** Есть действующая акция партнёра — бейдж «Акція». */
   hasOffer?: boolean;
+  /** Место ведёт владелец (организация партнёра не заблокирована) — бейдж «Партнер гіда». */
+  partner?: boolean;
 };
 
 export const PEAK_DIFFICULTIES = ["easy", "moderate", "hard", "expert"] as const;

@@ -52,6 +52,7 @@ const place = (n: number, over: Partial<PlaceSummaryDto> = {}): PlaceSummaryDto 
   recommended: false,
   adLabel: null,
   hasOffer: false,
+  partner: false,
   openNow: true,
   phone: null,
   cover: null,

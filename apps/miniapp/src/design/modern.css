@@ -1217,6 +1217,18 @@ html[data-design="modern"] .kosiv-pin[data-distance] {
   font: 800 12px/1 var(--font-body);
   box-shadow: 0 4px 10px rgb(15 34 26 / 20%);
 }
+/* «Партнер гіда» на капсуле: кольцо акцента поверх её тени (ближайшая подсвечена своим свечением). */
+html[data-design="modern"] .kosiv-pin[data-distance][data-partner="true"]:not([data-closest="true"]) {
+  box-shadow:
+    0 0 0 2px var(--app-accent, #15803d),
+    0 4px 10px rgb(15 34 26 / 20%);
+}
+html[data-theme="night"][data-design="modern"]
+  .kosiv-pin[data-distance][data-partner="true"]:not([data-closest="true"]) {
+  box-shadow:
+    0 0 0 2px var(--app-accent-ink, #f6ae2d),
+    0 4px 10px rgb(15 34 26 / 20%);
+}
 html[data-design="modern"] .kosiv-pin[data-distance]::after {
   content: attr(data-distance);
   white-space: nowrap;

@@ -67,6 +67,8 @@ export function summaryOf(dto: SummaryDto): PlaceSummary {
     adLabel: dto.adLabel,
     peak: peakOf((dto as Partial<SummaryDto>).peak),
     hasOffer: (dto as Partial<SummaryDto>).hasOffer === true,
+    // api старее поля — false (бейдж не показывается).
+    partner: (dto as Partial<SummaryDto>).partner === true,
   };
 }
 

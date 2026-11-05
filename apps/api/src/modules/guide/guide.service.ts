@@ -460,6 +460,8 @@ export class GuideService {
       coverPhoto,
       peak: peakOfPlace(r.google_place_id),
       hasOffer,
+      // Без организации или с заблокированной — false: туристу не показываем, что место ведёт владелец.
+      partner: r.partner === true,
     };
   }
 

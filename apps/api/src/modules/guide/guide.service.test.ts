@@ -23,6 +23,7 @@ const row = (n: number): PlaceRow => ({
   location: { lon: 24, lat: 48 },
   distance: null,
   google_place_id: null,
+  partner: false,
 });
 
 function service(repo: Partial<GuideRepository>) {
@@ -153,6 +154,24 @@ describe("GuideService — акции партнёра", () => {
       offers: [{ id: PLACE, title: { uk: "-10%" }, startsAt: null, endsAt: "2026-11-12T20:59:59.000Z" }],
     });
     expect(await card([])).toMatchObject({ hasOffer: false, offers: [] });
+  });
+});
+
+describe("GuideService — «Партнер гіда»", () => {
+  it("выдача и карточка: partner из строки выборки, без доп. запросов", async () => {
+    const res = await service({
+      search: () => Promise.resolve([row(1), { ...row(2), partner: true }]),
+    }).search(REGION, { limit: 20, offset: 0 });
+    expect(res.items.map((i) => i.partner)).toEqual([false, true]);
+    const card = await service({
+      findPublished: () => Promise.resolve({ ...row(1), partner: true, region_id: REGION } as never),
+      findCategory: () => Promise.resolve(undefined),
+      placeTags: () => Promise.resolve([]),
+      photos: () => Promise.resolve([]),
+      enrichment: () => Promise.resolve(undefined),
+      isFavorite: () => Promise.resolve(false),
+    }).place(REGION, row(1).id, {});
+    expect(card?.partner).toBe(true);
   });
 });
 

@@ -102,16 +102,23 @@ function groupLabel(g: MarkerGroup): MessageKey {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Метки на маркере: «Партнер гіда» — кольцо, «Акція» — точка в углу (подписи — в карточке и списке). */
+export type PinFlags = { partner?: boolean; offer?: boolean };
+
 /** Значок маркера места: круг цвета группы, внутри значок раздела или номер остановки маршрута. */
 export function pinNode(
   group: MarkerGroup,
   stop: number | null,
   distance?: string,
   closest?: boolean,
+  flags: PinFlags = {},
 ): HTMLElement {
   const pin = document.createElement("div");
   pin.className = "kosiv-pin";
   pin.dataset.group = group;
+  // Декор: кольцо «Партнер гіда» и точку «Акція» рисует CSS по data-partner / data-offer.
+  if (flags.partner) pin.dataset.partner = "true";
+  if (flags.offer) pin.dataset.offer = "true";
   // Цвет группы — переменная: фон круга и акценты капсулы расстояния (modern.css) берут её, а не inline background.
   pin.style.setProperty("--pin-color", MARKER_COLORS[group]);
   if (stop !== null) {
@@ -136,6 +143,11 @@ export function pinNode(
   svg.appendChild(path);
   pin.appendChild(svg);
   return pin;
+}
+
+/** Метки маркера из места выдачи. */
+export function pinFlags(p: PlaceSummary): PinFlags {
+  return { partner: p.partner === true, offer: p.hasOffer === true };
 }
 
 export type PopupData = {
@@ -572,12 +584,16 @@ export default function PlacesMap({
       const stop = route ? i + 1 : null;
       const marker = new libs.marker.AdvancedMarkerElement({
         position: { lat: p.location!.lat, lng: p.location!.lng },
-        title: pickLocalized(p.name, localeRef.current),
+        // Подпись маркера (имя кнопки для читалки): кольцо «Партнер гіда» — декор, поэтому метка и в тексте.
+        title: p.partner
+          ? `${pickLocalized(p.name, localeRef.current)} · ${tRef.current("miniapp.place.guidePartner")}`
+          : pickLocalized(p.name, localeRef.current),
         content: pinNode(
           group,
           stop,
           fmtDist(p.distanceMeters),
           p.id === closestId && p.distanceMeters != null,
+          pinFlags(p),
         ),
         gmpClickable: true,
       });
@@ -839,7 +855,13 @@ export default function PlacesMap({
       const group = markerGroup(index.sectionOf(place.categoryId));
       const prev = marker.content as HTMLElement | null;
       if (prev?.dataset?.group !== group)
-        marker.content = pinNode(group, stop, prev?.dataset?.distance, prev?.dataset?.closest === "true");
+        marker.content = pinNode(
+          group,
+          stop,
+          prev?.dataset?.distance,
+          prev?.dataset?.closest === "true",
+          pinFlags(place),
+        );
     }
   }, [index]);
 

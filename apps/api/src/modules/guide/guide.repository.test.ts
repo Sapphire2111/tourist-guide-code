@@ -187,6 +187,23 @@ describe("GuideRepository — акции партнёра (SQL)", () => {
   });
 });
 
+describe("GuideRepository — «Партнер гіда» (SQL)", () => {
+  it("выдача, избранное и карточка: EXISTS по незаблокированной организации места в том же запросе, с регионом", async () => {
+    const queries = await capture(async (r) => {
+      await r.search({ limit: 20, offset: 0 });
+      await r.favorites(USER);
+      await r.findPublished(PLACE, undefined);
+    });
+    expect(queries).toHaveLength(3);
+    for (const q of queries) {
+      expect(q.sql).toMatch(
+        /exists \(select "po"\."id" from "organizations" as "po" where \("po"\."id" = "places"\."organization_id" and "po"\."status" <> \$\d+\) and "po"\."region_id" = \$\d+\) as "partner"/,
+      );
+      expect(q.params).toContain("blocked");
+    }
+  });
+});
+
 describe("GuideRepository.countFavorites (SQL)", () => {
   it("лимит считает те же записи, что список: только опубликованные места пользователя в регионе", async () => {
     const [count] = await capture((r) => r.countFavorites(USER).catch(() => 0)); // recordingDb строк не отдаёт

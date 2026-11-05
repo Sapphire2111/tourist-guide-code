@@ -110,7 +110,8 @@ const summary = (id: string, name: string, lat: number, lon: number, over: Recor
 
 const places = [
   summary(HOTEL_PLACE, "Тестовий готель", 48.45, 24.56, { categoryId: EAT, openNow: null }),
-  summary(CAFE_PLACE, "Кав'ярня «Смерека»", 48.4512, 24.5612, { recommended: true }),
+  // Кав'ярню веде власник — бейдж «Партнер гіда» (контраст «День»/«Ніч» проверяется вместе с карточкой).
+  summary(CAFE_PLACE, "Кав'ярня «Смерека»", 48.4512, 24.5612, { recommended: true, partner: true }),
   summary(AD_PLACE, "Піцерія «Реклама»", 48.4535, 24.5635, { adLabel: "advertising", openNow: false }),
 ];
 

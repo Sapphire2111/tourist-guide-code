@@ -424,6 +424,21 @@ describe("PlacesMap (Google Maps)", () => {
     expect(onMap().find((m) => m.content?.dataset.group === "other")?.title).toBe("a");
   });
 
+  it("маркер: «Партнер гіда» и «Акція» — метки data-partner / data-offer, партнёр — и в подписи", async () => {
+    const places = [
+      { ...place("a"), partner: true, hasOffer: true },
+      { ...place("b"), location: { lat: 48.46, lng: 24.57 } },
+    ];
+    render(wrap(<PlacesMap places={places} center={{ lat: 48.45, lng: 24.56 }} />));
+    await flush();
+    const a = onMap().find((m) => m.title === "a · Партнер гіда")!.content!;
+    const b = onMap().find((m) => m.title === "b")!.content!;
+    expect(a.dataset.partner).toBe("true");
+    expect(a.dataset.offer).toBe("true");
+    expect(b.dataset.partner).toBeUndefined();
+    expect(b.dataset.offer).toBeUndefined();
+  });
+
   it("уход с экрана и возврат — та же карта из пула (без новой загрузки)", async () => {
     const first = render(wrap(<PlacesMap places={[place("a")]} center={null} />));
     await flush();

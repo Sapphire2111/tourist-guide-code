@@ -525,6 +525,7 @@ describe("адаптер api и аналитика", () => {
       recommended: false,
       adLabel: "partner",
       hasOffer: false,
+      partner: false,
       openNow: null,
       phone: null,
       coverPhoto: null,

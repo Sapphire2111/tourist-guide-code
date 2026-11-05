@@ -386,7 +386,7 @@ export const adminUk = {
   "admin.scenario.adLabel": "Позначка реклами",
   "admin.scenario.adLabel.none": "Без реклами",
   "admin.scenario.adLabel.advertising": "Реклама",
-  "admin.scenario.adLabel.partner": "Партнер",
+  "admin.scenario.adLabel.partner": "Партнер (туристу показується як «Реклама»)",
   "admin.scenario.itemsRequired": "Додайте хоча б один пункт.",
   "admin.scenario.placeRequired": "У кожному пункті оберіть місце.",
   "admin.scenario.itemCount": "Пунктів",
