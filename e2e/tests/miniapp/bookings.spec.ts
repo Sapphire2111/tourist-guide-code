@@ -175,8 +175,8 @@ test("партнёр: P04 брони дня → P05 подтвердить; ру
   expect(mock.manual[0]).toMatchObject({ customerName: "Іван", source: "phone", startsAt: kyiv(0, 20) });
 
   // Ресурсы: правка с устаревшей версией → «Оновити дані»; ручной статус с TTL.
-  await page.getByRole("link", { name: "Ресурси і доступність" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Ресурси бронювання" })).toBeVisible();
+  await page.getByRole("link", { name: "Що можна бронювати" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Що можна бронювати" })).toBeVisible();
   mock.conflictOnce = true;
   await page.getByRole("button", { name: "Налаштування" }).click();
   await page.getByLabel("Осіб на слот").fill("8");
