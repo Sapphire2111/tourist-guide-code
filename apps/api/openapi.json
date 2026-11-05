@@ -17279,6 +17279,10 @@
           "hasOffer": {
             "type": "boolean",
             "description": "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»"
+          },
+          "partner": {
+            "type": "boolean",
+            "description": "Место ведёт его владелец: привязано к организации партнёра (0017), организация не заблокирована — бейдж «Партнер гіда». Не путать с adLabel partner (платное размещение)"
           }
         },
         "required": [
@@ -17295,7 +17299,8 @@
           "cover",
           "coverPhoto",
           "peak",
-          "hasOffer"
+          "hasOffer",
+          "partner"
         ]
       },
       "PlaceSearchResultDto": {
@@ -17620,6 +17625,10 @@
             "type": "boolean",
             "description": "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»"
           },
+          "partner": {
+            "type": "boolean",
+            "description": "Место ведёт его владелец: привязано к организации партнёра (0017), организация не заблокирована — бейдж «Партнер гіда». Не путать с adLabel partner (платное размещение)"
+          },
           "offers": {
             "description": "Действующие акции партнёра (до 20): раньше заканчивающиеся сверху; пусто — блок не показывать",
             "type": "array",
@@ -17749,6 +17758,7 @@
           "coverPhoto",
           "peak",
           "hasOffer",
+          "partner",
           "offers",
           "regionId",
           "category",

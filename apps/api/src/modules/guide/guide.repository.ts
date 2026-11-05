@@ -36,6 +36,8 @@ export type PlaceRow = {
   distance: number | null;
   /** id места Google: данные вершины (places-import/peaks.ts) — по нему. */
   google_place_id: string | null;
+  /** Место ведёт партнёр: organization_id задан и организация не заблокирована (как у акций). */
+  partner: boolean;
 };
 
 export type PlaceCardRow = PlaceRow & {
@@ -90,6 +92,19 @@ export function likeContains(text: string): string {
 }
 
 type Q = SelectQueryBuilder<Database, "places" | "categories", object>;
+
+/**
+ * «Партнер гіда» — в том же запросе выдачи (без N+1): у места есть организация и она не заблокирована, как у
+ * activeOffers.
+ */
+const partnerOf = (eb: ExpressionBuilder<Database, "places">) =>
+  eb.exists(
+    eb
+      .selectFrom("organizations as po")
+      .select("po.id")
+      .whereRef("po.id", "=", "places.organization_id")
+      .where("po.status", "<>", "blocked"),
+  );
 
 /** Точка места (в выборке опубликованных она всегда есть — фильтр location IS NOT NULL). */
 const geom = (eb: ExpressionBuilder<Database, "places">) => eb.ref("places.location") as Expression<Geometry>;
@@ -169,7 +184,8 @@ export class GuideRepository {
       .select((eb) => lonLatOf(eb.ref("places.location")).as("location"))
       .select((eb) =>
         (origin ? distanceMeters(geom(eb), point(origin)) : sql<number | null>`NULL::float8`).as("distance"),
-      );
+      )
+      .select((eb) => partnerOf(eb).as("partner"));
   }
 
   // --- категории ---

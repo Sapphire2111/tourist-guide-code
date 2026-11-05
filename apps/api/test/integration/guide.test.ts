@@ -466,7 +466,7 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     expect(anonymous!.distanceMeters).toBeNull();
   });
 
-  it("акции партнёра: в карточке и hasOffer — только active в окне; будущая, истёкшая, архивная, чужое место — нет", async () => {
+  it("акции партнёра и «Партнер гіда»: hasOffer — только active в окне; partner — только незаблокированная организация", async () => {
     const offer = (place: string, title: string, status: string, from: string | null, to: string | null) =>
       sql(
         `INSERT INTO offers (region_id, place_id, title_i18n, status, starts_at, ends_at)
@@ -510,6 +510,13 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
       expect(hidden).toMatchObject({ hasOffer: false, offers: [] });
     }
     expect(await service.place(base.regions.a, placeId("draft"), {})).toBeUndefined();
+    // «Партнер гіда»: только место с незаблокированной организацией — в выдаче и в карточке.
+    const partners = new Map(list.items.map((i) => [i.id, i.partner]));
+    expect(partners.get(placeId("north"))).toBe(true);
+    expect(partners.get(placeId("east"))).toBe(false);
+    expect(partners.get(placeId("west-ad"))).toBe(false);
+    expect(card!.partner).toBe(true);
+    expect((await service.place(base.regions.a, placeId("east"), {}))!.partner).toBe(false);
   });
 
   it("«Відкрито зараз» — по таймзоне региона: 19:00 по Киеву закрыто", async () => {

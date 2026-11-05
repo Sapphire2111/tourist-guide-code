@@ -188,6 +188,11 @@ test.describe("QR отеля demoHotel01", () => {
     await expect(page.getByTestId("badge-availability")).toHaveCount(0);
     await expect(page.getByTestId("badge-recommended")).toBeVisible();
     await expect(page.getByTestId("badge-open")).toBeVisible();
+    await expect(page.getByTestId("badge-partner")).toHaveAttribute(
+      "title",
+      "Заклад сам оновлює інформацію в гіді",
+    );
+    await expect(page.getByTestId("place-partner-note")).toHaveText("Інформацію оновлює заклад");
     await expect(page.getByRole("img", { name: "Фото: Кав'ярня «Смерека»" })).toBeVisible();
     await expect(page.getByTestId("place-call")).toHaveAttribute("href", "tel:+380501112233");
     await expect(page.getByTestId("place-route")).toHaveAttribute(

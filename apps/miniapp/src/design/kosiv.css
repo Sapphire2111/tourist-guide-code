@@ -565,6 +565,17 @@ html[data-theme="night"] .kosiv-chip[data-tone="promo"] {
   color: #ffd98a;
   border-color: #a8761a;
 }
+/* «Партнер гіда»: тихий чип — место ведёт владелец; цвета из --app-* (ночная тема — сама). */
+.kosiv-chip[data-tone="partner"] {
+  background: transparent;
+  color: var(--app-accent-ink);
+  border: 1px solid var(--app-border);
+  font-weight: 500;
+}
+.kosiv-chip[data-tone="partner"] svg {
+  flex: none;
+  color: var(--app-accent);
+}
 .kosiv-chip[data-tone="outline"] {
   background: transparent;
   border: 1px solid var(--app-border);
@@ -1144,6 +1155,27 @@ html[data-theme="night"] .kosiv-chip[data-tone="promo"] {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+/* «Партнер гіда» — тонкое кольцо цвета акцента вокруг белой обводки; «Акція» — янтарная точка в правом верхнем углу. */
+.kosiv-pin[data-partner="true"] {
+  box-shadow:
+    0 0 0 2px var(--app-accent, #15803d),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.kosiv-pin[data-offer="true"] {
+  position: relative;
+}
+.kosiv-pin[data-offer="true"]::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background: #d9a21b;
 }
 .kosiv-pin-base {
   width: 22px;

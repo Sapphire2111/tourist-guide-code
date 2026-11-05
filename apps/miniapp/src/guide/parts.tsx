@@ -85,9 +85,31 @@ export function Badge({
   );
 }
 
+/** Значок «Партнер гіда»: галочка в щите (декор, подпись рядом). */
+function PartnerIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+    </svg>
+  );
+}
+
 /**
- * Бейджи места: «Відкрито зараз», «Ми рекомендуємо», «Акція», «Реклама/Партнер». Акція партнёра — свой тон promo,
- * не accent2 редакционного «Ми рекомендуємо» (BR-09: маркетинг не маскируется под рекомендацию).
+ * Бейджи места: «Відкрито зараз», «Акція», «Партнер гіда», «Ми рекомендуємо», «Реклама/Партнер». Акція партнёра — свой
+ * тон promo, не accent2 редакционного «Ми рекомендуємо» (BR-09: маркетинг не маскируется под рекомендацию).
+ * «Партнер гіда» — тихий чип: место ведёт владелец (не платная метка adLabel и не рекомендация).
  */
 export function PlaceBadges({ place }: { place: PlaceSummary }) {
   const { t } = useT();
@@ -99,14 +121,27 @@ export function PlaceBadges({ place }: { place: PlaceSummary }) {
         </Badge>
       )}
       {place.openNow === false && <Badge testId="badge-closed">{t("miniapp.place.closedNow")}</Badge>}
-      {place.recommended && (
-        <Badge testId="badge-recommended" tone="accent2">
-          {t("miniapp.place.recommended")}
-        </Badge>
-      )}
       {place.hasOffer && (
         <Badge testId="badge-offer" tone="promo">
           {t("miniapp.promo.badge")}
+        </Badge>
+      )}
+      {place.partner && (
+        // Пояснение — подсказкой (title) и для экранного диктора (kosiv-sr-only), видно только «Партнер гіда».
+        <span
+          className="kosiv-chip"
+          data-tone="partner"
+          data-testid="badge-partner"
+          title={t("miniapp.place.partnerHint")}
+        >
+          <PartnerIcon />
+          {t("miniapp.place.guidePartner")}
+          <span className="kosiv-sr-only">. {t("miniapp.place.partnerHint")}</span>
+        </span>
+      )}
+      {place.recommended && (
+        <Badge testId="badge-recommended" tone="accent2">
+          {t("miniapp.place.recommended")}
         </Badge>
       )}
       {place.adLabel && (

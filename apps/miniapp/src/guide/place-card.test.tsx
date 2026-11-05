@@ -149,6 +149,35 @@ describe("акції партнера", () => {
   });
 });
 
+describe("«Партнер гіда»", () => {
+  it("місце веде власник — тихий бейдж з поясненням і рядок у підвалі; порядок: відкрито → акція → партнер → рекомендуємо", async () => {
+    await renderCard({
+      ...base,
+      openNow: true,
+      recommended: true,
+      hasOffer: true,
+      partner: true,
+      offers: [],
+    });
+    const badge = screen.getByTestId("badge-partner");
+    expect(badge.getAttribute("data-tone")).toBe("partner");
+    expect(badge.getAttribute("title")).toBe("Заклад сам оновлює інформацію в гіді");
+    expect(badge.textContent).toContain("Партнер гіда");
+    expect(badge.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByTestId("place-partner-note").textContent).toBe("Інформацію оновлює заклад");
+    const order = [...(badge.parentElement?.querySelectorAll("[data-testid^='badge-']") ?? [])].map((b) =>
+      b.getAttribute("data-testid"),
+    );
+    expect(order).toEqual(["badge-open", "badge-offer", "badge-partner", "badge-recommended"]);
+  });
+
+  it("не партнер — ні бейджа, ні рядка", async () => {
+    await renderCard({ ...base, offers: [] });
+    expect(screen.queryByTestId("badge-partner")).toBeNull();
+    expect(screen.queryByTestId("place-partner-note")).toBeNull();
+  });
+});
+
 describe("графік: цілодобово", () => {
   const day = (weekday: number, opens: string, closes: string) => ({ weekday, opens, closes });
   const week = (opens: string, closes: string) => [1, 2, 3, 4, 5, 6, 7].map((d) => day(d, opens, closes));
@@ -382,6 +411,7 @@ const dto = {
   openUntil: null,
   favorite: null,
   hasOffer: false,
+  partner: false,
   offers: [],
   hasPriceList: false,
 };

@@ -57,6 +57,9 @@ describe("акції: адаптер", () => {
     const { summaryOf, cardOf } = await import("./guide-api.js");
     expect(summaryOf({ ...dto, hasOffer: true }).hasOffer).toBe(true);
     expect(summaryOf(dto).hasOffer).toBe(false);
+    // «Партнер гіда»: из DTO; api старее поля — false.
+    expect(summaryOf({ ...dto, partner: true }).partner).toBe(true);
+    expect(summaryOf(dto).partner).toBe(false);
     const card = {
       ...dto,
       regionId: "r",

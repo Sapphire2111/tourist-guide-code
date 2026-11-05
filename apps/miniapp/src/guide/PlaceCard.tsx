@@ -771,6 +771,8 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         )}
         <footer className="pc-footer">
           {verified && <p data-testid="place-verified">{t("miniapp.place.verified", { date: verified })}</p>}
+          {/* Место ведёт владелец (бейдж «Партнер гіда» сверху) — откуда данные, рядом с датой проверки. */}
+          {place.partner && <p data-testid="place-partner-note">{t("miniapp.place.partnerNote")}</p>}
           {hasGoogle && <p data-testid="place-google-attribution">{t("miniapp.place.googleAttribution")}</p>}
         </footer>
       </Stack>

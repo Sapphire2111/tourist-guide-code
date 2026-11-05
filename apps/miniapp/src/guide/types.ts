@@ -76,6 +76,8 @@ export type PlaceSummary = {
   peak?: Peak | null;
   /** Есть действующая акция партнёра — бейдж «Акція». */
   hasOffer?: boolean;
+  /** Место ведёт владелец (организация партнёра не заблокирована) — бейдж «Партнер гіда». */
+  partner?: boolean;
 };
 
 export const PEAK_DIFFICULTIES = ["easy", "moderate", "hard", "expert"] as const;

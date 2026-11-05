@@ -484,6 +484,13 @@ export class PlaceSummaryDto {
       "У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція»",
   })
   hasOffer!: boolean;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      "Место ведёт его владелец: привязано к организации партнёра (0017), организация не заблокирована — " +
+      "бейдж «Партнер гіда». Не путать с adLabel partner (платное размещение)",
+  })
+  partner!: boolean;
 }
 
 /** Акция партнёра в карточке места (только действующие). */

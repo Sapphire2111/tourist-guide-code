@@ -102,16 +102,23 @@ function groupLabel(g: MarkerGroup): MessageKey {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Метки на маркере: «Партнер гіда» — кольцо, «Акція» — точка в углу (подписи — в карточке и списке). */
+export type PinFlags = { partner?: boolean; offer?: boolean };
+
 /** Значок маркера места: круг цвета группы, внутри значок раздела или номер остановки маршрута. */
 export function pinNode(
   group: MarkerGroup,
   stop: number | null,
   distance?: string,
   closest?: boolean,
+  flags: PinFlags = {},
 ): HTMLElement {
   const pin = document.createElement("div");
   pin.className = "kosiv-pin";
   pin.dataset.group = group;
+  // Декор: кольцо «Партнер гіда» и точку «Акція» рисует CSS по data-partner / data-offer, подпись маркера та же.
+  if (flags.partner) pin.dataset.partner = "true";
+  if (flags.offer) pin.dataset.offer = "true";
   // Цвет группы — переменная: фон круга и акценты капсулы расстояния (modern.css) берут её, а не inline background.
   pin.style.setProperty("--pin-color", MARKER_COLORS[group]);
   if (stop !== null) {
@@ -136,6 +143,11 @@ export function pinNode(
   svg.appendChild(path);
   pin.appendChild(svg);
   return pin;
+}
+
+/** Метки маркера из места выдачи. */
+export function pinFlags(p: PlaceSummary): PinFlags {
+  return { partner: p.partner === true, offer: p.hasOffer === true };
 }
 
 export type PopupData = {
@@ -578,6 +590,7 @@ export default function PlacesMap({
           stop,
           fmtDist(p.distanceMeters),
           p.id === closestId && p.distanceMeters != null,
+          pinFlags(p),
         ),
         gmpClickable: true,
       });
@@ -839,7 +852,13 @@ export default function PlacesMap({
       const group = markerGroup(index.sectionOf(place.categoryId));
       const prev = marker.content as HTMLElement | null;
       if (prev?.dataset?.group !== group)
-        marker.content = pinNode(group, stop, prev?.dataset?.distance, prev?.dataset?.closest === "true");
+        marker.content = pinNode(
+          group,
+          stop,
+          prev?.dataset?.distance,
+          prev?.dataset?.closest === "true",
+          pinFlags(place),
+        );
     }
   }, [index]);
 

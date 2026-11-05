@@ -3789,6 +3789,8 @@ export interface components {
       peak: components["schemas"]["PeakDto"] | null;
       /** @description У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція» */
       hasOffer: boolean;
+      /** @description Место ведёт его владелец: привязано к организации партнёра (0017), организация не заблокирована — бейдж «Партнер гіда». Не путать с adLabel partner (платное размещение) */
+      partner: boolean;
     };
     PlaceSearchResultDto: {
       /** @description Порядок (BR-10, C-02): совпадение с q → расстояние → «Ми рекомендуємо» → название; реклама порядок не меняет */
@@ -4006,6 +4008,8 @@ export interface components {
       peak: components["schemas"]["PeakDto"] | null;
       /** @description У места есть действующая акция партнёра (status active, now в [startsAt, endsAt]) — бейдж «Акція» */
       hasOffer: boolean;
+      /** @description Место ведёт его владелец: привязано к организации партнёра (0017), организация не заблокирована — бейдж «Партнер гіда». Не путать с adLabel partner (платное размещение) */
+      partner: boolean;
       /** @description Действующие акции партнёра (до 20): раньше заканчивающиеся сверху; пусто — блок не показывать */
       offers: components["schemas"]["PlaceOfferDto"][];
       /** Format: uuid */
