@@ -473,12 +473,30 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [base.regions.a, placeId(place), JSON.stringify({ uk: title }), status, from, to],
       );
+    // Акции показываются только у мест с организацией, не заблокированной.
+    const org = async (placeKey: string, status: "active" | "blocked") => {
+      const id = String(
+        (
+          await sql(
+            `INSERT INTO organizations (region_id, name, status) SELECT region_id, 'Партнер акцій', $2 FROM places
+             WHERE id = $1 RETURNING id`,
+            [placeId(placeKey), status],
+          )
+        ).rows[0].id,
+      );
+      await sql("UPDATE places SET organization_id = $1 WHERE id = $2", [id, placeId(placeKey)]);
+    };
+    await org("north", "active");
+    await org("east", "blocked");
     await offer("north", "Діє", "active", null, null);
     await offer("north", "Діє до", "active", "2000-01-01", "2999-01-01");
     await offer("north", "Майбутня", "active", "2999-01-01", null);
     await offer("north", "Минула", "active", null, "2000-01-01");
     await offer("north", "Архівна", "archived", null, null);
     await offer("draft", "Чернетка", "active", null, null);
+    // west-ad — без організації; east — організація заблокована: акції приховані.
+    await offer("west-ad", "Без організації", "active", null, null);
+    await offer("east", "Заблокована організація", "active", null, null);
     const card = await service.place(base.regions.a, placeId("north"), {});
     expect(card!.hasOffer).toBe(true);
     expect(card!.offers.map((o) => o.title.uk)).toEqual(["Діє до", "Діє"]);
@@ -486,6 +504,11 @@ describe.skipIf(!dockerAvailable)(`Публичный каталог турис�
     const flags = new Map(list.items.map((i) => [i.id, i.hasOffer]));
     expect(flags.get(placeId("north"))).toBe(true);
     expect(flags.get(placeId("west-ad"))).toBe(false);
+    expect(flags.get(placeId("east"))).toBe(false);
+    for (const key of ["west-ad", "east"]) {
+      const hidden = await service.place(base.regions.a, placeId(key), {});
+      expect(hidden).toMatchObject({ hasOffer: false, offers: [] });
+    }
     expect(await service.place(base.regions.a, placeId("draft"), {})).toBeUndefined();
   });
 
