@@ -12,6 +12,7 @@ import { AvailabilityBadge, BookingEntry } from "../bookings/PlaceBooking.js";
 import { PlacePrices } from "../price-list/PlacePrices.js";
 import { PlaceReviews } from "../reviews/PlaceReviews.js";
 import { useAsync, useGuide } from "./context.js";
+import { zoneOf } from "../bookings/format.js";
 import { interceptBack } from "../telegram.js";
 import { googleRouteUrl } from "./geo.js";
 import { Badge, ExtLink, PlaceBadges, useDistance } from "./parts.js";
@@ -22,6 +23,7 @@ import {
   UnauthorizedError,
   type Author,
   type PlaceDetail,
+  type PlaceOffer,
   type Review,
   type ScheduleInterval,
 } from "./types.js";
@@ -352,12 +354,12 @@ function ReviewItem({ review }: { review: Review }) {
   );
 }
 
-/** Удобства чипами; длинный список свёрнут до первых OFFERS_SHOWN. */
-const OFFERS_SHOWN = 10;
-function Offers({ amenities }: { amenities: string[] }) {
+/** Удобства чипами (Google); длинный список свёрнут до первых AMENITIES_SHOWN. */
+const AMENITIES_SHOWN = 10;
+function Amenities({ amenities }: { amenities: string[] }) {
   const { t } = useT();
   const [all, setAll] = useState(false);
-  const shown = all ? amenities : amenities.slice(0, OFFERS_SHOWN);
+  const shown = all ? amenities : amenities.slice(0, AMENITIES_SHOWN);
   return (
     <Section title={t("miniapp.place.offers")} testId="place-offers">
       <ul className="pc-chips">
@@ -367,11 +369,57 @@ function Offers({ amenities }: { amenities: string[] }) {
           </li>
         ))}
       </ul>
-      {amenities.length > OFFERS_SHOWN && (
+      {amenities.length > AMENITIES_SHOWN && (
         <button type="button" className="pc-textbtn" aria-expanded={all} onClick={() => setAll(!all)}>
           {all ? t("miniapp.place.offersLess") : t("miniapp.place.offersAll", { count: amenities.length })}
         </button>
       )}
+    </Section>
+  );
+}
+
+/**
+ * «до 12 листопада»; сервер отдаёт только уже начавшиеся акции, поэтому «з …» не нужно. Пояс — региона места через
+ * zoneOf (старые ICU не знают Europe/Kyiv → запасной Europe/Kiev → пояс устройства), RangeError исключён.
+ */
+function offerEnds(
+  o: PlaceOffer,
+  locale: string,
+  timezone: string | undefined,
+  t: ReturnType<typeof useT>["t"],
+): string | null {
+  if (!o.endsAt) return null;
+  const date = new Date(o.endsAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const options = { day: "numeric", month: "long", timeZone: zoneOf(timezone ?? "Europe/Kyiv") } as const;
+  const lang = locale === "en" ? "en-GB" : "uk-UA";
+  let text: string;
+  try {
+    text = date.toLocaleDateString(lang, options);
+  } catch {
+    text = date.toLocaleDateString(lang, { day: "numeric", month: "long" });
+  }
+  return t("miniapp.promo.until", { date: text });
+}
+
+/** Акции партнёра (только действующие — отбирает сервер). */
+function PromoOffers({ offers, timezone }: { offers: PlaceOffer[]; timezone?: string }) {
+  const { t, locale } = useT();
+  return (
+    <Section title={t("miniapp.promo.title")} testId="place-promos">
+      <ul className="pc-promos">
+        {offers.map((o) => {
+          const dates = offerEnds(o, locale, timezone, t);
+          const description = o.description ? pickLocalized(o.description, locale) : null;
+          return (
+            <li key={o.id} className="pc-promo" data-testid="place-promo">
+              <p className="pc-promo-title">{pickLocalized(o.title, locale)}</p>
+              {description && <p className="pc-promo-text">{description}</p>}
+              {dates && <p className="pc-promo-dates">{dates}</p>}
+            </li>
+          );
+        })}
+      </ul>
     </Section>
   );
 }
@@ -594,7 +642,9 @@ function PlaceView({ place }: { place: PlaceDetail }) {
         )}
         {description && <p className="pc-lead">{description}</p>}
 
-        {amenities.length > 0 && <Offers amenities={amenities} />}
+        {(place.offers?.length ?? 0) > 0 && <PromoOffers offers={place.offers!} timezone={place.timezone} />}
+
+        {amenities.length > 0 && <Amenities amenities={amenities} />}
 
         {/* У вершини графіка немає — «Графік невідомий» не показуємо. */}
         {!(place.peak && !place.schedule.length) && (

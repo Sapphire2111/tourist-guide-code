@@ -168,6 +168,8 @@ function guide(enrichment: unknown, photosSvc?: GooglePhotosService) {
     photos: () => Promise.resolve([]),
     schedules: () => Promise.resolve(new Map()),
     adLabels: () => Promise.resolve(new Map()),
+    placeIdsWithOffer: () => Promise.resolve(new Set()),
+    offers: () => Promise.resolve([]),
     isFavorite: () => Promise.resolve(false),
     coverMeta: () => Promise.resolve([]),
     enrichment: () => Promise.resolve(enrichment as never),

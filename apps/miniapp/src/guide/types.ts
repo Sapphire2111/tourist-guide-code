@@ -74,6 +74,8 @@ export type PlaceSummary = {
   adLabel: "advertising" | "partner" | null;
   /** Вершина (раздел «Вершини»): высота, маршрут, сложность; не вершина — null/нет. */
   peak?: Peak | null;
+  /** Есть действующая акция партнёра — бейдж «Акція». */
+  hasOffer?: boolean;
 };
 
 export const PEAK_DIFFICULTIES = ["easy", "moderate", "hard", "expert"] as const;
@@ -166,6 +168,19 @@ export type PlaceDetail = PlaceSummary & {
   googlePhotos?: GooglePhoto[];
   googleMapsUri?: string | null;
   wikipedia?: WikipediaInfo | null;
+  /** Действующие акции партнёра (блок «Акції»); нет — блок не показывается. */
+  offers?: PlaceOffer[];
+  /** Часовой пояс региона места (IANA) — для дат акций. */
+  timezone?: string;
+};
+
+export type PlaceOffer = {
+  id: string;
+  title: LocalizedText;
+  description: LocalizedText | null;
+  /** ISO; null — без границы. */
+  startsAt: string | null;
+  endsAt: string | null;
 };
 
 export type EmergencyKind = "general" | "police" | "ambulance" | "rescue" | "mountain_rescue" | "other";

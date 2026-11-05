@@ -93,6 +93,62 @@ function renderCard(place: PlaceDetail) {
   return act(async () => new Promise((r) => setTimeout(r, 0)));
 }
 
+describe("акції партнера", () => {
+  const offer = {
+    id: "o1",
+    title: { uk: "Знижка 10% на сніданок" },
+    description: { uk: "Для гостей з Telegram" },
+    startsAt: null,
+    endsAt: "2099-11-12T12:00:00Z",
+  };
+
+  it("блок «Акції»: назва, опис і «до 12 листопада»", async () => {
+    await renderCard({ ...base, hasOffer: true, offers: [offer] });
+    const block = screen.getByTestId("place-promos");
+    expect(block.textContent).toContain("Акції");
+    expect(block.textContent).toContain("Знижка 10% на сніданок");
+    expect(block.textContent).toContain("Для гостей з Telegram");
+    expect(block.textContent).toContain("до 12 листопада");
+    expect(screen.getByTestId("badge-offer").textContent).toBe("Акція");
+    expect(screen.getByTestId("badge-offer").getAttribute("data-tone")).toBe("promo");
+  });
+
+  it("Intl не знає пояс (старий ICU кидає RangeError) — картка не падає, дата є", async () => {
+    const real = Intl.DateTimeFormat;
+    const toLocale = Date.prototype.toLocaleDateString;
+    const zoneErr = () => new RangeError("Invalid time zone specified");
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (
+      this: unknown,
+      l?: string | string[],
+      o?: Intl.DateTimeFormatOptions,
+    ) {
+      if (o?.timeZone) throw zoneErr();
+      return new real(l, o);
+    } as never);
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (this: Date, l, o) {
+      if ((o as { timeZone?: string } | undefined)?.timeZone) throw zoneErr();
+      return toLocale.call(this, l, o);
+    });
+    try {
+      await renderCard({ ...base, timezone: "Europe/Kyiv", offers: [offer] });
+      expect(screen.getByTestId("place-promo").textContent).toContain("до 12 листопада");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("без акцій — ні блоку, ні бейджа", async () => {
+    await renderCard({ ...base, offers: [] });
+    expect(screen.queryByTestId("place-promos")).toBeNull();
+    expect(screen.queryByTestId("badge-offer")).toBeNull();
+  });
+
+  it("безстрокова акція — без дати", async () => {
+    await renderCard({ ...base, offers: [{ ...offer, endsAt: null, description: null }] });
+    expect(screen.getByTestId("place-promo").textContent).toBe("Знижка 10% на сніданок");
+  });
+});
+
 describe("графік: цілодобово", () => {
   const day = (weekday: number, opens: string, closes: string) => ({ weekday, opens, closes });
   const week = (opens: string, closes: string) => [1, 2, 3, 4, 5, 6, 7].map((d) => day(d, opens, closes));
@@ -325,6 +381,8 @@ const dto = {
   schedule: { timezone: "Europe/Kyiv", weekly: [], exceptions: [] },
   openUntil: null,
   favorite: null,
+  hasOffer: false,
+  offers: [],
   hasPriceList: false,
 };
 

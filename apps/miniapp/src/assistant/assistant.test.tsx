@@ -519,6 +519,7 @@ describe("createAssistantApi", () => {
           distanceMeters: 120,
           recommended: false,
           adLabel: null,
+          hasOffer: false,
           openNow: true,
           phone: null,
           cover: null,
