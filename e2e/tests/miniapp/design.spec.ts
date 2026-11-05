@@ -89,8 +89,8 @@ test("modern narrow screen retains working list", async ({ page }) => {
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     };
     return {
-      track: box(".kosiv-radius-overlay"),
-      radius: box(".kosiv-radius-overlay input"),
+      track: box(".kosiv-radius-overlay .kosiv-rd"),
+      radius: box(".kosiv-radius-overlay .kosiv-rd-strip"),
       chips: box(".modern-filters button"),
     };
   });

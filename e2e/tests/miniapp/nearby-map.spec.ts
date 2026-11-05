@@ -329,10 +329,10 @@ test.describe("кнопки «Маршрут» вне окна маркера: G
   });
 });
 
-test.describe("ползунок радиуса", () => {
+test.describe("радиус «Лінійка-барабан»", () => {
   for (const width of [320, 390] as const) {
     for (const night of [false, true]) {
-      test(`${width} px${night ? " «Ніч»" : ""}: подпись, значение 1 км, зона касания 44 px без наезда на чипы`, async ({
+      test(`${width} px${night ? " «Ніч»" : ""}: компактная капсула по центру, 1 км в рамке, лента 44 px без наезда на чипы`, async ({
         page,
       }) => {
         if (night) await page.addInitScript(() => localStorage.setItem("tg.theme", "night"));
@@ -343,21 +343,68 @@ test.describe("ползунок радиуса", () => {
         const slider = page.getByRole("slider", { name: "Радіус пошуку" });
         await expect(slider).toHaveAttribute("aria-valuetext", "1 км");
         await expect(page.getByTestId("radius-slider-value")).toHaveText("1 км");
-        const capsule = (await page.locator(".kosiv-radius-overlay").boundingBox())!;
+        const capsule = (await page.locator(".kosiv-radius-overlay .kosiv-rd").boundingBox())!;
         expect(Math.round(capsule.height)).toBe(44);
-        const input = (await slider.boundingBox())!;
-        expect(Math.round(input.height)).toBeGreaterThanOrEqual(44);
+        expect(capsule.width).toBeLessThanOrEqual(256);
+        // Выбранное значение — ровно в центре капсулы, в рамке.
+        const value = (await page.getByTestId("radius-slider-value").boundingBox())!;
+        const frame = (await page.locator(".kosiv-rd-frame").boundingBox())!;
+        const mid = capsule.x + capsule.width / 2;
+        expect(Math.abs(value.x + value.width / 2 - mid)).toBeLessThanOrEqual(1);
+        expect(Math.abs(frame.x + frame.width / 2 - mid)).toBeLessThanOrEqual(1);
+        // Капсула по центру окна карты.
+        const map = (await page.getByTestId("places-map").boundingBox())!;
+        expect(Math.abs(mid - (map.x + map.width / 2))).toBeLessThanOrEqual(1);
+        const strip = (await page.locator(".kosiv-rd-strip").boundingBox())!;
+        expect(Math.round(strip.height)).toBeGreaterThanOrEqual(44);
         const chip = await page.evaluate(() => {
           const c = document.querySelector(".modern-filters button")!;
           return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c, "::after").top);
         });
-        expect(input.y + input.height).toBeLessThanOrEqual(chip);
+        expect(strip.y + strip.height).toBeLessThanOrEqual(chip);
         // Панель над картой: отступ 8 + капсула 44 + 2 + ряд чипов 44 — не больше 98 px от верха окна карты.
         const panel = (await page.locator('[data-map-inset="top"]').boundingBox())!;
-        const map = (await page.getByTestId("places-map").boundingBox())!;
         expect(panel.y + panel.height - map.y).toBeLessThanOrEqual(98);
         await expectNoSeriousA11yViolations(page);
       });
     }
   }
+
+  test("нажатие на значение, свайп ленты и клавиатура меняют радиус; запрос — когда лента остановилась", async ({
+    page,
+  }) => {
+    const state = apiMockState.get(page)!;
+    await page.goto("/#/nearby");
+    await expect(page.getByTestId("places-map")).toBeVisible();
+    await animationsDone(page);
+    const strip = page.locator(".kosiv-rd-strip");
+    // Нажатие на видимое соседнее значение.
+    await strip.getByText("2 км", { exact: true }).click();
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 2 км");
+    await expect.poll(() => state.searches.at(-1)?.radius).toBe("2000");
+    // Свайп: лента доезжает до 10 км (шаг 6 × 56 px) — значение в рамке, потом один запрос.
+    await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBe(3 * 56);
+    const count = state.searches.length;
+    await strip.evaluate((el) => {
+      for (const left of [200, 260, 300, 6 * 56]) {
+        el.scrollLeft = left;
+        el.dispatchEvent(new Event("scroll"));
+      }
+    });
+    await expect(page.getByTestId("radius-slider-value")).toHaveText("10 км");
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 10 км");
+    await expect.poll(() => state.searches.at(-1)?.radius).toBe("10000");
+    expect(state.searches.length).toBe(count + 1);
+    // Клавиатура: фокус на скрытом ползунке — рамка фокуса у капсулы; End — 20 км, Home — 300 м.
+    const slider = page.getByRole("slider", { name: "Радіус пошуку" });
+    await slider.focus();
+    await page.keyboard.press("End");
+    await expect(slider).toHaveAttribute("aria-valuetext", "20 км");
+    await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBe(8 * 56);
+    await page.keyboard.press("Home");
+    await expect(slider).toHaveAttribute("aria-valuetext", "300 м");
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByTestId("radius-value")).toHaveText("Радіус ≤ 500 м");
+    await expect(page.locator(".kosiv-rd")).not.toHaveCSS("outline-style", "none");
+  });
 });
